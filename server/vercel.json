@@ -4,7 +4,6 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "functions": {
     "api/index.ts": {
-      "runtime": "nodejs20.x",
       "maxDuration": 10,
       "memory": 1024,
       "regions": ["sin1"]
