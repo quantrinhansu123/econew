@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { Building2, MapPin, Truck as TruckIcon, User, X } from 'lucide-react';
+import { Building2, MapPin, Truck as TruckIcon, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { Truck } from '../types';
 

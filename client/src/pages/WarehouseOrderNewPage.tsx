@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Loader2, ShieldAlert } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
 import { getLoginDisplayName, getStoredAuthUser } from '../lib/authUser';
 import CreateWaybillSuccessDialog from './warehouse/orders/dialogs/CreateWaybillSuccessDialog';
@@ -16,7 +15,7 @@ import {
   waybillToBillItem,
   waybillToOrderForm,
 } from './warehouse/orders/orderFormUtils';
-import type { CustomerListResponse } from './warehouse/customers/types';
+import type { CustomerListItem, CustomerListResponse } from './warehouse/customers/types';
 import type { BillListItem, NewOrderFormState, OrderWorkbenchTab } from './warehouse/orders/orderFormTypes';
 import type { BadgeConfig, CreatedWaybill, HubSummary, PaymentType, UserSummary, WaybillDetail } from './warehouse/orders/types';
 
@@ -124,7 +123,7 @@ export default function WarehouseOrderNewPage() {
         setHubs(activeHubs);
         const defaultOrigin = user?.hub_id ? String(user.hub_id) : String(activeHubs[0]?.id || '');
         const defaultDest = String(activeHubs.find((h) => h.code?.toUpperCase() === 'HCM')?.id || activeHubs[1]?.id || '');
-        setForm((prev) => ({
+        setForm(() => ({
           ...emptyOrderForm(),
           originHubId: defaultOrigin,
           destHubId: defaultDest,
@@ -153,7 +152,7 @@ export default function WarehouseOrderNewPage() {
         const items = Array.isArray(response) ? response : response.items || [];
         const match = items.find((c) => c.code.toUpperCase() === code);
         if (match) {
-          const full = await apiRequest(`/customers/${match.id}`);
+          const full = await apiRequest<Partial<CustomerListItem>>(`/customers/${match.id}`);
           setForm((prev) => applyPricingToForm({ ...prev, ...customerToOrderPatch({ ...match, ...full }, hubs) }));
           return;
         }
