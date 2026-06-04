@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } 
 import { Check, ChevronDown, Loader2, Plus, UserPlus } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../../../../lib/api';
-import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '../../../../components/ui/command';
+import { Command, CommandGroup, CommandItem, CommandList } from '../../../../components/ui/command';
 import { Popover, PopoverAnchor, PopoverContent } from '../../../../components/ui/popover';
 import CustomerFormDialog from '../../customers/dialogs/CustomerFormDialog';
 import { emptyCustomerForm } from '../../customers/customerFormTypes';

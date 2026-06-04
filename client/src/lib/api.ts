@@ -7,6 +7,11 @@ type RefreshResponse = {
   access_token: string;
 };
 
+type RefreshResult = {
+  token: string | null;
+  sessionCleared: boolean;
+};
+
 export class ApiError extends Error {
   status: number;
   payload: unknown;
@@ -52,7 +57,7 @@ const ACCESS_TOKEN_KEY = 'eco_access_token';
 const REFRESH_TOKEN_KEY = 'eco_refresh_token';
 const USER_PROFILE_KEY = 'eco_user_profile';
 
-let refreshPromise: Promise<string | null> | null = null;
+let refreshPromise: Promise<RefreshResult> | null = null;
 
 const dispatchAuthCleared = () => {
   if (typeof window !== 'undefined') {
@@ -164,13 +169,15 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (response.status === 401 && requestPath !== '/auth/login' && requestPath !== '/auth/refresh') {
-    const refreshedToken = await refreshAccessToken();
-    if (refreshedToken) {
+    const refreshResult = await refreshAccessToken();
+    if (refreshResult.token) {
       try {
-        response = await fetch(`${API_BASE_URL}${requestPath}`, buildRequest(refreshedToken));
+        response = await fetch(`${API_BASE_URL}${requestPath}`, buildRequest(refreshResult.token));
       } catch {
         throw new ApiError(0, 'Không kết nối được server sau khi làm mới phiên.', null);
       }
+    } else if (!refreshResult.sessionCleared) {
+      throw new ApiError(0, 'Không kết nối được server để làm mới phiên. Vui lòng thử lại khi mạng ổn định.', null);
     }
   }
 
@@ -185,46 +192,44 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 }
 
 /** Làm mới access token (dùng khi focus tab / interval). Không xóa phiên khi server tạm ngắt. */
-export async function refreshAccessToken(): Promise<string | null> {
+export async function refreshAccessToken(): Promise<RefreshResult> {
   const refreshToken = getStoredRefreshToken();
-  if (!refreshToken) return null;
+  if (!refreshToken) return { token: null, sessionCleared: false };
 
-  if (!refreshPromise) {
-    refreshPromise = fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    })
-      .then(async (response) => {
-        const payload = await readResponsePayload(response);
-        if (!response.ok) {
-          if (response.status === 401 || response.status === 403) {
-            clearAuthSession();
-          }
-          return null;
-        }
-
-        const tokens = payload as RefreshResponse | null;
-        if (!tokens?.access_token) {
+  refreshPromise ??= fetch(`${API_BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  })
+    .then(async (response) => {
+      const payload = await readResponsePayload(response);
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
           clearAuthSession();
-          return null;
+          return { token: null, sessionCleared: true };
         }
+        return { token: null, sessionCleared: false };
+      }
 
-        const storage = getAuthStorage();
-        storage?.setItem(ACCESS_TOKEN_KEY, tokens.access_token);
-        return tokens.access_token;
-      })
-      .catch(() => {
-        // Mạng/server restart: giữ refresh token, không đá user
-        return null;
-      })
-      .finally(() => {
-        refreshPromise = null;
-      });
-  }
+      const tokens = payload as RefreshResponse | null;
+      if (!tokens?.access_token) {
+        clearAuthSession();
+        return { token: null, sessionCleared: true };
+      }
+
+      const storage = getAuthStorage();
+      storage?.setItem(ACCESS_TOKEN_KEY, tokens.access_token);
+      return { token: tokens.access_token, sessionCleared: false };
+    })
+    .catch(() => {
+      return { token: null, sessionCleared: false };
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
 
   return refreshPromise;
 }

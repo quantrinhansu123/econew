@@ -16,6 +16,8 @@ export interface AuthTokens {
   user: SafeUserProfile;
 }
 
+const MAX_REFRESH_SESSIONS = 10;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -43,7 +45,7 @@ export class AuthService {
     }
 
     const tokens = await this.issueTokens(user);
-    await this.usersService.setRefreshToken(user.id, tokens.refresh_token);
+    await this.usersService.setRefreshToken(user.id, this.appendRefreshToken(user.refresh_token, tokens.refresh_token));
     await this.usersService.setLastLogin(user.id);
 
     return {
@@ -58,7 +60,7 @@ export class AuthService {
         secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
       });
       const user = await this.usersService.findByEmail(payload.email);
-      if (!user || !user.is_active || user.refresh_token !== dto.refresh_token) {
+      if (!user || !user.is_active || !this.hasRefreshToken(user.refresh_token, dto.refresh_token)) {
         throw new UnauthorizedException('Invalid refresh token');
       }
       return { access_token: await this.signAccessToken(user) };
@@ -111,6 +113,26 @@ export class AuthService {
       email: user.email,
       role_mask: user.role_mask,
     };
+  }
+
+  private appendRefreshToken(storedToken: string | null, nextToken: string): string {
+    const tokens = this.parseRefreshTokens(storedToken).filter((token) => token !== nextToken);
+    return JSON.stringify([...tokens, nextToken].slice(-MAX_REFRESH_SESSIONS));
+  }
+
+  private hasRefreshToken(storedToken: string | null, token: string): boolean {
+    return this.parseRefreshTokens(storedToken).includes(token);
+  }
+
+  private parseRefreshTokens(storedToken: string | null): string[] {
+    if (!storedToken) return [];
+    try {
+      const parsed = JSON.parse(storedToken) as unknown;
+      if (Array.isArray(parsed)) return parsed.filter((token): token is string => typeof token === 'string' && token.length > 0);
+    } catch {
+      return [storedToken];
+    }
+    return [];
   }
 }
 

@@ -52,10 +52,25 @@ const HrStaffListPage = lazy(() => import('./pages/hr/HrStaffListPage'));
 const HrAttendancePage = lazy(() => import('./pages/hr/HrAttendancePage'));
 const PrintWaybillPage = lazy(() => import('./pages/print/PrintWaybillPage'));
 const PrintInventoryStockPage = lazy(() => import('./pages/print/PrintInventoryStockPage'));
+const BusinessCrudPage = lazy(() => import('./pages/business/BusinessCrudPage'));
+
+const businessRouteConfigs = {
+  '/fleet/vehicles': 'vehicleDirectory',
+  '/fleet/vehicle-costs': 'vehicleCosts',
+  '/finance/cash-transaction-details': 'cashTransactionDetails',
+  '/transport/north-south': 'northSouthShipments',
+  '/hr/staff-members': 'staffMembers',
+  '/admin/carriers': 'carrierDirectory',
+  '/transport/chanh': 'chanhShipments',
+  '/customers/directory': 'customerDirectory',
+  '/finance/cash-journal': 'cashJournalEntries',
+  '/warehouse/warehouses': 'warehouses',
+} as const;
 
 const ecoRoutes = [
   '/warehouse/inventory',
   '/warehouse/customers',
+  '/warehouse/warehouses',
   '/warehouse/orders/new',
   '/warehouse/orders/:id/receive',
   '/warehouse/incoming',
@@ -88,16 +103,25 @@ const ecoRoutes = [
   '/finance/approve/vendor',
   '/finance/vendor-debt',
   '/finance/hub-reconciliation',
+  '/finance/cash-transaction-details',
+  '/finance/cash-journal',
+  '/fleet/vehicles',
+  '/fleet/vehicle-costs',
+  '/transport/north-south',
+  '/transport/chanh',
+  '/customers/directory',
   '/dashboard/kpi',
   '/dashboard/overdue',
   '/reports/revenue',
   '/hr/staff',
+  '/hr/staff-members',
   '/hr/attendance',
   '/admin/users',
   '/admin/hubs',
   '/admin/trucks',
   '/admin/vendors',
   '/admin/routes',
+  '/admin/carriers',
   '/profile',
   '/settings',
 ];
@@ -140,7 +164,7 @@ function App() {
               path={path}
               element={(
                 <Suspense fallback={null}>
-                  {path === '/hr/staff' ? <HrStaffListPage /> : path === '/hr/attendance' ? <HrAttendancePage /> : path === '/admin/users' ? <AdminUsersPage /> : path === '/admin/hubs' ? <AdminHubsPage /> : path === '/admin/trucks' ? <AdminTrucksPage /> : path === '/admin/vendors' ? <AdminVendorsPage /> : path === '/admin/routes' ? <AdminRoutesPage /> : path === '/warehouse/orders/new' ? <WarehouseOrderNewPage /> : path === '/warehouse/orders/:id/receive' ? <WarehouseOrderReceivePage /> : path === '/warehouse/inventory' ? <WarehouseInventoryPage /> : path === '/warehouse/customers' ? <WarehouseCustomersPage /> : path === '/warehouse/incoming' ? <WarehouseIncomingPage /> : path === '/warehouse/expected-arrivals' ? <ExpectedArrivalsPage /> : path === '/warehouse/priority' ? <WarehousePriorityPage /> : path === '/warehouse/load-planning' ? <WarehouseLoadPlanningPage /> : path === '/warehouse/manifests' ? <WarehouseManifestsPage /> : path === '/warehouse/manifests/:id' ? <WarehouseManifestDetailPage /> : path === '/delivery/routing' ? <DeliveryRoutingPage /> : path === '/delivery/handover' ? <DeliveryHandoverPage /> : path === '/delivery/en-route' ? <DeliveryEnRoutePage /> : path === '/delivery/hub-dropoff' ? <DeliveryHubDropoffPage /> : path === '/delivery/last-mile' ? <DeliveryLastMilePage /> : path === '/nhiem-vu-giao-hang' ? <NhiemVuGiaoHangPage /> : path === '/delivery/cod' ? <DeliveryCodPage /> : path === '/trips/list' ? <TripsPage /> : path === '/trips/new' ? <TripNewPage /> : path === '/trips/:id' ? <TripDetailPage /> : path === '/trips/:id/loading-sequence' ? <TripLoadingSequencePage /> : path === '/trips/:id/expenses' ? <TripExpensesPage /> : path === '/trips/:id/profit' ? <TripProfitPage /> : path === '/trips/trunk-vehicles' ? <TrucksPage /> : path === '/trucks' ? <TrucksPage /> : path === '/drivers/performance' ? <DriverPerformancePage /> : path === '/search/general' ? <SearchPage /> : path === '/search/waybills' ? <SearchWaybillsPage /> : path === '/search/trips' ? <SearchTripsPage /> : path === '/finance/cod-reconciliation' ? <FinanceCodReconciliationPage /> : path === '/finance/hub-reconciliation' ? <FinanceHubReconciliationPage /> : path === '/finance/approve/internal' ? <FinanceApproveInternalPage /> : path === '/finance/approve/vendor' ? <FinanceApproveVendorPage /> : path === '/finance/vendor-debt' ? <FinanceVendorDebtPage /> : path === '/dashboard/kpi' ? <DashboardKpiPage /> : path === '/settings' ? <SettingsPage /> : <PlaceholderPage /> }
+                  {path in businessRouteConfigs ? <BusinessCrudPage configKey={businessRouteConfigs[path as keyof typeof businessRouteConfigs]} /> : path === '/hr/staff' ? <HrStaffListPage /> : path === '/hr/attendance' ? <HrAttendancePage /> : path === '/admin/users' ? <AdminUsersPage /> : path === '/admin/hubs' ? <AdminHubsPage /> : path === '/admin/trucks' ? <AdminTrucksPage /> : path === '/admin/vendors' ? <AdminVendorsPage /> : path === '/admin/routes' ? <AdminRoutesPage /> : path === '/warehouse/orders/new' ? <WarehouseOrderNewPage /> : path === '/warehouse/orders/:id/receive' ? <WarehouseOrderReceivePage /> : path === '/warehouse/inventory' ? <WarehouseInventoryPage /> : path === '/warehouse/customers' ? <WarehouseCustomersPage /> : path === '/warehouse/incoming' ? <WarehouseIncomingPage /> : path === '/warehouse/expected-arrivals' ? <ExpectedArrivalsPage /> : path === '/warehouse/priority' ? <WarehousePriorityPage /> : path === '/warehouse/load-planning' ? <WarehouseLoadPlanningPage /> : path === '/warehouse/manifests' ? <WarehouseManifestsPage /> : path === '/warehouse/manifests/:id' ? <WarehouseManifestDetailPage /> : path === '/delivery/routing' ? <DeliveryRoutingPage /> : path === '/delivery/handover' ? <DeliveryHandoverPage /> : path === '/delivery/en-route' ? <DeliveryEnRoutePage /> : path === '/delivery/hub-dropoff' ? <DeliveryHubDropoffPage /> : path === '/delivery/last-mile' ? <DeliveryLastMilePage /> : path === '/nhiem-vu-giao-hang' ? <NhiemVuGiaoHangPage /> : path === '/delivery/cod' ? <DeliveryCodPage /> : path === '/trips/list' ? <TripsPage /> : path === '/trips/new' ? <TripNewPage /> : path === '/trips/:id' ? <TripDetailPage /> : path === '/trips/:id/loading-sequence' ? <TripLoadingSequencePage /> : path === '/trips/:id/expenses' ? <TripExpensesPage /> : path === '/trips/:id/profit' ? <TripProfitPage /> : path === '/trips/trunk-vehicles' ? <TrucksPage /> : path === '/trucks' ? <TrucksPage /> : path === '/drivers/performance' ? <DriverPerformancePage /> : path === '/search/general' ? <SearchPage /> : path === '/search/waybills' ? <SearchWaybillsPage /> : path === '/search/trips' ? <SearchTripsPage /> : path === '/finance/cod-reconciliation' ? <FinanceCodReconciliationPage /> : path === '/finance/hub-reconciliation' ? <FinanceHubReconciliationPage /> : path === '/finance/approve/internal' ? <FinanceApproveInternalPage /> : path === '/finance/approve/vendor' ? <FinanceApproveVendorPage /> : path === '/finance/vendor-debt' ? <FinanceVendorDebtPage /> : path === '/dashboard/kpi' ? <DashboardKpiPage /> : path === '/settings' ? <SettingsPage /> : <PlaceholderPage /> }
                 </Suspense>
               )}
             />

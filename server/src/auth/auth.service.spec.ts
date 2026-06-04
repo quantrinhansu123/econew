@@ -83,7 +83,7 @@ describe('AuthService', () => {
       refresh_token: 'refresh-token',
       user: safeUser,
     });
-    expect(usersService.setRefreshToken).toHaveBeenCalledWith('1', 'refresh-token');
+    expect(usersService.setRefreshToken).toHaveBeenCalledWith('1', JSON.stringify(['valid-refresh-token', 'refresh-token']));
     expect(usersService.setLastLogin).toHaveBeenCalledWith('1');
   });
 
@@ -104,6 +104,14 @@ describe('AuthService', () => {
     jwtService.signAsync.mockResolvedValue('new-access-token');
 
     await expect(service.refreshToken({ refresh_token: 'valid-refresh-token' })).resolves.toEqual({ access_token: 'new-access-token' });
+  });
+
+  it('refreshToken accepts a refresh token from another active session', async () => {
+    jwtService.verifyAsync.mockResolvedValue({ sub: '1', email: 'driver@eco.test', role_mask: Roles.DRIVER });
+    usersService.findByEmail.mockResolvedValue({ ...user, refresh_token: JSON.stringify(['older-refresh-token', 'newer-refresh-token']) });
+    jwtService.signAsync.mockResolvedValue('new-access-token');
+
+    await expect(service.refreshToken({ refresh_token: 'older-refresh-token' })).resolves.toEqual({ access_token: 'new-access-token' });
   });
 
   it('refreshToken rejects invalid refresh token', async () => {

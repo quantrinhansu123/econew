@@ -29,6 +29,7 @@ export interface WaybillDetail {
   receiver_info?: string | null;
   receiver_address?: string | null;
   weight?: number | string | null;
+  volumetric_weight?: number | string | null;
   actual_weight?: number | string | null;
   package_count?: number | string | null;
   declared_package_count?: number | string | null;
