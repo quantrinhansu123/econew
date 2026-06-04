@@ -57,4 +57,9 @@ export class UpdateTruckDto {
   @IsOptional()
   @IsString()
   khu_vuc?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  vendor_id?: string;
 }

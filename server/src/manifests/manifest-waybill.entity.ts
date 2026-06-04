@@ -1,4 +1,4 @@
-import { Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { ManifestEntity } from './manifest.entity';
 import { WaybillEntity } from '../waybills/waybill.entity';
 
@@ -9,6 +9,12 @@ export class ManifestWaybillEntity {
 
   @PrimaryColumn({ type: 'bigint' })
   waybill_id: string;
+
+  @Column({ type: 'int', nullable: true })
+  loading_position: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  loaded_at: Date | null;
 
   @ManyToOne(() => ManifestEntity, (manifest) => manifest.manifest_waybills, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'manifest_id' })

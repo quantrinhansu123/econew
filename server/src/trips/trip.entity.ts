@@ -40,6 +40,24 @@ export class TripEntity {
   @Column({ type: 'decimal', nullable: true })
   other_costs: string | null;
 
+  @Column({ type: 'decimal', nullable: true })
+  trip_cost: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  expected_arrival_time: Date | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  actual_total_weight: number | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  actual_total_volume: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  driver_name: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  driver_phone: string | null;
+
   @CreateDateColumn({ type: 'timestamp' })
   created_at: Date;
 

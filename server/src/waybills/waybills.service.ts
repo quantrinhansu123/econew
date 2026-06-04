@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, IsNull, Like, Repository } from 'typeorm';
 import { HubEntity } from '../hubs/hub.entity';
 import { PaymentType } from '../common/enums';
+import { clampPaginationLimit } from '../common/pagination';
 import { Roles, hasRole, isManager } from '../common/roles';
 import { UserEntity } from '../users/user.entity';
 import { WaybillEntity } from './waybill.entity';
@@ -91,7 +92,7 @@ export class WaybillsService {
 
   async findAll(query: QueryWaybillsDto, currentUser: UserEntity) {
     const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const limit = clampPaginationLimit(query.limit, 20);
     const qb = this.waybillsRepository.createQueryBuilder('waybill').where('waybill.deleted_at IS NULL').leftJoinAndSelect('waybill.origin_hub', 'origin_hub').leftJoinAndSelect('waybill.dest_hub', 'dest_hub');
     this.applyFilters(qb, query);
     this.applyHubScope(qb, currentUser);
@@ -290,7 +291,7 @@ export class WaybillsService {
     return roles.some((role) => hasRole(user.role_mask, role));
   }
 
-  private packContact(name?: string, phone?: string, address?: string) {
+  private packContact(name?: string | null, phone?: string | null, address?: string | null) {
     return [name, phone, address].filter(Boolean).join(' | ');
   }
 
@@ -303,11 +304,14 @@ export class WaybillsService {
 
   private sanitize(waybill: WaybillRecord, currentUser: UserEntity): WaybillRecord {
     const result: Record<string, any> = { ...waybill, status: this.getStatus(waybill) };
+    if (!result.receiver_phone && result.receiver_info) {
+      const parts = String(result.receiver_info).split(' | ').map((p: string) => p.trim());
+      if (parts[1]) result.receiver_phone = parts[1];
+    }
     if (!isManager(currentUser.role_mask)) {
       delete result.cost_amount;
       delete result.freight_amount;
       delete result.cc_amount;
-      delete result.cod_amount;
     }
     delete result.deleted_at;
     return result as WaybillRecord;

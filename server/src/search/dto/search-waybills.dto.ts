@@ -1,7 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsDate, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { PaymentType, WaybillState } from '../../common/enums';
+import { normalizePaginationLimit } from '../../common/pagination';
 
 export class SearchWaybillsDto {
   @ApiPropertyOptional()
@@ -50,7 +51,7 @@ export class SearchWaybillsDto {
 
   @ApiPropertyOptional({ default: 20, maximum: 100 })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(normalizePaginationLimit)
   @IsInt()
   @Min(1)
   @Max(100)

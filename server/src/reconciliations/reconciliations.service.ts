@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, LessThan, Repository } from 'typeorm';
 import { RemittanceStatus } from '../common/enums';
+import { clampPaginationLimit } from '../common/pagination';
 import { Roles, hasRole, isManager } from '../common/roles';
 import { HubEntity } from '../hubs/hub.entity';
 import { UserEntity } from '../users/user.entity';
@@ -41,7 +42,7 @@ export class ReconciliationsService {
 
   async findAll(query: QueryReconciliationsDto, currentUser: UserEntity) {
     const page = query.page ?? 1;
-    const limit = query.limit ?? 10;
+    const limit = clampPaginationLimit(query.limit, 10);
     const qb = this.reconciliationsRepository.createQueryBuilder('reconciliation')
       .leftJoinAndSelect('reconciliation.hub', 'hub')
       .orderBy('reconciliation.reconciliation_date', 'DESC')

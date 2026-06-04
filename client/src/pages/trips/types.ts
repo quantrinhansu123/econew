@@ -2,7 +2,8 @@ export type TripStatus = 'PLANNED' | 'IN_TRANSIT' | 'ARRIVED' | 'COMPLETED' | 'C
 export type PaymentType = 'PP' | 'CC' | 'COD' | string;
 
 export interface HubSummary { id: string | number; code?: string | null; name?: string | null; address?: string | null; }
-export interface TruckSummary { id: string | number; license_plate?: string | null; status?: string | null; payload?: number | null; fuel_consumption_limit?: number | null; }
+export interface VendorSummary { id: string | number; code?: string | null; name?: string | null; payable_balance?: number | string | null; }
+export interface TruckSummary { id: string | number; license_plate?: string | null; bks?: string | null; nha_xe?: string | null; ten_lai_xe?: string | null; status?: string | null; payload?: number | null; fuel_consumption_limit?: number | null; vendor?: VendorSummary | null; vendor_id?: string | number | null; }
 export interface ManifestSummary { id: string | number; manifest_code?: string | null; seal_code?: string | null; status?: string | null; origin_hub_id?: string | number | null; dest_hub_id?: string | number | null; origin_hub?: HubSummary | null; dest_hub?: HubSummary | null; }
 
 export interface WaybillSummary {
@@ -35,6 +36,11 @@ export interface Trip {
   end_hub_id?: string | number | null;
   departure_time?: string | null;
   arrival_time?: string | null;
+  expected_arrival_time?: string | null;
+  actual_total_weight?: number | null;
+  actual_total_volume?: number | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
   status?: TripStatus | null;
   fuel_actual?: number | null;
   fuel_cost?: number | string | null;
@@ -94,9 +100,13 @@ export interface TripCreateHubSummary {
 export interface TripCreateTruckSummary {
   id: string | number;
   license_plate?: string | null;
+  bks?: string | null;
+  nha_xe?: string | null;
   payload?: number | null;
   status?: string | null;
   fuel_consumption_limit?: number | null;
+  vendor?: VendorSummary | null;
+  vendor_id?: string | number | null;
   warning?: string | null;
   warnings?: string[] | null;
 }
@@ -121,9 +131,7 @@ export interface TripCreateFormState {
   end_hub_id: string;
   departure_time: string;
   arrival_time: string;
-  fuel_actual: string;
-  fuel_cost: string;
-  other_costs: string;
+  trip_cost: string;
 }
 
 export type TripCreatePayload = {
@@ -133,9 +141,7 @@ export type TripCreatePayload = {
   end_hub_id: number | string;
   departure_time: string;
   arrival_time?: string;
-  fuel_actual?: number;
-  fuel_cost?: number;
-  other_costs?: number;
+  trip_cost?: number;
 };
 
 export type TripCreateFieldErrors = Partial<Record<keyof TripCreateFormState, string>>;
@@ -143,8 +149,51 @@ export type TripCreateFieldErrors = Partial<Record<keyof TripCreateFormState, st
 export interface TripExpense {
   id: string | number;
   trip_id: string | number;
+  category?: string | null;
+  amount?: number | string | null;
+  description?: string | null;
+  hub_id?: string | number | null;
+  created_at?: string | null;
   [key: string]: unknown;
 }
+
+export interface LoadingSequenceItem {
+  waybill_id: string | number;
+  loading_position?: number | null;
+  loaded_at?: string | null;
+  waybill?: WaybillSummary & {
+    noi_den?: string | null;
+    receiver_address?: string | null;
+    receiver_phone?: string | null;
+    the_tich_m3?: number | null;
+    cod_amount?: number | string | null;
+  };
+}
+
+export interface LoadingSequenceResponse {
+  trip: Trip & { truck?: TruckSummary | null };
+  items: LoadingSequenceItem[];
+  totals: {
+    planned_weight: number;
+    planned_volume: number;
+    actual_weight?: number | null;
+    actual_volume?: number | null;
+  };
+}
+
+export interface ExpectedArrivalTrip extends Trip {
+  waybill_count?: number;
+  planned_total_weight?: number;
+  planned_total_volume?: number;
+  license_plate?: string | null;
+}
+
+export const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
+  HCM_WAREHOUSE: 'Chi kho HCM',
+  EN_ROUTE_DROP: 'Thả hàng dọc đường',
+  FUEL: 'Nhiên liệu',
+  OTHER: 'Khác',
+};
 
 export interface TripExpenseListResponse {
   data?: TripExpense[];

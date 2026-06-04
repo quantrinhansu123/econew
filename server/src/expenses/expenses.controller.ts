@@ -18,7 +18,7 @@ export class ExpensesController {
   constructor(private readonly expensesService: ExpensesService) {}
 
   @Post()
-  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Create a trip expense' })
   create(@Body() dto: CreateExpenseDto, @CurrentUser() currentUser: UserEntity) {
     return this.expensesService.create(dto, currentUser);
@@ -46,7 +46,7 @@ export class ExpensesController {
   }
 
   @Patch(':id')
-  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Update a trip expense' })
   update(@Param('id') id: string, @Body() dto: UpdateExpenseDto, @CurrentUser() currentUser: UserEntity) {
     return this.expensesService.update(id, dto, currentUser);

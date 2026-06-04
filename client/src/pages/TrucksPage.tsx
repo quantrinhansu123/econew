@@ -11,6 +11,7 @@ import {
   Truck as TruckIcon,
 } from 'lucide-react';
 import { ApiError, apiRequest } from '../lib/api';
+import { useLocation } from 'react-router-dom';
 import { FilterSelect } from '../components/ui/FilterSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
 import type { AuthUserProfile } from './login/types';
@@ -19,7 +20,7 @@ import TruckDetailDialog from './trucks/dialogs/TruckDetailDialog';
 import TrucksKanbanBoard from './trucks/TrucksKanbanBoard';
 import {
   buildKhuVucSuggestions,
-  buildLoaiXeSuggestions,
+  getLoaiXeCategoryOptions,
   groupTrucksByKhuVuc,
   KANBAN_FETCH_LIMIT,
   khuVucKeyFromTruck,
@@ -73,9 +74,12 @@ const normalizeId = (value?: string | number | null) => (value == null ? '' : St
 const displayBks = (truck: Truck) => truck.bks || truck.license_plate || '—';
 
 export default function TrucksPage() {
+  const location = useLocation();
+  const defaultLoaiXe = location.pathname === '/trips/trunk-vehicles' ? 'Đường trục' : '';
   const [filters, setFilters] = useState<TruckFilters>({
     keyword: '',
     status: [],
+    loai_xe: defaultLoaiXe,
     page: 1,
     limit: KANBAN_FETCH_LIMIT,
   });
@@ -113,12 +117,12 @@ export default function TrucksPage() {
     [drivers],
   );
 
-  const loaiXeOptions = useMemo(() => buildLoaiXeSuggestions(trucks), [trucks]);
+  const loaiXeFilterOptions = useMemo(() => getLoaiXeCategoryOptions(), []);
   const khuVucOptions = useMemo(() => buildKhuVucSuggestions(trucks), [trucks]);
   const kanbanColumns = useMemo(() => groupTrucksByKhuVuc(trucks), [trucks]);
   const columnsWithTrucks = useMemo(() => kanbanColumns.filter((c) => c.trucks.length > 0).length, [kanbanColumns]);
 
-  const activeFilterCount = filters.status.length;
+  const activeFilterCount = filters.status.length + (filters.loai_xe ? 1 : 0);
 
   useEffect(() => {
     if (canView) void loadDrivers();
@@ -127,6 +131,8 @@ export default function TrucksPage() {
   useEffect(() => {
     if (canView) void loadTrucks();
   }, [canView, filters]);
+
+  // Không tự động ép loai_xe theo route; người dùng tự chọn từ dropdown.
 
   async function loadDrivers() {
     try {
@@ -149,6 +155,7 @@ export default function TrucksPage() {
       });
       if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
       if (filters.status.length) params.set('status', filters.status.join(','));
+      if (filters.loai_xe) params.set('loai_xe', filters.loai_xe);
       const response = await apiRequest<TruckListResponse | Truck[]>(`/trucks?${params.toString()}`);
       const items = normalizeList(response);
       setTrucks(items);
@@ -172,7 +179,7 @@ export default function TrucksPage() {
 
   function openCreate(khuVuc = '') {
     setSelectedTruck(null);
-    setFormState({ ...emptyForm, khu_vuc: khuVuc });
+    setFormState({ ...emptyForm, loai_xe: defaultLoaiXe, khu_vuc: khuVuc });
     setIsEditMode(false);
     setIsFormOpen(true);
   }
@@ -381,14 +388,23 @@ export default function TrucksPage() {
             )}
           </div>
           <div className="hidden md:flex md:items-center md:justify-between md:gap-3">
-            <FilterSelect
-              multiple
-              icon={Tag}
-              placeholder="Trạng thái"
-              options={statusOptions}
-              value={filters.status}
-              onValueChange={(value) => updateFilters({ status: value })}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterSelect
+                multiple
+                icon={Tag}
+                placeholder="Trạng thái"
+                options={statusOptions}
+                value={filters.status}
+                onValueChange={(value) => updateFilters({ status: value })}
+              />
+              <FilterSelect
+                icon={TruckIcon}
+                placeholder="Loại xe"
+                options={loaiXeFilterOptions}
+                value={filters.loai_xe}
+                onValueChange={(value) => updateFilters({ loai_xe: value })}
+              />
+            </div>
             <p className="shrink-0 text-[12px] font-bold text-muted-foreground">
               Kanban theo khu vực · kéo thả để chuyển cột
             </p>
@@ -443,7 +459,7 @@ export default function TrucksPage() {
         <div className="fixed inset-0 z-50 flex items-end md:hidden">
           <div className="absolute inset-0 bg-slate-900/50" onClick={() => setIsFilterOpen(false)} />
           <div className="relative w-full rounded-t-2xl bg-white p-4 space-y-3">
-            <div className="font-extrabold">Lọc trạng thái</div>
+            <div className="font-extrabold">Bộ lọc</div>
             <FilterSelect
               multiple
               icon={Tag}
@@ -451,6 +467,13 @@ export default function TrucksPage() {
               options={statusOptions}
               value={filters.status}
               onValueChange={(value) => updateFilters({ status: value })}
+            />
+            <FilterSelect
+              icon={TruckIcon}
+              placeholder="Loại xe"
+              options={loaiXeFilterOptions}
+              value={filters.loai_xe}
+              onValueChange={(value) => updateFilters({ loai_xe: value })}
             />
             <button
               type="button"
@@ -473,8 +496,6 @@ export default function TrucksPage() {
         formState={formState}
         setFormField={setFormField}
         statusOptions={[{ value: '', label: 'Chọn trạng thái' }, ...statusOptions]}
-        driverOptions={driverOptions}
-        loaiXeOptions={loaiXeOptions}
         khuVucOptions={khuVucOptions}
       />
       <TruckDetailDialog

@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { normalizePaginationLimit } from '../../common/pagination';
 
 export class QueryVendorsDto {
   @ApiPropertyOptional()
@@ -37,7 +38,7 @@ export class QueryVendorsDto {
 
   @ApiPropertyOptional({ default: 20 })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(normalizePaginationLimit)
   @IsInt()
   @Min(1)
   @Max(100)

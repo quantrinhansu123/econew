@@ -17,12 +17,13 @@ const initialFormState: LoginFormState = {
 };
 
 const getRoleRedirectPath = (roleMask: number) => {
-  if ((roleMask & (32 | 64)) !== 0) return '/dashboard';
+  if ((roleMask & (32 | 64)) !== 0) return '/warehouse/inventory';
   if ((roleMask & 16) !== 0) return '/finance/hub-reconciliation';
   if ((roleMask & 8) !== 0) return '/trips';
-  if ((roleMask & 4) !== 0) return '/delivery/last-mile';
+  if ((roleMask & 4) !== 0) return '/nhiem-vu-giao-hang';
   if ((roleMask & 2) !== 0) return '/warehouse/manifests';
-  return '/warehouse/inventory';
+  if ((roleMask & 1) !== 0) return '/warehouse/orders/new';
+  return '/warehouse';
 };
 
 const getStorage = (rememberMe: boolean) => (rememberMe ? localStorage : sessionStorage);

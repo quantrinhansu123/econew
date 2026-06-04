@@ -1,4 +1,7 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { TruckEntity } from '../trucks/truck.entity';
+import { VendorDebtEntryEntity } from './vendor-debt-entry.entity';
+import { VendorPaymentEntity } from './vendor-payment.entity';
 
 @Entity('vendors')
 export class VendorEntity {
@@ -32,6 +35,9 @@ export class VendorEntity {
   @Column({ type: 'varchar', default: 'ACTIVE' })
   status: string;
 
+  @Column({ type: 'decimal', default: 0 })
+  payable_balance: string;
+
   @Column({ type: 'jsonb', nullable: true })
   routes: Record<string, unknown> | unknown[] | null;
 
@@ -46,4 +52,13 @@ export class VendorEntity {
 
   @UpdateDateColumn({ type: 'timestamp' })
   updated_at: Date;
+
+  @OneToMany(() => TruckEntity, (truck) => truck.vendor)
+  trucks: TruckEntity[];
+
+  @OneToMany(() => VendorDebtEntryEntity, (entry) => entry.vendor)
+  debt_entries: VendorDebtEntryEntity[];
+
+  @OneToMany(() => VendorPaymentEntity, (payment) => payment.vendor)
+  payments: VendorPaymentEntity[];
 }

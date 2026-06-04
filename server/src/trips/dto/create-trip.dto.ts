@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDate, IsInt, IsOptional } from 'class-validator';
+import { IsDate, IsInt, IsNumber, IsOptional, Min } from 'class-validator';
 
 export class CreateTripDto {
   @ApiPropertyOptional({ nullable: true })
@@ -34,4 +34,18 @@ export class CreateTripDto {
   @Type(() => Date)
   @IsDate()
   arrival_time?: Date;
+
+  @ApiPropertyOptional({ description: 'Chi phí chuyến xe — cộng vào công nợ NCC' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  trip_cost?: number;
+
+  @ApiPropertyOptional({ description: 'Alias trip_cost (legacy)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  other_costs?: number;
 }

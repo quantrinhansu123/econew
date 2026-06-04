@@ -1,0 +1,143 @@
+/* BẢNG KÊ PHÁT HÀNG ECO — A4 cho điều phối */
+@page {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+@media print {
+  body {
+    margin: 0;
+    background: #fff !important;
+    font-family: 'Times New Roman', Times, serif;
+  }
+  .inventory-print-toolbar {
+    display: none !important;
+  }
+  .inventory-stock-wrap {
+    padding: 0 !important;
+    background: #fff !important;
+  }
+}
+
+.inventory-stock-wrap {
+  min-height: 100vh;
+  background: #e8eef5;
+  padding: 12px;
+  font-family: 'Times New Roman', Times, serif;
+}
+
+.inventory-stock-sheet {
+  background: #fff;
+  border: 1px solid #333;
+  padding: 6px 7px 8px;
+  max-width: 297mm;
+  margin: 0 auto;
+}
+
+.inventory-stock-title {
+  text-align: center;
+  font-size: 13pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.25px;
+  margin: 0 0 5px;
+}
+
+.inventory-stock-meta {
+  font-size: 8pt;
+  margin: 0 0 5px;
+  color: #333;
+}
+
+.inventory-stock-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 6.6pt;
+  line-height: 1.12;
+}
+
+.inventory-stock-table th,
+.inventory-stock-table td {
+  border: 1px solid #333;
+  padding: 1.5px 2px;
+  vertical-align: top;
+  overflow-wrap: break-word;
+  word-break: normal;
+  overflow: hidden;
+}
+
+.inventory-stock-table thead th {
+  background: #c6efce;
+  font-weight: 700;
+  text-align: center;
+  font-size: 6.3pt;
+  line-height: 1.08;
+  vertical-align: middle;
+}
+
+.inventory-stock-table tbody tr:nth-child(even) td {
+  background: #f9f9f9;
+}
+
+.inventory-stock-table .col-center {
+  text-align: center;
+}
+
+.inventory-stock-table .col-right {
+  text-align: right;
+}
+
+.inventory-stock-table .phone {
+  color: #c00000;
+  font-weight: 700;
+}
+
+.inventory-stock-table tfoot td {
+  font-weight: 700;
+  background: #e2efda;
+}
+
+.inventory-stock-table .recipient-cell {
+  font-size: 6.3pt;
+}
+
+.inventory-stock-table .col-date,
+.inventory-stock-table .col-qty,
+.inventory-stock-table .col-unit,
+.inventory-stock-table .col-money,
+.inventory-stock-table .col-fee,
+.inventory-stock-table .col-kg,
+.inventory-stock-table .col-m3 {
+  white-space: nowrap;
+}
+
+.inventory-stock-table .col-bill {
+  overflow-wrap: anywhere;
+}
+
+.inventory-stock-table .col-location { width: 5.2%; }
+.inventory-stock-table .col-date { width: 4.6%; }
+.inventory-stock-table .col-province { width: 5.6%; }
+.inventory-stock-table .col-company { width: 6.5%; }
+.inventory-stock-table .col-service { width: 4.4%; }
+.inventory-stock-table .col-item { width: 6.5%; }
+.inventory-stock-table .col-place { width: 6%; }
+.inventory-stock-table .col-qty { width: 3.8%; }
+.inventory-stock-table .col-unit { width: 4%; }
+.inventory-stock-table .col-recipient { width: 11.2%; }
+.inventory-stock-table .col-plan { width: 5.2%; }
+.inventory-stock-table .col-money { width: 5.5%; }
+.inventory-stock-table .col-fee { width: 5.2%; }
+.inventory-stock-table .col-driver { width: 5.2%; }
+.inventory-stock-table .col-post { width: 5.2%; }
+.inventory-stock-table .col-bill { width: 5.5%; }
+.inventory-stock-table .col-note { width: 6%; }
+.inventory-stock-table .col-kg { width: 3.5%; }
+.inventory-stock-table .col-m3 { width: 3.2%; }
+
+@media screen {
+  .inventory-stock-sheet {
+    box-shadow: 0 1px 8px rgba(15, 23, 42, 0.12);
+  }
+}

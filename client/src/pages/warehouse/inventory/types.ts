@@ -35,6 +35,11 @@ export interface WaybillInventoryItem {
   status?: WaybillInventoryStatus | null;
   payment_type?: PaymentType | null;
   cod_amount?: number | string | null;
+  cost_amount?: number | string | null;
+  freight_amount?: number | string | null;
+  volumetric_weight?: number | string | null;
+  receiver_address?: string | null;
+  receiver_phone?: string | null;
   package_count?: number | string | null;
   declared_package_count?: number | string | null;
   weight?: number | string | null;
@@ -47,6 +52,10 @@ export interface WaybillInventoryItem {
   delivery_route?: string | null;
   note?: string | null;
   notes?: string | null;
+  ma_kh?: string | null;
+  noi_den?: string | null;
+  loaded_at?: string | null;
+  the_tich_m3?: number | string | null;
 }
 
 export interface WaybillInventoryDetail extends WaybillInventoryItem {

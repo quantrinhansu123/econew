@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, Repository } from 'typeorm';
+import { clampPaginationLimit } from '../common/pagination';
 import { Roles, isManager } from '../common/roles';
 import { WaybillState, TripStatus } from '../common/enums';
 import { HubEntity } from '../hubs/hub.entity';
@@ -71,7 +72,7 @@ export class ManifestsService {
 
   async findAll(query: QueryManifestsDto, currentUser: UserEntity) {
     const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const limit = clampPaginationLimit(query.limit, 20);
     const qb = this.manifestsRepository.createQueryBuilder('manifest').leftJoinAndSelect('manifest.origin_hub', 'origin_hub').leftJoinAndSelect('manifest.dest_hub', 'dest_hub').leftJoinAndSelect('manifest.trips', 'trip');
     this.applyFilters(qb, query);
     this.applyHubScope(qb, currentUser);

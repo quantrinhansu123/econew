@@ -1,6 +1,13 @@
-import type { Truck, TruckKanbanColumn } from './types';
+import type { FilterOption, Truck, TruckKanbanColumn } from './types';
 
-export const DEFAULT_LOAI_XE_OPTIONS = ['Xe 5T', 'Xe 8T', 'Xe 10T', 'Xe 15T', 'Xe 20T', 'Container 20ft', 'Container 40ft', 'Xe tải nhỏ', 'Xe bán tải'];
+/** Phân loại vận hành xe — lưu vào cột trucks.loai_xe */
+export const LOAI_XE_CATEGORY_OPTIONS = ['Nội bộ', 'Đường trục', 'Đối tác'] as const;
+
+export type LoaiXeCategory = (typeof LOAI_XE_CATEGORY_OPTIONS)[number];
+
+export function getLoaiXeCategoryOptions(): FilterOption[] {
+  return LOAI_XE_CATEGORY_OPTIONS.map((value) => ({ value, label: value }));
+}
 
 export const DEFAULT_KHU_VUC_OPTIONS = ['Hà Nội', 'TP. Hồ Chí Minh', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ', 'Bình Dương', 'Đồng Nai'];
 
@@ -66,11 +73,6 @@ export function groupTrucksByKhuVuc(trucks: Truck[]): TruckKanbanColumn[] {
     label: khuVucLabelFromKey(id),
     trucks: grouped.get(id) ?? [],
   }));
-}
-
-export function buildLoaiXeSuggestions(trucks: Truck[]): string[] {
-  const fromDb = trucks.map((t) => t.loai_xe?.trim()).filter(Boolean) as string[];
-  return [...DEFAULT_LOAI_XE_OPTIONS, ...fromDb];
 }
 
 export function buildKhuVucSuggestions(trucks: Truck[]): string[] {

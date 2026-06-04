@@ -172,7 +172,33 @@ export default function TripDetailPage() {
 }
 
 function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, isFinal, openAction, openManifest, openTruck }: { trip: Trip; manifest: ManifestDetail | null; truck: TruckSummary | null; hubs: HubSummary[]; canOperateTrip: boolean; isFinal: boolean; openAction: (action: TripAction) => void; openManifest: () => void; openTruck: () => void }) {
-  return <div className="grid gap-2 rounded-xl border border-border bg-muted/5 p-3 text-[12px] md:grid-cols-4"><Info label="truck_id" value={<button onClick={openTruck} className="font-bold text-primary hover:underline"><TruckBadge trip={trip} truck={truck} /></button>} /><Info label="manifest_id" value={<button onClick={openManifest} className="font-bold text-primary hover:underline"><ManifestBadge trip={trip} manifest={manifest} /></button>} /><Info label="start_hub_id" value={<HubBadge hubs={hubs} id={trip.start_hub_id} hub={trip.start_hub} />} /><Info label="end_hub_id" value={<HubBadge hubs={hubs} id={trip.end_hub_id} hub={trip.end_hub} />} /><Info label="departure_time" value={formatDate(trip.departure_time)} /><Info label="arrival_time" value={formatDate(trip.arrival_time)} /><Info label="fuel_actual" value={formatNumber(trip.fuel_actual, ' L')} /><Info label="fuel_cost" value={formatMoney(trip.fuel_cost)} /><Info label="other_costs" value={formatMoney(trip.other_costs)} /><Info label="status" value={<TripStatusBadge status={trip.status} />} /><div className="flex flex-wrap items-center gap-1 md:col-span-2">{(['start', 'arrive', 'complete', 'cancel'] as TripAction[]).map(action => <button key={action} disabled={!canOperateTrip || isFinal} onClick={() => openAction(action)} className={clsx('h-8 rounded-lg border px-2 text-[11px] font-bold disabled:opacity-40', action === 'cancel' ? 'border-red-200 bg-red-50 text-red-600' : 'border-primary/20 bg-blue-50 text-primary')}>{action === 'start' ? 'Bắt đầu' : action === 'arrive' ? 'Đến hub' : action === 'complete' ? 'Hoàn tất' : 'Hủy'}</button>)}</div></div>;
+  const navigate = useNavigate();
+  return (
+    <div className="grid gap-2 rounded-xl border border-border bg-muted/5 p-3 text-[12px] md:grid-cols-4">
+      <Info label="Biển kiểm soát" value={<button type="button" onClick={openTruck} className="font-bold text-primary hover:underline"><TruckBadge trip={trip} truck={truck} /></button>} />
+      <Info label="Lái xe / SĐT" value={[trip.driver_name || truck?.ten_lai_xe, trip.driver_phone].filter(Boolean).join(' · ') || '—'} />
+      <Info label="Bảng kê" value={<button type="button" onClick={openManifest} className="font-bold text-primary hover:underline"><ManifestBadge trip={trip} manifest={manifest} /></button>} />
+      <Info label="Giờ dự kiến đến" value={formatDate(trip.expected_arrival_time || trip.arrival_time)} />
+      <Info label="Kho đi" value={<HubBadge hubs={hubs} id={trip.start_hub_id} hub={trip.start_hub} />} />
+      <Info label="Kho đến" value={<HubBadge hubs={hubs} id={trip.end_hub_id} hub={trip.end_hub} />} />
+      <Info label="Khởi hành" value={formatDate(trip.departure_time)} />
+      <Info label="Chốt cân/khối" value={`${formatNumber(trip.actual_total_weight, ' kg')} / ${formatNumber(trip.actual_total_volume, ' m³')}`} />
+      <Info label="Trạng thái" value={<TripStatusBadge status={trip.status} />} />
+      <div className="flex flex-wrap items-center gap-1 md:col-span-4">
+        {(['start', 'arrive', 'complete', 'cancel'] as TripAction[]).map(action => (
+          <button key={action} type="button" disabled={!canOperateTrip || isFinal} onClick={() => openAction(action)} className={clsx('h-8 rounded-lg border px-2 text-[11px] font-bold disabled:opacity-40', action === 'cancel' ? 'border-red-200 bg-red-50 text-red-600' : 'border-primary/20 bg-blue-50 text-primary')}>
+            {action === 'start' ? 'Khởi hành' : action === 'arrive' ? 'Đến hub' : action === 'complete' ? 'Hoàn tất' : 'Hủy'}
+          </button>
+        ))}
+        {!isFinal && trip.status === 'IN_TRANSIT' && (
+          <>
+            <button type="button" onClick={() => navigate(`/trips/${trip.id}/loading-sequence`)} className="h-8 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-800">Vị trí xếp hàng</button>
+            <button type="button" onClick={() => navigate(`/trips/${trip.id}/expenses`)} className="h-8 rounded-lg border border-orange-200 bg-orange-50 px-2 text-[11px] font-bold text-orange-800">Chi phí phát sinh</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function renderWaybillCell(column: WaybillColumnId, waybill: WaybillSummary, hubs: HubSummary[]) { const content: Record<WaybillColumnId, ReactNode> = { waybill_code: <span className="font-extrabold text-primary">{waybill.waybill_code || '—'}</span>, sender_info: waybill.sender_info || '—', receiver_info: waybill.receiver_info || '—', origin_hub_id: <HubBadge hubs={hubs} id={waybill.origin_hub_id} />, dest_hub_id: <HubBadge hubs={hubs} id={waybill.dest_hub_id} />, current_state: <WaybillStatusBadge status={waybill.current_state} />, payment_type: <PaymentBadge value={waybill.payment_type} />, weight: formatNumber(waybill.weight, ' kg'), dimensions: `${formatNumber(waybill.length)} × ${formatNumber(waybill.width)} × ${formatNumber(waybill.height)}`, volumetric_weight: formatNumber(waybill.volumetric_weight, ' kg'), actions: <IconButton icon={<Eye size={15} />} title="Xem" /> }; return <td key={column} className="px-4 py-3 border-r border-border last:border-r-0 text-[13px] align-top">{content[column]}</td>; }

@@ -2,8 +2,9 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Brackets, FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
-import { Roles, hasRole, isDirector, isManager } from '../common/roles';
 import { RemittanceStatus, TripStatus, WaybillState } from '../common/enums';
+import { clampPaginationLimit } from '../common/pagination';
+import { Roles, hasRole, isDirector, isManager } from '../common/roles';
 import { HubEntity } from '../hubs/hub.entity';
 import { ManifestEntity } from '../manifests/manifest.entity';
 import { ReconciliationEntity } from '../reconciliations/reconciliation.entity';
@@ -64,7 +65,7 @@ export class UsersService {
   async findAll(query: QueryUsersDto) {
     if (query.role_mask !== undefined) this.validateRoleMask(query.role_mask);
     const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const limit = clampPaginationLimit(query.limit, 20);
     const queryBuilder = this.usersRepository
       .createQueryBuilder('users')
       .leftJoinAndSelect('users.hub', 'hub');

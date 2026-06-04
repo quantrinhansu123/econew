@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, Repository } from 'typeorm';
 import { TripStatus, WaybillState } from '../common/enums';
+import { clampPaginationLimit } from '../common/pagination';
 import { TripEntity } from '../trips/trip.entity';
 import { UserHubEntity } from '../users/user-hub.entity';
 import { UserEntity } from '../users/user.entity';
@@ -48,7 +49,7 @@ export class HubsService {
 
   async findAll(query: QueryHubsDto) {
     const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const limit = clampPaginationLimit(query.limit, 20);
     const queryBuilder = this.hubsRepository.createQueryBuilder('hub').where('hub.deleted_at IS NULL');
 
     if (query.keyword?.trim()) {

@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { IsDateString, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { normalizePaginationLimit } from '../../common/pagination';
 import { ManifestStatus } from './manifest.enums';
 
 export class QueryManifestsDto {
@@ -59,7 +60,7 @@ export class QueryManifestsDto {
 
   @ApiPropertyOptional({ default: 20 })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(normalizePaginationLimit)
   @IsInt()
   @Min(1)
   @Max(100)

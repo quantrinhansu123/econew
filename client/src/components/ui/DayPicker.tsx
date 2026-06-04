@@ -50,7 +50,7 @@ export function DayPicker({ value, onChange, placeholder = 'Chọn ngày', class
           )}
         >
           <CalendarDays size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <span>{value ? formatDisplayDate(value) : placeholder}</span>
+          <span className="truncate whitespace-nowrap">{value ? formatDisplayDate(value) : placeholder}</span>
           {value && !disabled && (
             <span
               role="button"

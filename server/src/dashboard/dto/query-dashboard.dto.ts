@@ -1,7 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsDate, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { PaymentType } from '../../common/enums';
+import { normalizePaginationLimit } from '../../common/pagination';
 
 export class QueryDashboardDto {
   @ApiPropertyOptional({ type: String, format: 'date-time' })
@@ -40,7 +41,7 @@ export class QueryDashboardDto {
 
   @ApiPropertyOptional({ default: 20, maximum: 100 })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(normalizePaginationLimit)
   @IsInt()
   @Min(1)
   @Max(100)

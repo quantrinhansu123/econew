@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { normalizePaginationLimit } from '../../common/pagination';
 import { HubType } from './create-hub.dto';
 
 export class QueryHubsDto {
@@ -39,7 +40,7 @@ export class QueryHubsDto {
 
   @ApiPropertyOptional({ example: 20, default: 20 })
   @IsOptional()
-  @Transform(({ value }) => Number(value))
+  @Transform(normalizePaginationLimit)
   @IsInt()
   @Min(1)
   @Max(100)

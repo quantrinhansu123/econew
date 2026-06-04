@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { normalizePaginationLimit } from '../../common/pagination';
 import { TruckStatus } from './truck.enums';
 
 export class QueryTrucksDto {
@@ -13,6 +14,11 @@ export class QueryTrucksDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ description: 'Nội bộ | Đường trục | Đối tác' })
+  @IsOptional()
+  @IsString()
+  loai_xe?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -28,7 +34,7 @@ export class QueryTrucksDto {
 
   @ApiPropertyOptional({ default: 20 })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(normalizePaginationLimit)
   @IsInt()
   @Min(1)
   @Max(100)

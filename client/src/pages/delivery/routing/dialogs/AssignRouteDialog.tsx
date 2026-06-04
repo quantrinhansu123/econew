@@ -1,4 +1,5 @@
-import { Loader2, X } from 'lucide-react';
+import { Loader2, Route, X } from 'lucide-react';
+import { useDeliveryRoutes } from '../../../../hooks/useDeliveryRoutes';
 import type { AssignRouteFormState, WaybillRoutingItem } from '../types';
 
 interface Props {
@@ -13,6 +14,10 @@ interface Props {
 }
 
 export default function AssignRouteDialog({ isOpen, waybill, formState, error, isSubmitting, onChange, onSubmit, onClose }: Props) {
+  const hubId = waybill?.dest_hub_id ?? waybill?.origin_hub_id ?? null;
+  const { routes, isLoading: routesLoading } = useDeliveryRoutes(isOpen, hubId ? String(hubId) : null);
+  const listId = 'delivery-route-catalog';
+
   if (!isOpen || !waybill) return null;
 
   return (
@@ -29,7 +34,26 @@ export default function AssignRouteDialog({ isOpen, waybill, formState, error, i
           {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] font-bold text-red-700">{error}</div>}
           <label>
             <span className="mb-2 block text-[12px] font-bold text-foreground">Mã tuyến giao</span>
-            <input value={formState.route_code} onChange={event => onChange(event.target.value)} placeholder="Nhập mã tuyến backend hỗ trợ" className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold outline-none focus:ring-2 focus:ring-primary/10" />
+            <div className="relative">
+              <Route size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                list={listId}
+                value={formState.route_code}
+                onChange={(event) => onChange(event.target.value)}
+                placeholder="Chọn hoặc nhập mã tuyến"
+                className="h-11 w-full rounded-xl border border-border bg-white pl-10 pr-3 text-[13px] font-bold outline-none focus:ring-2 focus:ring-primary/10"
+              />
+              <datalist id={listId}>
+                {routes.map((route) => (
+                  <option key={String(route.id)} value={route.code}>
+                    {route.name}
+                  </option>
+                ))}
+              </datalist>
+            </div>
+            <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">
+              {routesLoading ? 'Đang tải danh mục…' : routes.length ? `${routes.length} tuyến khả dụng` : 'Chưa có danh mục tuyến'}
+            </p>
           </label>
           <div className="flex justify-end gap-2">
             <button onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-[13px] font-bold text-muted-foreground hover:bg-muted">Hủy</button>

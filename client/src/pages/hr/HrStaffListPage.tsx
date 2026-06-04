@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, Edit, Eye, Filter, Home, KeyRound, Loader2, Plus, Power, Search, Trash2, UserCog, X } from 'lucide-react';
 import { clsx } from 'clsx';
-import { apiRequest, ApiError, clearAuthSession } from '../../lib/api';
+import { apiRequest, ApiError, clearAuthSession, hasAuthSession } from '../../lib/api';
 import { FilterPanel } from '../../components/ui/FilterPanel';
 import { FilterSelect } from '../../components/ui/FilterSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../../components/ui/ConfirmDialog';
@@ -92,7 +92,7 @@ export default function HrStaffListPage() {
       setUsers(filtered);
       setTotal(filters.status.length || filters.hub_id.length ? filtered.length : apiTotal);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
+      if (err instanceof ApiError && err.status === 401 && !hasAuthSession()) {
         clearAuthSession();
         navigate('/login', { replace: true });
         return;

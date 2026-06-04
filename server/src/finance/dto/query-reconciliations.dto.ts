@@ -1,7 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { RemittanceStatus } from '../../common/enums';
+import { normalizePaginationLimit } from '../../common/pagination';
 
 export class QueryReconciliationsDto {
   @ApiPropertyOptional()
@@ -38,7 +39,7 @@ export class QueryReconciliationsDto {
 
   @ApiPropertyOptional({ default: 20, maximum: 100 })
   @IsOptional()
-  @Type(() => Number)
+  @Transform(normalizePaginationLimit)
   @IsInt()
   @Min(1)
   @Max(100)

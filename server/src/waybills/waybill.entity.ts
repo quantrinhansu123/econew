@@ -18,6 +18,15 @@ export class WaybillEntity {
   @Column({ type: 'varchar' })
   receiver_info: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  receiver_phone: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  sender_phone: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  loaded_at: Date | null;
+
   @Column({ type: 'double precision' })
   weight: number;
 
@@ -38,6 +47,21 @@ export class WaybillEntity {
 
   @Column({ type: 'decimal' })
   cost_amount: string;
+
+  @Column({ type: 'decimal', nullable: true })
+  freight_amount: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  ma_kh: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  noi_den: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  receiver_address: string | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  the_tich_m3: number | null;
 
   @Column({ type: 'enum', enum: WaybillState, default: WaybillState.RECEIVED })
   current_state: WaybillState;

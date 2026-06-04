@@ -1,6 +1,7 @@
 import { Column, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
+import { VendorEntity } from '../vendors/vendor.entity';
 
 @Entity('trucks')
 export class TruckEntity {
@@ -36,6 +37,13 @@ export class TruckEntity {
 
   @Column({ type: 'varchar', nullable: true })
   khu_vuc: string | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  vendor_id: string | null;
+
+  @ManyToOne(() => VendorEntity, (vendor) => vendor.trucks, { nullable: true })
+  @JoinColumn({ name: 'vendor_id' })
+  vendor: VendorEntity | null;
 
   @ManyToOne(() => UserEntity, (user) => user.trucks, { nullable: true })
   @JoinColumn({ name: 'driver_id' })

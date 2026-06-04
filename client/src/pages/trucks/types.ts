@@ -35,6 +35,7 @@ export interface TruckListResponse {
 export interface TruckFilters {
   keyword: string;
   status: string[];
+  loai_xe: string;
   page: number;
   limit: number;
 }

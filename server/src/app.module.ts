@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AppController } from './app.controller';
 import { getDatabaseUrl, getDatabaseUrlHelp, isSupabaseDirectDatabaseUrl } from './database-url';
 import { AuthModule } from './auth/auth.module';
 import { CarrierDirectoryModule } from './carrier-directory/carrier-directory.module';
@@ -16,6 +17,7 @@ import { HubsModule } from './hubs/hubs.module';
 import { ManifestsModule } from './manifests/manifests.module';
 import { NorthSouthShipmentModule } from './north-south-shipments/north-south-shipment.module';
 import { ReconciliationsModule } from './reconciliations/reconciliations.module';
+import { RoutesModule } from './routes/routes.module';
 import { SearchModule } from './search/search.module';
 import { StaffMemberModule } from './staff-members/staff-member.module';
 import { TripsModule } from './trips/trips.module';
@@ -73,6 +75,7 @@ const getPositiveInteger = (value: string | undefined, fallback: number) => {
       },
     }),
     HubsModule,
+    RoutesModule,
     CustomersModule,
     UsersModule,
     WaybillsModule,
@@ -97,6 +100,7 @@ const getPositiveInteger = (value: string | undefined, fallback: number) => {
     CashJournalEntryModule,
     WarehouseModule,
   ],
+  controllers: [AppController],
 })
 export class AppModule {}
 

@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { CreatableSearchableSelect } from '../../../components/ui/CreatableSearchableSelect';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import type { FilterOption, TruckFormState } from '../types';
+import { LOAI_XE_CATEGORY_OPTIONS } from '../data';
 
 interface Props {
   isOpen: boolean;
@@ -16,8 +17,6 @@ interface Props {
   formState: TruckFormState;
   setFormField: <K extends keyof TruckFormState>(key: K, value: TruckFormState[K]) => void;
   statusOptions: FilterOption[];
-  driverOptions: FilterOption[];
-  loaiXeOptions: string[];
   khuVucOptions: string[];
 }
 
@@ -34,10 +33,9 @@ export default function AddEditTruckDialog({
   formState,
   setFormField,
   statusOptions,
-  driverOptions,
-  loaiXeOptions,
   khuVucOptions,
 }: Props) {
+  const loaiXeOptions = LOAI_XE_CATEGORY_OPTIONS.map((value) => ({ value, label: value }));
   if (!isOpen && !isClosing) return null;
 
   return createPortal(
@@ -68,29 +66,23 @@ export default function AddEditTruckDialog({
               <Field label="BKS" icon={<Truck size={16} />}>
                 <input
                   value={formState.bks}
-                  onChange={(e) => setFormField('bks', e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    const normalizedBks = e.target.value.toUpperCase();
+                    setFormField('bks', normalizedBks);
+                    setFormField('license_plate', normalizedBks);
+                  }}
                   className={inputClass}
                   placeholder="Biển kiểm soát"
                 />
               </Field>
-              <Field label="Biển số hệ thống" icon={<Truck size={16} />}>
-                <input
-                  value={formState.license_plate}
-                  onChange={(e) => setFormField('license_plate', e.target.value.toUpperCase())}
-                  className={inputClass}
-                  placeholder="Đồng bộ BKS nếu trống"
-                />
-              </Field>
-              <Field label="Loại xe" icon={<Tag size={16} />}>
-                <CreatableSearchableSelect
-                  value={formState.loai_xe}
-                  onValueChange={(value) => setFormField('loai_xe', value)}
-                  options={loaiXeOptions}
-                  placeholder="Chọn hoặc nhập loại xe"
-                  createLabel={(query) => `Thêm loại xe "${query}"`}
-                  className="pl-10"
-                />
-              </Field>
+              <SelectField
+                label="Loại xe"
+                value={formState.loai_xe}
+                options={[{ value: '', label: 'Chọn loại xe' }, ...loaiXeOptions]}
+                onChange={(value) => setFormField('loai_xe', value)}
+                icon={<Tag size={16} />}
+                fullWidth={false}
+              />
               <Field label="Khu vực" icon={<MapPin size={16} />}>
                 <CreatableSearchableSelect
                   value={formState.khu_vuc}
@@ -120,13 +112,6 @@ export default function AddEditTruckDialog({
                   className={inputClass}
                 />
               </Field>
-              <SelectField
-                label="Tài xế hệ thống (tùy chọn)"
-                value={formState.driver_id}
-                options={driverOptions}
-                onChange={(value) => setFormField('driver_id', value)}
-                icon={<User size={16} />}
-              />
             </div>
           </Section>
 
@@ -210,15 +195,17 @@ function SelectField({
   options,
   onChange,
   icon,
+  fullWidth = true,
 }: {
   label: string;
   value: string;
   options: FilterOption[];
   onChange: (value: string) => void;
   icon: ReactNode;
+  fullWidth?: boolean;
 }) {
   return (
-    <label className="block sm:col-span-2">
+    <label className={fullWidth ? 'block sm:col-span-2' : 'block'}>
       <span className="mb-1 block text-[12px] font-bold text-muted-foreground">{label}</span>
       <div className="relative">
         <span className="absolute left-3 top-1/2 z-10 -translate-y-1/2 text-muted-foreground">{icon}</span>

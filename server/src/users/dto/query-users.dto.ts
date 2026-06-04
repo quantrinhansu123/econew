@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsString, Min, Max } from 'class-validator';
+import { normalizePaginationLimit } from '../../common/pagination';
 
 export class QueryUsersDto {
   @ApiPropertyOptional({ example: 'nguyen' })
@@ -34,7 +35,7 @@ export class QueryUsersDto {
 
   @ApiPropertyOptional({ example: 20, default: 20 })
   @IsOptional()
-  @Transform(({ value }) => Number(value))
+  @Transform(normalizePaginationLimit)
   @IsInt()
   @Min(1)
   @Max(100)

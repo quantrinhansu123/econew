@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, IsNull, Repository } from 'typeorm';
+import { clampPaginationLimit } from '../common/pagination';
 import { CustomerEntity } from './customer.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { QueryCustomersDto } from './dto/query-customers.dto';
@@ -16,7 +17,7 @@ export class CustomersService {
 
   async findAll(query: QueryCustomersDto) {
     const page = query.page ?? 1;
-    const limit = query.limit ?? 50;
+    const limit = clampPaginationLimit(query.limit, 50);
     const qb = this.customersRepository.createQueryBuilder('customer').where('customer.deleted_at IS NULL');
 
     if (query.keyword?.trim()) {

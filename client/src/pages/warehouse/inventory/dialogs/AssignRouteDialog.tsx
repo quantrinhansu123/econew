@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { Loader2, Route, X } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useDeliveryRoutes } from '../../../../hooks/useDeliveryRoutes';
 import type { RouteFormState, WaybillInventoryItem } from '../types';
 
 interface Props {
@@ -17,6 +18,10 @@ interface Props {
 const displayCode = (waybill: WaybillInventoryItem | null) => waybill?.waybill_code || waybill?.code || `#${waybill?.id || ''}`;
 
 export default function AssignRouteDialog({ isOpen, isClosing, isSubmitting, waybill, formState, onChange, onClose, onSubmit }: Props) {
+  const hubId = waybill?.dest_hub_id ?? waybill?.current_hub_id ?? waybill?.origin_hub_id ?? null;
+  const { routes, isLoading: routesLoading } = useDeliveryRoutes(isOpen, hubId ? String(hubId) : null);
+  const listId = 'inventory-route-catalog';
+
   if (!isOpen && !isClosing) return null;
 
   return createPortal(
@@ -34,8 +39,25 @@ export default function AssignRouteDialog({ isOpen, isClosing, isSubmitting, way
           <label className="mb-2 block text-[13px] font-bold text-foreground">Mã tuyến / tuyến giao</label>
           <div className="relative">
             <Route size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={formState.route_code} onChange={(event) => onChange(event.target.value)} placeholder="VD: HCM-Q7-01" className="h-12 w-full rounded-xl border border-input bg-white pl-10 pr-4 text-[13px] font-bold outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/10" />
+            <input
+              list={listId}
+              value={formState.route_code}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder="Chọn hoặc nhập mã tuyến (VD: HCM-Q7-01)"
+              className="h-12 w-full rounded-xl border border-input bg-white pl-10 pr-4 text-[13px] font-bold outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/10"
+            />
+            <datalist id={listId}>
+              {routes.map((route) => (
+                <option key={String(route.id)} value={route.code}>
+                  {route.name}
+                  {route.province ? ` · ${route.province}` : ''}
+                </option>
+              ))}
+            </datalist>
           </div>
+          <p className="mt-2 text-[11px] font-medium text-muted-foreground">
+            {routesLoading ? 'Đang tải danh mục tuyến…' : routes.length ? `${routes.length} tuyến trong danh mục` : 'Chưa có danh mục tuyến — liên hệ quản trị hoặc chạy SQL delivery_routes.sql'}
+          </p>
         </div>
         <div className="border-t border-border bg-card p-5">
           <button disabled={isSubmitting || !formState.route_code.trim()} onClick={onSubmit} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-[13px] font-bold text-white shadow-sm shadow-primary/20 disabled:cursor-not-allowed disabled:opacity-60">{isSubmitting && <Loader2 size={16} className="animate-spin" />}Gán tuyến</button>

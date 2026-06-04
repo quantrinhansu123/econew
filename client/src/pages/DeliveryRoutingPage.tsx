@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, ChevronLeft, ChevronRight, CreditCard, Eye, Filter, Loader2, PackageCheck, Route, Search, Tag, Truck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, ChevronLeft, ChevronRight, CreditCard, Eye, Filter, Loader2, PackageCheck, Plus, Route, Search, Tag, Truck } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
@@ -9,6 +9,8 @@ import { FilterSelect } from '../components/ui/FilterSelect';
 import type { AuthUserProfile } from './login/types';
 import AssignRouteDialog from './delivery/routing/dialogs/AssignRouteDialog';
 import WaybillRoutingDetailDialog from './delivery/routing/dialogs/WaybillRoutingDetailDialog';
+import AddEditRouteDialog from './admin/routes/dialogs/AddEditRouteDialog';
+import type { FilterOption as RouteFilterOption, RouteFormState } from './admin/routes/types';
 import type { AssignRouteFormState, BadgeConfig, FilterOption, HubSummary, RoutingFilters, WaybillRoutingDetail, WaybillRoutingItem, WaybillRoutingListResponse } from './delivery/routing/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -35,6 +37,20 @@ const paymentConfig: Record<string, BadgeConfig> = {
 };
 const statusOptions = Object.entries(statusConfig).map(([value, config]) => ({ value, label: config.label }));
 const paymentOptions = Object.entries(paymentConfig).map(([value, config]) => ({ value, label: config.label }));
+const routeStatusFormOptions: RouteFilterOption[] = [
+  { value: 'ACTIVE', label: 'Hoạt động' },
+  { value: 'INACTIVE', label: 'Tạm tắt' },
+];
+const emptyRouteForm: RouteFormState = {
+  code: '',
+  name: '',
+  hub_id: '',
+  province: '',
+  district: '',
+  description: '',
+  sort_order: '0',
+  status: 'ACTIVE',
+};
 
 const getStoredUser = (): AuthUserProfile | null => {
   if (typeof window === 'undefined') return null;
@@ -75,10 +91,18 @@ export default function DeliveryRoutingPage() {
   const [formState, setFormState] = useState<AssignRouteFormState>({ route_code: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [isRouteFormOpen, setIsRouteFormOpen] = useState(false);
+  const [isRouteFormClosing, setIsRouteFormClosing] = useState(false);
+  const [routeFormState, setRouteFormState] = useState<RouteFormState>(emptyRouteForm);
+  const [routeFormSuccess, setRouteFormSuccess] = useState('');
 
   const user = useMemo(getStoredUser, []);
   const hasRoutePermission = canAssignRoute(user?.role_mask ?? 0);
   const hubOptions = useMemo<FilterOption[]>(() => hubs.map(hub => ({ value: String(hub.id), label: [hub.code?.toUpperCase(), hub.name].filter(Boolean).join(' · ') || `Hub #${hub.id}` })), [hubs]);
+  const routeHubOptions = useMemo<RouteFilterOption[]>(
+    () => [{ value: '', label: 'Không gán hub' }, ...hubOptions],
+    [hubOptions],
+  );
   const activeFilterCount = filters.statuses.length + filters.originHubIds.length + filters.destHubIds.length + filters.paymentTypes.length;
   const pageCount = Math.max(1, Math.ceil(total / filters.limit));
   const startIndex = total === 0 ? 0 : (filters.page - 1) * filters.limit + 1;
@@ -136,6 +160,48 @@ export default function DeliveryRoutingPage() {
     } finally { setIsSubmitting(false); }
   };
 
+  const openAddRoute = () => {
+    setRouteFormState(emptyRouteForm);
+    setRouteFormSuccess('');
+    setActionError('');
+    setIsRouteFormOpen(true);
+  };
+
+  const closeRouteForm = () => {
+    setIsRouteFormClosing(true);
+    window.setTimeout(() => {
+      setIsRouteFormOpen(false);
+      setIsRouteFormClosing(false);
+    }, 280);
+  };
+
+  const submitNewRoute = async () => {
+    setIsSubmitting(true);
+    setActionError('');
+    setRouteFormSuccess('');
+    try {
+      const created = await apiRequest<{ code: string }>('/routes', {
+        method: 'POST',
+        body: {
+          code: routeFormState.code.trim(),
+          name: routeFormState.name.trim(),
+          hub_id: routeFormState.hub_id || undefined,
+          province: routeFormState.province.trim() || undefined,
+          district: routeFormState.district.trim() || undefined,
+          description: routeFormState.description.trim() || undefined,
+          sort_order: Number(routeFormState.sort_order) || 0,
+          status: routeFormState.status || 'ACTIVE',
+        },
+      });
+      setRouteFormSuccess(`Đã thêm tuyến ${created.code}. Có thể chọn mã này khi gán vận đơn.`);
+      window.setTimeout(() => closeRouteForm(), 800);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Không thể thêm tuyến mới.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const filterGroups = (state: RoutingFilters, setter: (patch: Partial<RoutingFilters>) => void) => [
     { id: 'status', title: 'Trạng thái', icon: Tag, options: statusOptions, value: state.statuses, onChange: (value: string[]) => setter({ statuses: value }) },
     { id: 'origin', title: 'Bưu cục đi', icon: Building2, options: hubOptions, value: state.originHubIds, onChange: (value: string[]) => setter({ originHubIds: value }) },
@@ -145,6 +211,17 @@ export default function DeliveryRoutingPage() {
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-2">
+      {routeFormSuccess && (
+        <div className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] font-medium text-emerald-800">
+          {routeFormSuccess}
+        </div>
+      )}
+      {actionError && (
+        <div className="flex shrink-0 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] font-medium text-amber-800">
+          <AlertTriangle size={16} />
+          {actionError}
+        </div>
+      )}
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
         <div className="p-3 border-b border-border shrink-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -156,6 +233,25 @@ export default function DeliveryRoutingPage() {
             <button title="Mở bộ lọc" onClick={openFilterPanel} className="relative h-10 w-10 rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 flex items-center justify-center md:hidden"><Filter size={16} />{activeFilterCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white">{activeFilterCount}</span>}</button>
             {activeFilterCount > 0 && <button onClick={clearFilters} className="order-last basis-full h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 hover:bg-red-100 md:order-none md:basis-auto md:h-10">× Xóa {activeFilterCount} bộ lọc</button>}
             <div className="hidden flex-1 md:block" />
+            {hasRoutePermission && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate('/admin/routes')}
+                  className="hidden h-10 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-muted-foreground hover:bg-muted sm:inline-flex"
+                >
+                  Danh mục tuyến
+                </button>
+                <button
+                  type="button"
+                  onClick={openAddRoute}
+                  className="flex h-10 items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-extrabold text-white shadow-sm shadow-primary/20 hover:bg-primary/90"
+                >
+                  <Plus size={16} />
+                  <span className="hidden sm:inline">Thêm tuyến</span>
+                </button>
+              </>
+            )}
           </div>
           <div className="hidden md:flex flex-wrap items-center gap-2">
             <FilterSelect multiple icon={Tag} placeholder="Trạng thái" options={statusOptions} value={filters.statuses} onValueChange={value => setFilterArray('statuses', value)} />
@@ -187,7 +283,19 @@ export default function DeliveryRoutingPage() {
       </div>
       <FilterPanel open={isFilterPanelOpen} title="Lọc vận đơn" activeCount={draftFilters.statuses.length + draftFilters.originHubIds.length + draftFilters.destHubIds.length + draftFilters.paymentTypes.length} groups={filterGroups(draftFilters, patch => setDraftFilters(prev => ({ ...prev, ...patch })))} onClose={() => setIsFilterPanelOpen(false)} onApply={applyMobileFilters} onClear={() => setDraftFilters({ ...defaultFilters, keyword: filters.keyword, limit: filters.limit })} />
       <WaybillRoutingDetailDialog isOpen={Boolean(detailWaybill)} waybill={detailWaybill} onClose={() => setDetailWaybill(null)} />
-      <AssignRouteDialog isOpen={Boolean(assignWaybill)} waybill={assignWaybill} formState={formState} error={actionError} isSubmitting={isSubmitting} onChange={value => setFormState({ route_code: value })} onSubmit={submitAssignRoute} onClose={() => setAssignWaybill(null)} />
+      <AssignRouteDialog isOpen={Boolean(assignWaybill)} waybill={assignWaybill} formState={formState} error="" isSubmitting={isSubmitting} onChange={value => setFormState({ route_code: value })} onSubmit={submitAssignRoute} onClose={() => setAssignWaybill(null)} />
+      <AddEditRouteDialog
+        isOpen={isRouteFormOpen}
+        isClosing={isRouteFormClosing}
+        isEditMode={false}
+        isSubmitting={isSubmitting}
+        formState={routeFormState}
+        hubOptions={routeHubOptions}
+        statusOptions={routeStatusFormOptions}
+        onClose={closeRouteForm}
+        onSubmit={() => void submitNewRoute()}
+        onChange={(patch) => setRouteFormState(prev => ({ ...prev, ...patch }))}
+      />
     </div>
   );
 }

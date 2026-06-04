@@ -6,6 +6,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/roles';
 import { UserEntity } from '../users/user.entity';
+import { CreateVendorPaymentDto } from './dto/create-vendor-payment.dto';
+import { QueryVendorDebtDto } from './dto/query-vendor-debt.dto';
 import { QueryVendorsDto } from './dto/query-vendors.dto';
 import { UpdateVendorStatusDto } from './dto/update-vendor-status.dto';
 import { UpsertVendorDto } from './dto/upsert-vendor.dto';
@@ -36,6 +38,41 @@ export class VendorsController {
   @ApiOperation({ summary: 'List active vendors' })
   findActive(@Query() query: QueryVendorsDto) {
     return this.vendorsService.findActive(query);
+  }
+
+  @Get('debt-report')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Công nợ phải trả theo nhà cung cấp' })
+  debtReport(@Query() query: QueryVendorDebtDto) {
+    return this.vendorsService.getDebtReport(query);
+  }
+
+  @Get(':id/debt-dashboard')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Bảng kê chuyến xe & tổng cước theo NCC trong kỳ' })
+  debtDashboard(@Param('id') id: string, @Query() query: QueryVendorDebtDto) {
+    return this.vendorsService.getDebtDashboard(id, query);
+  }
+
+  @Get(':id/ledger')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Sổ cái công nợ — phát sinh chuyến & phiếu chi kèm dư nợ' })
+  ledger(@Param('id') id: string, @Query() query: QueryVendorDebtDto) {
+    return this.vendorsService.getLedger(id, query);
+  }
+
+  @Get(':id/payments')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Danh sách phiếu chi NCC' })
+  listPayments(@Param('id') id: string) {
+    return this.vendorsService.listPayments(id);
+  }
+
+  @Post(':id/payments')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Ghi nhận thanh toán cho NCC (có thể nhiều đợt)' })
+  recordPayment(@Param('id') id: string, @Body() dto: CreateVendorPaymentDto, @CurrentUser() currentUser: UserEntity) {
+    return this.vendorsService.recordPayment(id, dto, currentUser);
   }
 
   @Get(':id')

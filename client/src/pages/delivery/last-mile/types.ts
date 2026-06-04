@@ -39,6 +39,8 @@ export interface LastMileWaybill {
   waybill_code: string;
   sender_info: string;
   receiver_info: string;
+  receiver_address?: string | null;
+  receiver_phone?: string | null;
   weight: number | string | null;
   length: number | string | null;
   width: number | string | null;

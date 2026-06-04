@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, Not, Repository } from 'typeorm';
 import { TripStatus, WaybillState } from '../common/enums';
+import { clampPaginationLimit } from '../common/pagination';
 import { Roles, isManager } from '../common/roles';
 import { HubEntity } from '../hubs/hub.entity';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
@@ -10,16 +11,21 @@ import { ManifestEntity } from '../manifests/manifest.entity';
 import { TruckStatus } from '../trucks/dto/truck.enums';
 import { TruckEntity } from '../trucks/truck.entity';
 import { UserEntity } from '../users/user.entity';
+import { VendorsService } from '../vendors/vendors.service';
 import { WaybillEntity } from '../waybills/waybill.entity';
 import { ArriveTripDto } from './dto/arrive-trip.dto';
 import { AssignManifestDto } from './dto/assign-manifest.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { QueryTripsDto } from './dto/query-trips.dto';
+import { QueryExpectedArrivalsDto } from './dto/query-expected-arrivals.dto';
+import { UpdateLoadingSequenceDto } from './dto/update-loading-sequence.dto';
+import { UpdateTripCargoTotalsDto } from './dto/update-trip-cargo-totals.dto';
 import { UpdateTripCostsDto } from './dto/update-trip-costs.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripEntity } from './trip.entity';
 
 const ACTIVE_TRIP_STATUSES = [TripStatus.PLANNED, TripStatus.IN_TRANSIT];
+const LOADING_SEQUENCE_STATUSES = [TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED];
 
 type Money = string | number | null | undefined;
 
@@ -32,6 +38,7 @@ export class TripsService {
     @InjectRepository(ManifestWaybillEntity) private readonly manifestWaybillsRepository: Repository<ManifestWaybillEntity>,
     @InjectRepository(WaybillEntity) private readonly waybillsRepository: Repository<WaybillEntity>,
     @InjectRepository(HubEntity) private readonly hubsRepository: Repository<HubEntity>,
+    private readonly vendorsService: VendorsService,
   ) {}
 
   async create(dto: CreateTripDto, currentUser: UserEntity): Promise<TripEntity> {
@@ -39,8 +46,9 @@ export class TripsService {
     const manifest = await this.validateManifestForAssignment(String(dto.manifest_id));
     await this.validateHubs(String(dto.start_hub_id), String(dto.end_hub_id), manifest);
     await this.assertManifestNotInActiveTrip(String(dto.manifest_id));
-    this.validateTripTimes(dto.departure_time, dto.arrival_time);
+    this.validateTripTimes(dto.departure_time, dto.arrival_time, false);
 
+    const tripCostAmount = this.resolveTripCost(dto);
     const trip = this.tripsRepository.create({
       truck_id: dto.truck_id == null ? null : String(dto.truck_id),
       manifest_id: String(dto.manifest_id),
@@ -48,10 +56,21 @@ export class TripsService {
       end_hub_id: String(dto.end_hub_id),
       departure_time: dto.departure_time,
       arrival_time: dto.arrival_time ?? null,
+      expected_arrival_time: dto.arrival_time ?? null,
       status: TripStatus.PLANNED,
+      trip_cost: tripCostAmount > 0 ? String(tripCostAmount) : null,
+      other_costs: tripCostAmount > 0 ? String(tripCostAmount) : null,
     });
 
     const savedTrip = await this.tripsRepository.save(trip);
+    if (truck?.vendor_id && tripCostAmount > 0) {
+      await this.vendorsService.addPayableDebt(
+        truck.vendor_id,
+        tripCostAmount,
+        savedTrip.id,
+        `Chi phí chuyến #${savedTrip.id}`,
+      );
+    }
     manifest.status = ManifestStatus.ASSIGNED_TO_TRIP;
     await this.manifestsRepository.save(manifest);
     if (truck) {
@@ -63,9 +82,10 @@ export class TripsService {
 
   async findAll(query: QueryTripsDto, currentUser: UserEntity) {
     const page = query.page ?? 1;
-    const limit = query.limit ?? 10;
+    const limit = clampPaginationLimit(query.limit, 10);
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
+      .leftJoinAndSelect('truck.vendor', 'vendor')
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .leftJoinAndSelect('trip.start_hub', 'start_hub')
       .leftJoinAndSelect('trip.end_hub', 'end_hub')
@@ -94,6 +114,7 @@ export class TripsService {
   async findOne(id: string, currentUser: UserEntity): Promise<TripEntity> {
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
+      .leftJoinAndSelect('truck.vendor', 'vendor')
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .leftJoinAndSelect('trip.start_hub', 'start_hub')
       .leftJoinAndSelect('trip.end_hub', 'end_hub')
@@ -124,7 +145,10 @@ export class TripsService {
     }
     if (dto.departure_time || dto.arrival_time) this.validateTripTimes(dto.departure_time ?? trip.departure_time, dto.arrival_time ?? trip.arrival_time ?? undefined, false);
     if (dto.departure_time) trip.departure_time = dto.departure_time;
-    if (dto.arrival_time !== undefined) trip.arrival_time = dto.arrival_time;
+    if (dto.arrival_time !== undefined) {
+      trip.arrival_time = dto.arrival_time;
+      trip.expected_arrival_time = dto.arrival_time;
+    }
     return this.tripsRepository.save(trip);
   }
 
@@ -149,6 +173,14 @@ export class TripsService {
 
     trip.status = TripStatus.IN_TRANSIT;
     trip.departure_time = trip.departure_time ?? new Date();
+    trip.expected_arrival_time = trip.expected_arrival_time ?? trip.arrival_time ?? null;
+    if (trip.truck_id) {
+      const truck = await this.trucksRepository.findOne({ where: { id: trip.truck_id }, relations: ['driver'] });
+      if (truck) {
+        trip.driver_name = truck.ten_lai_xe ?? truck.driver?.full_name ?? null;
+        trip.driver_phone = truck.driver?.phone ?? null;
+      }
+    }
     manifest.status = ManifestStatus.IN_TRANSIT;
     await this.manifestsRepository.save(manifest);
     await this.setTruckStatus(trip.truck_id, TruckStatus.IN_TRIP);
@@ -190,6 +222,123 @@ export class TripsService {
     return this.tripsRepository.save(trip);
   }
 
+  async getExpectedArrivals(query: QueryExpectedArrivalsDto, currentUser: UserEntity) {
+    const limit = clampPaginationLimit(query.limit, 50);
+    const qb = this.tripsRepository.createQueryBuilder('trip')
+      .leftJoinAndSelect('trip.truck', 'truck')
+      .leftJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('trip.manifest', 'manifest')
+      .leftJoinAndSelect('trip.start_hub', 'start_hub')
+      .leftJoinAndSelect('trip.end_hub', 'end_hub')
+      .where('trip.status = :status', { status: TripStatus.IN_TRANSIT })
+      .orderBy('COALESCE(trip.expected_arrival_time, trip.arrival_time)', 'ASC', 'NULLS LAST')
+      .take(limit);
+
+    const endHubId = query.end_hub_id != null ? String(query.end_hub_id) : currentUser.hub_id;
+    if (endHubId) qb.andWhere('trip.end_hub_id = :endHubId', { endHubId });
+    this.applyHubScope(qb, currentUser);
+
+    const trips = await qb.getMany();
+    const data = await Promise.all(trips.map(async (trip) => {
+      const waybills = await this.getManifestWaybills(trip.manifest_id);
+      const weight = waybills.reduce((sum, wb) => sum + Number(wb.weight ?? 0), 0);
+      const volume = waybills.reduce((sum, wb) => sum + Number(wb.the_tich_m3 ?? 0), 0);
+      return {
+        ...trip,
+        waybill_count: waybills.length,
+        planned_total_weight: weight,
+        planned_total_volume: volume,
+        license_plate: trip.truck?.license_plate ?? trip.truck?.bks ?? null,
+      };
+    }));
+    return { data, total: data.length };
+  }
+
+  async getLoadingSequence(id: string, currentUser: UserEntity) {
+    const trip = await this.findOne(id, currentUser);
+    if (!LOADING_SEQUENCE_STATUSES.includes(trip.status)) {
+      throw new BadRequestException('Loading sequence is available after trip departure');
+    }
+    const rows = await this.manifestWaybillsRepository.find({
+      where: { manifest_id: trip.manifest_id },
+      relations: ['waybill'],
+      order: { loading_position: 'ASC' },
+    });
+    const items = rows
+      .filter((row) => row.waybill)
+      .map((row) => ({
+        waybill_id: row.waybill_id,
+        loading_position: row.loading_position,
+        loaded_at: row.loaded_at,
+        waybill: row.waybill,
+      }))
+      .sort((a, b) => {
+        if (a.loading_position == null && b.loading_position == null) return 0;
+        if (a.loading_position == null) return 1;
+        if (b.loading_position == null) return -1;
+        return a.loading_position - b.loading_position;
+      });
+
+    const plannedWeight = items.reduce((sum, item) => sum + Number(item.waybill.weight ?? 0), 0);
+    const plannedVolume = items.reduce((sum, item) => sum + Number(item.waybill.the_tich_m3 ?? 0), 0);
+
+    return {
+      trip: {
+        id: trip.id,
+        status: trip.status,
+        manifest_id: trip.manifest_id,
+        actual_total_weight: trip.actual_total_weight,
+        actual_total_volume: trip.actual_total_volume,
+        expected_arrival_time: trip.expected_arrival_time ?? trip.arrival_time,
+        driver_name: trip.driver_name,
+        driver_phone: trip.driver_phone,
+        truck: trip.truck,
+      },
+      items,
+      totals: {
+        planned_weight: plannedWeight,
+        planned_volume: plannedVolume,
+        actual_weight: trip.actual_total_weight,
+        actual_volume: trip.actual_total_volume,
+      },
+    };
+  }
+
+  async updateLoadingSequence(id: string, dto: UpdateLoadingSequenceDto, currentUser: UserEntity) {
+    const trip = await this.findOne(id, currentUser);
+    if (!LOADING_SEQUENCE_STATUSES.includes(trip.status)) {
+      throw new BadRequestException('Loading sequence can only be updated after trip departure');
+    }
+    const rows = await this.manifestWaybillsRepository.find({ where: { manifest_id: trip.manifest_id } });
+    const rowByWaybill = new Map(rows.map((row) => [row.waybill_id, row]));
+    const positions = dto.items.map((item) => item.loading_position);
+    if (new Set(positions).size !== positions.length) {
+      throw new BadRequestException('Loading positions must be unique');
+    }
+
+    const now = new Date();
+    for (const item of dto.items) {
+      const row = rowByWaybill.get(String(item.waybill_id));
+      if (!row) throw new NotFoundException(`Waybill ${item.waybill_id} is not on this trip manifest`);
+      row.loading_position = item.loading_position;
+      row.loaded_at = row.loaded_at ?? now;
+    }
+    await this.manifestWaybillsRepository.save([...rowByWaybill.values()]);
+    return this.getLoadingSequence(id, currentUser);
+  }
+
+  async updateCargoTotals(id: string, dto: UpdateTripCargoTotalsDto, currentUser: UserEntity) {
+    const trip = await this.findOne(id, currentUser);
+    if (!LOADING_SEQUENCE_STATUSES.includes(trip.status)) {
+      throw new BadRequestException('Cargo totals can only be set after trip departure');
+    }
+    if (dto.actual_total_weight !== undefined) trip.actual_total_weight = dto.actual_total_weight;
+    if (dto.actual_total_volume !== undefined) trip.actual_total_volume = dto.actual_total_volume;
+    if (dto.expected_arrival_time !== undefined) trip.expected_arrival_time = dto.expected_arrival_time;
+    await this.tripsRepository.save(trip);
+    return this.getLoadingSequence(id, currentUser);
+  }
+
   async getTripProfit(id: string, currentUser: UserEntity) {
     if (!isManager(currentUser.role_mask)) throw new ForbiddenException('Manager or Director role required');
     const trip = await this.findOne(id, currentUser);
@@ -201,7 +350,7 @@ export class TripsService {
 
   private async validateTruck(truckId?: number | null): Promise<TruckEntity | null> {
     if (truckId == null) return null;
-    const truck = await this.trucksRepository.findOne({ where: { id: String(truckId) } });
+    const truck = await this.trucksRepository.findOne({ where: { id: String(truckId) }, relations: ['vendor'] });
     if (!truck) throw new NotFoundException('Truck not found');
     if (truck.status !== TruckStatus.AVAILABLE) throw new BadRequestException('Truck must be AVAILABLE');
     return truck;
@@ -269,5 +418,10 @@ export class TripsService {
 
   private toNumber(value: Money): number {
     return Number(value ?? 0);
+  }
+
+  private resolveTripCost(dto: CreateTripDto): number {
+    const cost = dto.trip_cost ?? dto.other_costs ?? 0;
+    return Number(cost) > 0 ? Number(cost) : 0;
   }
 }
