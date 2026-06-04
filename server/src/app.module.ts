@@ -11,6 +11,7 @@ import { CustomersModule } from './customers/customers.module';
 import { HubsModule } from './hubs/hubs.module';
 import { ManifestsModule } from './manifests/manifests.module';
 import { ReconciliationsModule } from './reconciliations/reconciliations.module';
+import { RoutesModule } from './routes/routes.module';
 import { SearchModule } from './search/search.module';
 import { TripsModule } from './trips/trips.module';
 import { TrucksModule } from './trucks/trucks.module';
@@ -50,6 +51,7 @@ import { WaybillsModule } from './waybills/waybills.module';
       },
     }),
     HubsModule,
+    RoutesModule,
     CustomersModule,
     UsersModule,
     WaybillsModule,

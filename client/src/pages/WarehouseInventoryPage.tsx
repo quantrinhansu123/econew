@@ -20,6 +20,7 @@ import {
   resolveLoadedAt,
   resolveMaKh,
   resolveNoiDen,
+  resolveRoute,
   resolveReceiverAddress,
   resolveReceiverPhone,
   resolveVolumeM3,
@@ -395,6 +396,8 @@ function InventoryRow({
         return <td className={clsx(cellClass, 'font-bold text-primary')}>{resolveReceiverPhone(waybill)}</td>;
       case 'noi_den':
         return <td className={cellClass}>{resolveNoiDen(waybill)}</td>;
+      case 'route':
+        return <td className={clsx(cellClass, 'font-bold text-foreground')}>{resolveRoute(waybill)}</td>;
       case 'ma_kh':
         return <td className={cellClass}>{resolveMaKh(waybill)}</td>;
       case 'receiver_address':
@@ -470,6 +473,7 @@ function InventoryCard({ waybill, canUpdate, onDetail, onPriority, onRoute }: In
       <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-3 text-[12px]">
         <MobileInfo label="Người gửi" value={waybill.sender_info || '—'} />
         <MobileInfo label="Người nhận" value={waybill.receiver_info || '—'} />
+        <MobileInfo label="Tuyến" value={resolveRoute(waybill)} />
         <MobileInfo label="COD" value={displayValue(waybill.cod_amount, ' đ')} />
         <MobileInfo label="Số kiện" value={displayValue(waybill.package_count || waybill.declared_package_count)} />
         <MobileInfo label="Cân nặng" value={displayValue(waybill.actual_weight || waybill.weight, ' kg')} />

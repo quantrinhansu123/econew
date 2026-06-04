@@ -91,6 +91,7 @@ export const moduleGroups: ModuleGroup[] = [
       { icon: Building2, title: 'Giao hàng tại bưu cục đích', description: 'Xử lý đơn tại điểm nhận đích.', colorScheme: 'purple', path: '/delivery/hub-dropoff', requiredRoleMask: DISPATCHER },
       { icon: UserCheck, title: 'Giao hàng chặng cuối (shipper)', description: 'Theo dõi giao hàng đến người nhận.', colorScheme: 'orange', path: '/delivery/last-mile', requiredRoleMask: DRIVER },
       { icon: PackageCheck, title: 'Nhiệm vụ giao hàng', description: 'Danh sách đơn cần giao — nút Giao hàng cho tài xế.', colorScheme: 'green', path: '/nhiem-vu-giao-hang', requiredRoleMask: DRIVER | DISPATCHER },
+      { icon: Route, title: 'Danh mục tuyến giao', description: 'Quản lý mã tuyến gán cho vận đơn tại kho đích.', colorScheme: 'cyan', path: '/admin/routes', requiredRoleMask: DISPATCHER | MANAGER_ROLES },
       { icon: HandCoins, title: 'Quản lý COD & cước CC', description: 'Theo dõi thu hộ và cước người nhận trả.', colorScheme: 'amber', path: '/delivery/cod', requiredRoleMask: DRIVER | ACCOUNTANT },
     ],
   },
@@ -177,6 +178,7 @@ export const moduleGroups: ModuleGroup[] = [
     items: [
       { icon: Building2, title: 'Quản lý bưu cục', description: 'Quản lý bưu cục HAN, HCM và thông tin liên quan.', colorScheme: 'blue', path: '/admin/hubs', requiredRoleMask: DIRECTOR },
       { icon: TruckIcon, title: 'Quản lý xe & tài xế', description: 'Quản lý phương tiện, tài xế và phân công.', colorScheme: 'teal', path: '/admin/trucks', requiredRoleMask: DIRECTOR },
+      { icon: Route, title: 'Danh mục tuyến giao', description: 'Mã tuyến dùng khi gán vận đơn và in tồn kho.', colorScheme: 'cyan', path: '/admin/routes', requiredRoleMask: DISPATCHER | MANAGER_ROLES },
       { icon: Settings, title: 'Cấu hình NCC đường trục', description: 'Thiết lập nhà cung cấp vận tải đường trục.', colorScheme: 'purple', path: '/admin/vendors', requiredRoleMask: DIRECTOR },
       { icon: Printer, title: 'In phiếu giao nhận', description: 'Template in phiếu giao nhận riêng.', colorScheme: 'orange', path: '/print/waybill/:id', isPrint: true },
       { icon: IdCard, title: 'Hồ sơ & cài đặt cá nhân', description: 'Quản lý hồ sơ và tuỳ chọn cá nhân.', colorScheme: 'green', path: '/profile' },

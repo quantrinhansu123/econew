@@ -5,6 +5,7 @@ export type InventoryColumnId =
   | 'loaded_at'
   | 'received_at'
   | 'noi_den'
+  | 'route'
   | 'ma_kh'
   | 'receiver_address'
   | 'receiver_phone'
@@ -34,6 +35,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'loaded_at', label: 'Ngày bốc hàng', defaultVisible: true },
   { id: 'received_at', label: 'Ngày nhận đơn', defaultVisible: false },
   { id: 'noi_den', label: 'Tỉnh đến', defaultVisible: true },
+  { id: 'route', label: 'Tuyến', defaultVisible: true },
   { id: 'ma_kh', label: 'Mã KH', defaultVisible: true },
   { id: 'receiver_address', label: 'Địa chỉ đến', defaultVisible: true },
   { id: 'receiver_phone', label: 'SĐT người nhận', defaultVisible: true },
@@ -51,7 +53,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'actions', label: 'Thao tác', defaultVisible: true },
 ];
 
-export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v3';
+export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v4';
 
 export function getDefaultVisibleColumnIds(canViewPricing: boolean): InventoryColumnId[] {
   return INVENTORY_COLUMNS.filter((col) => {
@@ -102,6 +104,11 @@ export function resolveNoiDen(waybill: WaybillInventoryItem): string {
   const noiDen = (waybill as { noi_den?: string }).noi_den?.trim();
   if (noiDen) return noiDen;
   return waybill.dest_hub?.name || waybill.dest_hub?.code?.toUpperCase() || '—';
+}
+
+export function resolveRoute(waybill: WaybillInventoryItem): string {
+  const route = waybill.route_code?.trim() || waybill.delivery_route?.trim();
+  return route || '—';
 }
 
 export function resolveReceiverAddress(waybill: WaybillInventoryItem): string {

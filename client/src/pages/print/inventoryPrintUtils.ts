@@ -7,6 +7,7 @@ import {
   resolveLoadedAt,
   resolveMaKh,
   resolveNoiDen,
+  resolveRoute,
   resolveReceiverAddress,
   resolveReceiverPhone,
   resolvePrintColumnIds,
@@ -57,6 +58,10 @@ function cellValue(waybill: WaybillInventoryItem, colId: InventoryColumnId, show
       return formatDate(waybill.received_at || waybill.created_at);
     case 'noi_den':
       return resolveNoiDen(waybill);
+    case 'route': {
+      const route = resolveRoute(waybill);
+      return route === '—' ? '' : route;
+    }
     case 'ma_kh':
       return resolveMaKh(waybill);
     case 'receiver_address':
