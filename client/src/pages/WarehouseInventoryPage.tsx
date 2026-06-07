@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CreditCard, Eye, Filter, Flag, HandCoins, Layers, Loader2, MoreHorizontal, Package, Pencil, Printer, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Trash2, Truck, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Layers, Loader2, MoreHorizontal, Package, Pencil, Printer, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Trash2, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
@@ -17,6 +17,7 @@ import WaybillCashVoucherDialog from './warehouse/inventory/dialogs/WaybillCashV
 import StackOntoTruckDialog from './warehouse/inventory/dialogs/StackOntoTruckDialog';
 import { mapWaybillsToPrintRows, saveInventoryPrintPayload, summarizeFilters } from './print/inventoryPrintUtils';
 import InventoryColumnPicker from './warehouse/inventory/InventoryColumnPicker';
+import { downloadInventoryExcel } from './warehouse/inventory/inventoryExcelUtils';
 import {
   INVENTORY_COLUMNS,
   canCollectCashPayment,
@@ -150,6 +151,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [isBoardClosing, setIsBoardClosing] = useState(false);
   const [splitWaybill, setSplitWaybill] = useState<WaybillInventoryItem | null>(null);
   const [actionError, setActionError] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
   const [isColumnPickerOpen, setIsColumnPickerOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -349,6 +351,27 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     window.open('/print/inventory-stock', '_blank');
   }
 
+  function handleDownloadExcel() {
+    setActionError('');
+    if (!waybills.length) {
+      setActionError(isAllOrders ? 'Không có đơn trên danh sách để tải Excel.' : 'Không có đơn tồn kho trên danh sách để tải Excel.');
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const exported = downloadInventoryExcel(
+        waybills,
+        canViewPricing,
+        statusConfig,
+        priorityConfig,
+        isAllOrders ? 'danh-sach-don' : 'danh-sach-ton-kho',
+      );
+      if (!exported) setActionError('Không có dữ liệu để tải Excel.');
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   if (!canViewPage) {
     return (
       <StateCard
@@ -444,6 +467,16 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             >
               <Printer size={16} />
               <span className="hidden sm:inline">In danh sách tồn</span>
+            </button>
+            <button
+              type="button"
+              title="Tải xuống Excel"
+              disabled={isLoading || isExporting || waybills.length === 0}
+              onClick={handleDownloadExcel}
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-50 px-3 text-[13px] font-extrabold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+            >
+              {isExporting ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
+              <span className="hidden sm:inline">Tải Excel</span>
             </button>
             <button title="Làm mới" onClick={() => void loadInventory()} className="hidden h-10 w-10 rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted md:flex items-center justify-center"><RefreshCcw size={16} /></button>
           </div>

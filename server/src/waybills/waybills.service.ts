@@ -722,6 +722,7 @@ export class WaybillsService {
       const truckId = String(split.truck_id);
       const group = truckMap.get(truckId) ?? {
         truck_id: truckId,
+        vendor_id: truck?.vendor_id ?? null,
         license_plate: truck?.bks ?? truck?.license_plate ?? null,
         nha_xe: truck?.nha_xe ?? null,
         ten_lai_xe: truck?.ten_lai_xe ?? null,

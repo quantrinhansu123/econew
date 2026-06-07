@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Building2, Edit, ExternalLink, Loader2, Package, Printer, Truck, X } from 'lucide-react';
+import { Building2, Edit, ExternalLink, Loader2, Package, Printer, Receipt, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../../lib/api';
@@ -13,7 +13,13 @@ import type { LoadPlanningBoardResponse } from '../../load-planning/types';
 import type { CustomerRecord } from '../customerFormTypes';
 import CustomerCashVouchersPanel, { type CashVoucherFilters } from '../panels/CustomerCashVouchersPanel';
 import CustomerBillsPanel from '../panels/CustomerBillsPanel';
-import type { BillFilters } from '../utils/customerFinanceUtils';
+import {
+  buildPaidByWaybill,
+  computeVoucherMeta,
+  getBillFreight,
+  resolvePaidForBill,
+  type BillFilters,
+} from '../utils/customerFinanceUtils';
 import type { WaybillCashVoucher } from '../../inventory/dialogs/WaybillCashVoucherDialog';
 
 interface Props {
@@ -62,6 +68,15 @@ function Panel({ children, className }: { children: ReactNode; className?: strin
   return <div className={clsx('rounded-2xl border border-border bg-white p-4 shadow-sm', className)}>{children}</div>;
 }
 
+function PrintMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-300 p-2">
+      <p className="text-[10px] font-bold uppercase text-slate-500">{label}</p>
+      <p className="mt-1 text-[14px] font-extrabold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
 function getStoredUser(): AuthUserProfile | null {
   if (typeof window === 'undefined') return null;
   const raw = localStorage.getItem(USER_PROFILE_KEY) || sessionStorage.getItem(USER_PROFILE_KEY);
@@ -76,6 +91,15 @@ function getStoredUser(): AuthUserProfile | null {
 const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString('vi-VN') : '—');
 const formatMoney = (value?: number | string | null) =>
   value == null || value === '' ? '—' : `${Number(value).toLocaleString('vi-VN')} đ`;
+
+const printMoney = (value?: number | string | null) => `${Number(value || 0).toLocaleString('vi-VN')} đ`;
+
+const parseAmountInput = (value: string) => Number(String(value).replace(/\D/g, '') || 0);
+
+const formatAmountInput = (value: string) => {
+  const digits = String(value).replace(/\D/g, '');
+  return digits ? Number(digits).toLocaleString('vi-VN') : '';
+};
 
 const normalizeInventoryList = (response: InventoryListResponse | WaybillInventoryItem[]) =>
   Array.isArray(response) ? response : response.data || response.items || response.waybills || [];
@@ -117,6 +141,13 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
   });
   const [cashVouchersLoading, setCashVouchersLoading] = useState(false);
   const [cashVouchersError, setCashVouchersError] = useState('');
+  const [isCollectOpen, setIsCollectOpen] = useState(false);
+  const [collectWaybillId, setCollectWaybillId] = useState('');
+  const [collectAmount, setCollectAmount] = useState('');
+  const [collectNote, setCollectNote] = useState('');
+  const [collectSubmitting, setCollectSubmitting] = useState(false);
+  const [collectError, setCollectError] = useState('');
+  const [isStatementOpen, setIsStatementOpen] = useState(false);
 
   const canViewCost = useMemo(() => {
     const user = getStoredUser();
@@ -130,47 +161,66 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
 
   useEffect(() => {
     if (!customer) {
-      setActiveTab('chi-tiet');
-      setInventoryItems([]);
-      setInventoryTotal(0);
-      setInventoryError('');
-      setDeliveryBoard(null);
-      setDeliveryTotal(0);
-      setDeliveryError('');
-      setCashVouchers([]);
-      setCashVoucherFilters({ fromDate: '', toDate: '', voucherType: '' });
-      setBillFilters({ fromDate: '', toDate: '', billCode: '', paymentType: '' });
-      setCashVouchersError('');
+      queueMicrotask(() => {
+        setActiveTab('chi-tiet');
+        setInventoryItems([]);
+        setInventoryTotal(0);
+        setInventoryError('');
+        setDeliveryBoard(null);
+        setDeliveryTotal(0);
+        setDeliveryError('');
+        setCashVouchers([]);
+        setCashVoucherFilters({ fromDate: '', toDate: '', voucherType: '' });
+        setBillFilters({ fromDate: '', toDate: '', billCode: '', paymentType: '' });
+        setCashVouchersError('');
+        setIsCollectOpen(false);
+        setCollectWaybillId('');
+        setCollectAmount('');
+        setCollectNote('');
+        setCollectError('');
+        setIsStatementOpen(false);
+      });
     }
   }, [customer?.id]);
 
+  const statementData = useMemo(() => {
+    const paidMaps = buildPaidByWaybill(cashVouchers);
+    const voucherMeta = computeVoucherMeta(cashVouchers);
+    const totalFreight = inventoryItems.reduce((sum, item) => sum + getBillFreight(item), 0);
+    const totalPaid = inventoryItems.reduce((sum, item) => sum + resolvePaidForBill(item, paidMaps), 0);
+    return { paidMaps, voucherMeta, totalFreight, totalPaid, totalDebt: totalFreight - totalPaid };
+  }, [cashVouchers, inventoryItems]);
+
   useEffect(() => {
-    const needsInventory = activeTab === 'don-hang' || activeTab === 'bill';
+    const needsInventory = activeTab === 'don-hang' || activeTab === 'bill' || activeTab === 'thanh-toan';
     if (!customer?.code?.trim() || !needsInventory) return;
 
     let cancelled = false;
-    setInventoryLoading(true);
-    setInventoryError('');
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setInventoryLoading(true);
+      setInventoryError('');
 
-    apiRequest<InventoryListResponse | WaybillInventoryItem[]>(
-      `/waybills/inventory/trip-lines?ma_kh=${encodeURIComponent(customer.code.trim())}&limit=200&page=1`,
-    )
-      .then((response) => {
-        if (cancelled) return;
-        const list = dedupeWaybills(normalizeInventoryList(response));
-        setInventoryItems(list);
-        setInventoryTotal(inventoryTotalFromResponse(response, list.length));
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setInventoryItems([]);
-          setInventoryTotal(0);
-          setInventoryError('Không tải được danh sách bill / tồn kho.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setInventoryLoading(false);
-      });
+      apiRequest<InventoryListResponse | WaybillInventoryItem[]>(
+        `/waybills/inventory/trip-lines?ma_kh=${encodeURIComponent(customer.code.trim())}&limit=200&page=1`,
+      )
+        .then((response) => {
+          if (cancelled) return;
+          const list = dedupeWaybills(normalizeInventoryList(response));
+          setInventoryItems(list);
+          setInventoryTotal(inventoryTotalFromResponse(response, list.length));
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setInventoryItems([]);
+            setInventoryTotal(0);
+            setInventoryError('Không tải được danh sách bill / tồn kho.');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setInventoryLoading(false);
+        });
+    });
 
     return () => {
       cancelled = true;
@@ -183,27 +233,30 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
     if (!deliveryTenCty || activeTab !== 'giao-hang') return;
 
     let cancelled = false;
-    setDeliveryLoading(true);
-    setDeliveryError('');
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setDeliveryLoading(true);
+      setDeliveryError('');
 
-    apiRequest<LoadPlanningBoardResponse>(
-      `/waybills/load-planning/board?ten_cty=${encodeURIComponent(deliveryTenCty)}&limit=100`,
-    )
-      .then((response) => {
-        if (cancelled) return;
-        setDeliveryBoard(response);
-        setDeliveryTotal(response.total_items ?? 0);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setDeliveryBoard(null);
-          setDeliveryTotal(0);
-          setDeliveryError('Không tải được danh sách phân xe / giao hàng.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setDeliveryLoading(false);
-      });
+      apiRequest<LoadPlanningBoardResponse>(
+        `/waybills/load-planning/board?ten_cty=${encodeURIComponent(deliveryTenCty)}&limit=100`,
+      )
+        .then((response) => {
+          if (cancelled) return;
+          setDeliveryBoard(response);
+          setDeliveryTotal(response.total_items ?? 0);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setDeliveryBoard(null);
+            setDeliveryTotal(0);
+            setDeliveryError('Không tải được danh sách phân xe / giao hàng.');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setDeliveryLoading(false);
+        });
+    });
 
     return () => {
       cancelled = true;
@@ -216,24 +269,27 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
     if (!maKh || !needsVouchers) return;
 
     let cancelled = false;
-    setCashVouchersLoading(true);
-    setCashVouchersError('');
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setCashVouchersLoading(true);
+      setCashVouchersError('');
 
-    apiRequest<{ items?: WaybillCashVoucher[]; meta?: { total?: number } }>(
-      `/waybills/cash-vouchers?ma_kh=${encodeURIComponent(maKh)}&limit=500`,
-    )
-      .then((response) => {
-        if (cancelled) return;
-        setCashVouchers(response.items ?? []);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setCashVouchers([]);
-        setCashVouchersError('Không tải được danh sách thu chi.');
-      })
-      .finally(() => {
-        if (!cancelled) setCashVouchersLoading(false);
-      });
+      apiRequest<{ items?: WaybillCashVoucher[]; meta?: { total?: number } }>(
+        `/waybills/cash-vouchers?ma_kh=${encodeURIComponent(maKh)}&limit=200`,
+      )
+        .then((response) => {
+          if (cancelled) return;
+          setCashVouchers(response.items ?? []);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setCashVouchers([]);
+          setCashVouchersError('Không tải được danh sách thu chi.');
+        })
+        .finally(() => {
+          if (!cancelled) setCashVouchersLoading(false);
+        });
+    });
 
     return () => {
       cancelled = true;
@@ -246,6 +302,52 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
 
   const handleBillFiltersChange = (patch: Partial<BillFilters>) => {
     setBillFilters((prev) => ({ ...prev, ...patch }));
+  };
+
+  const loadCashVouchers = async (maKh: string) => {
+    const response = await apiRequest<{ items?: WaybillCashVoucher[]; meta?: { total?: number } }>(
+      `/waybills/cash-vouchers?ma_kh=${encodeURIComponent(maKh)}&limit=200`,
+    );
+    setCashVouchers(response.items ?? []);
+  };
+
+  const openCollectDialog = () => {
+    setCollectWaybillId(inventoryItems[0]?.id ? String(inventoryItems[0].id) : '');
+    setCollectAmount('');
+    setCollectNote('');
+    setCollectError('');
+    setIsCollectOpen(true);
+  };
+
+  const submitCollectVoucher = async () => {
+    const maKh = customer?.code?.trim();
+    const amount = parseAmountInput(collectAmount);
+    if (!collectWaybillId) {
+      setCollectError('Chọn bill cần thu tiền.');
+      return;
+    }
+    if (amount <= 0) {
+      setCollectError('Nhập số tiền thu lớn hơn 0.');
+      return;
+    }
+    setCollectSubmitting(true);
+    setCollectError('');
+    try {
+      await apiRequest(`/waybills/${collectWaybillId}/cash-vouchers`, {
+        method: 'POST',
+        body: {
+          voucher_type: 'Thu',
+          amount,
+          note: collectNote.trim() || `Thu tiền khách hàng ${maKh || customer?.name || ''}`.trim(),
+        },
+      });
+      if (maKh) await loadCashVouchers(maKh);
+      setIsCollectOpen(false);
+    } catch {
+      setCollectError('Không lưu được phiếu thu.');
+    } finally {
+      setCollectSubmitting(false);
+    }
   };
 
   const reloadDeliveryBoard = () => {
@@ -278,6 +380,8 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
     onClose();
     navigate(`/warehouse/priority?keyword=${encodeURIComponent(deliveryTenCty)}`);
   };
+
+  const printPaymentStatement = () => setIsStatementOpen(true);
 
   if (!customer) return null;
 
@@ -536,6 +640,8 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
                 loading={cashVouchersLoading}
                 error={cashVouchersError}
                 onFiltersChange={handleCashVoucherFiltersChange}
+                onCollect={openCollectDialog}
+                onPrintStatement={printPaymentStatement}
               />
             ) : (
               <Panel>
@@ -552,8 +658,121 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-[9999] flex justify-end">
+  const statementDialog = isStatementOpen ? createPortal(
+    <div className="statement-print-root fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm print:static print:block print:bg-white print:p-0 print:backdrop-blur-none">
+      <style>{`@media print { body > *:not(.statement-print-root) { display: none !important; } .statement-print-root { display: block !important; position: static !important; inset: auto !important; background: #fff !important; padding: 0 !important; backdrop-filter: none !important; } .statement-print-shell { display: block !important; max-height: none !important; max-width: none !important; overflow: visible !important; border: 0 !important; border-radius: 0 !important; background: #fff !important; box-shadow: none !important; } .statement-print-toolbar { display: none !important; } .statement-print-scroll { display: block !important; overflow: visible !important; padding: 0 !important; } .statement-print-page { margin: 0 !important; min-height: 0 !important; max-width: none !important; padding: 0 !important; box-shadow: none !important; } }`}</style>
+      <div className="statement-print-shell flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-slate-100 shadow-2xl print:block print:max-h-none print:max-w-none print:overflow-visible print:rounded-none print:border-0 print:bg-white print:shadow-none">
+        <div className="statement-print-toolbar flex shrink-0 items-center justify-between gap-3 border-b border-border bg-white px-4 py-3 print:hidden">
+          <div>
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-primary">in phiếu kê</p>
+            <h3 className="text-[16px] font-extrabold text-foreground">Phiếu kê thanh toán · {customer.code}</h3>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-extrabold text-white hover:bg-primary/90"
+            >
+              <Printer size={16} />
+              In
+            </button>
+            <button type="button" onClick={() => setIsStatementOpen(false)} className="rounded-lg p-2 text-muted-foreground hover:bg-muted">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="statement-print-scroll flex-1 overflow-auto p-4 custom-scrollbar print:block print:overflow-visible print:p-0">
+          <div className="statement-print-page mx-auto min-h-[1120px] w-full max-w-[900px] bg-white p-8 text-[12px] text-slate-900 shadow-xl print:m-0 print:min-h-0 print:max-w-none print:p-0 print:shadow-none">
+            <div className="flex items-start justify-between gap-4 border-b-2 border-slate-900 pb-4">
+              <div>
+                <h1 className="text-xl font-extrabold uppercase tracking-wide">Phiếu kê thanh toán khách hàng</h1>
+                <p className="mt-1 text-slate-500">Liệt kê các đơn và các khoản thanh toán của khách hàng</p>
+              </div>
+              <div className="text-right text-[12px]">
+                <p><b>Ngày in:</b> {new Date().toLocaleString('vi-VN')}</p>
+                <p><b>Mã KH:</b> {customer.code}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-1 text-[13px]">
+              <p><b>Khách hàng:</b> {customer.name || '—'}</p>
+              <p><b>Địa chỉ:</b> {customer.address || '—'}</p>
+              <p><b>MST:</b> {customer.tax_id || '—'} <span className="mx-2">·</span> <b>Hợp đồng:</b> {customer.contract_code || '—'}</p>
+            </div>
+
+            <div className="mt-4 grid grid-cols-4 gap-2">
+              <PrintMetric label="Số đơn" value={inventoryItems.length.toLocaleString('vi-VN')} />
+              <PrintMetric label="Tổng cước" value={printMoney(statementData.totalFreight)} />
+              <PrintMetric label="Đã TT theo đơn" value={printMoney(statementData.totalPaid)} />
+              <PrintMetric label="Công nợ còn lại" value={printMoney(statementData.totalDebt)} />
+            </div>
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              <PrintMetric label="Tổng thu" value={printMoney(statementData.voucherMeta.total_thu)} />
+              <PrintMetric label="Tổng chi" value={printMoney(statementData.voucherMeta.total_chi)} />
+              <PrintMetric label="Chênh lệch" value={printMoney(statementData.voucherMeta.net)} />
+              <PrintMetric label="Số phiếu" value={Number(statementData.voucherMeta.total || 0).toLocaleString('vi-VN')} />
+            </div>
+
+            <h2 className="mt-6 text-[14px] font-extrabold uppercase text-primary">Danh sách đơn</h2>
+            <table className="mt-2 w-full border-collapse text-left text-[11px]">
+              <thead className="bg-slate-100 uppercase text-slate-600">
+                <tr>{['#', 'Số bill', 'Ngày', 'Nơi đến / người nhận', 'TT', 'Cước', 'Đã TT', 'Còn lại'].map((header) => <th key={header} className="border border-slate-300 px-2 py-2">{header}</th>)}</tr>
+              </thead>
+              <tbody>
+                {inventoryItems.length ? inventoryItems.map((item, index) => {
+                  const freight = getBillFreight(item);
+                  const paid = resolvePaidForBill(item, statementData.paidMaps);
+                  return (
+                    <tr key={String(item.id)}>
+                      <td className="border border-slate-300 px-2 py-2">{index + 1}</td>
+                      <td className="border border-slate-300 px-2 py-2 font-bold">{item.waybill_code || item.code || item.order_code || item.id}</td>
+                      <td className="border border-slate-300 px-2 py-2">{formatDate(item.received_at || item.created_at)}</td>
+                      <td className="border border-slate-300 px-2 py-2">{item.receiver_info || resolveNoiDen(item)}</td>
+                      <td className="border border-slate-300 px-2 py-2">{item.payment_type || '—'}</td>
+                      <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(freight)}</td>
+                      <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(paid)}</td>
+                      <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(freight - paid)}</td>
+                    </tr>
+                  );
+                }) : <tr><td colSpan={8} className="border border-slate-300 px-2 py-6 text-center text-slate-500">Chưa có đơn.</td></tr>}
+              </tbody>
+            </table>
+
+            <h2 className="mt-6 text-[14px] font-extrabold uppercase text-primary">Các khoản thanh toán</h2>
+            <table className="mt-2 w-full border-collapse text-left text-[11px]">
+              <thead className="bg-slate-100 uppercase text-slate-600">
+                <tr>{['#', 'Ngày', 'Số bill', 'Loại', 'Số tiền', 'Ghi chú', 'Người lập'].map((header) => <th key={header} className="border border-slate-300 px-2 py-2">{header}</th>)}</tr>
+              </thead>
+              <tbody>
+                {cashVouchers.length ? cashVouchers.map((voucher, index) => (
+                  <tr key={String(voucher.id)}>
+                    <td className="border border-slate-300 px-2 py-2">{index + 1}</td>
+                    <td className="border border-slate-300 px-2 py-2">{formatDate(voucher.created_at)}</td>
+                    <td className="border border-slate-300 px-2 py-2 font-bold">{voucher.waybill_code || voucher.waybill_id || '—'}</td>
+                    <td className="border border-slate-300 px-2 py-2">{voucher.voucher_type || '—'}</td>
+                    <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(voucher.amount)}</td>
+                    <td className="border border-slate-300 px-2 py-2">{voucher.note || '—'}</td>
+                    <td className="border border-slate-300 px-2 py-2">{voucher.created_by_name || '—'}</td>
+                  </tr>
+                )) : <tr><td colSpan={7} className="border border-slate-300 px-2 py-6 text-center text-slate-500">Chưa có khoản thanh toán.</td></tr>}
+              </tbody>
+            </table>
+
+            <div className="mt-10 grid grid-cols-2 gap-10 text-center font-bold">
+              <div>Khách hàng<br /><br /><br /><br /><span className="font-normal">Ký, ghi rõ họ tên</span></div>
+              <div>ECO Transport<br /><br /><br /><br /><span className="font-normal">Ký, ghi rõ họ tên</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  ) : null;
+
+  return <>
+    {createPortal(
+    <div className="fixed inset-0 z-[9999] flex justify-end print:hidden">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative flex h-full w-full max-w-3xl flex-col border-l border-border bg-[#f8fafc] shadow-2xl">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4">
@@ -608,8 +827,78 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
             Sửa
           </button>
         </div>
+
+        {isCollectOpen && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl border border-border bg-white p-4 shadow-2xl">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[12px] font-extrabold uppercase tracking-wide text-emerald-600">Lập phiếu thu</p>
+                  <h3 className="text-lg font-extrabold text-foreground">{customer.name}</h3>
+                  <p className="text-[12px] font-bold text-primary">{customer.code}</p>
+                </div>
+                <button type="button" onClick={() => setIsCollectOpen(false)} className="rounded-lg p-2 text-muted-foreground hover:bg-muted">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Bill cần thu</span>
+                <select
+                  value={collectWaybillId}
+                  onChange={(event) => setCollectWaybillId(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold"
+                >
+                  <option value="">Chọn bill</option>
+                  {inventoryItems.map((item) => (
+                    <option key={String(item.id)} value={String(item.id)}>
+                      {item.waybill_code || item.code || `#${item.id}`} · {formatMoney(item.cost_amount || item.freight_amount || item.cod_amount)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Số tiền thu</span>
+                <input
+                  value={collectAmount}
+                  onChange={(event) => setCollectAmount(formatAmountInput(event.target.value))}
+                  inputMode="numeric"
+                  placeholder="0"
+                  className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[15px] font-extrabold outline-none focus:ring-2 focus:ring-primary/15"
+                />
+              </label>
+
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Ghi chú</span>
+                <textarea
+                  value={collectNote}
+                  onChange={(event) => setCollectNote(event.target.value)}
+                  rows={3}
+                  placeholder="Nội dung phiếu thu..."
+                  className="w-full rounded-xl border border-border bg-white px-3 py-2 text-[13px] font-medium outline-none focus:ring-2 focus:ring-primary/15"
+                />
+              </label>
+
+              {inventoryLoading && <p className="mb-3 text-[12px] font-bold text-muted-foreground">Đang tải danh sách bill...</p>}
+              {collectError && <p className="mb-3 text-[13px] font-bold text-red-600">{collectError}</p>}
+
+              <button
+                type="button"
+                disabled={collectSubmitting || inventoryLoading}
+                onClick={() => void submitCollectVoucher()}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 text-[13px] font-extrabold text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {collectSubmitting ? <Loader2 className="animate-spin" size={16} /> : <Receipt size={16} />}
+                Lưu phiếu thu
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>,
     document.body,
-  );
+  )}
+    {statementDialog}
+  </>;
 }

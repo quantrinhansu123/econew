@@ -112,6 +112,7 @@ export interface LoadPlanningBoardItem {
 
 export interface LoadPlanningTruckGroup {
   truck_id: string | number;
+  vendor_id?: string | number | null;
   license_plate?: string | null;
   nha_xe?: string | null;
   ten_lai_xe?: string | null;

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { clsx } from 'clsx';
-import { Banknote, Loader2, Receipt } from 'lucide-react';
+import { Banknote, Loader2, Plus, Printer, Receipt } from 'lucide-react';
 import { DayPicker } from '../../../../components/ui/DayPicker';
 import { formatMoney, isDateInRange } from '../../../warehouse/customers/utils/customerFinanceUtils';
 
@@ -37,6 +37,8 @@ interface Props {
   loading: boolean;
   error: string;
   onFiltersChange: (patch: Partial<VendorPaymentFilters>) => void;
+  onSpend: () => void;
+  onPrintStatement: () => void;
 }
 
 const formatDateTime = (value?: string | null) =>
@@ -59,6 +61,8 @@ export default function VendorPaymentsPanel({
   loading,
   error,
   onFiltersChange,
+  onSpend,
+  onPrintStatement,
 }: Props) {
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
@@ -97,6 +101,31 @@ export default function VendorPaymentsPanel({
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[12px] font-extrabold uppercase tracking-wide text-primary">Thanh toán nhà cung cấp</p>
+          <p className="text-[13px] font-medium text-muted-foreground">Theo dõi công nợ, phiếu chi và bảng kê NCC.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onPrintStatement}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-4 text-[13px] font-extrabold text-foreground shadow-sm hover:bg-muted"
+          >
+            <Printer size={16} />
+            In phiếu kê
+          </button>
+          <button
+            type="button"
+            onClick={onSpend}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-[13px] font-extrabold text-white shadow-sm hover:bg-emerald-700"
+          >
+            <Plus size={16} />
+            Chi
+          </button>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <SummaryCard label="Tổng phát sinh" value={formatMoney(summaryIncurred, '0 đ')} tone="blue" />
         <SummaryCard label="Đã chi trả" value={formatMoney(summaryPaid, '0 đ')} tone="emerald" />

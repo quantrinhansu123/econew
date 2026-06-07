@@ -1,6 +1,7 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, FileSpreadsheet, Loader2, PackageCheck, Plus, Printer, RefreshCw, Search, Truck, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, Eye, FileSpreadsheet, Loader2, PackageCheck, Plus, Printer, Receipt, RefreshCw, Search, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../../../lib/api';
@@ -34,6 +35,11 @@ const getStoredUser = (): AuthUserProfile | null => {
 
 const formatNumber = (value?: string | number | null, suffix = '') =>
   value == null || value === '' ? '—' : `${Number(value).toLocaleString('vi-VN')}${suffix}`;
+
+const vendorExpenseTypes = ['Chi phí cố định', 'Chi phí phát sinh', 'Thanh toán cước chuyến', 'Tạm ứng', 'Hoàn ứng', 'Chi khác'];
+const formatMoney = (value?: string | number | null) => (value == null || value === '' ? '—' : `${Number(value).toLocaleString('vi-VN')} đ`);
+const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString('vi-VN') : '—');
+const parseAmountInput = (value: string) => Number(value.replace(/\./g, '').replace(/,/g, '').trim()) || 0;
 
 interface Props {
   bannerTitle?: string;
@@ -70,7 +76,7 @@ export default function LoadPlanningBoardPanel({
   const [error, setError] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<string[]>(['origin']);
-  const [openArrivalTruckKeys, setOpenArrivalTruckKeys] = useState<string[]>([]);
+  const [selectedArrivalTruck, setSelectedArrivalTruck] = useState<LoadPlanningTruckGroup | null>(null);
 
   const hubOptions = useMemo(
     () => hubs.map((hub) => ({
@@ -269,11 +275,7 @@ export default function LoadPlanningBoardPanel({
             <ArrivalGroupedBoard
               groups={arrivalGroups}
               canViewCost={canViewCost}
-              openTruckKeys={openArrivalTruckKeys}
-              onToggleTruck={(key) => {
-                setOpenArrivalTruckKeys((prev) => (prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]));
-              }}
-              onStatusUpdated={() => void fetchBoard()}
+              onViewTruck={setSelectedArrivalTruck}
             />
           ) : (
             <div className="space-y-4">
@@ -303,6 +305,12 @@ export default function LoadPlanningBoardPanel({
         onClose={() => setIsFilterOpen(false)}
         onApply={applyFilters}
       />
+      <ArrivalTruckDetailDialog
+        truck={selectedArrivalTruck}
+        canViewCost={canViewCost}
+        onClose={() => setSelectedArrivalTruck(null)}
+        onStatusUpdated={() => void fetchBoard()}
+      />
     </div>
   );
 }
@@ -322,6 +330,15 @@ function StateBlock({ icon, title, description }: { icon: ReactNode; title: stri
       <div className="mb-3 text-primary">{icon}</div>
       <p className="text-[13px] font-bold">{title}</p>
       {description && <p className="mt-2 max-w-md text-[12px] leading-6">{description}</p>}
+    </div>
+  );
+}
+
+function PrintMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-300 bg-slate-50 p-3">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-[14px] font-extrabold text-slate-900">{value}</p>
     </div>
   );
 }
@@ -414,15 +431,11 @@ function countUniqueOrders(items: LoadPlanningTruckGroup['items']) {
 function ArrivalGroupedBoard({
   groups,
   canViewCost,
-  openTruckKeys,
-  onToggleTruck,
-  onStatusUpdated,
+  onViewTruck,
 }: {
   groups: ArrivalDateGroup[];
   canViewCost: boolean;
-  openTruckKeys: string[];
-  onToggleTruck: (key: string) => void;
-  onStatusUpdated: () => void;
+  onViewTruck: (truck: LoadPlanningTruckGroup) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -448,15 +461,10 @@ function ArrivalGroupedBoard({
           <div className="divide-y divide-border">
             {group.trucks.map((truck) => {
               const key = `${group.key}-${truck.truck_id}`;
-              const isOpen = openTruckKeys.includes(key);
               const truckLabel = [truck.license_plate, truck.nha_xe ? `xe ${truck.nha_xe}` : null].filter(Boolean).join(' · ') || `Xe #${truck.truck_id}`;
               return (
                 <div key={key}>
-                  <button
-                    type="button"
-                    onClick={() => onToggleTruck(key)}
-                    className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left hover:bg-muted/30"
-                  >
+                  <div className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left hover:bg-muted/30">
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-primary">
                       <Truck size={16} />
                     </div>
@@ -471,13 +479,16 @@ function ArrivalGroupedBoard({
                       <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">{formatNumber(countUniqueOrders(truck.items))} đơn</span>
                       <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">{formatNumber(truck.total_weight, ' kg')}</span>
                     </div>
-                    <ChevronDown size={16} className={clsx('text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
-                  </button>
-                  {isOpen && (
-                    <div className="border-t border-border bg-slate-50/60 p-3">
-                      <LoadPlanningTruckBoard truck={truck} canViewCost={canViewCost} onStatusUpdated={onStatusUpdated} showHeader={false} />
-                    </div>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => onViewTruck(truck)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-primary/20 bg-blue-50 text-primary hover:bg-blue-100"
+                      title="Xem chi tiết"
+                      aria-label={`Xem chi tiết ${truckLabel}`}
+                    >
+                      <Eye size={16} />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -485,6 +496,155 @@ function ArrivalGroupedBoard({
         </section>
       ))}
     </div>
+  );
+}
+
+function ArrivalTruckDetailDialog({
+  truck,
+  canViewCost,
+  onClose,
+  onStatusUpdated,
+}: {
+  truck: LoadPlanningTruckGroup | null;
+  canViewCost: boolean;
+  onClose: () => void;
+  onStatusUpdated: () => void;
+}) {
+  const [isSpendOpen, setIsSpendOpen] = useState(false);
+  const [isStatementOpen, setIsStatementOpen] = useState(false);
+  const [spendAmount, setSpendAmount] = useState('');
+  const [spendDate, setSpendDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [spendType, setSpendType] = useState(vendorExpenseTypes[0]);
+  const [spendNote, setSpendNote] = useState('');
+  const [spendError, setSpendError] = useState('');
+  const [isSubmittingSpend, setIsSubmittingSpend] = useState(false);
+
+  if (!truck) return null;
+
+  const truckLabel = [truck.license_plate, truck.nha_xe ? `xe ${truck.nha_xe}` : null].filter(Boolean).join(' · ') || `Xe #${truck.truck_id}`;
+
+  const vendorId = truck.vendor_id ? String(truck.vendor_id) : '';
+  const totalFreight = Number(truck.total_freight ?? 0);
+  const totalPayments = parseAmountInput(spendAmount);
+
+  const openSpendDialog = () => {
+    setSpendAmount('');
+    setSpendDate(new Date().toISOString().slice(0, 10));
+    setSpendType(vendorExpenseTypes[0]);
+    setSpendNote(`Chi theo bảng kê ${truck.manifest_code || truckLabel}`);
+    setSpendError('');
+    setIsSpendOpen(true);
+  };
+
+  const submitSpend = async () => {
+    const amount = parseAmountInput(spendAmount);
+    if (!vendorId) {
+      setSpendError('Xe này chưa liên kết nhà cung cấp nên chưa thể lập phiếu chi.');
+      return;
+    }
+    if (amount <= 0) {
+      setSpendError('Nhập số tiền chi lớn hơn 0.');
+      return;
+    }
+    setIsSubmittingSpend(true);
+    setSpendError('');
+    try {
+      await apiRequest(`/vendors/${vendorId}/payments`, {
+        method: 'POST',
+        body: {
+          payment_date: new Date(`${spendDate || new Date().toISOString().slice(0, 10)}T12:00:00`).toISOString(),
+          amount,
+          description: `[${spendType}] ${spendNote.trim() || `Chi theo bảng kê ${truck.manifest_code || truckLabel}`}`,
+        },
+      });
+      setIsSpendOpen(false);
+      onStatusUpdated();
+    } catch (error) {
+      setSpendError(error instanceof ApiError ? error.message : 'Không lưu được phiếu chi.');
+    } finally {
+      setIsSubmittingSpend(false);
+    }
+  };
+
+  const statementDialog = isStatementOpen ? createPortal(
+    <div className="statement-print-root fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm print:static print:block print:bg-white print:p-0 print:backdrop-blur-none">
+      <style>{`@media print { body > *:not(.statement-print-root) { display: none !important; } .statement-print-root { display: block !important; position: static !important; inset: auto !important; background: #fff !important; padding: 0 !important; backdrop-filter: none !important; } .statement-print-shell { display: block !important; max-height: none !important; max-width: none !important; overflow: visible !important; border: 0 !important; border-radius: 0 !important; background: #fff !important; box-shadow: none !important; } .statement-print-toolbar { display: none !important; } .statement-print-scroll { display: block !important; overflow: visible !important; padding: 0 !important; } .statement-print-page { margin: 0 !important; min-height: 0 !important; max-width: none !important; padding: 0 !important; box-shadow: none !important; } }`}</style>
+      <div className="statement-print-shell flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-slate-100 shadow-2xl print:block print:max-h-none print:max-w-none print:overflow-visible print:rounded-none print:border-0 print:bg-white print:shadow-none">
+        <div className="statement-print-toolbar flex shrink-0 items-center justify-between gap-3 border-b border-border bg-white px-4 py-3 print:hidden">
+          <div>
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-primary">Giao diện in phiếu kê bảng kê</p>
+            <h3 className="text-[16px] font-extrabold text-foreground">Phiếu kê · {truck.manifest_code || truckLabel}</h3>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => window.print()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-extrabold text-white hover:bg-primary/90"><Printer size={16} />In</button>
+            <button type="button" onClick={() => setIsStatementOpen(false)} className="rounded-lg p-2 text-muted-foreground hover:bg-muted"><X size={18} /></button>
+          </div>
+        </div>
+        <div className="statement-print-scroll flex-1 overflow-auto p-4 custom-scrollbar print:block print:overflow-visible print:p-0">
+          <div className="statement-print-page mx-auto min-h-[1120px] w-full max-w-[900px] bg-white p-8 text-[12px] text-slate-900 shadow-xl print:m-0 print:min-h-0 print:max-w-none print:p-0 print:shadow-none">
+            <div className="flex items-start justify-between gap-4 border-b-2 border-slate-900 pb-4">
+              <div><h1 className="text-xl font-extrabold uppercase tracking-wide">Phiếu kê bảng kê xe</h1><p className="mt-1 text-slate-500">Liệt kê đơn hàng và thông tin thanh toán theo bảng kê</p></div>
+              <div className="text-right"><p><b>Ngày in:</b> {new Date().toLocaleString('vi-VN')}</p><p><b>Bảng kê:</b> {truck.manifest_code || '—'}</p></div>
+            </div>
+            <div className="mt-4 grid gap-1 text-[13px]">
+              <p><b>Xe / nhà xe:</b> {truckLabel}</p>
+              <p><b>Tài xế:</b> {truck.ten_lai_xe || '—'} <span className="mx-2">·</span> <b>Chuyến:</b> {truck.trip_id ? `#${truck.trip_id}` : '—'} <span className="mx-2">·</span> <b>Trạng thái:</b> {truck.trip_status || '—'}</p>
+            </div>
+            <div className="mt-4 grid grid-cols-4 gap-2"><PrintMetric label="Số đơn" value={(truck.items?.length ?? 0).toLocaleString('vi-VN')} /><PrintMetric label="Số kiện" value={truck.total_packages.toLocaleString('vi-VN')} /><PrintMetric label="Tổng kg" value={formatNumber(truck.total_weight, ' kg')} /><PrintMetric label="Tổng cước" value={formatMoney(totalFreight)} /></div>
+            <h2 className="mt-6 text-[14px] font-extrabold uppercase text-primary">Danh sách đơn</h2>
+            <table className="mt-2 w-full border-collapse text-left text-[11px]"><thead className="bg-slate-100 uppercase text-slate-600"><tr>{['#', 'Số bill', 'Ngày tới', 'Khách hàng', 'Nơi trả', 'SL', 'Kg', 'Cước'].map((header) => <th key={header} className="border border-slate-300 px-2 py-2">{header}</th>)}</tr></thead><tbody>{truck.items?.length ? truck.items.map((item, index) => <tr key={`${item.waybill_id}-${item.split_id ?? index}`}><td className="border border-slate-300 px-2 py-2">{index + 1}</td><td className="border border-slate-300 px-2 py-2 font-bold">{item.waybill_code || item.waybill_id}</td><td className="border border-slate-300 px-2 py-2">{formatDate(item.ngay_toi)}</td><td className="border border-slate-300 px-2 py-2">{item.ten_cty || '—'}</td><td className="border border-slate-300 px-2 py-2">{item.noi_tra || item.noi_den || '—'}</td><td className="border border-slate-300 px-2 py-2 text-right">{formatNumber(item.so_luong)}</td><td className="border border-slate-300 px-2 py-2 text-right">{formatNumber(item.weight)}</td><td className="border border-slate-300 px-2 py-2 text-right">{formatMoney(item.allocated_freight)}</td></tr>) : <tr><td colSpan={8} className="border border-slate-300 px-2 py-6 text-center text-slate-500">Chưa có đơn trong bảng kê.</td></tr>}</tbody></table>
+            <h2 className="mt-6 text-[14px] font-extrabold uppercase text-primary">Khoản chi vừa nhập</h2>
+            <table className="mt-2 w-full border-collapse text-left text-[11px]"><thead className="bg-slate-100 uppercase text-slate-600"><tr>{['Ngày', 'Loại chi', 'Số tiền', 'Ghi chú'].map((header) => <th key={header} className="border border-slate-300 px-2 py-2">{header}</th>)}</tr></thead><tbody><tr><td className="border border-slate-300 px-2 py-2">{formatDate(spendDate)}</td><td className="border border-slate-300 px-2 py-2">{spendType}</td><td className="border border-slate-300 px-2 py-2 text-right">{totalPayments > 0 ? formatMoney(totalPayments) : '—'}</td><td className="border border-slate-300 px-2 py-2">{spendNote || '—'}</td></tr></tbody></table>
+            <div className="mt-10 grid grid-cols-2 gap-10 text-center font-bold"><div>Nhà cung cấp<br /><br /><br /><br /><span className="font-normal">Ký, ghi rõ họ tên</span></div><div>ECO Transport<br /><br /><br /><br /><span className="font-normal">Ký, ghi rõ họ tên</span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  ) : null;
+
+  return (
+    <>
+    {statementDialog}
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/45 p-0 backdrop-blur-sm md:items-center md:p-4" onClick={onClose}>
+      <div className="flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-t-[28px] border border-border bg-white shadow-2xl animate-in fade-in slide-in-from-bottom-3 duration-200 md:rounded-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-primary">Chi tiết bảng kê</p>
+            <h2 className="truncate text-lg font-extrabold text-foreground">{truckLabel}</h2>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              {[truck.ten_lai_xe, truck.trip_id ? `Chuyến #${truck.trip_id}` : 'Chưa gán chuyến'].filter(Boolean).join(' · ')}
+              {truck.manifest_code ? ` · BK ${truck.manifest_code}` : ''}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={openSpendDialog} className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-[13px] font-extrabold text-white hover:bg-emerald-700"><Receipt size={16} />Chi</button>
+            <button type="button" onClick={() => setIsStatementOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-primary/20 bg-blue-50 px-4 text-[13px] font-extrabold text-primary hover:bg-blue-100"><Printer size={16} />In phiếu kê</button>
+            <button type="button" onClick={onClose} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-white text-muted-foreground hover:bg-muted"><X size={18} /></button>
+          </div>
+        </div>
+        {isSpendOpen && (
+          <div className="border-b border-border bg-emerald-50/60 px-5 py-4">
+            <div className="grid gap-3 md:grid-cols-[160px_180px_1fr_160px]">
+              <label className="text-[12px] font-bold text-muted-foreground">Ngày chi<input type="date" value={spendDate} onChange={(event) => setSpendDate(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none" /></label>
+              <label className="text-[12px] font-bold text-muted-foreground">Loại chi<select value={spendType} onChange={(event) => setSpendType(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">{vendorExpenseTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+              <label className="text-[12px] font-bold text-muted-foreground">Ghi chú<input value={spendNote} onChange={(event) => setSpendNote(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none" /></label>
+              <label className="text-[12px] font-bold text-muted-foreground">Số tiền<input inputMode="numeric" value={spendAmount} onChange={(event) => setSpendAmount(event.target.value)} placeholder="VD: 500000" className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none" /></label>
+            </div>
+            {spendError && <p className="mt-2 text-[12px] font-bold text-red-600">{spendError}</p>}
+            {!vendorId && <p className="mt-2 text-[12px] font-bold text-amber-700">Xe này chưa liên kết nhà cung cấp, cần gán NCC cho xe trước khi lập phiếu chi.</p>}
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" onClick={() => setIsSpendOpen(false)} className="h-10 rounded-xl border border-border bg-white px-4 text-[13px] font-extrabold text-muted-foreground hover:bg-muted">Hủy</button>
+              <button type="button" disabled={isSubmittingSpend || !vendorId} onClick={() => void submitSpend()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-[13px] font-extrabold text-white hover:bg-emerald-700 disabled:opacity-60">{isSubmittingSpend ? <Loader2 className="animate-spin" size={16} /> : <Receipt size={16} />}Lưu phiếu chi</button>
+            </div>
+          </div>
+        )}
+        <div className="min-h-0 flex-1 overflow-auto bg-slate-50/60 p-4 custom-scrollbar">
+          <LoadPlanningTruckBoard truck={truck} canViewCost={canViewCost} onStatusUpdated={onStatusUpdated} showHeader={false} />
+        </div>
+      </div>
+    </div>
+    </>
   );
 }
 

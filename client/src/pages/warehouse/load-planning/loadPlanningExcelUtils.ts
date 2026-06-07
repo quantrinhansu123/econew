@@ -3,37 +3,34 @@ import type { LoadPlanningBoardResponse } from './types';
 import { splitLoadStatusLabel } from '../splits/splitLoadStatus';
 
 const cell = (value?: string | number | null) => (value == null || value === '' ? '' : value);
+const headers = ['Vị trí hàng', 'Ngày bốc', 'Mã Tỉnh', 'Tên CTY', 'DV', 'Mặt Hàng', 'Nơi Trả', 'Số Lượng', '', '', 'Ghi chú', 'kế hoạch', 'Lái xe thu hộ', 'BC thu  hộ', 'Mã Bill', 'Ghi chú'];
+const extra = (item: unknown, key: string) => (item as Record<string, string | number | null | undefined>)[key];
 
 export function buildLoadPlanningExcelRows(
   board: LoadPlanningBoardResponse,
   showPricing: boolean,
-): Record<string, string | number>[] {
+): Array<Array<string | number>> {
   return board.trucks.flatMap((truck) => {
-    const plate = truck.license_plate || '';
-    const nhaXe = truck.nha_xe || '';
     return truck.items.map((item) => {
       const goods = [item.mat_hang, item.mat_hang_note].filter(Boolean).join(' - ');
-      const row: Record<string, string | number> = {
-        'Biển số xe': plate,
-        'Nhà xe (NCC)': nhaXe,
-        'Mã vận đơn': cell(item.waybill_code),
-        'Vị trí': cell(item.vi_tri_hang ?? item.loading_position),
-        'Trạng thái': splitLoadStatusLabel(item.load_status),
-        'Ngày bốc': cell(item.ngay_boc),
-        'Ngày tới': cell(item.ngay_toi),
-        'Mã tỉnh': cell(item.ma_tinh || item.noi_den),
-        'Tên CTY': cell(item.ten_cty),
-        'DV': cell(item.dv || 'TC'),
-        'Mặt hàng': goods || cell(item.waybill_code),
-        'Nơi trả': cell(item.noi_tra),
-        'Số lượng': Number(item.so_luong ?? 0) || '',
-        'Loại': cell(item.loai || 'kiện'),
-        'Địa chỉ': cell(item.dia_chi),
-      };
-      if (showPricing) {
-        row['Cước phí'] = Number(item.allocated_freight ?? 0) || '';
-      }
-      return row;
+      return [
+        cell(item.vi_tri_hang ?? item.loading_position),
+        cell(item.ngay_boc),
+        cell(item.ma_tinh || item.noi_den),
+        cell(item.ten_cty),
+        cell(item.dv || 'TC'),
+        goods || cell(item.waybill_code),
+        cell(item.noi_tra),
+        Number(item.so_luong ?? 0) || '',
+        cell(item.loai || 'kiện'),
+        cell(item.dia_chi),
+        cell(item.mat_hang_note),
+        splitLoadStatusLabel(item.load_status),
+        Number(extra(item, 'allocated_cod') ?? 0) || '',
+        showPricing ? Number(item.allocated_freight ?? 0) || '' : '',
+        cell(item.waybill_code),
+        cell(extra(item, 'split_note') || extra(item, 'note')),
+      ];
     });
   });
 }
@@ -46,7 +43,7 @@ export function downloadLoadPlanningExcel(
   const rows = buildLoadPlanningExcelRows(board, showPricing);
   if (!rows.length) return false;
 
-  const worksheet = utils.json_to_sheet(rows);
+  const worksheet = utils.aoa_to_sheet([headers, ...rows]);
   const workbook = utils.book_new();
   utils.book_append_sheet(workbook, worksheet, 'Phan xe');
 

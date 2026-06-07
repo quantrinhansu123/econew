@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { clsx } from 'clsx';
-import { Banknote, Loader2, Receipt } from 'lucide-react';
+import { Banknote, Loader2, Plus, Printer, Receipt } from 'lucide-react';
 import { DayPicker } from '../../../../components/ui/DayPicker';
 import type { WaybillCashVoucher } from '../../inventory/dialogs/WaybillCashVoucherDialog';
 import { computeVoucherMeta, filterCashVouchers } from '../utils/customerFinanceUtils';
@@ -25,6 +25,8 @@ interface Props {
   loading: boolean;
   error: string;
   onFiltersChange: (patch: Partial<CashVoucherFilters>) => void;
+  onCollect: () => void;
+  onPrintStatement: () => void;
 }
 
 const formatMoney = (value?: number | string | null) =>
@@ -49,6 +51,8 @@ export default function CustomerCashVouchersPanel({
   loading,
   error,
   onFiltersChange,
+  onCollect,
+  onPrintStatement,
 }: Props) {
   const filteredVouchers = useMemo(() => filterCashVouchers(vouchers, filters), [vouchers, filters]);
   const meta = useMemo(() => computeVoucherMeta(filteredVouchers), [filteredVouchers]);
@@ -67,6 +71,31 @@ export default function CustomerCashVouchersPanel({
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[12px] font-extrabold uppercase tracking-wide text-primary">Thanh toán khách hàng</p>
+          <p className="text-[13px] font-medium text-muted-foreground">Theo dõi và lập phiếu thu/chi theo từng bill.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onPrintStatement}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-4 text-[13px] font-extrabold text-foreground shadow-sm hover:bg-muted"
+          >
+            <Printer size={16} />
+            In phiếu kê
+          </button>
+          <button
+            type="button"
+            onClick={onCollect}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-[13px] font-extrabold text-white shadow-sm hover:bg-emerald-700"
+          >
+            <Plus size={16} />
+            Thu
+          </button>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <SummaryCard label="Tổng thu" value={formatMoney(meta.total_thu)} tone="emerald" />
         <SummaryCard label="Tổng chi" value={formatMoney(meta.total_chi)} tone="red" />

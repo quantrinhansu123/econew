@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Building2, Edit, ExternalLink, Loader2, Package, Truck, X } from 'lucide-react';
+import { Building2, Edit, ExternalLink, Loader2, Package, Printer, Receipt, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../../lib/api';
@@ -39,6 +39,15 @@ const MANAGER = 32;
 const DIRECTOR = 64;
 const ACCOUNTANT = 16;
 
+const vendorExpenseTypes = [
+  'Chi phí cố định',
+  'Chi phí phát sinh',
+  'Thanh toán cước chuyến',
+  'Tạm ứng',
+  'Hoàn ứng',
+  'Chi khác',
+];
+
 const statusLabel: Record<string, string> = {
   RECEIVED: 'Đã tạo đơn',
   IN_WAREHOUSE: 'Trong kho',
@@ -73,6 +82,15 @@ function Panel({ children, className }: { children: ReactNode; className?: strin
   return <div className={clsx('rounded-2xl border border-border bg-white p-4 shadow-sm', className)}>{children}</div>;
 }
 
+function PrintMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-300 p-2">
+      <p className="text-[10px] font-bold uppercase text-slate-500">{label}</p>
+      <p className="mt-1 text-[14px] font-extrabold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
 function getStoredUser(): AuthUserProfile | null {
   if (typeof window === 'undefined') return null;
   const raw = localStorage.getItem(USER_PROFILE_KEY) || sessionStorage.getItem(USER_PROFILE_KEY);
@@ -87,6 +105,15 @@ function getStoredUser(): AuthUserProfile | null {
 const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString('vi-VN') : '—');
 const formatMoney = (value?: number | string | null) =>
   value == null || value === '' ? '—' : `${Number(value).toLocaleString('vi-VN')} đ`;
+
+const printMoney = (value?: number | string | null) => `${Number(value || 0).toLocaleString('vi-VN')} đ`;
+
+const parseAmountInput = (value: string) => Number(String(value).replace(/\D/g, '') || 0);
+
+const formatAmountInput = (value: string) => {
+  const digits = String(value).replace(/\D/g, '');
+  return digits ? Number(digits).toLocaleString('vi-VN') : '';
+};
 
 const normalizeInventoryList = (response: InventoryListResponse | WaybillInventoryItem[]) =>
   Array.isArray(response) ? response : response.data || response.items || response.waybills || [];
@@ -130,6 +157,14 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
   });
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerError, setLedgerError] = useState('');
+  const [isSpendOpen, setIsSpendOpen] = useState(false);
+  const [spendAmount, setSpendAmount] = useState('');
+  const [spendDate, setSpendDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [spendType, setSpendType] = useState(vendorExpenseTypes[0]);
+  const [spendNote, setSpendNote] = useState('');
+  const [spendSubmitting, setSpendSubmitting] = useState(false);
+  const [spendError, setSpendError] = useState('');
+  const [isStatementOpen, setIsStatementOpen] = useState(false);
   const [billFilters, setBillFilters] = useState<BillFilters>({
     fromDate: '',
     toDate: '',
@@ -161,11 +196,29 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
       setPaymentFilters({ fromDate: '', toDate: '', entryType: '' });
       setBillFilters({ fromDate: '', toDate: '', billCode: '', paymentType: '' });
       setLedgerError('');
+      setIsSpendOpen(false);
+      setSpendAmount('');
+      setSpendDate(new Date().toISOString().slice(0, 10));
+      setSpendType(vendorExpenseTypes[0]);
+      setSpendNote('');
+      setSpendError('');
+      setIsStatementOpen(false);
     }
   }, [vendor?.id]);
 
+  const statementData = useMemo(() => {
+    const totalFreight = inventoryItems.reduce((sum, item) => sum + Number(item.freight_amount ?? item.cost_amount ?? 0), 0);
+    const totalIncurred = ledgerBalance.total_incurred ?? ledgerEntries
+      .filter((entry) => String(entry.type) === 'TRIP')
+      .reduce((sum, entry) => sum + Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0)), 0);
+    const totalPaid = ledgerBalance.total_paid ?? ledgerEntries
+      .filter((entry) => String(entry.type) === 'PAYMENT')
+      .reduce((sum, entry) => sum + Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0)), 0);
+    return { totalFreight, totalIncurred, totalPaid, remaining: ledgerBalance.remaining ?? totalIncurred - totalPaid };
+  }, [inventoryItems, ledgerBalance, ledgerEntries]);
+
   useEffect(() => {
-    const needsInventory = activeTab === 'don-hang' || activeTab === 'bill';
+    const needsInventory = activeTab === 'don-hang' || activeTab === 'bill' || activeTab === 'thanh-toan';
     if (!vendorId || !needsInventory) return;
 
     let cancelled = false;
@@ -279,6 +332,48 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
     if (!vendorId) return;
     onClose();
     navigate(`/warehouse/load-planning?vendor_id=${encodeURIComponent(vendorId)}`);
+  };
+
+  const reloadLedger = async () => {
+    if (!vendorId) return;
+    const response = await apiRequest<{ entries?: VendorLedgerEntry[]; balance?: VendorLedgerBalance }>(`/vendors/${vendorId}/ledger`);
+    setLedgerEntries(response.entries ?? []);
+    setLedgerBalance(response.balance ?? {});
+  };
+
+  const openSpendDialog = () => {
+    setSpendAmount('');
+    setSpendDate(new Date().toISOString().slice(0, 10));
+    setSpendType(vendorExpenseTypes[0]);
+    setSpendNote('');
+    setSpendError('');
+    setIsSpendOpen(true);
+  };
+
+  const submitVendorPayment = async () => {
+    const amount = parseAmountInput(spendAmount);
+    if (amount <= 0) {
+      setSpendError('Nhập số tiền chi lớn hơn 0.');
+      return;
+    }
+    setSpendSubmitting(true);
+    setSpendError('');
+    try {
+      await apiRequest(`/vendors/${vendorId}/payments`, {
+        method: 'POST',
+        body: {
+          payment_date: new Date(`${spendDate || new Date().toISOString().slice(0, 10)}T12:00:00`).toISOString(),
+          amount,
+          description: `[${spendType}] ${spendNote.trim() || `Chi thanh toán NCC ${vendor?.code || vendor?.name || vendorId}`}`,
+        },
+      });
+      await reloadLedger();
+      setIsSpendOpen(false);
+    } catch {
+      setSpendError('Không lưu được phiếu chi NCC.');
+    } finally {
+      setSpendSubmitting(false);
+    }
   };
 
   if (!vendor) return null;
@@ -496,6 +591,8 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
                 loading={ledgerLoading}
                 error={ledgerError}
                 onFiltersChange={(patch) => setPaymentFilters((prev) => ({ ...prev, ...patch }))}
+                onSpend={openSpendDialog}
+                onPrintStatement={() => setIsStatementOpen(true)}
               />
             ) : (
               <Panel>
@@ -512,8 +609,107 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-[9999] flex justify-end">
+  const statementDialog = isStatementOpen ? createPortal(
+    <div className="statement-print-root fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm print:static print:block print:bg-white print:p-0 print:backdrop-blur-none">
+      <style>{`@media print { body > *:not(.statement-print-root) { display: none !important; } .statement-print-root { display: block !important; position: static !important; inset: auto !important; background: #fff !important; padding: 0 !important; backdrop-filter: none !important; } .statement-print-shell { display: block !important; max-height: none !important; max-width: none !important; overflow: visible !important; border: 0 !important; border-radius: 0 !important; background: #fff !important; box-shadow: none !important; } .statement-print-toolbar { display: none !important; } .statement-print-scroll { display: block !important; overflow: visible !important; padding: 0 !important; } .statement-print-page { margin: 0 !important; min-height: 0 !important; max-width: none !important; padding: 0 !important; box-shadow: none !important; } }`}</style>
+      <div className="statement-print-shell flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-slate-100 shadow-2xl print:block print:max-h-none print:max-w-none print:overflow-visible print:rounded-none print:border-0 print:bg-white print:shadow-none">
+        <div className="statement-print-toolbar flex shrink-0 items-center justify-between gap-3 border-b border-border bg-white px-4 py-3 print:hidden">
+          <div>
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-primary">Giao diện in phiếu kê NCC</p>
+            <h3 className="text-[16px] font-extrabold text-foreground">Phiếu kê thanh toán · {vendor.code || vendor.name}</h3>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => window.print()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-extrabold text-white hover:bg-primary/90">
+              <Printer size={16} />
+              In
+            </button>
+            <button type="button" onClick={() => setIsStatementOpen(false)} className="rounded-lg p-2 text-muted-foreground hover:bg-muted">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+        <div className="statement-print-scroll flex-1 overflow-auto p-4 custom-scrollbar print:block print:overflow-visible print:p-0">
+          <div className="statement-print-page mx-auto min-h-[1120px] w-full max-w-[900px] bg-white p-8 text-[12px] text-slate-900 shadow-xl print:m-0 print:min-h-0 print:max-w-none print:p-0 print:shadow-none">
+            <div className="flex items-start justify-between gap-4 border-b-2 border-slate-900 pb-4">
+              <div>
+                <h1 className="text-xl font-extrabold uppercase tracking-wide">Phiếu kê thanh toán nhà cung cấp</h1>
+                <p className="mt-1 text-slate-500">Liệt kê các đơn/chuyến và các khoản chi thanh toán NCC</p>
+              </div>
+              <div className="text-right text-[12px]">
+                <p><b>Ngày in:</b> {new Date().toLocaleString('vi-VN')}</p>
+                <p><b>Mã NCC:</b> {vendor.code || '—'}</p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-1 text-[13px]">
+              <p><b>Nhà cung cấp:</b> {vendor.name || '—'}</p>
+              <p><b>Loại dịch vụ:</b> {formatServiceType(vendor.service_type)} <span className="mx-2">·</span> <b>Tỉnh:</b> {formatProvince(vendor.province)}</p>
+              <p><b>Liên hệ:</b> {vendor.contact_name || '—'} <span className="mx-2">·</span> <b>Điện thoại:</b> {vendor.phone || '—'}</p>
+            </div>
+            <div className="mt-4 grid grid-cols-4 gap-2">
+              <PrintMetric label="Số đơn" value={inventoryItems.length.toLocaleString('vi-VN')} />
+              <PrintMetric label="Tổng cước đơn" value={printMoney(statementData.totalFreight)} />
+              <PrintMetric label="Tổng phát sinh" value={printMoney(statementData.totalIncurred)} />
+              <PrintMetric label="Còn phải trả" value={printMoney(statementData.remaining)} />
+            </div>
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              <PrintMetric label="Đã chi" value={printMoney(statementData.totalPaid)} />
+              <PrintMetric label="Số phiếu chi" value={ledgerEntries.filter((entry) => String(entry.type) === 'PAYMENT').length.toLocaleString('vi-VN')} />
+              <PrintMetric label="Số phát sinh" value={ledgerEntries.filter((entry) => String(entry.type) === 'TRIP').length.toLocaleString('vi-VN')} />
+              <PrintMetric label="Sổ cái" value={ledgerEntries.length.toLocaleString('vi-VN')} />
+            </div>
+
+            <h2 className="mt-6 text-[14px] font-extrabold uppercase text-primary">Danh sách đơn / chuyến</h2>
+            <table className="mt-2 w-full border-collapse text-left text-[11px]">
+              <thead className="bg-slate-100 uppercase text-slate-600"><tr>{['#', 'Số bill', 'Ngày', 'Xe / nhà xe', 'Nơi đến', 'Trạng thái', 'Cước'].map((header) => <th key={header} className="border border-slate-300 px-2 py-2">{header}</th>)}</tr></thead>
+              <tbody>
+                {inventoryItems.length ? inventoryItems.map((item, index) => {
+                  const state = item.current_state || item.status || '';
+                  return <tr key={`${item.id}-${item.split_id ?? '0'}`}>
+                    <td className="border border-slate-300 px-2 py-2">{index + 1}</td>
+                    <td className="border border-slate-300 px-2 py-2 font-bold">{item.waybill_code || item.order_code || item.id}</td>
+                    <td className="border border-slate-300 px-2 py-2">{formatDate(item.received_at || item.created_at)}</td>
+                    <td className="border border-slate-300 px-2 py-2">{[item.license_plate, item.trip_nha_xe].filter(Boolean).join(' · ') || '—'}</td>
+                    <td className="border border-slate-300 px-2 py-2">{resolveNoiDen(item)}</td>
+                    <td className="border border-slate-300 px-2 py-2">{statusLabel[state] || state || '—'}</td>
+                    <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(item.freight_amount ?? item.cost_amount)}</td>
+                  </tr>;
+                }) : <tr><td colSpan={7} className="border border-slate-300 px-2 py-6 text-center text-slate-500">Chưa có đơn/chuyến.</td></tr>}
+              </tbody>
+            </table>
+
+            <h2 className="mt-6 text-[14px] font-extrabold uppercase text-primary">Các khoản thanh toán</h2>
+            <table className="mt-2 w-full border-collapse text-left text-[11px]">
+              <thead className="bg-slate-100 uppercase text-slate-600"><tr>{['#', 'Ngày', 'Loại', 'Chuyến', 'Số tiền', 'Ghi chú', 'Dư nợ'].map((header) => <th key={header} className="border border-slate-300 px-2 py-2">{header}</th>)}</tr></thead>
+              <tbody>
+                {ledgerEntries.length ? ledgerEntries.map((entry, index) => {
+                  const isPayment = String(entry.type) === 'PAYMENT';
+                  return <tr key={String(entry.id)}>
+                    <td className="border border-slate-300 px-2 py-2">{index + 1}</td>
+                    <td className="border border-slate-300 px-2 py-2">{formatDate(entry.date)}</td>
+                    <td className="border border-slate-300 px-2 py-2">{isPayment ? 'Phiếu chi' : 'Phát sinh'}</td>
+                    <td className="border border-slate-300 px-2 py-2">{entry.trip_id ? `#${entry.trip_id}${entry.license_plate ? ` · ${entry.license_plate}` : ''}` : '—'}</td>
+                    <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0)))}</td>
+                    <td className="border border-slate-300 px-2 py-2">{entry.description || '—'}</td>
+                    <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(entry.running_balance)}</td>
+                  </tr>;
+                }) : <tr><td colSpan={7} className="border border-slate-300 px-2 py-6 text-center text-slate-500">Chưa có khoản thanh toán.</td></tr>}
+              </tbody>
+            </table>
+
+            <div className="mt-10 grid grid-cols-2 gap-10 text-center font-bold">
+              <div>Nhà cung cấp<br /><br /><br /><br /><span className="font-normal">Ký, ghi rõ họ tên</span></div>
+              <div>ECO Transport<br /><br /><br /><br /><span className="font-normal">Ký, ghi rõ họ tên</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  ) : null;
+
+  return <>
+    {createPortal(
+    <div className="fixed inset-0 z-[9999] flex justify-end print:hidden">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative flex h-full w-full max-w-3xl flex-col border-l border-border bg-[#f8fafc] shadow-2xl">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4">
@@ -555,6 +751,80 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
           {renderTabContent()}
         </div>
 
+        {isSpendOpen && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl border border-border bg-white p-4 shadow-2xl">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[12px] font-extrabold uppercase tracking-wide text-emerald-600">Lập phiếu chi NCC</p>
+                  <h3 className="text-lg font-extrabold text-foreground">{vendor.name}</h3>
+                  <p className="text-[12px] font-bold text-primary">{vendor.code || `#${vendorId}`}</p>
+                </div>
+                <button type="button" onClick={() => setIsSpendOpen(false)} className="rounded-lg p-2 text-muted-foreground hover:bg-muted">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Ngày chi</span>
+                <input
+                  type="date"
+                  value={spendDate}
+                  onChange={(event) => setSpendDate(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold outline-none focus:ring-2 focus:ring-primary/15"
+                />
+              </label>
+
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Loại chi</span>
+                <select
+                  value={spendType}
+                  onChange={(event) => setSpendType(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold outline-none focus:ring-2 focus:ring-primary/15"
+                >
+                  {vendorExpenseTypes.map((type) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Số tiền chi</span>
+                <input
+                  value={spendAmount}
+                  onChange={(event) => setSpendAmount(formatAmountInput(event.target.value))}
+                  inputMode="numeric"
+                  placeholder="0"
+                  className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[15px] font-extrabold outline-none focus:ring-2 focus:ring-primary/15"
+                />
+              </label>
+
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Ghi chú</span>
+                <textarea
+                  value={spendNote}
+                  onChange={(event) => setSpendNote(event.target.value)}
+                  rows={3}
+                  placeholder="Nội dung phiếu chi..."
+                  className="w-full rounded-xl border border-border bg-white px-3 py-2 text-[13px] font-medium outline-none focus:ring-2 focus:ring-primary/15"
+                />
+              </label>
+
+              {spendError && <p className="mb-3 text-[13px] font-bold text-red-600">{spendError}</p>}
+
+              <button
+                type="button"
+                disabled={spendSubmitting}
+                onClick={() => void submitVendorPayment()}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 text-[13px] font-extrabold text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {spendSubmitting ? <Loader2 className="animate-spin" size={16} /> : <Receipt size={16} />}
+                Lưu phiếu chi
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex shrink-0 justify-end gap-2 border-t border-border bg-white p-4">
           <button type="button" onClick={onClose} className="h-10 rounded-xl border border-border px-4 text-[13px] font-bold text-muted-foreground hover:bg-muted">
             Đóng
@@ -573,5 +843,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
       </div>
     </div>,
     document.body,
-  );
+  )}
+    {statementDialog}
+  </>;
 }
