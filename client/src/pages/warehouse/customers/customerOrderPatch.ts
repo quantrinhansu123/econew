@@ -36,9 +36,15 @@ function mapPhuongThuc(creditType: string | null | undefined): string | undefine
 function mapDichVu(priceTable: string | null | undefined): string | undefined {
   const p = str(priceTable).toLowerCase();
   if (!p) return undefined;
-  if (p.includes('bay') || p.includes('hàng không')) return 'Đường bay';
-  if (p.includes('cpn') || p.includes('nhanh') || p.includes('48h')) return 'Chuyển phát nhanh';
-  if (p.includes('bộ') || p.includes('đường bộ')) return 'Đường bộ';
+  if (p.includes('48h') || p.includes('nhanh') || p.includes('cpn') || p.includes('bay') || p.includes('hàng không')) {
+    return 'Nhanh 48h';
+  }
+  if (p.includes('chậm') || p.includes('cham') || p.includes('4-6') || p.includes('4–6')) {
+    return 'Chậm 4-6 ngày';
+  }
+  if (p.includes('72h') || p.includes('tiêu chuẩn') || p.includes('tieu chuan') || p.includes('bộ') || p.includes('đường bộ')) {
+    return 'Tiêu chuẩn 72h';
+  }
   return undefined;
 }
 
@@ -61,8 +67,18 @@ export function customerPhone(customer: CustomerRecord) {
   return str(customer.phone_hcm) || str(customer.mobile) || str(customer.phone_landline);
 }
 
-export function customerAddress(customer: CustomerRecord) {
+export function customerSenderAddress(customer: CustomerRecord) {
   return str(customer.address_hcm) || str(customer.contact_address) || str(customer.address);
+}
+
+/** Địa chỉ nhận — ưu tiên cột address trên danh sách KH */
+export function customerReceiverAddress(customer: CustomerRecord) {
+  return str(customer.address) || str(customer.contact_address) || str(customer.address_hcm);
+}
+
+/** @deprecated Dùng customerSenderAddress hoặc customerReceiverAddress */
+export function customerAddress(customer: CustomerRecord) {
+  return customerSenderAddress(customer);
 }
 
 function buildGhiChu(customer: CustomerRecord): string {
@@ -88,15 +104,14 @@ export function customerToOrderPatch(customer: CustomerRecord, hubs: HubSummary[
   const hasDngReceiver = Boolean(str(customer.address_dng) || str(customer.phone_dng) || str(customer.receiver_dng));
 
   const phone = customerPhone(customer);
-  const address = customerAddress(customer);
 
   const patch: Partial<NewOrderFormState> = {
     maKh: customer.code,
     nguoiGui: customer.name,
     dienThoaiKh: phone,
-    diaChiGui: address,
+    diaChiGui: customerSenderAddress(customer),
     dienThoaiNhan: phone,
-    diaChiNhan: address,
+    diaChiNhan: customerReceiverAddress(customer),
     huyen: str(customer.destination_province) || str(customer.region),
     nvgn: str(customer.delivery_handler) || undefined,
     buuTaLay: str(customer.manager_name) || undefined,

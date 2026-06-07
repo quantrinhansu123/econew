@@ -72,6 +72,37 @@ const countRisk = (hub: Hub) => (hub.active_waybills_count ?? hub.usage_summary?
   + (hub.active_users_count ?? hub.usage_summary?.active_users ?? hub.usage_summary?.users ?? 0);
 const closeWithAnimation = (setClosing: (value: boolean) => void, setOpen: (value: boolean) => void) => { setClosing(true); window.setTimeout(() => { setOpen(false); setClosing(false); }, 300); };
 
+const buildHubMutationPayload = (formState: HubFormState): HubMutationPayload => {
+  const payload: HubMutationPayload = {
+    code: formState.code.trim().toUpperCase(),
+    name: formState.name.trim(),
+    type: formState.type,
+    address: formState.address.trim(),
+    province: formState.province.trim(),
+    district: formState.district.trim(),
+  };
+
+  const ward = formState.ward.trim();
+  const coordinates = formState.coordinates.trim();
+  const phone = formState.phone.trim();
+  const managerName = formState.manager_name.trim();
+  const managerPhone = formState.manager_phone.trim();
+
+  if (ward) payload.ward = ward;
+  if (coordinates) payload.coordinates = coordinates;
+  if (phone) payload.phone = phone;
+  if (managerName) payload.manager_name = managerName;
+  if (managerPhone) payload.manager_phone = managerPhone;
+
+  const coordMatch = coordinates.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (coordMatch) {
+    payload.latitude = Number(coordMatch[1]);
+    payload.longitude = Number(coordMatch[2]);
+  }
+
+  return payload;
+};
+
 export default function AdminHubsPage() {
   const [filters, setFilters] = useState<HubFilters>({ keyword: '', status: '', province: '', district: '', type: '', page: 1, limit: 10 });
   const [hubs, setHubs] = useState<Hub[]>([]);
@@ -156,9 +187,11 @@ export default function AdminHubsPage() {
 
   async function submitForm() {
     if (!formState.code.trim() || !formState.name.trim()) { setActionError('Vui lòng nhập mã hub và tên bưu cục/kho.'); return; }
+    if (!formState.address.trim()) { setActionError('Vui lòng nhập địa chỉ.'); return; }
+    if (!formState.province.trim()) { setActionError('Vui lòng nhập tỉnh/thành.'); return; }
+    if (!formState.district.trim()) { setActionError('Vui lòng nhập quận/huyện.'); return; }
     setIsSubmitting(true); setActionError('');
-    const { status: _status, ...formPayload } = formState;
-    const payload: HubMutationPayload = { ...formPayload, code: formState.code.trim().toUpperCase(), name: formState.name.trim() };
+    const payload = buildHubMutationPayload(formState);
     try {
       if (isEditMode && selectedHub) await apiRequest<Hub>(`/hubs/${selectedHub.id}`, { method: 'PATCH', body: payload });
       else await apiRequest<Hub>('/hubs', { method: 'POST', body: payload });

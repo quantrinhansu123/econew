@@ -17,6 +17,7 @@ import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/Confirm
 import type { AuthUserProfile } from './login/types';
 import AddEditTruckDialog from './trucks/dialogs/AddEditTruckDialog';
 import TruckDetailDialog from './trucks/dialogs/TruckDetailDialog';
+import TruckAssignedOrdersDialog from './trucks/dialogs/TruckAssignedOrdersDialog';
 import TrucksKanbanBoard from './trucks/TrucksKanbanBoard';
 import {
   buildKhuVucSuggestions,
@@ -93,6 +94,8 @@ export default function TrucksPage() {
   const [actionError, setActionError] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [detailTruck, setDetailTruck] = useState<Truck | null>(null);
+  const [ordersTruck, setOrdersTruck] = useState<Truck | null>(null);
+  const [isOrdersClosing, setIsOrdersClosing] = useState(false);
   const [selectedTruck, setSelectedTruck] = useState<Truck | null>(null);
   const [formState, setFormState] = useState<TruckFormState>(emptyForm);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -108,6 +111,7 @@ export default function TrucksPage() {
   const canView = hasAnyRole(roleMask, [DISPATCHER, MANAGER, DIRECTOR]);
   const canManage = hasAnyRole(roleMask, [MANAGER, DIRECTOR]);
   const canDelete = hasAnyRole(roleMask, [DIRECTOR]);
+  const canViewCost = hasAnyRole(roleMask, [MANAGER, DIRECTOR]);
 
   const driverOptions = useMemo<FilterOption[]>(
     () => [
@@ -233,6 +237,21 @@ export default function TrucksPage() {
     setTimeout(() => {
       setDetailTruck(null);
       setIsDetailClosing(false);
+    }, 260);
+  }
+
+  function openOrders(truck: Truck) {
+    setDetailTruck(null);
+    setIsDetailClosing(false);
+    setIsOrdersClosing(false);
+    setOrdersTruck(truck);
+  }
+
+  function closeOrders() {
+    setIsOrdersClosing(true);
+    setTimeout(() => {
+      setOrdersTruck(null);
+      setIsOrdersClosing(false);
     }, 260);
   }
 
@@ -449,6 +468,7 @@ export default function TrucksPage() {
               formatStatus={formatStatus}
               getDriverName={getDriverName}
               onOpenDetail={setDetailTruck}
+              onViewOrders={openOrders}
               onEdit={openEdit}
               onStatus={confirmStatus}
               onDelete={confirmDelete}
@@ -521,6 +541,17 @@ export default function TrucksPage() {
         onClose={closeDetail}
         formatStatus={formatStatus}
         getDriverName={getDriverName}
+        onViewOrders={(truck) => {
+          closeDetail();
+          openOrders(truck);
+        }}
+      />
+      <TruckAssignedOrdersDialog
+        isOpen={Boolean(ordersTruck)}
+        isClosing={isOrdersClosing}
+        truck={ordersTruck}
+        canViewCost={canViewCost}
+        onClose={closeOrders}
       />
       <ConfirmDialog dialog={confirmDialog} onClose={() => setConfirmDialog(null)} />
     </div>

@@ -12,6 +12,7 @@ export class WaybillSplitLineDto {
   @ApiPropertyOptional() @IsOptional() @IsString() carrier_label?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() note?: string;
   @ApiPropertyOptional({ enum: WaybillSplitLoadStatus }) @IsOptional() @IsEnum(WaybillSplitLoadStatus) load_status?: WaybillSplitLoadStatus;
+  @ApiPropertyOptional() @IsOptional() expected_arrival_at?: Date | string;
 }
 
 export class SaveWaybillSplitsDto {

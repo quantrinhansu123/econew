@@ -5,6 +5,7 @@ export default function WarehousePriorityPage() {
     <LoadPlanningBoardPanel
       bannerTitle="Phân loại ưu tiên · phân xe"
       bannerDescription="Theo dõi hàng đã phân lên từng xe, cập nhật trạng thái bốc hàng (Chờ bốc → Đã bốc → Đã di chuyển → Đã tới)."
+      groupByArrivalDate
     />
   );
 }

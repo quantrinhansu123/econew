@@ -9,7 +9,7 @@ export enum WaybillSplitLoadStatus {
 export const WAYBILL_SPLIT_LOAD_STATUS_LABELS: Record<WaybillSplitLoadStatus, string> = {
   [WaybillSplitLoadStatus.WAITING_LOAD]: 'Chờ bốc',
   [WaybillSplitLoadStatus.LOADED]: 'Đã bốc',
-  [WaybillSplitLoadStatus.DEPARTED]: 'Đã di chuyển',
+  [WaybillSplitLoadStatus.DEPARTED]: 'Đã khởi hành',
   [WaybillSplitLoadStatus.IN_TRANSIT]: 'Đang vận chuyển',
   [WaybillSplitLoadStatus.ARRIVED]: 'Đã tới',
 };

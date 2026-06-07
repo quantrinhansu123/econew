@@ -1,4 +1,4 @@
-export type OrderWorkbenchTab = 'trang-thai' | 'goc' | 'den' | 'tn' | 'bc-gui' | 'hni';
+export type OrderWorkbenchTab = 'khach-hang' | 'hang-hoa' | 'thanh-toan';
 
 export interface BillListItem {
   id: string;

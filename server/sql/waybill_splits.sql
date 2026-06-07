@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS waybill_splits (
   carrier_label VARCHAR(255),
   note VARCHAR(500),
   load_status VARCHAR(32) NOT NULL DEFAULT 'WAITING_LOAD',
+  expected_arrival_at TIMESTAMP,
   created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP

@@ -92,6 +92,7 @@ export interface LoadPlanningBoardItem {
   loading_position?: number | null;
   vi_tri_hang?: number | null;
   ngay_boc?: string | null;
+  ngay_toi?: string | null;
   ma_tinh?: string | null;
   ten_cty?: string | null;
   dv?: string | null;

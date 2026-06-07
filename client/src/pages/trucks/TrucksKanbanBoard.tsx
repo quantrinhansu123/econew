@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Building2, Edit, GripVertical, MapPin, Plus, Power, Tag, Trash2, Truck as TruckIcon, User } from 'lucide-react';
+import { Building2, Edit, Eye, GripVertical, MapPin, Plus, Power, Tag, Trash2, Truck as TruckIcon, User } from 'lucide-react';
 import { clsx } from 'clsx';
 import { getKanbanColumnAccent } from './data';
 import type { Truck, TruckKanbanColumn } from './types';
@@ -22,6 +22,7 @@ interface Props {
   formatStatus: (status?: string | null) => string;
   getDriverName: (truck: Truck) => string;
   onOpenDetail: (truck: Truck) => void;
+  onViewOrders: (truck: Truck) => void;
   onEdit: (truck: Truck) => void;
   onStatus: (truck: Truck, status: string) => void;
   onDelete: (truck: Truck) => void;
@@ -36,6 +37,7 @@ export default function TrucksKanbanBoard({
   formatStatus,
   getDriverName,
   onOpenDetail,
+  onViewOrders,
   onEdit,
   onStatus,
   onDelete,
@@ -162,6 +164,15 @@ export default function TrucksKanbanBoard({
                         </div>
 
                         <div className="flex items-center gap-1 pt-1" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            title="Xem đơn phụ trách"
+                            aria-label="Xem đơn phụ trách"
+                            onClick={() => onViewOrders(truck)}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100"
+                          >
+                            <Eye size={13} />
+                          </button>
                           <button
                             type="button"
                             disabled={!canManage}

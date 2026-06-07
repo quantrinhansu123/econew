@@ -4,10 +4,26 @@ import type { BillListItem, NewOrderFormState } from './orderFormTypes';
 
 const parseNumber = (value: string) => Number(String(value).replace(/[^\d.-]/g, ''));
 
+/** Tiền VN: chỉ lấy chữ số, bỏ dấu chấm ngàn */
+export function parseMoneyAmount(value: string): number {
+  const digits = String(value).replace(/\D/g, '');
+  if (!digits) return 0;
+  const num = Number(digits);
+  return Number.isFinite(num) ? num : 0;
+}
+
 export function formatDisplayNumber(value: unknown, digits = 0) {
   const num = Number(value);
   if (!Number.isFinite(num)) return '';
   return num.toLocaleString('vi-VN', { maximumFractionDigits: digits });
+}
+
+export function formatDonGia(value: string): string {
+  const digits = String(value).replace(/\D/g, '');
+  if (!digits) return '';
+  const num = Number(digits);
+  if (!Number.isFinite(num)) return '';
+  return formatDisplayNumber(num, 0);
 }
 
 export function calcVolumetricWeight(length: string, width: string, height: string): string {
@@ -26,11 +42,11 @@ export function calcM3(length: string, width: string, height: string): string {
   return formatDisplayNumber((l * w * h) / 1_000_000, 3);
 }
 
-/** Số lượng tính cước theo ĐVT: Kg | M3 | Kiện */
+/** Số lượng tính cước theo ĐVT: Kg | m3 | Trọn gói | Chuyến | Lô */
 export function getBillingQuantity(form: NewOrderFormState): number {
   const unit = (form.donGiaDonVi || 'Kg').trim().toLowerCase();
   if (unit === 'm3' || unit === 'm³') return parseNumber(form.m3);
-  if (unit === 'kiện' || unit === 'kien') return Math.max(1, parseNumber(form.soKien));
+  if (unit === 'trọn gói' || unit === 'tron goi' || unit === 'chuyến' || unit === 'chuyen' || unit === 'lô' || unit === 'lo') return 1;
   const kg = parseNumber(form.klKg);
   const volKg = parseNumber(form.klQuyDoi);
   return Math.max(kg, volKg, kg || volKg || 0);
@@ -45,38 +61,21 @@ export function calcCuocChinhAmount(form: NewOrderFormState): number {
 }
 
 export function calcOrderPricing(form: NewOrderFormState) {
-  const cuocChinh = calcCuocChinhAmount(form);
-  const phuPhi = parseNumber(form.dvdb);
-  const giamGia = parseNumber(form.giamGia);
-  const tongCuoc = cuocChinh + phuPhi;
-  const thueRate = parseNumber(String(form.thueSuat).replace('%', ''));
-  const vatAmount = form.coVat ? Math.round((tongCuoc * thueRate) / 100) : parseNumber(form.vat);
-  const thanhToan = Math.max(0, tongCuoc - giamGia + vatAmount);
+  const donGia = parseMoneyAmount(form.donGia);
+  const cod = parseMoneyAmount(form.cod);
+  const giamGia = parseMoneyAmount(form.giamGia);
+  const tongCuoc = donGia + cod;
+  const thanhToan = Math.max(0, tongCuoc - giamGia);
 
   return {
-    cuocChinh: formatDisplayNumber(cuocChinh, 0),
+    cuocChinh: formatDisplayNumber(donGia, 0),
     tongCuoc: formatDisplayNumber(tongCuoc, 0),
-    vat: formatDisplayNumber(vatAmount, 0),
+    vat: '0',
     thanhToan: formatDisplayNumber(thanhToan, 0),
   };
 }
 
-const PRICING_FIELDS: (keyof NewOrderFormState)[] = [
-  'donGia',
-  'donGiaDonVi',
-  'klKg',
-  'klQuyDoi',
-  'm3',
-  'soKien',
-  'dvdb',
-  'giamGia',
-  'thueSuat',
-  'vat',
-  'coVat',
-  'chieuDai',
-  'chieuRong',
-  'chieuCao',
-];
+const PRICING_FIELDS: (keyof NewOrderFormState)[] = ['donGia', 'cod', 'giamGia'];
 
 export function isPricingField(key: keyof NewOrderFormState) {
   return PRICING_FIELDS.includes(key);
@@ -84,7 +83,13 @@ export function isPricingField(key: keyof NewOrderFormState) {
 
 export function applyPricingToForm(form: NewOrderFormState): NewOrderFormState {
   const pricing = calcOrderPricing(form);
-  return { ...form, ...pricing };
+  return {
+    ...form,
+    ...pricing,
+    donGia: formatDonGia(form.donGia),
+    cod: formatDonGia(form.cod),
+    giamGia: formatDonGia(form.giamGia),
+  };
 }
 
 export function hubCodeFromId(hubs: HubSummary[], hubId: string) {
@@ -146,15 +151,19 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     soKien: String(waybill.package_count ?? 1),
     klQuyDoi: String(waybill.volumetric_weight ?? waybill.weight ?? ''),
     m3: String((waybill as { the_tich_m3?: number }).the_tich_m3 ?? ''),
-    donGia: String((waybill as { don_gia?: number }).don_gia ?? ''),
+    donGia: formatDonGia(
+      String(
+        (waybill as { don_gia?: number }).don_gia ??
+          waybill.freight_amount ??
+          waybill.cost_amount ??
+          '',
+      ),
+    ),
     donGiaDonVi: String((waybill as { don_gia_don_vi?: string }).don_gia_don_vi ?? 'Kg'),
     dvdb: formatDisplayNumber((waybill as { dvdb?: number }).dvdb, 0) || '0',
-    cuocChinh: formatDisplayNumber(waybill.cost_amount ?? waybill.freight_amount, 0),
-    tongCuoc: formatDisplayNumber(waybill.cost_amount ?? waybill.freight_amount, 0),
-    thanhToan: formatDisplayNumber(waybill.cost_amount ?? waybill.freight_amount, 0),
-    cod: formatDisplayNumber(waybill.cod_amount, 0),
-    phuongThuc:
-      waybill.payment_type === 'COD' ? 'COD' : waybill.payment_type === 'CC' ? 'Tiền mặt' : 'Công nợ tháng',
+    cod: formatDonGia(String(waybill.cod_amount ?? '0')),
+    giamGia: '0',
+    phuongThuc: phuongThucFromWaybill(waybill),
     ghiChu: waybill.note || waybill.notes || '',
     xeLay: String((waybill as { xe_lay?: string }).xe_lay ?? ''),
     xePhat: String((waybill as { xe_phat?: string }).xe_phat ?? ''),
@@ -181,10 +190,40 @@ export function paymentTypeFromForm(form: NewOrderFormState): PaymentType {
   return 'PP';
 }
 
+/** Nhãn in phiếu — Hình thức thanh toán */
+export function phuongThucToPrintLabel(phuongThuc?: string, paymentType?: string | null): string {
+  const method = (phuongThuc || '').trim();
+  if (method === 'Công nợ tháng') return 'NN THANH TOÁN';
+  if (method === 'Tiền mặt') return 'TIỀN MẶT';
+  if (method === 'COD') return 'COD';
+  if (method === 'Chuyển khoản') return 'CHUYỂN KHOẢN';
+  if (method) return method.toUpperCase();
+
+  const t = String(paymentType || '').toUpperCase();
+  if (t === 'COD') return 'COD';
+  if (t === 'CC') return 'TIỀN MẶT';
+  if (t === 'PP') return 'NN THANH TOÁN';
+  return '';
+}
+
+function parseNoteField(note: string, key: string) {
+  const match = note.match(new RegExp(`${key}=([^|]+)`));
+  return match?.[1]?.trim() || '';
+}
+
+function phuongThucFromWaybill(waybill: WaybillDetail): string {
+  const note = waybill.note || waybill.notes || '';
+  const fromNote = parseNoteField(note, 'phuong_thuc');
+  if (fromNote) return fromNote;
+  if (waybill.payment_type === 'COD') return 'COD';
+  if (waybill.payment_type === 'CC') return 'Tiền mặt';
+  return 'Công nợ tháng';
+}
+
 export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: number) {
   const paymentType = paymentTypeFromForm(form);
-  const freight = parseNumber(form.cuocChinh) || parseNumber(form.tongCuoc) || parseNumber(form.thanhToan);
-  const cod = parseNumber(form.cod);
+  const freight = parseMoneyAmount(form.donGia);
+  const cod = parseMoneyAmount(form.cod);
 
   return {
     waybill_code: form.soBill.trim().toUpperCase(),
@@ -200,6 +239,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     package_count: Math.max(1, parseInt(form.soKien, 10) || 1),
     freight_amount: paymentType === 'COD' ? 0 : freight,
     cod_amount: paymentType === 'COD' ? cod || freight : undefined,
+    cc_amount: paymentType === 'CC' ? freight : undefined,
     xe_lay: form.xeLay.trim() || undefined,
     xe_phat: form.xePhat.trim() || undefined,
     note: [
@@ -207,6 +247,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
       form.noiDung && `content=${form.noiDung}`,
       form.loaiBp && `loai_bp=${form.loaiBp}`,
       form.dichVu && `dich_vu=${form.dichVu}`,
+      form.phuongThuc && `phuong_thuc=${form.phuongThuc}`,
       `dimensions_cm=${form.chieuDai}x${form.chieuRong}x${form.chieuCao}`,
       `volumetric_weight=${volumetricWeight}`,
       form.ghiChu,

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, Repository } from 'typeorm';
+import { Brackets, In, IsNull, Repository } from 'typeorm';
 import { clampPaginationLimit } from '../common/pagination';
 import { Roles } from '../common/roles';
 import { TripEntity } from '../trips/trip.entity';
@@ -22,7 +22,7 @@ const mutableFields: Array<keyof UpsertVendorDto> = ['code', 'name', 'service_ty
 
 type LedgerRow = {
   id: string;
-  type: 'TRIP' | 'PAYMENT';
+  type: 'TRIP' | 'PAYMENT' | 'DEBT';
   date: Date;
   amount: number;
   signed_amount: number;
@@ -354,7 +354,12 @@ export class VendorsService {
 
     for (const vendorId of vendorIds) {
       const trips = await this.queryVendorTrips(vendorId);
-      const totalIncurred = trips.reduce((sum, t) => sum + this.tripCost(t), 0);
+      const tripIncurred = trips.reduce((sum, t) => sum + this.tripCost(t), 0);
+      const stackDebts = await this.debtEntriesRepository.find({
+        where: { vendor_id: vendorId, trip_id: IsNull() },
+      });
+      const stackIncurred = stackDebts.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0);
+      const totalIncurred = tripIncurred + stackIncurred;
       const payments = await this.paymentsRepository.find({ where: { vendor_id: vendorId } });
       const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
       map.set(vendorId, {
@@ -405,7 +410,24 @@ export class VendorsService {
       });
     }
 
-    events.sort((a, b) => a.date.getTime() - b.date.getTime() || (a.type === 'TRIP' ? 0 : 1) - (b.type === 'TRIP' ? 0 : 1));
+    const stackDebts = await this.debtEntriesRepository.find({
+      where: { vendor_id: vendorId, trip_id: IsNull() },
+      order: { created_at: 'ASC' },
+    });
+    for (const entry of stackDebts) {
+      const amount = Number(entry.amount ?? 0);
+      if (amount <= 0) continue;
+      events.push({
+        id: `debt-${entry.id}`,
+        type: 'DEBT',
+        date: entry.created_at,
+        amount,
+        signed_amount: amount,
+        description: entry.description,
+      });
+    }
+
+    events.sort((a, b) => a.date.getTime() - b.date.getTime() || (a.type === 'PAYMENT' ? 1 : 0) - (b.type === 'PAYMENT' ? 1 : 0));
 
     const fromMs = from?.getTime() ?? -Infinity;
     const toMs = to?.getTime() ?? Infinity;

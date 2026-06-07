@@ -116,6 +116,7 @@
   overflow-wrap: anywhere;
 }
 
+.inventory-stock-table .col-stack_position { width: 6%; min-width: 52px; }
 .inventory-stock-table .col-location { width: 5.2%; }
 .inventory-stock-table .col-date { width: 4.6%; }
 .inventory-stock-table .col-province { width: 5.6%; }

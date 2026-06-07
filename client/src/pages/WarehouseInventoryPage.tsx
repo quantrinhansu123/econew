@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CreditCard, Eye, Filter, Flag, HandCoins, Layers, Loader2, Package, Pencil, Printer, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CreditCard, Eye, Filter, Flag, HandCoins, Layers, Loader2, MoreHorizontal, Package, Pencil, Printer, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Trash2, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
@@ -14,10 +14,12 @@ import WaybillPriorityControl from './warehouse/inventory/WaybillPriorityControl
 import WaybillRouteControl from './warehouse/inventory/WaybillRouteControl';
 import SplitOrderDialog from './warehouse/inventory/dialogs/SplitOrderDialog';
 import WaybillCashVoucherDialog from './warehouse/inventory/dialogs/WaybillCashVoucherDialog';
+import StackOntoTruckDialog from './warehouse/inventory/dialogs/StackOntoTruckDialog';
 import { mapWaybillsToPrintRows, saveInventoryPrintPayload, summarizeFilters } from './print/inventoryPrintUtils';
 import InventoryColumnPicker from './warehouse/inventory/InventoryColumnPicker';
 import {
   INVENTORY_COLUMNS,
+  canCollectCashPayment,
   computeGrandTotals,
   getStorageAgeRowClass,
   loadVisibleColumnIds,
@@ -41,6 +43,9 @@ const DIRECTOR = 64;
 const DISPATCHER = 8;
 const MUTABLE_WAYBILL_STATUSES = ['RECEIVED', 'IN_WAREHOUSE'];
 const defaultFilters: InventoryFilters = { keyword: '', ma_kh: '', statuses: [], hubIds: [], paymentTypes: [], priorities: [], receivedFrom: '', receivedTo: '', page: 1, limit: 10 };
+const allOrdersDefaultFilters: InventoryFilters = { ...defaultFilters, limit: 50 };
+
+export type InventoryPageVariant = 'split-pending' | 'all-orders';
 
 const statusConfig: Record<string, BadgeConfig> = {
   RECEIVED: { label: 'Đã tạo đơn', className: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -93,27 +98,41 @@ const isIncompleteSplitRow = (item: WaybillInventoryItem) => {
   return Number(item.trip_package_count ?? item.package_count ?? 0) < totalPackages;
 };
 
-const buildQuery = (filters: InventoryFilters) => {
-  const params = new URLSearchParams({ page: String(filters.page), limit: String(filters.limit), only_incomplete_split: '1' });
-  if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
-  if (filters.ma_kh.trim()) params.set('ma_kh', filters.ma_kh.trim());
-  if (filters.statuses.length) params.set('status', filters.statuses.join(','));
-  if (filters.hubIds.length) params.set('hub_id', filters.hubIds.join(','));
-  if (filters.paymentTypes.length) params.set('payment_type', filters.paymentTypes.join(','));
-  if (filters.priorities.length) params.set('priority', filters.priorities.join(','));
-  if (filters.receivedFrom) params.set('received_from', filters.receivedFrom);
-  if (filters.receivedTo) params.set('received_to', filters.receivedTo);
+const buildQuery = (filters: InventoryFilters, variant: InventoryPageVariant) => {
+  const params = new URLSearchParams({ page: String(filters.page), limit: String(filters.limit) });
+  if (variant === 'split-pending') {
+    params.set('only_incomplete_split', '1');
+    if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
+    if (filters.ma_kh.trim()) params.set('ma_kh', filters.ma_kh.trim());
+    if (filters.statuses.length) params.set('status', filters.statuses.join(','));
+    if (filters.hubIds.length) params.set('hub_id', filters.hubIds.join(','));
+    if (filters.paymentTypes.length) params.set('payment_type', filters.paymentTypes.join(','));
+    if (filters.priorities.length) params.set('priority', filters.priorities.join(','));
+    if (filters.receivedFrom) params.set('received_from', filters.receivedFrom);
+    if (filters.receivedTo) params.set('received_to', filters.receivedTo);
+  }
   return params.toString();
 };
 
-export default function WarehouseInventoryPage() {
+const sortAllOrders = (items: WaybillInventoryItem[]) =>
+  [...items].sort((a, b) => {
+    const dateA = new Date(a.received_at || a.created_at || 0).getTime();
+    const dateB = new Date(b.received_at || b.created_at || 0).getTime();
+    if (dateB !== dateA) return dateB - dateA;
+    const orderCmp = String(a.order_code || '').localeCompare(String(b.order_code || ''), 'vi');
+    if (orderCmp !== 0) return orderCmp;
+    return displayCode(a).localeCompare(displayCode(b), 'vi');
+  });
+
+export default function WarehouseInventoryPage({ variant = 'split-pending' }: { variant?: InventoryPageVariant }) {
+  const isAllOrders = variant === 'all-orders';
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<InventoryFilters>(() => ({
-    ...defaultFilters,
-    ma_kh: searchParams.get('ma_kh')?.trim() || '',
+    ...(isAllOrders ? allOrdersDefaultFilters : defaultFilters),
+    ma_kh: isAllOrders ? '' : searchParams.get('ma_kh')?.trim() || '',
   }));
-  const [draftFilters, setDraftFilters] = useState<InventoryFilters>(defaultFilters);
+  const [draftFilters, setDraftFilters] = useState<InventoryFilters>(isAllOrders ? allOrdersDefaultFilters : defaultFilters);
   const [waybills, setWaybills] = useState<WaybillInventoryItem[]>([]);
   const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -138,14 +157,18 @@ export default function WarehouseInventoryPage() {
   const [cashVoucherWaybill, setCashVoucherWaybill] = useState<WaybillInventoryItem | null>(null);
   const [isCashVoucherOpen, setIsCashVoucherOpen] = useState(false);
   const [isCashVoucherClosing, setIsCashVoucherClosing] = useState(false);
+  const [selectedWaybillIds, setSelectedWaybillIds] = useState<string[]>([]);
+  const [isStackOpen, setIsStackOpen] = useState(false);
+  const [isStackClosing, setIsStackClosing] = useState(false);
 
   const user = useMemo(getStoredUser, []);
-  const canViewPage = hasManagerAccess(user?.role_mask ?? 0);
+  const canViewPricing = hasManagerAccess(user?.role_mask ?? 0);
+  const canViewPage = isAllOrders ? canEditWaybill(user?.role_mask ?? 0) : canViewPricing;
   const canUpdate = canMutateInventory(user?.role_mask ?? 0);
   const canEdit = canEditWaybill(user?.role_mask ?? 0);
   const canDelete = hasManagerAccess(user?.role_mask ?? 0);
   const [visibleColumnIds, setVisibleColumnIds] = useState<InventoryColumnId[]>(() =>
-    loadVisibleColumnIds(canViewPage),
+    loadVisibleColumnIds(canViewPricing),
   );
   const totalPages = Math.max(1, Math.ceil(total / filters.limit));
   const hubOptions = useMemo(() => hubs.map(hub => ({ value: String(hub.id), label: formatHub(hub) })), [hubs]);
@@ -155,9 +178,33 @@ export default function WarehouseInventoryPage() {
     [visibleColumnIds],
   );
   const grandTotals = useMemo(
-    () => computeGrandTotals(waybills, canViewPage),
-    [waybills, canViewPage],
+    () => computeGrandTotals(waybills, canViewPricing),
+    [waybills, canViewPricing],
   );
+  const selectedWaybills = useMemo(
+    () => waybills.filter((waybill) => selectedWaybillIds.includes(String(waybill.id))),
+    [waybills, selectedWaybillIds],
+  );
+  const allRowsSelected = waybills.length > 0 && waybills.every((waybill) => selectedWaybillIds.includes(String(waybill.id)));
+  const toggleSelectAll = () => {
+    setSelectedWaybillIds(allRowsSelected ? [] : waybills.map((waybill) => String(waybill.id)));
+  };
+  const toggleSelectRow = (waybillId: string | number) => {
+    const id = String(waybillId);
+    setSelectedWaybillIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
+  const openStackDialog = () => {
+    if (!selectedWaybills.length) return;
+    setIsStackClosing(false);
+    setIsStackOpen(true);
+  };
+  const closeStackDialog = () => {
+    setIsStackClosing(true);
+    window.setTimeout(() => {
+      setIsStackOpen(false);
+      setIsStackClosing(false);
+    }, 180);
+  };
   const clearFilters = () => {
     setFilters(defaultFilters);
     setSearchParams((prev) => {
@@ -178,10 +225,15 @@ export default function WarehouseInventoryPage() {
 
   useEffect(() => { if (canViewPage) void loadHubs(); }, [canViewPage]);
   useEffect(() => {
+    if (isAllOrders) return;
     const maKh = searchParams.get('ma_kh')?.trim() || '';
     setFilters((prev) => (prev.ma_kh === maKh ? prev : { ...prev, ma_kh: maKh, page: 1 }));
-  }, [searchParams]);
+  }, [searchParams, isAllOrders]);
   useEffect(() => { if (canViewPage) void loadInventory(); }, [filters, canViewPage]);
+  useEffect(() => {
+    const visibleIds = new Set(waybills.map((waybill) => String(waybill.id)));
+    setSelectedWaybillIds((prev) => prev.filter((id) => visibleIds.has(id)));
+  }, [waybills]);
 
   async function loadHubs() {
     try {
@@ -196,8 +248,9 @@ export default function WarehouseInventoryPage() {
     setIsLoading(true);
     setError('');
     try {
-      const response = await apiRequest<InventoryListResponse | WaybillInventoryItem[]>(`/waybills/inventory/trip-lines?${buildQuery(filters)}`);
-      const items = normalizeList(response).filter(isIncompleteSplitRow);
+      const response = await apiRequest<InventoryListResponse | WaybillInventoryItem[]>(`/waybills/inventory/trip-lines?${buildQuery(filters, variant)}`);
+      const rawItems = normalizeList(response);
+      const items = isAllOrders ? sortAllOrders(rawItems) : rawItems.filter(isIncompleteSplitRow);
       setWaybills(items);
       setTotal(Array.isArray(response) ? items.length : response.meta?.total_waybills ?? response.meta?.total ?? items.length);
     } catch (err) {
@@ -298,14 +351,20 @@ export default function WarehouseInventoryPage() {
   }
 
   if (!canViewPage) {
-    return <StateCard icon={<ShieldAlert size={24} />} title="Không có quyền truy cập" description="Trang danh sách đơn tồn kho chỉ hiển thị cho MANAGER hoặc DIRECTOR." />;
+    return (
+      <StateCard
+        icon={<ShieldAlert size={24} />}
+        title="Không có quyền truy cập"
+        description={isAllOrders ? 'Trang danh sách đơn yêu cầu quyền WAREHOUSE trở lên.' : 'Trang danh sách đơn tồn kho chỉ hiển thị cho MANAGER hoặc DIRECTOR.'}
+      />
+    );
   }
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-2">
       {actionError && <Alert message={actionError} tone="red" />}
       {error && <Alert message={error} tone="red" />}
-      {filters.ma_kh.trim() && (
+      {!isAllOrders && filters.ma_kh.trim() && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 px-4 py-2.5 text-[13px]">
           <span className="font-medium text-muted-foreground">Lọc theo Mã KH:</span>
           <span className="font-extrabold text-primary">{filters.ma_kh.trim().toUpperCase()}</span>
@@ -319,20 +378,48 @@ export default function WarehouseInventoryPage() {
         </div>
       )}
 
-      <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-[13px] text-amber-900">
-        <span className="font-bold">Chỉ hiển thị đơn chưa chia hết</span>
-        {' — '}
-        Các dòng đã phân đủ kiện lên xe sẽ không xuất hiện trong danh sách này.
-      </div>
+      {isAllOrders ? (
+        <div className="rounded-xl border border-border bg-card px-4 py-2.5 text-[13px] text-muted-foreground">
+          <span className="font-extrabold text-foreground">Danh sách đơn</span>
+          {' — '}
+          Hiển thị toàn bộ vận đơn theo ngày và mã bill, không áp dụng bộ lọc.
+        </div>
+      ) : (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-[13px] text-amber-900">
+          <span className="font-bold">Chỉ hiển thị đơn chưa chia hết</span>
+          {' — '}
+          Các dòng đã phân đủ kiện lên xe sẽ không xuất hiện trong danh sách này.
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
         <div className="p-3 border-b border-border bg-card shrink-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => window.history.back()} className="h-10 w-10 shrink-0 rounded-lg border border-border bg-muted/10 text-[13px] font-medium text-muted-foreground hover:bg-muted flex items-center justify-center gap-2 md:w-auto md:px-3"><ArrowLeft size={15} /><span className="hidden md:inline">Quay lại</span></button>
-            <div className="relative min-w-0 flex-1 md:max-w-[460px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={filters.keyword} onChange={event => updateFilters({ keyword: event.target.value })} placeholder="Tìm kiếm..." className="w-full h-10 rounded-lg border border-border bg-muted/10 pl-9 pr-3 text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-primary/10" /></div>
-            <button title="Mở bộ lọc" onClick={openFilterSheet} className="relative h-10 w-10 rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 flex items-center justify-center md:hidden"><Filter size={16} />{activeFilterCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white">{activeFilterCount}</span>}</button>
-            {activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
+            {!isAllOrders && (
+              <>
+                <div className="relative min-w-0 flex-1 md:max-w-[460px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={filters.keyword} onChange={event => updateFilters({ keyword: event.target.value })} placeholder="Tìm kiếm..." className="w-full h-10 rounded-lg border border-border bg-muted/10 pl-9 pr-3 text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-primary/10" /></div>
+                <button title="Mở bộ lọc" onClick={openFilterSheet} className="relative h-10 w-10 rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 flex items-center justify-center md:hidden"><Filter size={16} />{activeFilterCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white">{activeFilterCount}</span>}</button>
+                {activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
+              </>
+            )}
+            {isAllOrders && <div className="min-w-0 flex-1 text-[15px] font-extrabold text-foreground">Danh sách đơn</div>}
             <div className="hidden flex-1 md:block" />
+            {!isAllOrders && canUpdate && (
+              <button
+                type="button"
+                title="Xếp hàng lên xe"
+                disabled={selectedWaybills.length === 0}
+                onClick={openStackDialog}
+                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 text-[13px] font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+              >
+                <Truck size={16} />
+                <span className="hidden sm:inline">Xếp hàng lên xe</span>
+                {selectedWaybills.length > 0 && (
+                  <span className="rounded-full bg-amber-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">{selectedWaybills.length}</span>
+                )}
+              </button>
+            )}
             <button
               type="button"
               title="Bảng kê phát hàng — xe & vị trí"
@@ -362,26 +449,39 @@ export default function WarehouseInventoryPage() {
             <button title="Làm mới" onClick={() => void loadInventory()} className="hidden h-10 w-10 rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted md:flex items-center justify-center"><RefreshCcw size={16} /></button>
           </div>
 
-          <div className="hidden flex-wrap items-center gap-2 md:flex">
-            <FilterSelect multiple icon={Tag} placeholder="Trạng thái" searchPlaceholder="Tìm trạng thái..." options={statusOptions} value={filters.statuses} onValueChange={value => setFilterArray('statuses', value)} className="h-9 min-w-[150px]" />
-            <FilterSelect multiple icon={Building2} placeholder="Bưu cục" searchPlaceholder="Tìm bưu cục..." options={hubOptions} value={filters.hubIds} onValueChange={value => setFilterArray('hubIds', value)} className="h-9 min-w-[170px]" />
-            <FilterSelect multiple icon={CreditCard} placeholder="Loại thanh toán" searchPlaceholder="Tìm thanh toán..." options={paymentOptions} value={filters.paymentTypes} onValueChange={value => setFilterArray('paymentTypes', value)} className="h-9 min-w-[170px]" />
-            <FilterSelect multiple icon={Flag} placeholder="Mức ưu tiên" searchPlaceholder="Tìm ưu tiên..." options={priorityOptions} value={filters.priorities} onValueChange={value => setFilterArray('priorities', value)} className="h-9 min-w-[160px]" />
-            <div className="flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2 py-1 text-[13px] font-medium text-muted-foreground">
-              <CalendarDays size={14} className="shrink-0" />
-              <DayPicker value={filters.receivedFrom} onChange={value => updateFilters({ receivedFrom: value })} placeholder="Từ ngày" className="h-7 min-w-[8.25rem] w-[8.25rem] shrink-0 border-0 bg-transparent pl-0 pr-6 text-[12px] focus:ring-0" />
-              <span className="shrink-0">—</span>
-              <DayPicker value={filters.receivedTo} onChange={value => updateFilters({ receivedTo: value })} placeholder="Đến ngày" className="h-7 min-w-[8.5rem] w-[8.5rem] shrink-0 border-0 bg-transparent pl-0 pr-6 text-[12px] focus:ring-0" />
+          {!isAllOrders && (
+            <div className="hidden flex-wrap items-center gap-2 md:flex">
+              <FilterSelect multiple icon={Tag} placeholder="Trạng thái" searchPlaceholder="Tìm trạng thái..." options={statusOptions} value={filters.statuses} onValueChange={value => setFilterArray('statuses', value)} className="h-9 min-w-[150px]" />
+              <FilterSelect multiple icon={Building2} placeholder="Bưu cục" searchPlaceholder="Tìm bưu cục..." options={hubOptions} value={filters.hubIds} onValueChange={value => setFilterArray('hubIds', value)} className="h-9 min-w-[170px]" />
+              <FilterSelect multiple icon={CreditCard} placeholder="Loại thanh toán" searchPlaceholder="Tìm thanh toán..." options={paymentOptions} value={filters.paymentTypes} onValueChange={value => setFilterArray('paymentTypes', value)} className="h-9 min-w-[170px]" />
+              <FilterSelect multiple icon={Flag} placeholder="Mức ưu tiên" searchPlaceholder="Tìm ưu tiên..." options={priorityOptions} value={filters.priorities} onValueChange={value => setFilterArray('priorities', value)} className="h-9 min-w-[160px]" />
+              <div className="flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2 py-1 text-[13px] font-medium text-muted-foreground">
+                <CalendarDays size={14} className="shrink-0" />
+                <DayPicker value={filters.receivedFrom} onChange={value => updateFilters({ receivedFrom: value })} placeholder="Từ ngày" className="h-7 min-w-[8.25rem] w-[8.25rem] shrink-0 border-0 bg-transparent pl-0 pr-6 text-[12px] focus:ring-0" />
+                <span className="shrink-0">—</span>
+                <DayPicker value={filters.receivedTo} onChange={value => updateFilters({ receivedTo: value })} placeholder="Đến ngày" className="h-7 min-w-[8.5rem] w-[8.5rem] shrink-0 border-0 bg-transparent pl-0 pr-6 text-[12px] focus:ring-0" />
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
-          {isLoading ? <StateCard compact icon={<Loader2 className="animate-spin" size={24} />} title="Đang tải dữ liệu" description="Hệ thống đang lấy danh sách vận đơn tồn kho từ API." /> : waybills.length === 0 ? <StateCard compact icon={<Package size={24} />} title="Chưa có đơn cần chia" description="Tất cả đơn tồn kho đã phân hết kiện lên xe, hoặc thử đổi bộ lọc." /> : (
+          {isLoading ? <StateCard compact icon={<Loader2 className="animate-spin" size={24} />} title="Đang tải dữ liệu" description={isAllOrders ? 'Hệ thống đang lấy danh sách đơn từ API.' : 'Hệ thống đang lấy danh sách vận đơn tồn kho từ API.'} /> : waybills.length === 0 ? <StateCard compact icon={<Package size={24} />} title={isAllOrders ? 'Chưa có đơn' : 'Chưa có đơn cần chia'} description={isAllOrders ? 'Chưa có vận đơn nào trong hệ thống.' : 'Tất cả đơn tồn kho đã phân hết kiện lên xe, hoặc thử đổi bộ lọc.'} /> : (
             <>
               <table className="hidden md:table w-full min-w-[1280px] text-left border-collapse">
                 <thead className="bg-slate-100 text-[11px] uppercase tracking-wider text-slate-600">
                   <tr>
+                    {!isAllOrders && canUpdate && (
+                      <th className="w-10 px-2 py-2.5 font-bold border-r border-border text-center">
+                        <input
+                          type="checkbox"
+                          checked={allRowsSelected}
+                          onChange={toggleSelectAll}
+                          className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
+                          aria-label="Chọn tất cả"
+                        />
+                      </th>
+                    )}
                     {visibleColumns.map((col) => (
                       <th key={col.id} className="px-4 py-2.5 font-bold border-r border-border last:border-r-0 whitespace-nowrap">
                         {col.label}
@@ -395,10 +495,13 @@ export default function WarehouseInventoryPage() {
                       key={`${waybill.id}-${waybill.split_id ?? 'base'}`}
                       waybill={waybill}
                       columns={visibleColumns}
-                      canViewPricing={canViewPage}
+                      canViewPricing={canViewPricing}
                       canUpdate={canUpdate}
                       canEdit={canEdit}
                       canDelete={canDelete}
+                      showSelection={!isAllOrders && canUpdate}
+                      selected={selectedWaybillIds.includes(String(waybill.id))}
+                      onToggleSelect={toggleSelectRow}
                       onDetail={openDetail}
                       onEdit={openEdit}
                       onDelete={confirmDeleteWaybill}
@@ -409,13 +512,14 @@ export default function WarehouseInventoryPage() {
                 </tbody>
                 <tfoot className="bg-slate-50 text-[12px] font-extrabold text-foreground">
                   <tr>
-                    {visibleColumns.map((col, idx) => (
+                    {!isAllOrders && canUpdate && <td className="border-t border-border px-2 py-2.5 border-r" />}
+                    {visibleColumns.map((col) => (
                       <td key={col.id} className="border-t border-border px-4 py-2.5 border-r last:border-r-0">
-                        {idx === 0 ? 'Tổng cộng' : ''}
+                        {col.id === 'order_code' ? 'Tổng cộng' : ''}
                         {col.id === 'package_count' ? grandTotals.package_count : ''}
                         {col.id === 'weight' ? `${grandTotals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg` : ''}
                         {col.id === 'volume' ? `${grandTotals.volume_m3.toFixed(2)} m³` : ''}
-                        {col.id === 'freight' && canViewPage ? `${grandTotals.freight.toLocaleString('vi-VN')} đ` : ''}
+                        {col.id === 'freight' && canViewPricing ? `${grandTotals.freight.toLocaleString('vi-VN')} đ` : ''}
                       </td>
                     ))}
                   </tr>
@@ -439,7 +543,7 @@ export default function WarehouseInventoryPage() {
         </div>
       </div>
 
-      <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />
+      {!isAllOrders && <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />}
       <WaybillInventoryDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} waybill={detailWaybill} statusConfig={statusConfig} paymentConfig={paymentConfig} priorityConfig={priorityConfig} onClose={closeDetail} />
       {splitWaybill && (
         <WaybillPackageSplitDialog
@@ -454,7 +558,7 @@ export default function WarehouseInventoryPage() {
       <InventoryColumnPicker
         isOpen={isColumnPickerOpen}
         visibleIds={visibleColumnIds}
-        canViewPricing={canViewPage}
+        canViewPricing={canViewPricing}
         onChange={(ids) => {
           setVisibleColumnIds(ids);
           saveVisibleColumnIds(ids);
@@ -468,6 +572,16 @@ export default function WarehouseInventoryPage() {
         waybill={cashVoucherWaybill}
         onClose={closeCashVoucher}
       />
+      <StackOntoTruckDialog
+        isOpen={isStackOpen}
+        isClosing={isStackClosing}
+        waybills={selectedWaybills}
+        onClose={closeStackDialog}
+        onSaved={() => {
+          setSelectedWaybillIds([]);
+          void loadInventory();
+        }}
+      />
     </div>
   );
 }
@@ -479,16 +593,27 @@ function InventoryRow({
   canUpdate,
   canEdit,
   canDelete,
+  showSelection,
+  selected,
+  onToggleSelect,
   onDetail,
   onEdit,
   onDelete,
   onSplit,
   onCashVoucher,
-}: InventoryItemProps & { columns: typeof INVENTORY_COLUMNS; canViewPricing: boolean }) {
+}: InventoryItemProps & {
+  columns: typeof INVENTORY_COLUMNS;
+  canViewPricing: boolean;
+  showSelection?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (waybillId: string | number) => void;
+}) {
   const cellClass = 'px-4 py-3 border-r border-border text-[13px] max-w-[200px] truncate';
 
   const renderCell = (colId: InventoryColumnId) => {
     switch (colId) {
+      case 'stack_position':
+        return <td className={`${cellClass} min-w-[72px] text-muted-foreground`}>&nbsp;</td>;
       case 'order_code':
         return <td className={`${cellClass} font-bold text-violet-800`}>{waybill.order_code || '—'}</td>;
       case 'waybill_code':
@@ -596,7 +721,18 @@ function InventoryRow({
   };
 
   return (
-    <tr className={clsx('border-b border-border align-top transition-colors', getStorageAgeRowClass(waybill))}>
+    <tr className={clsx('border-b border-border align-top transition-colors', getStorageAgeRowClass(waybill), selected && 'bg-amber-50/60')}>
+      {showSelection && (
+        <td className="w-10 border-r border-border px-2 py-3 text-center">
+          <input
+            type="checkbox"
+            checked={Boolean(selected)}
+            onChange={() => onToggleSelect?.(waybill.id)}
+            className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
+            aria-label={`Chọn ${displayCode(waybill)}`}
+          />
+        </td>
+      )}
       {columns.map((col) => renderCell(col.id))}
     </tr>
   );
@@ -697,27 +833,71 @@ function Actions({
   const lockedTitle = 'Chỉ sửa/xóa được đơn ở trạng thái «Đã tạo đơn» hoặc «Trong kho»';
 
   return (
-    <div className="flex flex-wrap gap-2">
-      <button onClick={() => onDetail(waybill)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[12px] font-bold text-foreground hover:bg-muted"><Eye size={14} />Xem</button>
-      <button onClick={() => onCashVoucher(waybill)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 text-[12px] font-bold text-teal-800 hover:bg-teal-100"><HandCoins size={14} />Thu chi</button>
-      <button onClick={() => onSplit(waybill)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-[12px] font-bold text-violet-800 hover:bg-violet-100"><Layers size={14} />Chia đơn</button>
-      <button
-        disabled={editDisabled}
-        title={editDisabled ? (canEdit ? lockedTitle : 'Cần quyền WAREHOUSE trở lên') : 'Sửa thông tin đơn'}
-        onClick={() => onEdit(waybill)}
-        className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[12px] font-bold text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
+    <details className="group relative inline-block text-left">
+      <summary
+        aria-label="Mở thao tác"
+        className="inline-flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-border bg-white text-foreground shadow-sm hover:bg-muted [&::-webkit-details-marker]:hidden"
       >
-        <Pencil size={14} />Sửa
-      </button>
-      <button
-        disabled={deleteDisabled}
-        title={deleteDisabled ? (canDelete ? lockedTitle : 'Chỉ MANAGER/DIRECTOR được xóa') : 'Xóa vận đơn'}
-        onClick={() => onDelete(waybill)}
-        className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-[12px] font-bold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-45"
-      >
-        <Trash2 size={14} />Xóa
-      </button>
-    </div>
+        <MoreHorizontal size={17} />
+      </summary>
+      <div className="absolute right-0 z-30 mt-2 w-44 overflow-hidden rounded-xl border border-border bg-white p-1.5 shadow-xl shadow-slate-900/10">
+        <MenuAction icon={<Eye size={14} />} label="Xem" onClick={() => onDetail(waybill)} />
+        {canCollectCashPayment(waybill.payment_type) && (
+          <MenuAction icon={<HandCoins size={14} />} label="Thu chi" onClick={() => onCashVoucher(waybill)} tone="teal" />
+        )}
+        <MenuAction icon={<Layers size={14} />} label="Chia đơn" onClick={() => onSplit(waybill)} tone="violet" />
+        <MenuAction
+          icon={<Pencil size={14} />}
+          label="Sửa"
+          disabled={editDisabled}
+          title={editDisabled ? (canEdit ? lockedTitle : 'Cần quyền WAREHOUSE trở lên') : 'Sửa thông tin đơn'}
+          onClick={() => onEdit(waybill)}
+        />
+        <MenuAction
+          icon={<Trash2 size={14} />}
+          label="Xóa"
+          disabled={deleteDisabled}
+          title={deleteDisabled ? (canDelete ? lockedTitle : 'Chỉ MANAGER/DIRECTOR được xóa') : 'Xóa vận đơn'}
+          onClick={() => onDelete(waybill)}
+          tone="danger"
+        />
+      </div>
+    </details>
+  );
+}
+
+function MenuAction({
+  icon,
+  label,
+  onClick,
+  disabled,
+  title,
+  tone,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+  tone?: 'teal' | 'violet' | 'danger';
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={title}
+      onClick={onClick}
+      className={clsx(
+        'flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-[12px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-45',
+        !tone && 'text-foreground hover:bg-muted',
+        tone === 'teal' && 'text-teal-800 hover:bg-teal-50',
+        tone === 'violet' && 'text-violet-800 hover:bg-violet-50',
+        tone === 'danger' && 'text-red-600 hover:bg-red-50',
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
 

@@ -1,20 +1,19 @@
 import type { NewOrderFormState } from './orderFormTypes';
 
 export const ORDER_TABS = [
-  { id: 'trang-thai' as const, label: 'Trạng thái' },
-  { id: 'goc' as const, label: 'Gốc' },
-  { id: 'den' as const, label: 'Đến' },
-  { id: 'tn' as const, label: 'TN' },
-  { id: 'bc-gui' as const, label: 'BC gửi' },
-  { id: 'hni' as const, label: 'HNI' },
+  { id: 'khach-hang' as const, label: 'Thông tin khách hàng' },
+  { id: 'hang-hoa' as const, label: 'Thông tin hàng hóa' },
+  { id: 'thanh-toan' as const, label: 'Thanh toán' },
 ];
 
 export const LOAI_BP_OPTIONS = ['CPN', 'Hỏa tốc', 'Tiết kiệm'];
-export const DICH_VU_OPTIONS = ['Đường bộ', 'Đường bay', 'Chuyển phát nhanh'];
+export const DICH_VU_OPTIONS = ['Tiêu chuẩn 72h', 'Nhanh 48h', 'Chậm 4-6 ngày'] as const;
 export const GIO_OPTIONS = ['8h', '10h', '12h', '14h', '16h', '18h'];
 export const GIAO_HANG_OPTIONS = ['Văn phòng', 'Tận nơi', 'Lấy tại kho'];
-export const DON_GIA_DON_VI_OPTIONS = ['Kg', 'Kiện', 'M3'];
+export const DON_GIA_DON_VI_OPTIONS = ['Kg', 'm3', 'Trọn gói', 'Chuyến', 'Lô'];
 export const PHUONG_THUC_OPTIONS = ['Công nợ tháng', 'Tiền mặt', 'Chuyển khoản', 'COD'];
+
+export const todayInputValue = () => new Date().toISOString().slice(0, 10);
 
 export const emptyOrderForm = (): NewOrderFormState => ({
   maKh: '',
@@ -30,7 +29,7 @@ export const emptyOrderForm = (): NewOrderFormState => ({
   diaChiNhan: '',
   soBill: '',
   loaiBp: 'CPN',
-  dichVu: 'Đường bộ',
+  dichVu: 'Tiêu chuẩn 72h',
   gio: '16h',
   giaoHang: 'Văn phòng',
   klKg: '',
@@ -53,7 +52,7 @@ export const emptyOrderForm = (): NewOrderFormState => ({
   buuTaPhat: '',
   dvdb: '0',
   cuocChinh: '',
-  ngayDi: '',
+  ngayDi: todayInputValue(),
   phuongThuc: 'Công nợ tháng',
   thueSuat: '0%',
   vat: '0',

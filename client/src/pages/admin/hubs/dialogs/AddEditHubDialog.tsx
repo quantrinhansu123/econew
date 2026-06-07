@@ -65,9 +65,9 @@ export default function AddEditHubDialog({ isOpen, isClosing, isEditMode, isSubm
 
             <Section title="Địa chỉ" icon={<MapPin size={16} />}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Địa chỉ" icon={<MapPin size={16} />} className="sm:col-span-2"><input value={formState.address} onChange={event => setFormField('address', event.target.value)} className={inputClass} placeholder="Số nhà, đường, phường/xã" /></Field>
-                <Field label="Tỉnh/thành" icon={<MapPin size={16} />}><input value={formState.province} onChange={event => setFormField('province', event.target.value)} className={inputClass} /></Field>
-                <Field label="Quận/huyện" icon={<MapPin size={16} />}><input value={formState.district} onChange={event => setFormField('district', event.target.value)} className={inputClass} /></Field>
+                <Field label="Địa chỉ" required icon={<MapPin size={16} />} className="sm:col-span-2"><input value={formState.address} onChange={event => setFormField('address', event.target.value)} className={inputClass} placeholder="Số nhà, đường, phường/xã" /></Field>
+                <Field label="Tỉnh/thành" required icon={<MapPin size={16} />}><input value={formState.province} onChange={event => setFormField('province', event.target.value)} className={inputClass} placeholder="VD: Hà Nội" /></Field>
+                <Field label="Quận/huyện" required icon={<MapPin size={16} />}><input value={formState.district} onChange={event => setFormField('district', event.target.value)} className={inputClass} placeholder="VD: Cầu Giấy" /></Field>
                 <Field label="Phường/xã" icon={<MapPin size={16} />}><input value={formState.ward} onChange={event => setFormField('ward', event.target.value)} className={inputClass} /></Field>
                 <Field label="Tọa độ GPS" icon={<MapPin size={16} />}><input value={formState.coordinates} onChange={event => setFormField('coordinates', event.target.value)} className={inputClass} placeholder="21.0278,105.8342" /></Field>
               </div>

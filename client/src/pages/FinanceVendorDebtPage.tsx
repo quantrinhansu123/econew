@@ -66,7 +66,7 @@ interface DashboardData {
 
 interface LedgerEntry {
   id: string;
-  type: 'TRIP' | 'PAYMENT';
+  type: 'TRIP' | 'PAYMENT' | 'DEBT';
   date: string;
   amount: number;
   signed_amount: number;
@@ -441,10 +441,10 @@ export default function FinanceVendorDebtPage() {
                         <span
                           className={clsx(
                             'rounded-full border px-2 py-0.5 text-[11px] font-extrabold',
-                            entry.type === 'TRIP' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                            entry.type === 'PAYMENT' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700',
                           )}
                         >
-                          {entry.type === 'TRIP' ? '+ Nợ' : '− Chi'}
+                          {entry.type === 'PAYMENT' ? '− Chi' : entry.type === 'DEBT' ? '+ Xếp hàng' : '+ Nợ'}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 max-w-[240px] truncate" title={entry.description || ''}>

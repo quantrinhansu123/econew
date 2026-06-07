@@ -1,3 +1,4 @@
+import { phuongThucToPrintLabel } from '../warehouse/orders/orderFormUtils';
 import type { WaybillDetail } from '../warehouse/orders/types';
 
 export interface WaybillPrintData {
@@ -9,31 +10,28 @@ export interface WaybillPrintData {
   quanHuyenGui: string;
   tinhGui: string;
   sdtGui: string;
-  lienHeGui: string;
-  maKhNhan: string;
   maBcNhan: string;
   tenKhNhan: string;
   diaChiNhan: string;
-  quanHuyenNhan: string;
   tinhNhan: string;
   sdtNhan: string;
-  lienHeNhan: string;
   moTaHang: string;
   soKien: string;
-  trongLuongThuc: string;
-  trongLuongQuyDoi: string;
+  trongLuong: string;
+  tongLuong: string;
   ghiChu: string;
   noiDungHang: string;
   hinhThucThanhToan: string;
   thuHo: string;
   khaiGia: string;
-  ngayGioGui: string;
+  ngayGuiDon: string;
   cuocChinh: string;
   dichVuCongThem: string;
   tongCuoc: string;
   tongPhaiThuPhat: string;
   dichVu: string;
   dvGtgt: string;
+  codStamp: boolean;
   showPricing: boolean;
 }
 
@@ -50,25 +48,29 @@ function parseNoteField(note: string, key: string) {
   return match?.[1]?.trim() || '';
 }
 
-function paymentLabel(type?: string | null) {
-  const t = (type || '').toUpperCase();
-  if (t === 'COD') return 'COD';
-  if (t === 'CC') return 'TIỀN MẶT';
-  if (t === 'PP') return 'CÔNG NỢ THÁNG';
-  return t || '';
-}
-
 function formatNum(v: unknown, digits = 0) {
   const n = Number(v);
   if (!Number.isFinite(n)) return '';
-  return n.toLocaleString('vi-VN', { maximumFractionDigits: digits });
+  return n.toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
 }
 
 function formatDate(d?: string | null) {
   if (!d) return '';
   const date = new Date(d);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('vi-VN');
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+function parseM3FromNote(note: string) {
+  const match = note.match(/dimensions_cm=([^|]+)/);
+  if (!match) return 0;
+  const [length, width, height] = match[1].split('x').map((part) => Number(part.trim()));
+  if (!length || !width || !height) return 0;
+  return (length * width * height) / 1_000_000;
 }
 
 export function buildWaybillPrintData(waybill: WaybillDetail, showPricing: boolean): WaybillPrintData {
@@ -80,14 +82,20 @@ export function buildWaybillPrintData(waybill: WaybillDetail, showPricing: boole
   const dichVu = parseNoteField(note, 'dich_vu');
   const loaiBp = parseNoteField(note, 'loai_bp');
 
-  const receiverAddress = waybill.receiver_address || receiver.address;
+  const receiverName = (waybill as { receiver_name?: string }).receiver_name || receiver.name || '';
+  const receiverAddress = waybill.receiver_address || receiver.address || '';
+
   const weight = Number(waybill.weight) || 0;
-  const vol = Number((waybill as { volumetric_weight?: number }).volumetric_weight) || weight;
+  const m3 =
+    Number((waybill as { the_tich_m3?: number }).the_tich_m3) ||
+    parseM3FromNote(note) ||
+    0;
 
   const cod = Number(waybill.cod_amount) || 0;
-  const freight = showPricing
-    ? Number(waybill.cost_amount ?? waybill.freight_amount) || 0
-    : 0;
+  const freight = showPricing ? Number(waybill.freight_amount ?? waybill.cost_amount) || 0 : 0;
+  const tongCuocAmount = showPricing ? freight + cod : 0;
+  const paymentType = String(waybill.payment_type || '').toUpperCase();
+  const createdAt = waybill.received_at || (waybill as { created_at?: string }).created_at;
 
   return {
     waybillCode: waybill.waybill_code || waybill.code || String(waybill.id),
@@ -96,33 +104,30 @@ export function buildWaybillPrintData(waybill: WaybillDetail, showPricing: boole
     tenKhGui: (waybill as { sender_name?: string }).sender_name || sender.name,
     diaChiGui: (waybill as { sender_address?: string }).sender_address || sender.address,
     quanHuyenGui: '',
-    tinhGui: waybill.origin_hub?.name || '',
+    tinhGui: waybill.origin_hub?.name || waybill.origin_hub?.code?.toUpperCase() || '',
     sdtGui: (waybill as { sender_phone?: string }).sender_phone || sender.phone,
-    lienHeGui: '',
-    maKhNhan: '',
     maBcNhan: waybill.dest_hub?.code?.toUpperCase() || '',
-    tenKhNhan: (waybill as { receiver_name?: string }).receiver_name || receiver.name,
+    tenKhNhan: receiverName,
     diaChiNhan: receiverAddress,
-    quanHuyenNhan: '',
     tinhNhan: waybill.dest_hub?.name || waybill.dest_hub?.code?.toUpperCase() || '',
     sdtNhan: (waybill as { receiver_phone?: string }).receiver_phone || receiver.phone,
-    lienHeNhan: '',
     moTaHang: noiDung,
     soKien: String(waybill.package_count ?? 1),
-    trongLuongThuc: formatNum(weight, 0),
-    trongLuongQuyDoi: formatNum(vol, 2),
-    ghiChu: note.replace(/\s*\|\s*/g, ' ').slice(0, 200),
+    trongLuong: formatNum(weight, 0) || '0',
+    tongLuong: formatNum(m3, 2) || '0.00',
+    ghiChu: noiDung,
     noiDungHang: noiDung,
-    hinhThucThanhToan: paymentLabel(waybill.payment_type),
+    hinhThucThanhToan: phuongThucToPrintLabel(parseNoteField(note, 'phuong_thuc'), waybill.payment_type),
     thuHo: formatNum(cod, 0) || '0',
-    khaiGia: '',
-    ngayGioGui: formatDate(waybill.received_at || (waybill as { created_at?: string }).created_at),
+    khaiGia: 'Không',
+    ngayGuiDon: formatDate(createdAt),
     cuocChinh: showPricing ? formatNum(freight, 0) : '',
-    dichVuCongThem: '',
-    tongCuoc: showPricing ? formatNum(freight, 0) : '',
-    tongPhaiThuPhat: formatNum(cod || (waybill.payment_type === 'COD' ? freight : 0), 0) || '0',
+    dichVuCongThem: showPricing ? '0' : '',
+    tongCuoc: showPricing ? formatNum(tongCuocAmount, 0) : '',
+    tongPhaiThuPhat: formatNum(tongCuocAmount || cod || (paymentType === 'COD' ? freight : 0), 0) || '0',
     dichVu: (dichVu || loaiBp || 'ĐƯỜNG BỘ').toUpperCase(),
-    dvGtgt: parseNoteField(note, 'dich_vu_gia_tang') || 'tiêu chuẩn',
+    dvGtgt: parseNoteField(note, 'dich_vu_gia_tang') || 'Tiêu chuẩn',
+    codStamp: paymentType === 'COD' || cod > 0,
     showPricing,
   };
 }

@@ -23,11 +23,13 @@ import { TripEntity } from '../trips/trip.entity';
 import { TruckEntity } from '../trucks/truck.entity';
 import { WaybillSplitEntity } from './waybill-split.entity';
 import { WaybillCashVoucherEntity } from './waybill-cash-voucher.entity';
+import { BulkStackOntoTruckDto } from './dto/bulk-stack-onto-truck.dto';
 import { SaveWaybillSplitsDto } from './dto/save-waybill-splits.dto';
 import { QueryLoadPlanningBoardDto } from './dto/query-load-planning-board.dto';
 import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
 import { WaybillSplitLoadStatus } from './dto/waybill-split-load-status.enum';
 import { OrdersService } from '../orders/orders.service';
+import { VendorsService } from '../vendors/vendors.service';
 
 type WaybillRecord = WaybillEntity & Record<string, any>;
 
@@ -59,6 +61,7 @@ export class WaybillsService {
     @InjectRepository(TruckEntity) private readonly trucksRepository: Repository<TruckEntity>,
     @InjectRepository(WaybillCashVoucherEntity) private readonly cashVouchersRepository: Repository<WaybillCashVoucherEntity>,
     private readonly ordersService: OrdersService,
+    private readonly vendorsService: VendorsService,
   ) {}
 
   async create(dto: CreateWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
@@ -77,7 +80,7 @@ export class WaybillsService {
       width: 0,
       height: 0,
       volumetric_weight: 0,
-      payment_type: dto.cod_amount ? PaymentType.COD : PaymentType.PP,
+      payment_type: dto.cod_amount ? PaymentType.COD : dto.cc_amount ? PaymentType.CC : PaymentType.PP,
       cost_amount: String(dto.freight_amount ?? 0),
       current_state: WaybillStatus.RECEIVED as any,
       origin_hub_id: dto.origin_hub_id,
@@ -503,11 +506,97 @@ export class WaybillsService {
       load_status: line.load_status
         ?? (line.id ? statusById.get(String(line.id)) : null)
         ?? WaybillSplitLoadStatus.WAITING_LOAD,
+      expected_arrival_at: line.expected_arrival_at
+        ? new Date(line.expected_arrival_at)
+        : null,
       created_by: currentUser.id,
     }));
     if (rows.length) await this.splitsRepository.save(rows);
 
     return this.getPackageSplits(id, currentUser);
+  }
+
+  async bulkStackOntoTruck(dto: BulkStackOntoTruckDto, currentUser: UserEntity) {
+    const saved: Array<Record<string, unknown>> = [];
+
+    for (const line of dto.items) {
+      const waybill = await this.waybillsRepository.findOne({
+        where: { id: String(line.waybill_id), deleted_at: IsNull() } as any,
+        relations: ['order', 'origin_hub', 'dest_hub'],
+      }) as WaybillRecord | null;
+      if (!waybill) throw new NotFoundException(`Waybill ${line.waybill_id} not found`);
+      this.assertWaybillAccess(waybill, currentUser);
+      if (FINAL_STATUSES.includes(this.getStatus(waybill))) {
+        throw new BadRequestException(`Waybill ${waybill.waybill_code} cannot be stacked`);
+      }
+
+      const truck = await this.trucksRepository.findOne({
+        where: { id: String(line.truck_id) },
+        relations: ['vendor'],
+      });
+      if (!truck) throw new NotFoundException(`Truck ${line.truck_id} not found`);
+
+      const existingSplits = await this.splitsRepository.find({ where: { waybill_id: String(line.waybill_id) } });
+      const totalPackages = this.resolveTotalPackages(waybill);
+      const allocated = existingSplits.reduce((sum, row) => sum + Number(row.package_count ?? 0), 0);
+      const remaining = totalPackages - allocated;
+      const packageCount = line.package_count ?? remaining;
+      if (packageCount <= 0) {
+        throw new BadRequestException(`Waybill ${waybill.waybill_code} has no remaining packages to stack`);
+      }
+      if (allocated + packageCount > totalPackages) {
+        throw new BadRequestException(`Waybill ${waybill.waybill_code}: allocated packages exceed order total`);
+      }
+
+      const expectedArrivalAt = this.computeExpectedArrivalAt(waybill);
+      const carrierLabel = truck.nha_xe?.trim()
+        || truck.vendor?.name?.trim()
+        || truck.bks?.trim()
+        || truck.license_plate?.trim()
+        || null;
+
+      const split = await this.splitsRepository.save(this.splitsRepository.create({
+        waybill_id: String(line.waybill_id),
+        truck_id: String(line.truck_id),
+        package_count: packageCount,
+        loading_position: line.loading_position ?? null,
+        carrier_label: carrierLabel,
+        expected_arrival_at: expectedArrivalAt,
+        load_status: WaybillSplitLoadStatus.DEPARTED,
+        created_by: currentUser.id,
+      }));
+
+      let vendorDebtAmount: number | undefined;
+      if (line.vendor_cost != null && line.vendor_cost > 0) {
+        const vendorId = truck.vendor_id ?? await this.vendorsService.resolveDefaultVendorId();
+        const plate = truck.bks ?? truck.license_plate ?? '';
+        await this.vendorsService.addPayableDebt(
+          vendorId,
+          line.vendor_cost,
+          undefined,
+          `Xếp hàng ${waybill.waybill_code} · ${plate} · split #${split.id}`,
+        );
+        vendorDebtAmount = line.vendor_cost;
+      }
+
+      const ratio = packageCount / totalPackages;
+      const totalFreight = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0);
+      saved.push({
+        split_id: split.id,
+        waybill_id: split.waybill_id,
+        waybill_code: waybill.waybill_code,
+        truck_id: split.truck_id,
+        license_plate: truck.bks ?? truck.license_plate ?? null,
+        nha_xe: carrierLabel,
+        loading_position: split.loading_position,
+        package_count: split.package_count,
+        expected_arrival_at: split.expected_arrival_at,
+        vendor_cost: vendorDebtAmount,
+        allocated_freight: isManager(currentUser.role_mask) ? Math.round(totalFreight * ratio) : undefined,
+      });
+    }
+
+    return { saved_count: saved.length, items: saved };
   }
 
   async updateSplitLoadStatus(splitId: string, dto: UpdateSplitLoadStatusDto, currentUser: UserEntity) {
@@ -562,8 +651,15 @@ export class WaybillsService {
       .leftJoinAndSelect('waybill.dest_hub', 'dest_hub')
       .leftJoinAndSelect('waybill.origin_hub', 'origin_hub')
       .where('waybill.deleted_at IS NULL')
-      .andWhere('waybill.current_state IN (:...waybillLoadStatuses)', { waybillLoadStatuses })
-      .andWhere('split.truck_id IS NOT NULL');
+      .andWhere('waybill.current_state IN (:...waybillLoadStatuses)', { waybillLoadStatuses });
+
+    const truckIds = this.parseList(query.truck_id);
+    if (truckIds.length) {
+      qb.andWhere('(split.truck_id IS NOT NULL OR trip.truck_id IS NOT NULL)')
+        .andWhere('(split.truck_id IN (:...truckIds) OR trip.truck_id IN (:...truckIds))', { truckIds });
+    } else {
+      qb.andWhere('split.truck_id IS NOT NULL');
+    }
 
     this.applyFilters(qb, {
       keyword: query.keyword,
@@ -571,9 +667,6 @@ export class WaybillsService {
       dest_hub_id: query.dest_hub_id,
     });
     this.applyHubScope(qb, currentUser);
-
-    const truckIds = this.parseList(query.truck_id);
-    if (truckIds.length) qb.andWhere('split.truck_id IN (:...truckIds)', { truckIds });
 
     if (splitLoadStatuses.length) qb.andWhere('split.load_status IN (:...splitLoadStatuses)', { splitLoadStatuses });
 
@@ -704,6 +797,7 @@ export class WaybillsService {
       loading_position: position,
       vi_tri_hang: position,
       ngay_boc: this.formatDispatchDate(waybill.loaded_at ?? waybill.received_at ?? waybill.created_at),
+      ngay_toi: this.formatDispatchDate(split.expected_arrival_at ?? this.computeExpectedArrivalAt(waybill)),
       ma_tinh: hubCode,
       ten_cty: companyName,
       dv,
@@ -722,6 +816,13 @@ export class WaybillsService {
       allocated_freight: Math.round(totalFreight * ratio),
       load_status: split.load_status ?? WaybillSplitLoadStatus.WAITING_LOAD,
     };
+  }
+
+  private computeExpectedArrivalAt(waybill: WaybillRecord): Date {
+    const base = waybill.created_at ?? waybill.received_at ?? new Date();
+    const date = base instanceof Date ? new Date(base.getTime()) : new Date(base);
+    date.setDate(date.getDate() + 3);
+    return date;
   }
 
   private formatDispatchDate(value: Date | string | null | undefined): string | null {

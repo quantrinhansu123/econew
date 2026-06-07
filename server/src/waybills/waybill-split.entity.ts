@@ -33,6 +33,9 @@ export class WaybillSplitEntity {
   @Column({ type: 'varchar', length: 32, default: WaybillSplitLoadStatus.WAITING_LOAD })
   load_status: WaybillSplitLoadStatus;
 
+  @Column({ type: 'timestamp', nullable: true })
+  expected_arrival_at: Date | null;
+
   @Column({ type: 'bigint', nullable: true })
   created_by: string | null;
 

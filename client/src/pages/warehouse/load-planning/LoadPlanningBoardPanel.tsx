@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, Loader2, PackageCheck, Plus, Printer, RefreshCw, Search, Truck, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, FileSpreadsheet, Loader2, PackageCheck, Plus, Printer, RefreshCw, Search, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../../../lib/api';
 import { FilterSelect } from '../../../components/ui/FilterSelect';
 import type { AuthUserProfile } from '../../login/types';
 import LoadPlanningTruckBoard from './LoadPlanningTruckBoard';
-import type { FilterOption, HubSummary, LoadPlanningBoardFilters, LoadPlanningBoardResponse } from './types';
+import type { FilterOption, HubSummary, LoadPlanningBoardFilters, LoadPlanningBoardResponse, LoadPlanningTruckGroup } from './types';
 import { SPLIT_LOAD_STATUSES } from '../splits/splitLoadStatus';
 import { buildLoadPlanningQuery, mapLoadPlanningBoardToPrintPayload, saveLoadPlanningPrintPayload, summarizeLoadPlanningFilters } from '../../print/loadPlanningPrintUtils';
+import { downloadLoadPlanningExcel } from './loadPlanningExcelUtils';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const MANAGER = 32;
@@ -39,6 +40,8 @@ interface Props {
   bannerDescription?: string;
   showManifestButton?: boolean;
   forcedLoadStatuses?: string[];
+  groupByArrivalDate?: boolean;
+  excelFileBaseName?: string;
 }
 
 export default function LoadPlanningBoardPanel({
@@ -46,6 +49,8 @@ export default function LoadPlanningBoardPanel({
   bannerDescription = 'Đơn đã phân xe tại tiếp nhận / tồn kho hiện theo từng biển số. Bấm trạng thái để cập nhật Chờ bốc → Đã tới.',
   showManifestButton = false,
   forcedLoadStatuses,
+  groupByArrivalDate = false,
+  excelFileBaseName = 'phan-loai-uu-tien',
 }: Props) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -61,9 +66,11 @@ export default function LoadPlanningBoardPanel({
   const [trucks, setTrucks] = useState<Array<{ id: string; label: string }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<string[]>(['origin']);
+  const [openArrivalTruckKeys, setOpenArrivalTruckKeys] = useState<string[]>([]);
 
   const hubOptions = useMemo(
     () => hubs.map((hub) => ({
@@ -76,6 +83,7 @@ export default function LoadPlanningBoardPanel({
   const loadStatusOptions = useMemo(() => SPLIT_LOAD_STATUSES.map((status) => ({ value: status.value, label: status.label })), []);
   const activeFilterCount = filters.origin_hub_id.length + filters.dest_hub_id.length + filters.truck_id.length + filters.load_status.length + (filters.date_from ? 1 : 0) + (filters.date_to ? 1 : 0);
   const truckGroups = board?.trucks ?? [];
+  const arrivalGroups = useMemo(() => buildArrivalGroups(truckGroups), [truckGroups]);
 
   useEffect(() => {
     void fetchOptions();
@@ -130,6 +138,22 @@ export default function LoadPlanningBoardPanel({
   const openFilters = () => { setDraftFilters(filters); setIsFilterOpen(true); };
   const applyFilters = () => { setFilters(draftFilters); setIsFilterOpen(false); };
 
+  async function exportFilteredRows() {
+    setIsExporting(true);
+    setError('');
+    try {
+      const response = await apiRequest<LoadPlanningBoardResponse>(`/waybills/load-planning/board?${buildLoadPlanningQuery(filters, forcedLoadStatuses, 500)}`);
+      const exported = downloadLoadPlanningExcel(response, canViewCost, excelFileBaseName);
+      if (!exported) {
+        setError('Không có dữ liệu phù hợp bộ lọc để xuất Excel.');
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Không thể xuất Excel.');
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   async function printFilteredRows() {
     setIsPrinting(true);
     setError('');
@@ -179,6 +203,10 @@ export default function LoadPlanningBoardPanel({
             <button type="button" title="Làm mới" onClick={() => void fetchBoard()} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground hover:bg-muted">
               <RefreshCw size={16} />
             </button>
+            <button type="button" title="Xuất Excel" disabled={isExporting || isLoading} onClick={() => void exportFilteredRows()} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-emerald-600/30 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto md:px-3 md:gap-2">
+              {isExporting ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
+              <span className="hidden md:inline text-[13px] font-extrabold">Xuất Excel</span>
+            </button>
             <button type="button" title="In phiếu" disabled={isPrinting || isLoading} onClick={() => void printFilteredRows()} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto md:px-3 md:gap-2">
               {isPrinting ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
               <span className="hidden md:inline text-[13px] font-extrabold">In phiếu</span>
@@ -216,6 +244,12 @@ export default function LoadPlanningBoardPanel({
               <span>{formatNumber(board.total_trucks)} xe</span>
               <span>·</span>
               <span>{formatNumber(board.total_items)} dòng hàng</span>
+              {groupByArrivalDate && (
+                <>
+                  <span>·</span>
+                  <span>{formatNumber(arrivalGroups.length)} ngày tới</span>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -230,6 +264,16 @@ export default function LoadPlanningBoardPanel({
               icon={<Truck size={22} />}
               title="Chưa có hàng đã phân xe"
               description="Phân kiện lên xe tại trang tiếp nhận hoặc tồn kho — dữ liệu sẽ hiện ở đây theo từng biển số."
+            />
+          ) : groupByArrivalDate && arrivalGroups.length ? (
+            <ArrivalGroupedBoard
+              groups={arrivalGroups}
+              canViewCost={canViewCost}
+              openTruckKeys={openArrivalTruckKeys}
+              onToggleTruck={(key) => {
+                setOpenArrivalTruckKeys((prev) => (prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]));
+              }}
+              onStatusUpdated={() => void fetchBoard()}
             />
           ) : (
             <div className="space-y-4">
@@ -278,6 +322,168 @@ function StateBlock({ icon, title, description }: { icon: ReactNode; title: stri
       <div className="mb-3 text-primary">{icon}</div>
       <p className="text-[13px] font-bold">{title}</p>
       {description && <p className="mt-2 max-w-md text-[12px] leading-6">{description}</p>}
+    </div>
+  );
+}
+
+interface ArrivalDateGroup {
+  key: string;
+  label: string;
+  sortValue: number;
+  orderCount: number;
+  itemCount: number;
+  totalPackages: number;
+  totalWeight: number;
+  totalFreight: number;
+  trucks: LoadPlanningTruckGroup[];
+}
+
+function buildArrivalGroups(trucks: LoadPlanningTruckGroup[]): ArrivalDateGroup[] {
+  const dayMap = new Map<string, ArrivalDateGroup>();
+
+  trucks.forEach((truck) => {
+    (truck.items ?? []).forEach((item) => {
+      const label = item.ngay_toi || 'Chưa có ngày tới';
+      const key = item.ngay_toi || 'unknown';
+      const group = dayMap.get(key) ?? {
+        key,
+        label,
+        sortValue: parseArrivalSortValue(item.ngay_toi),
+        orderCount: 0,
+        itemCount: 0,
+        totalPackages: 0,
+        totalWeight: 0,
+        totalFreight: 0,
+        trucks: [],
+      };
+
+      let groupedTruck = group.trucks.find((entry) => String(entry.truck_id) === String(truck.truck_id));
+      if (!groupedTruck) {
+        groupedTruck = {
+          ...truck,
+          total_packages: 0,
+          total_weight: 0,
+          total_freight: 0,
+          items: [],
+        };
+        group.trucks.push(groupedTruck);
+      }
+
+      groupedTruck.items.push(item);
+      groupedTruck.total_packages += Number(item.so_luong ?? 0);
+      groupedTruck.total_weight += Number(item.weight ?? 0);
+      groupedTruck.total_freight = Number(groupedTruck.total_freight ?? 0) + Number(item.allocated_freight ?? 0);
+      group.itemCount += 1;
+      group.totalPackages += Number(item.so_luong ?? 0);
+      group.totalWeight += Number(item.weight ?? 0);
+      group.totalFreight += Number(item.allocated_freight ?? 0);
+      dayMap.set(key, group);
+    });
+  });
+
+  return [...dayMap.values()]
+    .map((group) => ({
+      ...group,
+      orderCount: countUniqueOrders(group.trucks.flatMap((truck) => truck.items ?? [])),
+      trucks: group.trucks
+        .sort((a, b) => String(a.license_plate || '').localeCompare(String(b.license_plate || ''), 'vi')),
+    }))
+    .sort((a, b) => a.sortValue - b.sortValue || a.label.localeCompare(b.label, 'vi'));
+}
+
+function parseArrivalSortValue(label?: string | null) {
+  if (!label) return Number.MAX_SAFE_INTEGER;
+  const match = label.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (!match) return Number.MAX_SAFE_INTEGER - 1;
+  const now = new Date();
+  const day = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const rawYear = match[3] ? Number(match[3]) : now.getFullYear();
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+  let date = new Date(year, month, day).getTime();
+  if (!match[3] && date < new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - 180 * 24 * 60 * 60 * 1000) {
+    date = new Date(now.getFullYear() + 1, month, day).getTime();
+  }
+  return date;
+}
+
+function countUniqueOrders(items: LoadPlanningTruckGroup['items']) {
+  return new Set((items ?? []).map((item) => String(item.waybill_id || item.waybill_code || item.split_id))).size;
+}
+
+function ArrivalGroupedBoard({
+  groups,
+  canViewCost,
+  openTruckKeys,
+  onToggleTruck,
+  onStatusUpdated,
+}: {
+  groups: ArrivalDateGroup[];
+  canViewCost: boolean;
+  openTruckKeys: string[];
+  onToggleTruck: (key: string) => void;
+  onStatusUpdated: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <section key={group.key} className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border bg-emerald-50 px-4 py-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+              <CalendarDays size={18} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[14px] font-extrabold text-foreground">Ngày tới {group.label}</p>
+              <p className="text-[12px] font-bold text-emerald-800">
+                {formatNumber(group.orderCount)} đơn · {formatNumber(group.trucks.length)} xe · {formatNumber(group.itemCount)} dòng hàng
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[11px] font-bold">
+              <span className="rounded-full bg-white px-2.5 py-1 text-violet-700">{formatNumber(group.totalPackages)} kiện</span>
+              <span className="rounded-full bg-white px-2.5 py-1 text-emerald-700">{formatNumber(group.totalWeight, ' kg')}</span>
+              {canViewCost && <span className="rounded-full bg-white px-2.5 py-1 text-amber-800">{formatNumber(group.totalFreight, ' đ')}</span>}
+            </div>
+          </div>
+
+          <div className="divide-y divide-border">
+            {group.trucks.map((truck) => {
+              const key = `${group.key}-${truck.truck_id}`;
+              const isOpen = openTruckKeys.includes(key);
+              const truckLabel = [truck.license_plate, truck.nha_xe ? `xe ${truck.nha_xe}` : null].filter(Boolean).join(' · ') || `Xe #${truck.truck_id}`;
+              return (
+                <div key={key}>
+                  <button
+                    type="button"
+                    onClick={() => onToggleTruck(key)}
+                    className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left hover:bg-muted/30"
+                  >
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-primary">
+                      <Truck size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-extrabold text-foreground">{truckLabel}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {[truck.ten_lai_xe, truck.trip_id ? `Chuyến #${truck.trip_id}` : 'Chưa gán chuyến'].filter(Boolean).join(' · ')}
+                        {truck.manifest_code ? ` · BK ${truck.manifest_code}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-[11px] font-bold">
+                      <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">{formatNumber(countUniqueOrders(truck.items))} đơn</span>
+                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">{formatNumber(truck.total_weight, ' kg')}</span>
+                    </div>
+                    <ChevronDown size={16} className={clsx('text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
+                  </button>
+                  {isOpen && (
+                    <div className="border-t border-border bg-slate-50/60 p-3">
+                      <LoadPlanningTruckBoard truck={truck} canViewCost={canViewCost} onStatusUpdated={onStatusUpdated} showHeader={false} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

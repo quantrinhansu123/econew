@@ -85,7 +85,18 @@ export interface HubFormState {
   status: string;
 }
 
-export type HubMutationPayload = Omit<HubFormState, 'status'> & {
+export type HubMutationPayload = {
+  code: string;
+  name: string;
+  type: string;
+  address: string;
+  province: string;
+  district: string;
+  ward?: string;
+  coordinates?: string;
+  manager_name?: string;
+  manager_phone?: string;
+  phone?: string;
   latitude?: number;
   longitude?: number;
 };

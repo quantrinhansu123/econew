@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { Building2, MapPin, Truck as TruckIcon, X } from 'lucide-react';
+import { Building2, Eye, MapPin, Truck as TruckIcon, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { Truck } from '../types';
 
@@ -10,9 +10,10 @@ interface Props {
   onClose: () => void;
   formatStatus: (status?: string | null) => string;
   getDriverName: (truck: Truck) => string;
+  onViewOrders?: (truck: Truck) => void;
 }
 
-export default function TruckDetailDialog({ isOpen, isClosing, truck, onClose, formatStatus, getDriverName }: Props) {
+export default function TruckDetailDialog({ isOpen, isClosing, truck, onClose, formatStatus, getDriverName, onViewOrders }: Props) {
   if ((!isOpen && !isClosing) || !truck) return null;
 
   const bks = truck.bks || truck.license_plate || '—';
@@ -68,6 +69,18 @@ export default function TruckDetailDialog({ isOpen, isClosing, truck, onClose, f
             ]}
           />
         </div>
+        {onViewOrders && (
+          <div className="shrink-0 border-t border-border bg-card p-4">
+            <button
+              type="button"
+              onClick={() => onViewOrders(truck)}
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 text-[13px] font-bold text-sky-700 hover:bg-sky-100"
+            >
+              <Eye size={16} />
+              Xem đơn phụ trách
+            </button>
+          </div>
+        )}
       </div>
     </div>,
     document.body,

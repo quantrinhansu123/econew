@@ -50,6 +50,8 @@ const formatHub = (hub?: { code?: string | null; name?: string | null } | null) 
 
 function cellValue(waybill: WaybillInventoryItem, colId: InventoryColumnId, showPricing: boolean): string {
   switch (colId) {
+    case 'stack_position':
+      return '';
     case 'waybill_code':
       return waybill.waybill_code || waybill.code || String(waybill.id);
     case 'loaded_at':

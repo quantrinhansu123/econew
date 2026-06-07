@@ -1,6 +1,7 @@
 import type { WaybillInventoryItem } from './types';
 
 export type InventoryColumnId =
+  | 'stack_position'
   | 'order_code'
   | 'waybill_code'
   | 'trip_label'
@@ -33,6 +34,7 @@ export interface InventoryColumnDef {
 }
 
 export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
+  { id: 'stack_position', label: 'Vị trí Xếp hàng', defaultVisible: true },
   { id: 'order_code', label: 'Mã đơn hàng', defaultVisible: true },
   { id: 'waybill_code', label: 'Mã vận đơn', defaultVisible: true },
   { id: 'trip_label', label: 'Phân xe', defaultVisible: true },
@@ -57,7 +59,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'actions', label: 'Thao tác', defaultVisible: true },
 ];
 
-export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v5';
+export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v6';
 
 export function getDefaultVisibleColumnIds(canViewPricing: boolean): InventoryColumnId[] {
   return INVENTORY_COLUMNS.filter((col) => {
@@ -77,7 +79,11 @@ export function loadVisibleColumnIds(canViewPricing: boolean): InventoryColumnId
       INVENTORY_COLUMNS.filter((c) => !c.managerOnly || canViewPricing).map((c) => c.id),
     );
     const filtered = parsed.filter((id) => allowed.has(id));
-    if (!filtered.includes('order_code')) filtered.unshift('order_code');
+    if (!filtered.includes('stack_position')) filtered.unshift('stack_position');
+    if (!filtered.includes('order_code')) {
+      const stackIdx = filtered.indexOf('stack_position');
+      filtered.splice(stackIdx >= 0 ? stackIdx + 1 : 0, 0, 'order_code');
+    }
     if (!filtered.includes('waybill_code')) {
       const orderIdx = filtered.indexOf('order_code');
       filtered.splice(orderIdx + 1, 0, 'waybill_code');
@@ -211,4 +217,10 @@ export function computeGrandTotals(waybills: WaybillInventoryItem[], includeFrei
     },
     { package_count: 0, weight_kg: 0, volume_m3: 0, freight: 0 },
   );
+}
+
+/** Thu chi chỉ áp dụng khi thanh toán COD hoặc Tiền mặt (CC) */
+export function canCollectCashPayment(paymentType: WaybillInventoryItem['payment_type']): boolean {
+  const pt = String(paymentType || '').toUpperCase();
+  return pt === 'COD' || pt === 'CC';
 }

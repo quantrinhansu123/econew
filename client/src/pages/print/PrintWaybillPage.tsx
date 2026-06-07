@@ -17,6 +17,8 @@ export default function PrintWaybillPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const preview = searchParams.get('preview') === '1';
+  const autoPrint = searchParams.get('print') === '1';
+  const printFormat = searchParams.get('format') === 'standard' ? 'standard' : 'a5';
 
   const [waybill, setWaybill] = useState<WaybillDetail | null>(null);
   const [customer, setCustomer] = useState<CustomerListItem | null>(null);
@@ -65,10 +67,10 @@ export default function PrintWaybillPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!preview || loading || error || !waybill) return;
+    if (!autoPrint || loading || error || !waybill) return;
     const timer = window.setTimeout(() => window.print(), 400);
     return () => window.clearTimeout(timer);
-  }, [preview, loading, error, waybill]);
+  }, [autoPrint, loading, error, waybill]);
 
   const printData = useMemo(() => {
     if (!waybill) return null;
@@ -83,16 +85,15 @@ export default function PrintWaybillPage() {
       diaChiGui: address || base.diaChiGui,
       sdtGui: phone || base.sdtGui,
       sdtNhan: phone || base.sdtNhan,
+      tenKhNhan: customer.name || base.tenKhNhan,
       diaChiNhan: address || base.diaChiNhan,
       tinhGui: customer.destination_province || customer.region || base.tinhGui,
       dichVu: customer.price_table?.toUpperCase().includes('BỘ') ? 'ĐƯỜNG BỘ' : base.dichVu,
-      hinhThucThanhToan:
-        customer.credit_type?.toUpperCase() === 'K' ? 'CÔNG NỢ THÁNG' : base.hinhThucThanhToan,
     };
   }, [waybill, customer, showPricing]);
 
   return (
-    <div className="waybill-invoice-wrap">
+    <div className={printFormat === 'standard' ? 'waybill-invoice-wrap waybill-invoice-wrap--standard' : 'waybill-invoice-wrap'}>
       <div className="print-toolbar mb-4 flex w-full max-w-[210mm] flex-wrap items-center gap-2">
         <button
           type="button"
@@ -109,8 +110,11 @@ export default function PrintWaybillPage() {
           className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-bold text-white disabled:opacity-50"
         >
           <Printer size={15} />
-          In phiếu (A5 ngang)
+          {printFormat === 'standard' ? 'In phiếu (bill thường)' : 'In phiếu (A5 ngang)'}
         </button>
+        {preview && (
+          <span className="text-[12px] text-muted-foreground">Chế độ xem trước A5 — kiểm tra nội dung trước khi in.</span>
+        )}
         {!showPricing && (
           <span className="text-[12px] text-muted-foreground">Cước phí ẩn theo quyền — chỉ in thông tin vận chuyển.</span>
         )}

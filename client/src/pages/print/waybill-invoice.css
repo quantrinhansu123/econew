@@ -1,14 +1,401 @@
-/* Phiếu giao nhận ECO — mẫu A5 ngang */
-@page {
+/* Phiếu vận chuyển ECO — A5 ngang, Times New Roman */
+@page a5-waybill {
   size: A5 landscape;
-  margin: 4mm;
+  margin: 3mm;
 }
 
+@page standard-bill {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+.waybill-invoice {
+  --fs-xs: 7.5pt;
+  --fs-sm: 8pt;
+  --fs-base: 8.5pt;
+  --fs-md: 9pt;
+  --fs-lg: 9.5pt;
+  --fs-xl: 10.5pt;
+  --fs-2xl: 11.5pt;
+  --fs-3xl: 13pt;
+  --fs-title: 14.5pt;
+  --fs-money: 15pt;
+  page: a5-waybill;
+}
+
+.waybill-invoice-wrap {
+  min-height: 100vh;
+  background: #ececec;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.waybill-invoice {
+  width: 204mm;
+  min-height: 142mm;
+  max-width: 100%;
+  margin: 0 auto;
+  background: #fff;
+  border: 2px solid #222;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 10%);
+  font-family: 'Times New Roman', Times, serif;
+  font-size: var(--fs-base);
+  line-height: 1.25;
+  color: #111;
+  box-sizing: border-box;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ================= HEADER ================= */
+
+.eco-header {
+  display: grid;
+  grid-template-columns: 48mm 1fr 54mm;
+  border-bottom: 2px solid #222;
+  min-height: 30mm;
+}
+
+.eco-header-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2mm 3mm;
+  border-right: 2px solid #222;
+  text-align: center;
+}
+
+.eco-logo {
+  display: block;
+  width: 24mm;
+  height: 18mm;
+  object-fit: contain;
+  margin: 0 auto 0.6mm;
+}
+
+.eco-company-small {
+  font-size: var(--fs-xs);
+  color: #555;
+  margin-bottom: 0.4mm;
+  line-height: 1.15;
+}
+
+.eco-phone {
+  margin-top: 0;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: #222;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+}
+
+.eco-header-center {
+  text-align: center;
+  padding: 3mm 2mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.eco-header-center h1 {
+  margin: 0 0 1.2mm;
+  font-size: var(--fs-title);
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.eco-header-center h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: bold;
+  line-height: 1.2;
+}
+
+.eco-header-right {
+  padding: 2.5mm;
+  border-left: 2px solid #222;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.eco-barcode-img {
+  display: block;
+  width: 100%;
+  max-width: 48mm;
+  height: 8.5mm;
+  margin: 0 auto 1.2mm;
+  object-fit: contain;
+}
+
+.eco-code {
+  font-size: var(--fs-2xl);
+  font-weight: bold;
+  letter-spacing: 0.4px;
+  line-height: 1.1;
+}
+
+.eco-ma-bc-nhan {
+  margin-top: 1.2mm;
+  font-size: var(--fs-sm);
+  font-weight: bold;
+  line-height: 1.2;
+}
+
+/* ================= INFO ================= */
+
+.eco-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 2px solid #222;
+}
+
+.eco-box {
+  min-height: 27mm;
+  padding: 2mm 3mm;
+  border-right: 2px solid #222;
+}
+
+.eco-box:last-child {
+  border-right: none;
+}
+
+.eco-box-title {
+  font-weight: bold;
+  margin-bottom: 1.2mm;
+  font-size: var(--fs-lg);
+  line-height: 1.2;
+}
+
+.eco-line {
+  display: grid;
+  grid-template-columns: 28mm 1fr;
+  margin-bottom: 0.8mm;
+  font-size: var(--fs-sm);
+  line-height: 1.25;
+}
+
+.eco-label {
+  font-weight: bold;
+}
+
+/* ================= PRODUCT ================= */
+
+.eco-product {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  border-bottom: 2px solid #222;
+}
+
+.eco-product-box {
+  padding: 2mm 3mm;
+  min-height: 17mm;
+  border-right: 2px solid #222;
+  font-size: var(--fs-base);
+}
+
+.eco-product-box:last-child {
+  border-right: none;
+}
+
+.eco-product-box > b,
+.eco-pay-box > b,
+.eco-footer-box > b {
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.eco-product-gap {
+  margin: 1mm 0;
+}
+
+.eco-product-box strong {
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.eco-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1mm;
+  margin-left: 1.5mm;
+  vertical-align: baseline;
+}
+
+.eco-metric-value {
+  font-size: var(--fs-3xl);
+  font-weight: bold;
+  line-height: 1;
+}
+
+.eco-metric-unit {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 1;
+  color: #333;
+}
+
+/* ================= PAYMENT ================= */
+
+.eco-payment {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  border-bottom: 2px solid #222;
+}
+
+.eco-pay-box {
+  position: relative;
+  padding: 2mm 3mm;
+  min-height: 20mm;
+  border-right: 2px solid #222;
+  font-size: var(--fs-base);
+  line-height: 1.3;
+}
+
+.eco-pay-box:last-child {
+  border-right: none;
+}
+
+.eco-total {
+  background: #d9ff3f;
+  text-align: center;
+  padding: 1.2mm 2mm 1.8mm;
+  margin-top: 1mm;
+}
+
+.eco-total-label {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: bold;
+  margin-bottom: 0.8mm;
+  line-height: 1.2;
+}
+
+.eco-total strong {
+  display: block;
+  font-size: var(--fs-money);
+  font-weight: bold;
+  line-height: 1;
+}
+
+.eco-cod-stamp {
+  position: absolute;
+  left: 8px;
+  top: 28px;
+  transform: rotate(-8deg);
+  border: 1.5px solid #d91f26;
+  color: #d91f26;
+  opacity: 0.6;
+  padding: 1px 8px;
+  font-size: var(--fs-xl);
+  font-weight: 900;
+  letter-spacing: 0.8px;
+}
+
+/* ================= FOOTER ================= */
+
+.eco-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  min-height: 28mm;
+}
+
+.eco-footer-box {
+  padding: 2mm 3mm;
+  border-right: 2px solid #222;
+  font-size: var(--fs-base);
+  line-height: 1.25;
+  min-height: 28mm;
+}
+
+.eco-footer-box:last-child {
+  border-right: none;
+}
+
+.eco-footer-service {
+  text-align: left;
+}
+
+.eco-footer-service-row {
+  display: flex;
+  align-items: center;
+  gap: 2.5mm;
+  height: 100%;
+}
+
+.eco-footer-text p {
+  margin: 0 0 1mm;
+  font-size: var(--fs-sm);
+}
+
+.eco-footer-text p:last-child {
+  margin-bottom: 0;
+}
+
+.eco-qr {
+  width: 13mm;
+  height: 13mm;
+  border: 1px solid #222;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.eco-qr img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.eco-footer-box:not(.eco-footer-service) {
+  text-align: center;
+}
+
+.eco-sign {
+  margin-top: 11mm;
+  font-size: var(--fs-sm);
+  font-style: italic;
+}
+
+/* Bill thường — A4 dọc */
+.waybill-invoice-wrap--standard .waybill-invoice {
+  --fs-xs: 8pt;
+  --fs-sm: 8.5pt;
+  --fs-base: 9pt;
+  --fs-md: 9.5pt;
+  --fs-lg: 10pt;
+  --fs-xl: 11pt;
+  --fs-2xl: 12pt;
+  --fs-3xl: 14pt;
+  --fs-title: 16pt;
+  --fs-money: 18pt;
+  width: 190mm;
+  max-width: 190mm;
+  min-height: 270mm;
+  page: standard-bill;
+}
+
+/* ================= PRINT — giữ y nguyên giao diện xem ================= */
+
 @media print {
+  html,
   body {
-    margin: 0;
+    margin: 0 !important;
+    padding: 0 !important;
     background: #fff !important;
-    font-family: Arial, Helvetica, sans-serif;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body * {
+    visibility: visible;
   }
 
   .print-toolbar {
@@ -16,373 +403,46 @@
   }
 
   .waybill-invoice-wrap {
-    min-height: auto !important;
+    min-height: 0 !important;
     padding: 0 !important;
+    margin: 0 !important;
     background: #fff !important;
+    display: block !important;
   }
 
+  /* Không override kích thước/border — in đúng như màn hình xem */
   .waybill-invoice {
-    border: 0 !important;
     box-shadow: none !important;
+    margin: 0 auto !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
-}
 
-.waybill-invoice-wrap {
-  min-height: 100vh;
-  background: #e8eef5;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
+  .waybill-invoice,
+  .waybill-invoice * {
+    font-family: 'Times New Roman', Times, serif !important;
+  }
 
-.waybill-invoice {
-  width: 210mm;
-  min-height: 142mm;
-  max-width: 100%;
-  background: #fff;
-  color: #1d2836;
-  border: 1px solid #111827;
-  box-shadow: 0 10px 30px rgb(15 23 42 / 12%);
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 8.2pt;
-  line-height: 1.15;
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-  box-sizing: border-box;
-}
+  .eco-header,
+  .eco-info,
+  .eco-product,
+  .eco-payment,
+  .eco-footer {
+    display: grid !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 
-.bill-header {
-  display: grid;
-  grid-template-columns: 30mm 1fr 72mm;
-  align-items: center;
-  min-height: 23mm;
-  border-bottom: 1px solid #111827;
-}
+  .eco-footer-service-row {
+    display: flex !important;
+  }
 
-.bill-brand {
-  padding: 2mm 3mm;
-  text-align: center;
-}
+  .eco-line {
+    display: grid !important;
+  }
 
-.bill-logo {
-  display: block;
-  width: 24mm;
-  height: 18mm;
-  object-fit: contain;
-}
-
-.bill-title-block {
-  text-align: center;
-  text-transform: uppercase;
-}
-
-.bill-title-block h1 {
-  margin: 0;
-  font-size: 12.8pt;
-  font-weight: 900;
-  letter-spacing: 0;
-}
-
-.bill-title-block p {
-  margin: 1mm 0 0;
-  font-size: 10.2pt;
-  font-weight: 900;
-}
-
-.bill-title-block b {
-  display: block;
-  margin-top: 1.5mm;
-  font-size: 8.5pt;
-  font-weight: 800;
-  text-transform: none;
-}
-
-.bill-barcode {
-  height: 100%;
-  padding: 2mm 6mm 1.5mm 2mm;
-  text-align: center;
-  border-left: 1px solid transparent;
-}
-
-.bill-barcode img {
-  display: block;
-  width: 58mm;
-  height: 12mm;
-  margin-left: auto;
-  object-fit: contain;
-}
-
-.bill-barcode strong {
-  display: block;
-  margin-top: 1mm;
-  font-size: 10pt;
-  letter-spacing: 0.4px;
-}
-
-.bill-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-bottom: 1px solid #111827;
-}
-
-.bill-panel {
-  min-height: 88mm;
-}
-
-.bill-panel + .bill-panel {
-  border-left: 1px solid #111827;
-}
-
-.bill-line,
-.bill-pair-line,
-.goods-title {
-  min-height: 6mm;
-  border-bottom: 1px solid #111827;
-}
-
-.bill-line {
-  display: flex;
-  gap: 1.5mm;
-  align-items: flex-start;
-  padding: 1.1mm 1.6mm;
-}
-
-.bill-pair-line,
-.bill-two-cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-}
-
-.bill-pair-line .bill-line,
-.bill-two-cols .bill-line {
-  border-bottom: 1px solid #111827;
-}
-
-.bill-pair-line .bill-line + .bill-line,
-.bill-two-cols .bill-line + .bill-line {
-  border-left: 1px solid #111827;
-}
-
-.bill-label {
-  flex: 0 0 auto;
-  color: #425166;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.bill-value {
-  min-width: 0;
-  color: #111827;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.bill-value-strong {
-  font-weight: 900;
-}
-
-.goods-title {
-  display: flex;
-  align-items: center;
-  gap: 1.5mm;
-  padding: 1.1mm 1.6mm;
-}
-
-.goods-title span,
-.goods-note-row span,
-.sender-sign span,
-.receiver-sign span {
-  color: #425166;
-  font-weight: 700;
-}
-
-.goods-table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
-
-.goods-table th,
-.goods-table td {
-  height: 7mm;
-  border-right: 1px solid #111827;
-  border-bottom: 1px solid #111827;
-  text-align: center;
-  font-weight: 800;
-}
-
-.goods-table th:last-child,
-.goods-table td:last-child {
-  border-right: 0;
-}
-
-.goods-note-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  min-height: 37mm;
-}
-
-.note-box,
-.content-box {
-  position: relative;
-  padding: 1.5mm;
-}
-
-.content-box {
-  border-left: 1px solid #111827;
-}
-
-.content-box strong {
-  display: block;
-  margin-top: 2mm;
-  font-weight: 800;
-}
-
-.paid-stamp {
-  position: absolute;
-  left: 8mm;
-  top: 14mm;
-  transform: rotate(-8deg);
-  border: 2px solid #d53b3b;
-  color: #d53b3b;
-  opacity: 0.45;
-  padding: 1.5mm 5mm;
-  font-size: 15pt;
-  font-weight: 900;
-  letter-spacing: 1.4px;
-}
-
-.right-body-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  min-height: 51mm;
-}
-
-.payment-box {
-  border-right: 1px solid #111827;
-}
-
-.payment-heading {
-  padding: 1.2mm 1.5mm 0;
-  text-align: center;
-  color: #425166;
-  font-weight: 800;
-}
-
-.payment-value {
-  min-height: 8mm;
-  padding: 1mm 1.5mm;
-  border-bottom: 1px solid #111827;
-  text-align: center;
-  font-weight: 900;
-}
-
-.sender-sign,
-.receiver-sign {
-  min-height: 18mm;
-  padding: 1mm 1.5mm;
-  border-bottom: 1px solid #111827;
-}
-
-.receiver-sign {
-  min-height: 20mm;
-}
-
-.fee-box .bill-line {
-  min-height: 6.2mm;
-}
-
-.collect-box {
-  min-height: 18mm;
-  padding: 1mm 1.5mm;
-  border-bottom: 1px solid #111827;
-  background: #d9f26b;
-  text-align: center;
-}
-
-.collect-box span {
-  display: block;
-  color: #31530a;
-  font-weight: 900;
-}
-
-.collect-box strong {
-  display: block;
-  margin-top: 1.5mm;
-  color: #31530a;
-  font-size: 18pt;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.bill-footer {
-  display: grid;
-  grid-template-columns: 1fr 25mm 1fr 1fr;
-  min-height: 29mm;
-}
-
-.service-box,
-.qr-box,
-.employee-box {
-  border-right: 1px solid #111827;
-}
-
-.employee-box:last-child {
-  border-right: 0;
-}
-
-.service-box {
-  padding: 1.5mm;
-}
-
-.service-box .bill-line {
-  min-height: auto;
-  border-bottom: 0;
-  padding: 0 0 1mm;
-}
-
-.service-box p {
-  margin: 1mm 0 0;
-  color: #425166;
-  font-size: 7.1pt;
-  font-style: italic;
-  line-height: 1.2;
-}
-
-.qr-box {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.qr-box img {
-  width: 21mm;
-  height: 21mm;
-}
-
-.employee-box {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 1.5mm;
-  text-align: center;
-  color: #425166;
-  font-size: 7.8pt;
-  font-weight: 700;
-}
-
-.employee-box label {
-  display: flex;
-  align-items: center;
-  gap: 1.5mm;
-  color: #1d2836;
-  text-align: left;
-}
-
-.employee-box label span {
-  display: inline-block;
-  width: 3.3mm;
-  height: 3.3mm;
-  border: 1px solid #111827;
+  .eco-total {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

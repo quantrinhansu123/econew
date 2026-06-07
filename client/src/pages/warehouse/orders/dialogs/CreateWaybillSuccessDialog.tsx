@@ -1,4 +1,4 @@
-import { CheckCircle2, FileText, PackageCheck, Printer, RotateCcw, X } from 'lucide-react';
+import { CheckCircle2, FileText, Printer, RotateCcw, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { BadgeConfig, CreatedWaybill } from '../types';
 
@@ -10,7 +10,6 @@ interface CreateWaybillSuccessDialogProps {
   paymentConfig: Record<string, BadgeConfig>;
   onClose: () => void;
   onCreateAnother: () => void;
-  onReceive: () => void;
   onPrint: () => void;
 }
 
@@ -21,7 +20,7 @@ function Badge({ config, fallback }: { config?: BadgeConfig; fallback: string })
   return <span className={clsx('inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-wider', resolved.className)}>{resolved.label}</span>;
 }
 
-export default function CreateWaybillSuccessDialog({ isOpen, isClosing, waybill, statusConfig, paymentConfig, onClose, onCreateAnother, onReceive, onPrint }: CreateWaybillSuccessDialogProps) {
+export default function CreateWaybillSuccessDialog({ isOpen, isClosing, waybill, statusConfig, paymentConfig, onClose, onCreateAnother, onPrint }: CreateWaybillSuccessDialogProps) {
   if (!isOpen) return null;
 
   const status = String(waybill?.current_state || 'RECEIVED').toUpperCase();
@@ -57,10 +56,7 @@ export default function CreateWaybillSuccessDialog({ isOpen, isClosing, waybill,
             </div>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-2">
-            <button onClick={onReceive} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-bold text-white shadow-sm shadow-primary/20"><PackageCheck size={16} />Tiếp nhận ngay</button>
-            <button onClick={onPrint} className="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 text-[13px] font-bold text-foreground hover:bg-muted"><Printer size={16} />In phiếu</button>
-          </div>
+          <button onClick={onPrint} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 text-[13px] font-bold text-foreground hover:bg-muted"><Printer size={16} />In phiếu</button>
           <button onClick={onCreateAnother} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-[13px] font-bold text-emerald-700 hover:bg-emerald-100"><RotateCcw size={16} />Tạo đơn khác</button>
         </div>
       </div>

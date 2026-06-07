@@ -23,7 +23,7 @@ interface Props {
 }
 
 const inputClass =
-  'h-7 w-full min-w-0 rounded border border-slate-300 bg-white pr-7 pl-2 text-[12px] font-medium text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary/20';
+  'h-10 w-full min-w-0 rounded-md border border-slate-300 bg-white pr-9 pl-3 text-[14px] font-medium text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20';
 
 const normalizeList = (payload: CustomerListResponse | CustomerListItem[]) =>
   Array.isArray(payload) ? payload : payload.items || [];
@@ -212,12 +212,12 @@ export default function CustomerMaKhCombobox({
               tabIndex={-1}
               disabled={disabled}
               onClick={() => setOpen((p) => !p)}
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-40"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-40"
             >
               {loading ? (
-                <Loader2 size={14} className="animate-spin" />
+                <Loader2 size={16} className="animate-spin" />
               ) : (
-                <ChevronDown size={14} className={clsx(open && 'rotate-180')} />
+                <ChevronDown size={16} className={clsx(open && 'rotate-180')} />
               )}
             </button>
           </div>
@@ -302,9 +302,9 @@ export default function CustomerMaKhCombobox({
           title="Thêm khách hàng mới"
           disabled={disabled || isSubmitting}
           onClick={openCreateModal}
-          className="inline-flex h-7 shrink-0 items-center gap-0.5 rounded border border-primary bg-primary px-1.5 text-[11px] font-bold text-white shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-10 shrink-0 items-center gap-1 rounded-md border border-primary bg-primary px-2.5 text-[13px] font-bold text-white shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <Plus size={13} strokeWidth={2.5} />
+          <Plus size={15} strokeWidth={2.5} />
           <span className="whitespace-nowrap">Thêm mới</span>
         </button>
       </div>

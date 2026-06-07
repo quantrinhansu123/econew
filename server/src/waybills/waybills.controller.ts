@@ -17,6 +17,7 @@ import { ReceiveWaybillDto } from './dto/receive-waybill.dto';
 import { UpdateCodFeeDto } from './dto/update-cod-fee.dto';
 import { UpdateWaybillStatusDto } from './dto/update-waybill-status.dto';
 import { UpdateWaybillDto } from './dto/update-waybill.dto';
+import { BulkStackOntoTruckDto } from './dto/bulk-stack-onto-truck.dto';
 import { SaveWaybillSplitsDto } from './dto/save-waybill-splits.dto';
 import { QueryLoadPlanningBoardDto } from './dto/query-load-planning-board.dto';
 import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
@@ -53,6 +54,13 @@ export class WaybillsController {
   @ApiOperation({ summary: 'Inventory expanded by trip/truck split lines' })
   getInventoryTripLines(@Query() query: QueryWaybillsDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.getInventoryTripLines(query, currentUser);
+  }
+
+  @Post('inventory/stack-onto-truck')
+  @RequireRoles(Roles.WAREHOUSE, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Bulk stack selected inventory lines onto trucks (waybill_splits)' })
+  bulkStackOntoTruck(@Body() dto: BulkStackOntoTruckDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.bulkStackOntoTruck(dto, currentUser);
   }
 
   @Get('inventory')
