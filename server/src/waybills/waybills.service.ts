@@ -702,6 +702,7 @@ export class WaybillsService {
 
     type TruckGroup = {
       truck_id: string;
+      vendor_id: string | null;
       license_plate: string | null;
       nha_xe: string | null;
       ten_lai_xe: string | null;
@@ -720,7 +721,7 @@ export class WaybillsService {
       if (!waybill) return;
       const truck = split.truck ?? split.trip?.truck ?? null;
       const truckId = String(split.truck_id);
-      const group = truckMap.get(truckId) ?? {
+      const group: TruckGroup = truckMap.get(truckId) ?? {
         truck_id: truckId,
         vendor_id: truck?.vendor_id ?? null,
         license_plate: truck?.bks ?? truck?.license_plate ?? null,
