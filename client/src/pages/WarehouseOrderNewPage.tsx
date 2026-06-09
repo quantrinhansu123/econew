@@ -6,7 +6,7 @@ import { getLoginDisplayName, getStoredAuthUser } from '../lib/authUser';
 import CreateWaybillSuccessDialog from './warehouse/orders/dialogs/CreateWaybillSuccessDialog';
 import NewOrderWorkbench from './warehouse/orders/components/NewOrderWorkbench';
 import { emptyOrderForm } from './warehouse/orders/orderFormData';
-import { applyReceiverByDestination, customerToOrderPatch } from './warehouse/customers/customerOrderPatch';
+import { customerToOrderPatch } from './warehouse/customers/customerOrderPatch';
 import type { CustomerRecord } from './warehouse/customers/customerFormTypes';
 import {
   applyPricingToForm,
@@ -79,7 +79,6 @@ export default function WarehouseOrderNewPage() {
   const [createdWaybill, setCreatedWaybill] = useState<CreatedWaybill | null>(null);
   const [isSuccessOpen, setIsSuccessOpen] = useState(false);
   const [isSuccessClosing, setIsSuccessClosing] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
 
   const canCreate = hasCreateRole(user?.role_mask ?? 0);
   const loginName = getLoginDisplayName(user as Parameters<typeof getLoginDisplayName>[0]);
@@ -177,7 +176,6 @@ export default function WarehouseOrderNewPage() {
         if (match) {
           const full = await apiRequest<Partial<CustomerListItem>>(`/customers/${match.id}`);
           const record = { ...match, ...full } as CustomerRecord;
-          setSelectedCustomer(record);
           setForm((prev) => applyPricingToForm({ ...prev, ...customerToOrderPatch(record, hubs) }));
           return;
         }
@@ -217,19 +215,13 @@ export default function WarehouseOrderNewPage() {
   };
 
   const handleCustomerSelect = (patch: Partial<NewOrderFormState>, customer: CustomerRecord) => {
-    setSelectedCustomer(customer);
+    void customer;
     patchForm(patch);
   };
 
   const handleDestinationChange = (destHubId: string, noiDen: string, huyen: string) => {
     setForm((prev) => {
-      let next: NewOrderFormState = { ...prev, destHubId, noiDen, huyen };
-      if (selectedCustomer) {
-        next = { ...next, ...applyReceiverByDestination(selectedCustomer, noiDen, huyen) };
-      } else {
-        next = { ...next, diaChiNhan: '', dienThoaiNhan: '' };
-      }
-      return applyPricingToForm(next);
+      return applyPricingToForm({ ...prev, destHubId, noiDen, huyen });
     });
     setActionError('');
   };
@@ -265,7 +257,6 @@ export default function WarehouseOrderNewPage() {
     const defaultDest = String(hubs.find((h) => h.code?.toUpperCase() === 'HCM')?.id || hubs[1]?.id || '');
     const nextCode = await loadNextWaybillCode();
     setSelectedBillId(null);
-    setSelectedCustomer(null);
     setForm(
       applyPricingToForm({
         ...emptyOrderForm(),

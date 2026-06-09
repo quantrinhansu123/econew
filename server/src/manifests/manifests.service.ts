@@ -7,6 +7,7 @@ import { WaybillState, TripStatus } from '../common/enums';
 import { HubEntity } from '../hubs/hub.entity';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
+import { WaybillSplitEntity } from '../waybills/waybill-split.entity';
 import { WaybillEntity } from '../waybills/waybill.entity';
 import { AddWaybillsToManifestDto } from './dto/add-waybills-to-manifest.dto';
 import { AssignManifestTripDto } from './dto/assign-manifest-trip.dto';
@@ -30,6 +31,7 @@ export class ManifestsService {
     @InjectRepository(ManifestEntity) private readonly manifestsRepository: Repository<ManifestEntity>,
     @InjectRepository(ManifestWaybillEntity) private readonly manifestWaybillsRepository: Repository<ManifestWaybillEntity>,
     @InjectRepository(WaybillEntity) private readonly waybillsRepository: Repository<WaybillEntity>,
+    @InjectRepository(WaybillSplitEntity) private readonly waybillSplitsRepository: Repository<WaybillSplitEntity>,
     @InjectRepository(HubEntity) private readonly hubsRepository: Repository<HubEntity>,
     @InjectRepository(TripEntity) private readonly tripsRepository: Repository<TripEntity>,
   ) {}
@@ -73,16 +75,18 @@ export class ManifestsService {
   async findAll(query: QueryManifestsDto, currentUser: UserEntity) {
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 20);
-    const qb = this.manifestsRepository.createQueryBuilder('manifest').leftJoinAndSelect('manifest.origin_hub', 'origin_hub').leftJoinAndSelect('manifest.dest_hub', 'dest_hub').leftJoinAndSelect('manifest.trips', 'trip');
+    const qb = this.manifestsRepository.createQueryBuilder('manifest').leftJoinAndSelect('manifest.origin_hub', 'origin_hub').leftJoinAndSelect('manifest.dest_hub', 'dest_hub').leftJoinAndSelect('manifest.trips', 'trip').leftJoinAndSelect('trip.truck', 'truck').leftJoinAndSelect('truck.driver', 'driver');
     this.applyFilters(qb, query);
     this.applyHubScope(qb, currentUser);
     const [items, total] = await qb.orderBy('manifest.created_at', 'DESC').skip((page - 1) * limit).take(limit).getManyAndCount();
+    await this.enrichTransportSummaries(items as ManifestRecord[]);
     return { items, meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
   }
 
   async findOne(id: string, currentUser: UserEntity): Promise<ManifestRecord> {
     const manifest = await this.loadManifest(id);
     this.assertManifestAccess(manifest, currentUser);
+    await this.enrichTransportSummaries([manifest]);
     return manifest;
   }
 
@@ -171,8 +175,12 @@ export class ManifestsService {
     if (!trip) throw new NotFoundException('Trip not found');
     if (LOCKED_TRIP_STATUSES.includes(trip.status)) throw new BadRequestException('Trip is completed or cancelled');
     if (trip.start_hub_id !== manifest.origin_hub_id) throw new BadRequestException('Trip origin hub must match manifest origin hub');
+    trip.manifest_id = id;
+    await this.tripsRepository.save(trip as TripEntity);
     Object.assign(manifest, { trip_id: dto.trip_id, status: ManifestStatus.ASSIGNED_TO_TRIP, assigned_trip_at: new Date(), updated_by: currentUser.id });
-    return await this.manifestsRepository.save(manifest) as ManifestRecord;
+    const savedManifest = await this.manifestsRepository.save(manifest) as ManifestRecord;
+    await this.enrichTransportSummaries([savedManifest]);
+    return savedManifest;
   }
 
   async updateDispatchRows(id: string, dto: { rows?: Array<{ waybill_id?: string | number; fields?: Record<string, unknown> }> }, currentUser: UserEntity): Promise<ManifestRecord> {
@@ -241,10 +249,67 @@ export class ManifestsService {
 
     const manifest = await this.manifestsRepository.findOne({
       where: { id } as any,
-      relations: ['origin_hub', 'dest_hub', 'manifest_waybills', 'manifest_waybills.waybill'],
+      relations: ['origin_hub', 'dest_hub', 'trips', 'trips.truck', 'trips.truck.driver', 'manifest_waybills', 'manifest_waybills.waybill', 'manifest_waybills.waybill.dest_hub'],
     }) as ManifestRecord | null;
     if (!manifest) throw new NotFoundException('Manifest not found');
     return manifest;
+  }
+
+  private async enrichTransportSummaries(manifests: ManifestRecord[]): Promise<void> {
+    const manifestIds = manifests.map((manifest) => String(manifest.id)).filter(Boolean);
+    if (!manifestIds.length) return;
+
+    manifests.forEach((manifest) => {
+      const trips = (manifest.trips ?? []) as TripRecord[];
+      const primaryTrip = trips[0] ?? null;
+      if (primaryTrip) manifest.trip = this.mapTripSummary(primaryTrip);
+    });
+
+    const needsSplitFallback = manifests.filter((manifest) => !manifest.trip);
+    if (!needsSplitFallback.length) return;
+
+    const links = await this.manifestWaybillsRepository.find({ where: { manifest_id: In(needsSplitFallback.map((manifest) => String(manifest.id))) } });
+    const manifestByWaybill = new Map<string, ManifestRecord>();
+    const manifestById = new Map(needsSplitFallback.map((manifest) => [String(manifest.id), manifest]));
+    links.forEach((link) => {
+      const manifest = manifestById.get(String(link.manifest_id));
+      if (manifest) manifestByWaybill.set(String(link.waybill_id), manifest);
+    });
+
+    const waybillIds = [...manifestByWaybill.keys()];
+    if (!waybillIds.length) return;
+
+    const splits = await this.waybillSplitsRepository.find({
+      where: { waybill_id: In(waybillIds) },
+      relations: ['truck', 'truck.driver', 'trip', 'trip.truck'],
+      order: { loading_position: 'ASC', id: 'ASC' },
+    });
+
+    for (const split of splits as Array<WaybillSplitEntity & Record<string, any>>) {
+      const manifest = manifestByWaybill.get(String(split.waybill_id));
+      if (!manifest || manifest.trip) continue;
+      const trip = split.trip as TripRecord | null;
+      const truck = split.truck ?? trip?.truck ?? null;
+      manifest.trip = {
+        id: trip?.id ?? split.trip_id ?? `split-${split.id}`,
+        trip_code: trip?.trip_code ?? trip?.code ?? null,
+        code: trip?.code ?? null,
+        status: trip?.status ?? split.load_status ?? null,
+        truck,
+        driver_name: trip?.driver_name ?? truck?.ten_lai_xe ?? truck?.driver?.full_name ?? truck?.driver?.username ?? null,
+        driver_phone: trip?.driver_phone ?? truck?.driver?.phone ?? null,
+        carrier_label: split.carrier_label ?? truck?.nha_xe ?? truck?.vendor?.name ?? null,
+      };
+    }
+  }
+
+  private mapTripSummary(trip: TripRecord) {
+    const truck = trip.truck as Record<string, any> | null | undefined;
+    return {
+      ...trip,
+      driver_name: trip.driver_name ?? truck?.ten_lai_xe ?? truck?.driver?.full_name ?? truck?.driver?.username ?? null,
+      driver_phone: trip.driver_phone ?? truck?.driver?.phone ?? null,
+    };
   }
 
   private applyFilters(qb: any, query: QueryManifestsDto) {

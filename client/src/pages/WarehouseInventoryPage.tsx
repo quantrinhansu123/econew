@@ -6,6 +6,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
 import { DayPicker } from '../components/ui/DayPicker';
+import { DateRangePicker } from '../components/ui/DateRangePicker';
 import { FilterSelect } from '../components/ui/FilterSelect';
 import type { AuthUserProfile } from './login/types';
 import WaybillPackageSplitDialog from './warehouse/inventory/dialogs/WaybillPackageSplitDialog';
@@ -102,6 +103,8 @@ const isIncompleteSplitRow = (item: WaybillInventoryItem) => {
 
 const buildQuery = (filters: InventoryFilters, variant: InventoryPageVariant) => {
   const params = new URLSearchParams({ page: String(filters.page), limit: String(filters.limit) });
+  if (filters.receivedFrom) params.set('received_from', filters.receivedFrom);
+  if (filters.receivedTo) params.set('received_to', filters.receivedTo);
   if (variant === 'split-pending') {
     params.set('only_incomplete_split', '1');
     if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
@@ -110,8 +113,6 @@ const buildQuery = (filters: InventoryFilters, variant: InventoryPageVariant) =>
     if (filters.hubIds.length) params.set('hub_id', filters.hubIds.join(','));
     if (filters.paymentTypes.length) params.set('payment_type', filters.paymentTypes.join(','));
     if (filters.priorities.length) params.set('priority', filters.priorities.join(','));
-    if (filters.receivedFrom) params.set('received_from', filters.receivedFrom);
-    if (filters.receivedTo) params.set('received_to', filters.receivedTo);
   }
   return params.toString();
 };
@@ -213,7 +214,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     }, 180);
   };
   const clearFilters = () => {
-    setFilters(defaultFilters);
+    setFilters(isAllOrders ? allOrdersDefaultFilters : defaultFilters);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete('ma_kh');
@@ -410,7 +411,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         <div className="rounded-xl border border-border bg-card px-4 py-2.5 text-[13px] text-muted-foreground">
           <span className="font-extrabold text-foreground">Danh sách đơn</span>
           {' — '}
-          Hiển thị toàn bộ vận đơn theo ngày và mã bill, không áp dụng bộ lọc.
+          Hiển thị toàn bộ vận đơn theo ngày và mã bill, có thể lọc theo khoảng ngày bốc hàng.
         </div>
       ) : (
         <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-[13px] text-amber-900">
@@ -432,6 +433,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               </>
             )}
             {isAllOrders && <div className="min-w-0 flex-1 text-[15px] font-extrabold text-foreground">Danh sách đơn</div>}
+            {isAllOrders && activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
             <div className="hidden flex-1 md:block" />
             {!isAllOrders && canUpdate && (
               <button
@@ -448,6 +450,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                 )}
               </button>
             )}
+            {isAllOrders && <DateRangePicker value={{ from: filters.receivedFrom, to: filters.receivedTo }} onChange={({ from, to }) => updateFilters({ receivedFrom: from || '', receivedTo: to || '' })} placeholder="Từ ngày - Đến ngày" className="w-[18.5rem] shrink-0" />}
             <button
               type="button"
               title="Bảng kê phát hàng — xe & vị trí"
@@ -487,8 +490,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             <button title="Làm mới" onClick={() => void loadInventory()} className="hidden h-10 w-10 rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted md:flex items-center justify-center"><RefreshCcw size={16} /></button>
           </div>
 
-          {!isAllOrders && (
-            <div className="hidden flex-wrap items-center gap-2 md:flex">
+          {!isAllOrders && <div className="hidden flex-wrap items-center gap-2 md:flex">
               <FilterSelect multiple icon={Tag} placeholder="Trạng thái" searchPlaceholder="Tìm trạng thái..." options={statusOptions} value={filters.statuses} onValueChange={value => setFilterArray('statuses', value)} className="h-9 min-w-[150px]" />
               <FilterSelect multiple icon={Building2} placeholder="Bưu cục" searchPlaceholder="Tìm bưu cục..." options={hubOptions} value={filters.hubIds} onValueChange={value => setFilterArray('hubIds', value)} className="h-9 min-w-[170px]" />
               <FilterSelect multiple icon={CreditCard} placeholder="Loại thanh toán" searchPlaceholder="Tìm thanh toán..." options={paymentOptions} value={filters.paymentTypes} onValueChange={value => setFilterArray('paymentTypes', value)} className="h-9 min-w-[170px]" />
@@ -499,8 +501,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                 <span className="shrink-0">—</span>
                 <DayPicker value={filters.receivedTo} onChange={value => updateFilters({ receivedTo: value })} placeholder="Đến ngày" className="h-7 min-w-[8.5rem] w-[8.5rem] shrink-0 border-0 bg-transparent pl-0 pr-6 text-[12px] focus:ring-0" />
               </div>
-            </div>
-          )}
+            </div>}
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
@@ -621,7 +622,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         onSaved={(result) => {
           setSelectedWaybillIds([]);
           if (result?.manifest_id) {
-            navigate(`/warehouse/manifests/${result.manifest_id}`);
+            navigate(`/warehouse/manifests?openManifestId=${encodeURIComponent(String(result.manifest_id))}`);
             return;
           }
           void loadInventory();

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, CalendarClock, Eye, Loader2, PackageCheck, Printer, RefreshCcw, Save, Search, Truck, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CalendarClock, Eye, Loader2, PackageCheck, Phone, Printer, RefreshCcw, Save, Search, Truck, UserRound, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import type { LoadPlanningManifest, ManifestDispatchFields, ManifestWaybill } from './warehouse/manifests/types';
@@ -37,8 +37,11 @@ const display = (value?: string | number | null, fallback = '—') => (value == 
 const blank = (value?: string | number | null) => (value == null || value === '' ? '' : String(value));
 const manifestCode = (manifest?: LoadPlanningManifest | null) => manifest?.manifest_code || manifest?.code || (manifest ? `MF-${manifest.id}` : '—');
 const hubLabel = (hub?: { code?: string | null; name?: string | null } | null, id?: string | number | null) => hub?.code || hub?.name || (id ? `Hub #${id}` : '—');
-const tripLabel = (manifest: LoadPlanningManifest) => manifest.trip?.trip_code || manifest.trip?.code || (manifest.trip_id ? `Chuyến #${manifest.trip_id}` : 'Chưa gán chuyến');
-const truckLabel = (manifest: LoadPlanningManifest) => manifest.trip?.truck?.license_plate || 'Chưa có xe';
+const manifestTrip = (manifest: LoadPlanningManifest) => manifest.trip ?? manifest.trips?.[0] ?? null;
+const tripLabel = (manifest: LoadPlanningManifest) => manifestTrip(manifest)?.trip_code || manifestTrip(manifest)?.code || (manifest.trip_id ? `Chuyến #${manifest.trip_id}` : 'Chưa gán chuyến');
+const truckLabel = (manifest: LoadPlanningManifest) => manifestTrip(manifest)?.truck?.bks || manifestTrip(manifest)?.truck?.license_plate || 'Chưa có xe';
+const driverLabel = (manifest: LoadPlanningManifest) => manifestTrip(manifest)?.driver_name || manifestTrip(manifest)?.driver?.name || manifestTrip(manifest)?.driver?.full_name || manifestTrip(manifest)?.truck?.ten_lai_xe || manifestTrip(manifest)?.truck?.driver?.name || manifestTrip(manifest)?.truck?.driver?.full_name || 'Chưa gán tài xế';
+const driverPhoneLabel = (manifest: LoadPlanningManifest) => manifestTrip(manifest)?.driver_phone || manifestTrip(manifest)?.driver?.phone || manifestTrip(manifest)?.truck?.driver?.phone || manifestTrip(manifest)?.truck?.phone || 'Chưa có SĐT';
 const parseName = (info?: string | null) => (info || '').split('|')[0]?.trim() || '';
 const formatNumber = (value?: string | number | null, suffix = '') => value == null || value === '' ? '—' : `${Number(value).toLocaleString('vi-VN')}${suffix}`;
 const formatDateTime = (value?: string | null) => {
@@ -185,18 +188,28 @@ export default function WarehouseManifestDetailPage() {
 }
 
 function ManifestKanbanCard({ manifest, waybillCount, onOpen }: { manifest: LoadPlanningManifest; waybillCount: number; onOpen: () => void }) {
-  return <article className="rounded-2xl border border-border bg-white p-4 shadow-sm">
-    <div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Bảng kê</p><h3 className="mt-1 text-lg font-black text-primary">{manifestCode(manifest)}</h3></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-[12px] font-black text-emerald-700">{display(manifest.status)}</span></div>
-    <div className="mt-4 grid gap-3 text-[13px] font-semibold text-foreground">
-      <Line label="Hub đi" value={hubLabel(manifest.origin_hub, manifest.origin_hub_id)} />
-      <Line label="Hub đến" value={hubLabel(manifest.dest_hub, manifest.dest_hub_id)} />
-      <Line label="Chuyến xe" value={tripLabel(manifest)} />
-      <Line label="Biển số" value={truckLabel(manifest)} />
-      <Line label="Tổng vận đơn" value={formatNumber(manifest.waybill_count ?? manifest.total_waybills ?? waybillCount)} />
-      <Line label="Tổng trọng lượng" value={formatNumber(manifest.total_weight ?? manifest.weight_total, ' kg')} />
-      <Line label="Thời gian đóng" value={formatDateTime(manifest.closed_at || manifest.created_at)} />
+  return <article className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors duration-200 hover:border-primary/30 hover:bg-blue-50/20">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0"><p className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Bảng kê</p><h3 className="mt-1 truncate text-lg font-black text-primary">{manifestCode(manifest)}</h3></div>
+      <span className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-[12px] font-black text-emerald-700">{display(manifest.status)}</span>
     </div>
-    <button onClick={onOpen} className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-black text-white hover:bg-primary/90"><Eye size={16} />Xem chi tiết bảng kê</button>
+    <div className="mt-3 flex items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50/70 px-3 py-2 text-[13px] font-black text-blue-800">
+      <span className="rounded-full bg-white px-2.5 py-1">{hubLabel(manifest.origin_hub, manifest.origin_hub_id)}</span>
+      <ArrowRight size={15} className="shrink-0 text-blue-500" />
+      <span className="rounded-full bg-white px-2.5 py-1">{hubLabel(manifest.dest_hub, manifest.dest_hub_id)}</span>
+    </div>
+    <div className="mt-3 grid grid-cols-2 gap-2 text-[12px] font-semibold text-foreground">
+      <Metric label="Vận đơn" value={formatNumber(manifest.waybill_count ?? manifest.total_waybills ?? waybillCount)} />
+      <Metric label="Trọng lượng" value={formatNumber(manifest.total_weight ?? manifest.weight_total, ' kg')} />
+    </div>
+    <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-[13px] font-semibold text-foreground">
+      <Line icon={<Truck size={15} />} label="Biển số xe" value={truckLabel(manifest)} />
+      <Line icon={<UserRound size={15} />} label="Tài xế" value={driverLabel(manifest)} />
+      <Line icon={<Phone size={15} />} label="SĐT" value={driverPhoneLabel(manifest)} />
+      <Line icon={<CalendarClock size={15} />} label="Thời gian đóng" value={formatDateTime(manifest.closed_at || manifest.created_at)} />
+    </div>
+    <div className="mt-3 rounded-2xl bg-slate-900 px-3 py-2 text-[13px] font-black text-white">{tripLabel(manifest)}</div>
+    <button onClick={onOpen} className="mt-4 inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-black text-white transition-colors duration-200 hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/20"><Eye size={16} />Xem chi tiết bảng kê</button>
   </article>;
 }
 
@@ -229,8 +242,12 @@ function EmptyColumn({ title }: { title: string }) {
   return <div className="flex min-h-[260px] items-center justify-center rounded-2xl border border-dashed border-border bg-white text-center text-[13px] font-bold text-muted-foreground">{title}</div>;
 }
 
-function Line({ label, value }: { label: string; value: ReactNode }) {
-  return <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2"><span className="text-muted-foreground">{label}</span><span className="text-right font-black">{value}</span></div>;
+function Metric({ label, value }: { label: string; value: ReactNode }) {
+  return <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2"><p className="text-[11px] font-black uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-1 text-[15px] font-black text-slate-950">{value}</p></div>;
+}
+
+function Line({ icon, label, value }: { icon: ReactNode; label: string; value: ReactNode }) {
+  return <div className="flex items-center justify-between gap-3 border-b border-slate-200 py-2 last:border-b-0"><span className="flex items-center gap-2 text-muted-foreground">{icon}{label}</span><span className="text-right font-black text-slate-950">{value}</span></div>;
 }
 
 function Alert({ message, tone }: { message: string; tone: 'red' | 'green' }) {

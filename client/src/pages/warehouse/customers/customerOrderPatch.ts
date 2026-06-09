@@ -193,7 +193,5 @@ export function customerToOrderPatch(customer: CustomerRecord, hubs: HubSummary[
     if (destHubId) patch.destHubId = destHubId;
   }
 
-  Object.assign(patch, applyReceiverByDestination(customer, noiDen || 'HCM', huyen));
-
   return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined && v !== '')) as Partial<NewOrderFormState>;
 }

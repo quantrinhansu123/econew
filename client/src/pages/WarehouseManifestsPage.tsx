@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Edit, Eye, FilePlus2, Filter, Loader2, PackageCheck, Plus, Printer, Route, Search, Trash2, Truck, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Edit, Eye, FilePlus2, Filter, Loader2, PackageCheck, Phone, Plus, Printer, Route, Search, Trash2, Truck, UserRound, X } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { FilterSelect } from '../components/ui/FilterSelect';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
@@ -56,13 +56,19 @@ const formatDate = (value?: string | null) => value ? new Intl.DateTimeFormat('v
 const manifestCode = (manifest: LoadPlanningManifest) => manifest.manifest_code || manifest.code || `MF-${manifest.id}`;
 const hubLabel = (hub?: HubSummary | null, id?: string | number | null) => hub?.code || hub?.name || (id ? `Hub #${id}` : '—');
 const tripLabel = (trip?: TripSummary | null, id?: string | number | null) => trip?.trip_code || trip?.code || (id ? `Chuyến #${id}` : 'Chưa gán');
+const manifestTrip = (manifest: LoadPlanningManifest) => manifest.trip ?? manifest.trips?.[0] ?? null;
+const truckLabel = (manifest: LoadPlanningManifest) => { const trip = manifestTrip(manifest); return trip?.truck?.bks || trip?.truck?.license_plate || 'Chưa gán'; };
+const driverLabel = (manifest: LoadPlanningManifest) => { const trip = manifestTrip(manifest); return trip?.driver_name || trip?.driver?.name || trip?.driver?.full_name || trip?.truck?.ten_lai_xe || trip?.truck?.driver?.name || trip?.truck?.driver?.full_name || 'Chưa gán'; };
+const driverPhoneLabel = (manifest: LoadPlanningManifest) => { const trip = manifestTrip(manifest); return trip?.driver_phone || trip?.driver?.phone || trip?.truck?.driver?.phone || trip?.truck?.phone || 'Chưa có SĐT'; };
 const getWaybillCount = (manifest: LoadPlanningManifest) => Number(manifest.waybill_count ?? manifest.total_waybills ?? manifest.waybills?.length ?? 0);
 const getTotalWeight = (manifest: LoadPlanningManifest) => manifest.total_weight ?? manifest.weight_total ?? manifest.waybills?.reduce((sum, item) => sum + Number(item.weight || 0), 0);
 const closedBy = (manifest: LoadPlanningManifest) => manifest.closed_by?.name || manifest.closed_by?.full_name || manifest.closed_by?.username || manifest.created_by?.name || manifest.created_by?.full_name || manifest.created_by?.username || '—';
 
 export default function WarehouseManifestsPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const user = useMemo(getStoredUser, []);
+  const openManifestId = searchParams.get('openManifestId')?.trim() || '';
   const roleMask = user?.role_mask ?? 0;
   const allowed = canViewPage(roleMask);
   const mayAssign = canAssignTrip(roleMask);
@@ -115,6 +121,11 @@ export default function WarehouseManifestsPage() {
 
   useEffect(() => { if (!allowed) return; void fetchOptions(); }, [allowed]);
   useEffect(() => { if (!allowed) return; void fetchManifests(); }, [allowed, filters]);
+  useEffect(() => {
+    if (!allowed || isLoading || !openManifestId || isDetailOpen || isDetailLoading) return;
+    const manifest = manifests.find((item) => String(item.id) === openManifestId) ?? ({ id: openManifestId } as LoadPlanningManifest);
+    void openDetail(manifest);
+  }, [allowed, isLoading, openManifestId, manifests, isDetailOpen, isDetailLoading]);
 
   async function fetchOptions() {
     try {
@@ -149,7 +160,7 @@ export default function WarehouseManifestsPage() {
   const clearFilters = () => { const next = { ...defaultFilters, keyword: filters.keyword, limit: filters.limit }; setFilters(next); setDraftFilters(next); };
   const openFilters = () => { setDraftFilters(filters); setIsFilterOpen(true); };
   const applyFilters = () => { setFilters({ ...draftFilters, page: 1 }); setIsFilterOpen(false); };
-  const closeDetail = () => { setIsDetailClosing(true); window.setTimeout(() => { setIsDetailOpen(false); setDetailManifest(null); setIsDetailClosing(false); }, 180); };
+  const closeDetail = () => { setIsDetailClosing(true); if (openManifestId) setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('openManifestId'); return next; }, { replace: true }); window.setTimeout(() => { setIsDetailOpen(false); setDetailManifest(null); setIsDetailClosing(false); }, 180); };
   const closeAssign = () => { setIsAssignClosing(true); window.setTimeout(() => { setIsAssignOpen(false); setAssignManifest(null); setIsAssignClosing(false); }, 180); };
 
   async function openDetail(manifest: LoadPlanningManifest) {
@@ -157,6 +168,18 @@ export default function WarehouseManifestsPage() {
     try { setDetailManifest(await apiRequest<LoadPlanningManifest>(`/manifests/${manifest.id}`)); }
     catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không thể tải chi tiết bảng kê.'); }
     finally { setIsDetailLoading(false); }
+  }
+
+  async function updateDetailDispatchFields(waybill: ManifestWaybill, fields: Record<string, string>) {
+    if (!detailManifest) return;
+    setIsSubmitting(true); setActionError('');
+    try {
+      await apiRequest(`/manifests/${detailManifest.id}/dispatch-rows`, { method: 'PATCH', body: { rows: [{ waybill_id: waybill.id, fields: { ...(waybill.dispatch_fields ?? {}), ...fields } }] } });
+      const freshManifest = await apiRequest<LoadPlanningManifest>(`/manifests/${detailManifest.id}`);
+      setDetailManifest(freshManifest);
+      await fetchManifests();
+    } catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không thể cập nhật thông tin dòng bảng kê.'); }
+    finally { setIsSubmitting(false); }
   }
 
   function openAssign(manifest: LoadPlanningManifest) { if (!mayAssign) return; setAssignManifest(manifest); setAssignForm({ trip_id: manifest.trip_id ? String(manifest.trip_id) : '' }); setIsAssignOpen(true); }
@@ -240,7 +263,7 @@ export default function WarehouseManifestsPage() {
         <div className="shrink-0 border-t border-border bg-card px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[12px] font-bold text-muted-foreground">{`${rangeStart}-${rangeEnd}/Tổng:${total}`}</p><div className="flex items-center gap-2"><SearchableSelect value={String(filters.limit)} onValueChange={value => updateFilters({ limit: Number(value), page: 1 })} options={[{ value: '10', label: '10' }, { value: '20', label: '20' }, { value: '50', label: '50' }]} className="h-9 w-[88px] rounded-lg bg-white px-3 text-[13px] text-muted-foreground" searchPlaceholder="Tìm số dòng..." /><span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button><span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span><span className="text-[13px] font-bold text-foreground">/ {totalPages}</span></div></div></div>
       </div>
       <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} tripOptions={tripOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />
-      <ManifestDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} manifest={detailManifest} statusConfig={statusConfig} canManage={canManageManifest && detailManifest?.status === 'DRAFT'} onClose={closeDetail} onRemoveWaybill={confirmRemoveWaybill} />
+      <ManifestDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} isSubmitting={isSubmitting} manifest={detailManifest} statusConfig={statusConfig} canManage={canManageManifest} onClose={closeDetail} onRemoveWaybill={confirmRemoveWaybill} onUpdateDispatchFields={updateDetailDispatchFields} />
       <AddEditManifestDialog isOpen={isFormOpen} isClosing={isFormClosing} isEditMode={isEditMode} isSubmitting={isSubmitting} formState={formState} hubs={hubs} onChange={(key, value) => setFormState(prev => ({ ...prev, [key]: value }))} onClose={closeForm} onSubmit={submitForm} />
       <AddWaybillsToManifestDialog isOpen={isAddWaybillsOpen} isClosing={isAddWaybillsClosing} isLoading={isWaybillLoading} isSubmitting={isSubmitting} manifest={addWaybillsManifest} waybills={waybillChoices} total={waybillTotal} formState={addWaybillsForm} onChange={patch => setAddWaybillsForm(prev => ({ ...prev, ...patch }))} onClose={closeAddWaybills} onSubmit={submitAddWaybills} />
       <PrintManifestDialog isOpen={isPrintOpen} isClosing={isPrintClosing} isLoading={isPrintLoading} manifest={printManifest} onClose={closePrint} />
@@ -250,11 +273,37 @@ export default function WarehouseManifestsPage() {
   );
 }
 
-function isExpectedArrivalManifest(manifest: LoadPlanningManifest) { return ['ARRIVED', 'AT_DEST_HUB', 'COMPLETED', 'Xe đã đến'].includes(String(manifest.trip?.status || manifest.status || '')); }
+function isExpectedArrivalManifest(manifest: LoadPlanningManifest) { return ['ARRIVED', 'AT_DEST_HUB', 'COMPLETED', 'Xe đã đến'].includes(String(manifestTrip(manifest)?.status || manifest.status || '')); }
 function ManifestKanbanBoard({ departed, expected, ...actions }: { departed: LoadPlanningManifest[]; expected: LoadPlanningManifest[] } & Omit<ManifestItemProps, 'manifest'>) { return <div className="grid min-h-[560px] gap-4 p-3 lg:grid-cols-2"><KanbanColumn title="Xe đã khởi hành" count={departed.length} tone="border-blue-200 bg-blue-50 text-blue-700">{departed.length ? departed.map(manifest => <ManifestCard key={manifest.id} manifest={manifest} {...actions} />) : <EmptyKanban title="Chưa có bảng kê xe đã khởi hành" />}</KanbanColumn><KanbanColumn title="Dự kiến đến" count={expected.length} tone="border-amber-200 bg-amber-50 text-amber-700">{expected.length ? expected.map(manifest => <ManifestCard key={manifest.id} manifest={manifest} {...actions} />) : <EmptyKanban title="Chưa có bảng kê dự kiến đến" />}</KanbanColumn></div>; }
 function KanbanColumn({ title, count, tone, children }: { title: string; count: number; tone: string; children: React.ReactNode }) { return <section className="flex min-h-[520px] flex-col rounded-2xl border border-border bg-slate-50"><div className={clsx('flex items-center justify-between rounded-t-2xl border-b px-4 py-3', tone)}><h3 className="text-[14px] font-black">{title}</h3><span className="rounded-full bg-white px-2.5 py-1 text-[12px] font-black text-foreground">{count}</span></div><div className="flex-1 space-y-3 overflow-auto p-3 custom-scrollbar">{children}</div></section>; }
 function EmptyKanban({ title }: { title: string }) { return <div className="flex min-h-[260px] items-center justify-center rounded-2xl border border-dashed border-border bg-white text-center text-[13px] font-bold text-muted-foreground">{title}</div>; }
-function ManifestCard(props: ManifestItemProps) { const { manifest } = props; return <article className="rounded-2xl border border-border bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Bảng kê</p><h3 className="text-base font-extrabold text-primary">{manifestCode(manifest)}</h3></div><Badge config={statusConfig[String(manifest.status || '')]} fallback={manifest.status} /></div><div className="mt-4 grid gap-2 text-[13px]"><Line label="Hub đi" value={<HubBadge label={hubLabel(manifest.origin_hub, manifest.origin_hub_id)} />} /><Line label="Hub đến" value={<HubBadge label={hubLabel(manifest.dest_hub, manifest.dest_hub_id)} />} /><Line label="Tổng vận đơn" value={formatNumber(getWaybillCount(manifest))} /><Line label="Tổng trọng lượng" value={formatNumber(getTotalWeight(manifest), ' kg')} /><Line label="Chuyến xe" value={<TripBadge manifest={manifest} />} /><Line label="Thời gian đóng" value={formatDate(manifest.closed_at || manifest.created_at)} /><Line label="Người đóng" value={closedBy(manifest)} /></div><div className="mt-4"><Actions {...props} /></div></article>; }
+function ManifestCard(props: ManifestItemProps) {
+  const { manifest } = props;
+  return <article className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors duration-200 hover:border-primary/30 hover:bg-blue-50/20">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0"><p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Bảng kê</p><h3 className="truncate text-base font-extrabold text-primary">{manifestCode(manifest)}</h3></div>
+      <Badge config={statusConfig[String(manifest.status || '')]} fallback={manifest.status} />
+    </div>
+    <div className="mt-3 flex items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50/70 px-3 py-2 text-[13px] font-black text-blue-800">
+      <span className="rounded-full bg-white px-2.5 py-1">{hubLabel(manifest.origin_hub, manifest.origin_hub_id)}</span>
+      <ArrowRight size={15} className="shrink-0 text-blue-500" />
+      <span className="rounded-full bg-white px-2.5 py-1">{hubLabel(manifest.dest_hub, manifest.dest_hub_id)}</span>
+    </div>
+    <div className="mt-3 grid grid-cols-2 gap-2 text-[12px] font-semibold text-foreground">
+      <Metric label="Vận đơn" value={formatNumber(getWaybillCount(manifest))} />
+      <Metric label="Trọng lượng" value={formatNumber(getTotalWeight(manifest), ' kg')} />
+    </div>
+    <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-[13px] font-semibold text-foreground">
+      <InfoLine icon={<Truck size={15} />} label="Biển số xe" value={truckLabel(manifest)} />
+      <InfoLine icon={<Phone size={15} />} label="SĐT" value={driverPhoneLabel(manifest)} />
+      <InfoLine icon={<UserRound size={15} />} label="Tài xế" value={driverLabel(manifest)} />
+      <InfoLine icon={<CalendarDays size={15} />} label="Thời gian đóng" value={formatDate(manifest.closed_at || manifest.created_at)} />
+      <InfoLine icon={<PackageCheck size={15} />} label="Người đóng" value={closedBy(manifest)} />
+    </div>
+    <div className="mt-3 rounded-2xl bg-slate-900 px-3 py-2"><p className="text-[13px] font-black text-white">{tripLabel(manifestTrip(manifest), manifest.trip_id)}</p>{manifestTrip(manifest)?.status && <div className="mt-1"><Badge config={tripStatusConfig[String(manifestTrip(manifest)?.status)]} fallback={manifestTrip(manifest)?.status} /></div>}</div>
+    <div className="mt-4"><Actions {...props} /></div>
+  </article>;
+}
 interface ManifestItemProps { manifest: LoadPlanningManifest; mayAssign: boolean; canManage: boolean; onDetail: (manifest: LoadPlanningManifest) => void; onAssign: (manifest: LoadPlanningManifest) => void; onEdit: (manifest: LoadPlanningManifest) => void; onAddWaybills: (manifest: LoadPlanningManifest) => void; onCloseManifest: (manifest: LoadPlanningManifest) => void; onPrint: (manifest: LoadPlanningManifest) => void; onDelete: (manifest: LoadPlanningManifest) => void; }
 function Actions({ manifest, mayAssign, canManage, onDetail, onAssign, onEdit, onAddWaybills, onCloseManifest, onPrint, onDelete }: ManifestItemProps) {
   const isDraft = manifest.status === 'DRAFT';
@@ -274,9 +323,8 @@ function Actions({ manifest, mayAssign, canManage, onDetail, onAssign, onEdit, o
 function IconAction({ label, icon, disabled, danger, onClick }: { label: string; icon: ReactNode; disabled?: boolean; danger?: boolean; onClick: () => void }) {
   return <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick} className={clsx('inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45', danger && 'text-red-500 hover:bg-red-50')}>{icon}</button>;
 }function Badge({ config, fallback }: { config?: BadgeConfig; fallback?: string | null }) { return <span className={`inline-flex h-7 items-center rounded-full px-3 text-[12px] font-bold ${config?.className || 'bg-slate-100 text-slate-600'}`}>{config?.label || fallback || '—'}</span>; }
-function HubBadge({ label }: { label: string }) { return <span className="inline-flex h-7 items-center rounded-full bg-violet-50 px-3 text-[12px] font-bold text-violet-700">{label}</span>; }
-function TripBadge({ manifest }: { manifest: LoadPlanningManifest }) { const status = manifest.trip?.status || ''; return <div className="flex flex-col gap-1"><span className="text-[13px] font-bold text-foreground">{tripLabel(manifest.trip, manifest.trip_id)}</span>{status && <Badge config={tripStatusConfig[status]} fallback={status} />}</div>; }
-function Line({ label, value }: { label: string; value: ReactNode }) { return <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{label}</span><span className="text-right font-bold text-foreground">{value}</span></div>; }
+function Metric({ label, value }: { label: string; value: ReactNode }) { return <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2"><p className="text-[11px] font-black uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-1 text-[15px] font-black text-slate-950">{value}</p></div>; }
+function InfoLine({ icon, label, value }: { icon: ReactNode; label: string; value: ReactNode }) { return <div className="flex items-center justify-between gap-3 border-b border-slate-200 py-2 last:border-b-0"><span className="flex items-center gap-2 text-muted-foreground">{icon}{label}</span><span className="text-right font-black text-slate-950">{value}</span></div>; }
 function StateBlock({ icon, title }: { icon: ReactNode; title: string }) { return <div className="flex-1 min-h-[360px] flex items-center justify-center"><div className="flex flex-col items-center gap-3 text-center text-muted-foreground"><div className="text-primary">{icon}</div><p className="text-[13px] font-bold">{title}</p></div></div>; }
 function DateInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-muted-foreground"><CalendarDays size={15} /><span>{label}</span><input type="date" value={value} onChange={event => onChange(event.target.value)} className="bg-transparent text-foreground outline-none" /></label>; }
 

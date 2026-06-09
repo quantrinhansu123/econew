@@ -122,7 +122,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           <p>Tổng cước: {hasPricing ? value(data.tongCuoc) : '\u00A0'}</p>
           <div className="eco-total">
             <span className="eco-total-label">Tổng phải thu khi phát thư</span>
-            <strong>{hasPricing ? value(data.tongPhaiThuPhat) : '\u00A0'}</strong>
+            <strong>{value(data.tongPhaiThuPhat)}</strong>
           </div>
         </div>
       </div>
