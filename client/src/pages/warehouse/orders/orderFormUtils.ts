@@ -150,6 +150,8 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
   const destCode = waybill.dest_hub?.code?.toUpperCase() || hubCodeFromId(hubs, destId);
   const sender = parseContactInfo(waybill.sender_info);
   const receiver = parseContactInfo(waybill.receiver_info);
+  const billingUnit = resolveBillingUnit(waybill);
+  const unitPrice = resolveUnitPrice(waybill, billingUnit);
 
   return {
     ...emptyOrderForm(),
@@ -169,15 +171,8 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     soKien: String(waybill.package_count ?? 1),
     klQuyDoi: String(waybill.volumetric_weight ?? waybill.weight ?? ''),
     m3: String((waybill as { the_tich_m3?: number }).the_tich_m3 ?? ''),
-    donGia: formatDonGia(
-      String(
-        (waybill as { don_gia?: number }).don_gia ??
-          waybill.freight_amount ??
-          waybill.cost_amount ??
-          '',
-      ),
-    ),
-    donGiaDonVi: String((waybill as { don_gia_don_vi?: string }).don_gia_don_vi ?? 'Cân'),
+    donGia: unitPrice ? formatDonGia(String(unitPrice)) : '',
+    donGiaDonVi: billingUnit,
     dvdb: formatDisplayNumber((waybill as { dvdb?: number }).dvdb, 0) || '0',
     cod: formatDonGia(String(waybill.cod_amount ?? '0')),
     giamGia: '0',
@@ -238,6 +233,36 @@ function phuongThucFromWaybill(waybill: WaybillDetail): string {
   return 'Công nợ tháng';
 }
 
+function resolveBillingUnit(waybill: WaybillDetail): string {
+  const note = waybill.note || waybill.notes || '';
+  return String(
+    (waybill as { don_gia_don_vi?: string }).don_gia_don_vi || parseNoteField(note, 'billing_unit') || 'Cân',
+  );
+}
+
+function resolveUnitPrice(waybill: WaybillDetail, billingUnit: string): number {
+  const note = waybill.note || waybill.notes || '';
+  const storedUnitPrice =
+    Number((waybill as { don_gia?: number }).don_gia) || parseMoneyAmount(parseNoteField(note, 'unit_price'));
+  if (storedUnitPrice) return storedUnitPrice;
+
+  const totalFreight = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0);
+  if (!Number.isFinite(totalFreight) || totalFreight <= 0) return 0;
+
+  const unit = billingUnit.trim().toLowerCase();
+  const weight = Number(waybill.weight ?? 0);
+  const volumetricWeight = Number(waybill.volumetric_weight ?? 0);
+  const volumeM3 = Number((waybill as { the_tich_m3?: number }).the_tich_m3 ?? 0);
+  const quantity = isVolumeBillingUnit(unit)
+    ? volumeM3
+    : unit === 'trọn gói' || unit === 'tron goi' || unit === 'chuyến' || unit === 'chuyen' || unit === 'lô' || unit === 'lo'
+      ? 1
+      : Math.max(weight, volumetricWeight, weight || volumetricWeight || 0);
+
+  if (!quantity) return 0;
+  return Math.round(totalFreight / quantity);
+}
+
 export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: number) {
   const paymentType = paymentTypeFromForm(form);
   const freight = calcCuocChinhAmount(form);
@@ -271,6 +296,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
       form.dichVu && `dich_vu=${form.dichVu}`,
       form.phuongThuc && `phuong_thuc=${form.phuongThuc}`,
       form.donGiaDonVi && `billing_unit=${form.donGiaDonVi}`,
+      `unit_price=${parseMoneyAmount(form.donGia)}`,
       `dimensions_cm=${form.chieuDai}x${form.chieuRong}x${form.chieuCao}`,
       `volumetric_weight=${volumetricWeight}`,
       `the_tich_m3=${volumeM3}`,
