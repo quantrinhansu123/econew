@@ -148,8 +148,11 @@ function renderFooterCells(
       return;
     }
 
-    if (visibleTotals.length && index > visibleColumnIds.indexOf(visibleTotals[visibleTotals.length - 1]!)) {
-      if (index === visibleTotals[visibleTotals.length - 1]! + 1) {
+    const lastTotalIndex = visibleTotals.length
+      ? visibleColumnIds.indexOf(visibleTotals[visibleTotals.length - 1]!)
+      : -1;
+    if (lastTotalIndex >= 0 && index > lastTotalIndex) {
+      if (index === lastTotalIndex + 1) {
         const trailing = visibleColumnIds.length - index;
         cells.push(<td key={`trail-${id}`} colSpan={trailing} />);
       }

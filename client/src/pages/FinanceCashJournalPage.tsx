@@ -328,7 +328,7 @@ export default function FinanceCashJournalPage({
   };
 
   const toggleSelectAllVisible = () => {
-    setSelectedPaymentIds((prev) => {
+    setSelectedPaymentIds(() => {
       if (allVisibleSelected) return new Set();
       return new Set(visiblePaymentIds);
     });

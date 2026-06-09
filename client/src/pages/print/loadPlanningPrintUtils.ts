@@ -64,7 +64,7 @@ const isCarrierGoodsNote = (note: string, item: LoadPlanningBoardItem) => {
 };
 
 const extra = (item: LoadPlanningBoardItem, key: string) =>
-  (item as Record<string, string | number | null | undefined>)[key];
+  (item as unknown as Record<string, string | number | null | undefined>)[key];
 
 function mapItemToDispatchRow(item: LoadPlanningBoardItem, showPricing: boolean): DispatchPrintRow {
   const cod = Number(extra(item, 'allocated_cod') ?? 0);
