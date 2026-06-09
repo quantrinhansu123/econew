@@ -72,9 +72,8 @@ export function calcCuocChinhAmount(form: NewOrderFormState): number {
 
 export function calcOrderPricing(form: NewOrderFormState) {
   const cuocChinhAmount = calcCuocChinhAmount(form);
-  const cod = parseMoneyAmount(form.cod);
   const giamGia = parseMoneyAmount(form.giamGia);
-  const tongCuoc = cuocChinhAmount + cod;
+  const tongCuoc = cuocChinhAmount;
   const thanhToan = Math.max(0, tongCuoc - giamGia);
 
   return {
@@ -198,6 +197,7 @@ export function waybillToBillItem(waybill: WaybillDetail): BillListItem {
 }
 
 export function paymentTypeFromForm(form: NewOrderFormState): PaymentType {
+  if (form.phuongThuc === 'Người nhận thanh toán') return 'CC';
   if (form.phuongThuc === 'COD') return 'COD';
   if (form.phuongThuc === 'Tiền mặt') return 'CC';
   return 'PP';
@@ -206,7 +206,6 @@ export function paymentTypeFromForm(form: NewOrderFormState): PaymentType {
 /** Nhãn in phiếu — Hình thức thanh toán */
 export function phuongThucToPrintLabel(phuongThuc?: string, paymentType?: string | null): string {
   const method = (phuongThuc || '').trim();
-  if (method === 'Công nợ tháng') return 'NN THANH TOÁN';
   if (method === 'Tiền mặt') return 'TIỀN MẶT';
   if (method === 'COD') return 'COD';
   if (method === 'Chuyển khoản') return 'CHUYỂN KHOẢN';
@@ -214,8 +213,8 @@ export function phuongThucToPrintLabel(phuongThuc?: string, paymentType?: string
 
   const t = String(paymentType || '').toUpperCase();
   if (t === 'COD') return 'COD';
-  if (t === 'CC') return 'TIỀN MẶT';
-  if (t === 'PP') return 'NN THANH TOÁN';
+  if (t === 'CC') return 'NGƯỜI NHẬN THANH TOÁN';
+  if (t === 'PP') return 'CÔNG NỢ';
   return '';
 }
 
@@ -284,9 +283,9 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     volumetric_weight: volumetricWeight,
     the_tich_m3: volumeM3,
     package_count: Math.max(1, parseInt(form.soKien, 10) || 1),
-    freight_amount: paymentType === 'COD' ? 0 : freight,
-    cod_amount: paymentType === 'COD' ? cod || freight : undefined,
-    cc_amount: paymentType === 'CC' ? freight : undefined,
+    freight_amount: freight,
+    cod_amount: cod,
+    cc_amount: paymentType === 'CC' ? freight : 0,
     xe_lay: form.xeLay.trim() || undefined,
     xe_phat: form.xePhat.trim() || undefined,
     note: [

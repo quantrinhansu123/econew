@@ -82,7 +82,7 @@ export class WaybillsService {
       height: 0,
       volumetric_weight: dto.volumetric_weight ?? 0,
       the_tich_m3: dto.the_tich_m3 ?? null,
-      payment_type: dto.cod_amount ? PaymentType.COD : dto.cc_amount ? PaymentType.CC : PaymentType.PP,
+      payment_type: this.resolvePaymentType(dto),
       cost_amount: String(dto.freight_amount ?? 0),
       current_state: WaybillStatus.RECEIVED as any,
       origin_hub_id: dto.origin_hub_id,
@@ -155,6 +155,8 @@ export class WaybillsService {
       delete dto.waybill_code;
     }
     Object.assign(waybill, dto, { updated_by: currentUser.id });
+    if (dto.freight_amount !== undefined) waybill.cost_amount = String(dto.freight_amount);
+    if (dto.note !== undefined || dto.cc_amount !== undefined || dto.cod_amount !== undefined) waybill.payment_type = this.resolvePaymentType(dto);
     if (dto.sender_name || dto.sender_phone || dto.sender_address) waybill.sender_info = this.packContact(waybill.sender_name, waybill.sender_phone, waybill.sender_address);
     if (dto.receiver_name || dto.receiver_phone || dto.receiver_address) waybill.receiver_info = this.packContact(waybill.receiver_name, waybill.receiver_phone, waybill.receiver_address);
     return this.sanitize(await this.waybillsRepository.save(waybill), currentUser);
@@ -1090,6 +1092,13 @@ export class WaybillsService {
 
   private packContact(name?: string | null, phone?: string | null, address?: string | null) {
     return [name, phone, address].filter(Boolean).join(' | ');
+  }
+
+  private resolvePaymentType(dto: Pick<CreateWaybillDto, 'note' | 'cc_amount'>): PaymentType {
+    const method = parseNoteField(dto.note, 'phuong_thuc');
+    if (method === 'Người nhận thanh toán' || Number(dto.cc_amount ?? 0) > 0) return PaymentType.CC;
+    if (method === 'COD') return PaymentType.COD;
+    return PaymentType.PP;
   }
 
   private async saveWithAudit(waybill: WaybillRecord, currentUser: UserEntity, action: string): Promise<WaybillRecord> {

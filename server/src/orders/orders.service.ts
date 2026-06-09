@@ -16,7 +16,7 @@ export class OrdersService {
 
   async createFromWaybillEntry(dto: CreateWaybillDto, currentUser: UserEntity): Promise<OrderEntity> {
     const orderCode = await this.generateUniqueCode();
-    const paymentType = dto.cod_amount && dto.cod_amount > 0 ? PaymentType.COD : PaymentType.PP;
+    const paymentType = dto.cc_amount && dto.cc_amount > 0 ? PaymentType.CC : PaymentType.PP;
     const order = this.ordersRepository.create({
       order_code: orderCode,
       sender_name: dto.sender_name,

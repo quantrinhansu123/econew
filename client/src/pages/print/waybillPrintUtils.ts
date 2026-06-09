@@ -93,8 +93,11 @@ export function buildWaybillPrintData(waybill: WaybillDetail, showPricing: boole
 
   const cod = Number(waybill.cod_amount) || 0;
   const freight = showPricing ? Number(waybill.freight_amount ?? waybill.cost_amount) || 0 : 0;
-  const tongCuocAmount = showPricing ? freight + cod : 0;
+  const tongCuocAmount = showPricing ? freight : 0;
   const paymentType = String(waybill.payment_type || '').toUpperCase();
+  const phuongThuc = parseNoteField(note, 'phuong_thuc');
+  const isReceiverPayment = phuongThuc === 'Người nhận thanh toán' || paymentType === 'CC';
+  const tongPhaiThuPhat = isReceiverPayment ? freight + cod : paymentType === 'COD' ? cod : 0;
   const createdAt = waybill.received_at || (waybill as { created_at?: string }).created_at;
 
   return {
@@ -117,14 +120,14 @@ export function buildWaybillPrintData(waybill: WaybillDetail, showPricing: boole
     tongLuong: formatNum(m3, 2) || '0.00',
     ghiChu: noiDung,
     noiDungHang: noiDung,
-    hinhThucThanhToan: phuongThucToPrintLabel(parseNoteField(note, 'phuong_thuc'), waybill.payment_type),
+    hinhThucThanhToan: phuongThucToPrintLabel(phuongThuc, waybill.payment_type),
     thuHo: formatNum(cod, 0) || '0',
     khaiGia: 'Không',
     ngayGuiDon: formatDate(createdAt),
     cuocChinh: showPricing ? formatNum(freight, 0) : '',
     dichVuCongThem: showPricing ? '0' : '',
     tongCuoc: showPricing ? formatNum(tongCuocAmount, 0) : '',
-    tongPhaiThuPhat: formatNum(tongCuocAmount || cod || (paymentType === 'COD' ? freight : 0), 0) || '0',
+    tongPhaiThuPhat: formatNum(showPricing ? tongPhaiThuPhat : 0, 0) || '0',
     dichVu: (dichVu || loaiBp || 'ĐƯỜNG BỘ').toUpperCase(),
     dvGtgt: parseNoteField(note, 'dich_vu_gia_tang') || 'Tiêu chuẩn',
     codStamp: paymentType === 'COD' || cod > 0,

@@ -11,7 +11,13 @@ export const DICH_VU_OPTIONS = ['Tiêu chuẩn 72h', 'Nhanh 48h', 'Chậm 4-6 ng
 export const GIO_OPTIONS = ['8h', '10h', '12h', '14h', '16h', '18h'];
 export const GIAO_HANG_OPTIONS = ['Văn phòng', 'Tận nơi', 'Lấy tại kho'];
 export const DON_GIA_DON_VI_OPTIONS = ['Cân', 'Khối', 'Trọn gói', 'Chuyến', 'Lô'];
-export const PHUONG_THUC_OPTIONS = ['Công nợ tháng', 'Tiền mặt', 'Chuyển khoản', 'COD'];
+export const PHUONG_THUC_OPTIONS = [
+  'Công nợ',
+  'Công nợ tháng',
+  'Công nợ chuyến',
+  'Người nhận thanh toán',
+  'Đã thanh toán',
+];
 
 export const todayInputValue = () => new Date().toISOString().slice(0, 10);
 
