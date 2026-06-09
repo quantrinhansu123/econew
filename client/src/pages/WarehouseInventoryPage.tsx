@@ -433,7 +433,6 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               </>
             )}
             {isAllOrders && <div className="min-w-0 flex-1 text-[15px] font-extrabold text-foreground">Danh sách đơn</div>}
-            {isAllOrders && activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
             <div className="hidden flex-1 md:block" />
             {!isAllOrders && canUpdate && (
               <button
@@ -451,6 +450,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               </button>
             )}
             {isAllOrders && <DateRangePicker value={{ from: filters.receivedFrom, to: filters.receivedTo }} onChange={({ from, to }) => updateFilters({ receivedFrom: from || '', receivedTo: to || '' })} placeholder="Từ ngày - Đến ngày" className="w-[18.5rem] shrink-0" />}
+            {isAllOrders && activeFilterCount > 0 && <button onClick={clearFilters} className="h-10 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100">× Xóa {activeFilterCount} bộ lọc</button>}
             <button
               type="button"
               title="Bảng kê phát hàng — xe & vị trí"
