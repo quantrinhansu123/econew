@@ -12,6 +12,8 @@ export class CreateWaybillDto {
   @ApiProperty() @IsString() @IsNotEmpty() origin_hub_id: string;
   @ApiProperty() @IsString() @IsNotEmpty() dest_hub_id: string;
   @ApiProperty() @IsNumber() @IsPositive() weight: number;
+  @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) volumetric_weight?: number;
+  @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) the_tich_m3?: number;
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @IsNumber() @Min(1) package_count?: number;
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) cod_amount?: number;
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) freight_amount?: number;

@@ -242,6 +242,8 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
   const paymentType = paymentTypeFromForm(form);
   const freight = calcCuocChinhAmount(form);
   const cod = parseMoneyAmount(form.cod);
+  const weight = parseNumber(form.klKg);
+  const volumeM3 = parseNumber(form.m3);
 
   return {
     waybill_code: form.soBill.trim().toUpperCase(),
@@ -253,7 +255,9 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     receiver_address: form.diaChiNhan.trim(),
     origin_hub_id: form.originHubId,
     dest_hub_id: form.destHubId,
-    weight: parseNumber(form.klKg) || parseNumber(form.klQuyDoi) || 1,
+    weight: weight || parseNumber(form.klQuyDoi) || 1,
+    volumetric_weight: volumetricWeight,
+    the_tich_m3: volumeM3,
     package_count: Math.max(1, parseInt(form.soKien, 10) || 1),
     freight_amount: paymentType === 'COD' ? 0 : freight,
     cod_amount: paymentType === 'COD' ? cod || freight : undefined,
@@ -266,8 +270,10 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
       form.loaiBp && `loai_bp=${form.loaiBp}`,
       form.dichVu && `dich_vu=${form.dichVu}`,
       form.phuongThuc && `phuong_thuc=${form.phuongThuc}`,
+      form.donGiaDonVi && `billing_unit=${form.donGiaDonVi}`,
       `dimensions_cm=${form.chieuDai}x${form.chieuRong}x${form.chieuCao}`,
       `volumetric_weight=${volumetricWeight}`,
+      `the_tich_m3=${volumeM3}`,
       form.ghiChu,
     ]
       .filter(Boolean)

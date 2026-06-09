@@ -63,18 +63,26 @@ function mapGiaoHang(addressHcm: string | null | undefined): string | undefined 
   return undefined;
 }
 
-/** SĐT khách hàng — ưu tiên phone_hcm, mobile, điện thoại bàn */
+/** SĐT khách hàng/người gửi — ưu tiên số liên hệ chung, sau đó mới tới số nhận tại kho */
 export function customerPhone(customer: CustomerRecord) {
-  return str(customer.phone_hcm) || str(customer.mobile) || str(customer.phone_landline);
+  return str(customer.mobile) || str(customer.phone_landline) || str(customer.phone_hcm) || str(customer.phone_dng);
 }
 
 export function customerSenderAddress(customer: CustomerRecord) {
-  return str(customer.address_hcm) || str(customer.contact_address) || str(customer.address);
+  return str(customer.contact_address) || str(customer.address) || str(customer.address_hcm) || str(customer.address_dng);
 }
 
 /** Địa chỉ nhận — ưu tiên cột address trên danh sách KH */
 export function customerReceiverAddress(customer: CustomerRecord) {
   return str(customer.address) || str(customer.contact_address) || str(customer.address_hcm);
+}
+
+function customerReceiverName(customer: CustomerRecord) {
+  return str(customer.contact_person) || str(customer.name);
+}
+
+function customerReceiverPhone(customer: CustomerRecord) {
+  return str(customer.phone_hcm) || str(customer.phone_dng) || str(customer.mobile) || str(customer.phone_landline);
 }
 
 /** @deprecated Dùng customerSenderAddress hoặc customerReceiverAddress */
@@ -113,8 +121,8 @@ function isDngProvince(noiDen: string, huyen = ''): boolean {
 }
 
 /**
- * Chỉ điền thông tin người nhận theo tỉnh đến.
- * ĐC kho HCM + SĐT nhận HCM chỉ áp dụng khi tỉnh đến là HCM; tỉnh khác → xóa trắng.
+ * Điền thông tin người nhận theo tỉnh đến, có fallback về dữ liệu nhận chung đã lưu.
+ * ĐC/SĐT HCM hoặc DNG chỉ ưu tiên khi tỉnh đến khớp hub tương ứng.
  */
 export function applyReceiverByDestination(
   customer: CustomerRecord,
@@ -122,29 +130,29 @@ export function applyReceiverByDestination(
   huyen = '',
 ): Partial<NewOrderFormState> {
   const patch: Partial<NewOrderFormState> = {
-    nguoiNhan: str(customer.contact_person) || customer.name,
+    nguoiNhan: customerReceiverName(customer),
+    diaChiNhan: customerReceiverAddress(customer),
+    dienThoaiNhan: customerReceiverPhone(customer),
   };
 
   if (isHcmProvince(noiDen, huyen)) {
-    patch.diaChiNhan = str(customer.address_hcm);
-    patch.dienThoaiNhan = str(customer.phone_hcm);
+    patch.diaChiNhan = str(customer.address_hcm) || patch.diaChiNhan;
+    patch.dienThoaiNhan = str(customer.phone_hcm) || patch.dienThoaiNhan;
     if (str(customer.receiver_hcm)) patch.nguoiNhan = str(customer.receiver_hcm);
     return patch;
   }
 
   if (isDngProvince(noiDen, huyen)) {
-    patch.diaChiNhan = str(customer.address_dng);
-    patch.dienThoaiNhan = str(customer.phone_dng);
+    patch.diaChiNhan = str(customer.address_dng) || patch.diaChiNhan;
+    patch.dienThoaiNhan = str(customer.phone_dng) || patch.dienThoaiNhan;
     if (str(customer.receiver_dng)) patch.nguoiNhan = str(customer.receiver_dng);
     return patch;
   }
 
-  patch.diaChiNhan = '';
-  patch.dienThoaiNhan = '';
   return patch;
 }
 
-/** Điền form nhập đơn từ bản ghi bảng customers — không tự điền người gửi */
+/** Điền form nhập đơn từ bản ghi bảng customers */
 export function customerToOrderPatch(customer: CustomerRecord, hubs: HubSummary[] = []): Partial<NewOrderFormState> {
   const noiDen = inferNoiDen(customer);
   const destHubId = noiDen ? hubIdFromCode(hubs, noiDen) : '';
@@ -154,6 +162,8 @@ export function customerToOrderPatch(customer: CustomerRecord, hubs: HubSummary[
 
   const patch: Partial<NewOrderFormState> = {
     maKh: customer.code,
+    nguoiGui: str(customer.name) || str(customer.short_name),
+    diaChiGui: customerSenderAddress(customer) || undefined,
     dienThoaiKh: phoneKh || undefined,
     huyen,
     nvgn: str(customer.delivery_handler) || undefined,

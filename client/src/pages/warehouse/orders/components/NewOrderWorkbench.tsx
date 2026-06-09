@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 import { clsx } from 'clsx';
-import { calcOrderPricing, isVolumeBillingUnit, isWeightBillingUnit } from '../orderFormUtils';
+import { calcOrderPricing } from '../orderFormUtils';
 import {
   DICH_VU_OPTIONS,
   DON_GIA_DON_VI_OPTIONS,
@@ -197,7 +197,7 @@ export default function NewOrderWorkbench({
                   <CompactInput type="date" value={form.ngayDi} onChange={(e) => setField('ngayDi', e.target.value)} />
                 </CompactField>
 
-                <CompactField label="Đơn vị" className="col-span-6 sm:col-span-4 xl:col-span-2">
+                <CompactField label="Tính cước theo" className="col-span-6 sm:col-span-4 xl:col-span-2">
                   <CompactSelect value={form.donGiaDonVi} onChange={(e) => setField('donGiaDonVi', e.target.value)}>
                     {DON_GIA_DON_VI_OPTIONS.map((o) => (
                       <option key={o} value={o}>
@@ -207,33 +207,25 @@ export default function NewOrderWorkbench({
                   </CompactSelect>
                 </CompactField>
                 <CompactField
-                  label="Cân"
-                  className={clsx(
-                    'col-span-6 sm:col-span-4 xl:col-span-2',
-                    isVolumeBillingUnit(form.donGiaDonVi) && 'pointer-events-none invisible',
-                  )}
+                  label="Số cân"
+                  className="col-span-6 sm:col-span-4 xl:col-span-2"
                 >
                   <CompactInput
                     value={form.klKg}
                     onChange={(e) => setField('klKg', e.target.value)}
                     placeholder="Nhập kg"
                     inputMode="decimal"
-                    tabIndex={isVolumeBillingUnit(form.donGiaDonVi) ? -1 : undefined}
                   />
                 </CompactField>
                 <CompactField
-                  label="Khối"
-                  className={clsx(
-                    'col-span-6 sm:col-span-4 xl:col-span-2',
-                    isWeightBillingUnit(form.donGiaDonVi) && 'pointer-events-none invisible',
-                  )}
+                  label="Số khối"
+                  className="col-span-6 sm:col-span-4 xl:col-span-2"
                 >
                   <CompactInput
                     value={form.m3}
                     onChange={(e) => setField('m3', e.target.value)}
                     placeholder="Nhập m³"
                     inputMode="decimal"
-                    tabIndex={isWeightBillingUnit(form.donGiaDonVi) ? -1 : undefined}
                   />
                 </CompactField>
                 <CompactField label="NVGN" className="col-span-6 sm:col-span-4 xl:col-span-2">
