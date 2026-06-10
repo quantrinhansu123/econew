@@ -6,6 +6,7 @@ import { TripStatus, WaybillState } from '../common/enums';
 import { HubEntity } from '../hubs/hub.entity';
 import { TripEntity } from '../trips/trip.entity';
 import { WaybillEntity } from '../waybills/waybill.entity';
+import { WaybillSplitEntity } from '../waybills/waybill-split.entity';
 import { ManifestStatus } from './dto/manifest.enums';
 import { ManifestWaybillEntity } from './manifest-waybill.entity';
 import { ManifestEntity } from './manifest.entity';
@@ -14,7 +15,7 @@ import { ManifestsService } from './manifests.service';
 const makeRepo = () => ({
   create: jest.fn((value) => ({ ...value })),
   save: jest.fn(async (value) => value),
-  find: jest.fn(),
+  find: jest.fn().mockResolvedValue([]),
   findOne: jest.fn(),
   delete: jest.fn(),
   createQueryBuilder: jest.fn(),
@@ -54,6 +55,7 @@ describe('ManifestsService', () => {
   let manifestsRepo: ReturnType<typeof makeRepo>;
   let linksRepo: ReturnType<typeof makeRepo>;
   let waybillsRepo: ReturnType<typeof makeRepo>;
+  let splitsRepo: ReturnType<typeof makeRepo>;
   let hubsRepo: ReturnType<typeof makeRepo>;
   let tripsRepo: ReturnType<typeof makeRepo>;
 
@@ -61,6 +63,7 @@ describe('ManifestsService', () => {
     manifestsRepo = makeRepo();
     linksRepo = makeRepo();
     waybillsRepo = makeRepo();
+    splitsRepo = makeRepo();
     hubsRepo = makeRepo();
     tripsRepo = makeRepo();
     hubsRepo.findOne.mockResolvedValue({ id: '1', is_active: true });
@@ -75,6 +78,7 @@ describe('ManifestsService', () => {
         { provide: getRepositoryToken(ManifestEntity), useValue: manifestsRepo },
         { provide: getRepositoryToken(ManifestWaybillEntity), useValue: linksRepo },
         { provide: getRepositoryToken(WaybillEntity), useValue: waybillsRepo },
+        { provide: getRepositoryToken(WaybillSplitEntity), useValue: splitsRepo },
         { provide: getRepositoryToken(HubEntity), useValue: hubsRepo },
         { provide: getRepositoryToken(TripEntity), useValue: tripsRepo },
       ],
@@ -105,7 +109,7 @@ describe('ManifestsService', () => {
     expect(whereSql).toContain('manifest.status');
     expect(whereSql).toContain('manifest.origin_hub_id');
     expect(whereSql).toContain('manifest.dest_hub_id');
-    expect(whereSql).toContain('manifest.trip_id');
+    expect(whereSql).toContain('trip.id');
     expect(whereSql).toContain('manifest.created_at >=');
     expect(whereSql).toContain('manifest.created_at <=');
   });
@@ -116,6 +120,14 @@ describe('ManifestsService', () => {
     qb.getManyAndCount.mockResolvedValue([[], 0]);
     await service.findAll({}, dispatcher);
     expect(qb.andWhere).toHaveBeenCalledWith(expect.any(Object));
+  });
+
+  it('user không có hub không thấy manifest nào', async () => {
+    const qb = mockQb();
+    manifestsRepo.createQueryBuilder.mockReturnValue(qb);
+    qb.getManyAndCount.mockResolvedValue([[], 0]);
+    await service.findAll({}, { ...dispatcher, hub_id: null });
+    expect(qb.andWhere).toHaveBeenCalledWith('1 = 0');
   });
 
   it('addWaybills thành công', async () => {
@@ -199,6 +211,7 @@ describe('ManifestsService', () => {
 function mockQb() {
   const qb: any = {
     where: jest.fn().mockReturnThis(),
+    leftJoinAndSelect: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),

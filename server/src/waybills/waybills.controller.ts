@@ -87,8 +87,8 @@ export class WaybillsController {
   @Get('next-code')
   @RequireRoles(Roles.WAREHOUSE, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Preview next waybill code (before save)' })
-  previewNextCode() {
-    return this.waybillsService.previewNextWaybillCode();
+  previewNextCode(@Query('origin_hub_id') originHubId: string | undefined, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.previewNextWaybillCode(originHubId, currentUser);
   }
 
   @Get('code/:code')

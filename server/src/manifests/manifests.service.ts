@@ -338,12 +338,17 @@ export class ManifestsService {
   }
 
   private applyHubScope(qb: any, currentUser: UserEntity) {
-    if (isManager(currentUser.role_mask) || !currentUser.hub_id) return;
+    if (isManager(currentUser.role_mask)) return;
+    if (!currentUser.hub_id) {
+      qb.andWhere('1 = 0');
+      return;
+    }
     qb.andWhere(new Brackets((builder) => builder.where('manifest.origin_hub_id = :hubId', { hubId: currentUser.hub_id }).orWhere('manifest.dest_hub_id = :hubId', { hubId: currentUser.hub_id })));
   }
 
   private assertManifestAccess(manifest: ManifestRecord, currentUser: UserEntity) {
-    if (isManager(currentUser.role_mask) || !currentUser.hub_id) return;
+    if (isManager(currentUser.role_mask)) return;
+    if (!currentUser.hub_id) throw new ForbiddenException('User is not assigned to a hub');
     if (![manifest.origin_hub_id, manifest.dest_hub_id].includes(currentUser.hub_id)) throw new ForbiddenException('User cannot access this manifest outside assigned hub');
   }
 

@@ -34,6 +34,9 @@ const createQueryBuilder = () => {
     orderBy: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    setParameters: jest.fn().mockReturnThis(),
+    getRawOne: jest.fn().mockResolvedValue({ maxSeq: '0' }),
     getManyAndCount: jest.fn().mockResolvedValue([[makeWaybill()], 1]),
   };
   return qb;
@@ -53,7 +56,7 @@ describe('WaybillsService', () => {
       createQueryBuilder: jest.fn(createQueryBuilder),
     };
     hubsRepository = {
-      findOne: jest.fn().mockResolvedValue({ id: '1', is_active: true }),
+      findOne: jest.fn(async ({ where }: any) => ({ id: where.id, code: where.id === '2' ? 'HCM' : 'HAN', is_active: true })),
     };
     const ordersService = {
       createFromWaybillEntry: jest.fn().mockResolvedValue({ id: 'o1', order_code: 'DH20260101-001' }),
@@ -66,6 +69,8 @@ describe('WaybillsService', () => {
       { findOne: jest.fn() } as any,
       { findOne: jest.fn() } as any,
       { find: jest.fn(), save: jest.fn(), create: jest.fn() } as any,
+      { find: jest.fn(), delete: jest.fn(), save: jest.fn(), create: jest.fn() } as any,
+      { find: jest.fn(), findOne: jest.fn(), save: jest.fn(), create: jest.fn() } as any,
       ordersService as any,
       vendorsService,
     );
@@ -81,16 +86,31 @@ describe('WaybillsService', () => {
 
   it('create uses provided waybill_code', async () => {
     waybillsRepository.findOne.mockResolvedValue(null);
-    const result = await service.create({ waybill_code: 'ECO109602', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager);
-    expect(result.waybill_code).toBe('ECO109602');
+    const result = await service.create({ waybill_code: 'ECO-HAN-109602', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager);
+    expect(result.waybill_code).toBe('ECO-HAN-109602');
     expect(result.order_code).toBe('DH20260101-001');
     expect(result.status).toBe(WaybillStatus.RECEIVED);
-    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ waybill_code: 'ECO109602', current_state: WaybillStatus.RECEIVED }));
+    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ waybill_code: 'ECO-HAN-109602', current_state: WaybillStatus.RECEIVED }));
+  });
+
+  it('create rejects waybill_code with wrong hub prefix', async () => {
+    waybillsRepository.findOne.mockResolvedValue(null);
+    await expect(service.create({ waybill_code: 'ECO-HCM-1', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager)).rejects.toThrow(BadRequestException);
+  });
+
+  it('preview next code uses independent hub prefix sequence', async () => {
+    const qb = createQueryBuilder();
+    qb.getRawOne.mockResolvedValue({ maxSeq: '7' });
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+    waybillsRepository.findOne.mockResolvedValue(null);
+
+    await expect(service.previewNextWaybillCode('1', warehouse)).resolves.toEqual({ waybill_code: 'ECO-HAN-8' });
+    expect(qb.setParameters).toHaveBeenCalledWith({ codePattern: '^ECO-HAN-[0-9]+$', codeReplacePattern: '^ECO-HAN-' });
   });
 
   it('create blocks missing or inactive hub', async () => {
     hubsRepository.findOne.mockResolvedValueOnce(null);
-    await expect(service.create({ waybill_code: 'ECO1', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager)).rejects.toThrow(BadRequestException);
+    await expect(service.create({ waybill_code: 'ECO-HAN-1', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager)).rejects.toThrow(BadRequestException);
   });
 
   it('findAll applies keyword/status/hub/priority/date filters', async () => {

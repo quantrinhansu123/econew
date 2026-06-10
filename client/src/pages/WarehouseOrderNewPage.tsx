@@ -64,6 +64,9 @@ const formatHub = (hub: HubSummary) =>
 
 const hasCreateRole = (roleMask: number) => (roleMask & CREATE_ROLES) !== 0;
 
+const getHubCode = (hubs: HubSummary[], hubId: string) =>
+  hubs.find((hub) => String(hub.id) === String(hubId))?.code?.trim().toUpperCase() || 'HUB';
+
 export default function WarehouseOrderNewPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -107,9 +110,10 @@ export default function WarehouseOrderNewPage() {
     }
   }, []);
 
-  const loadNextWaybillCode = useCallback(async () => {
+  const loadNextWaybillCode = useCallback(async (originHubId?: string) => {
     try {
-      const response = await apiRequest<NextWaybillCodeResponse>('/waybills/next-code');
+      const query = originHubId ? `?origin_hub_id=${encodeURIComponent(originHubId)}` : '';
+      const response = await apiRequest<NextWaybillCodeResponse>(`/waybills/next-code${query}`);
       return (response.waybill_code || response.code || '').trim().toUpperCase();
     } catch {
       return '';
@@ -127,11 +131,12 @@ export default function WarehouseOrderNewPage() {
         const defaultOrigin = user?.hub_id ? String(user.hub_id) : String(activeHubs[0]?.id || '');
         const defaultDest = String(activeHubs.find((h) => h.code?.toUpperCase() === 'HCM')?.id || activeHubs[1]?.id || '');
         const billItems = await loadBills();
-        const nextCode = await loadNextWaybillCode();
+        const nextCode = await loadNextWaybillCode(defaultOrigin);
+        const defaultOriginCode = getHubCode(activeHubs, defaultOrigin);
         setForm(() =>
           applyPricingToForm({
             ...emptyOrderForm(),
-            soBill: nextCode || nextEcoBillCodeFromCodes(billItems.map((item) => item.waybill_code)),
+            soBill: nextCode || nextEcoBillCodeFromCodes(billItems.map((item) => item.waybill_code), defaultOriginCode),
             originHubId: defaultOrigin,
             destHubId: defaultDest,
             noiDen: 'HCM',
@@ -206,6 +211,16 @@ export default function WarehouseOrderNewPage() {
       }
       return next;
     });
+    if (key === 'originHubId' && typeof value === 'string' && value) {
+      void (async () => {
+        const nextCode = await loadNextWaybillCode(value);
+        const originCode = getHubCode(hubs, value);
+        setForm((prev) => ({
+          ...prev,
+          soBill: nextCode || nextEcoBillCodeFromCodes(bills.map((item) => item.waybill_code), originCode),
+        }));
+      })();
+    }
     setActionError('');
   };
 
@@ -255,12 +270,13 @@ export default function WarehouseOrderNewPage() {
   const handleNew = async () => {
     const defaultOrigin = user?.hub_id ? String(user.hub_id) : String(hubs[0]?.id || '');
     const defaultDest = String(hubs.find((h) => h.code?.toUpperCase() === 'HCM')?.id || hubs[1]?.id || '');
-    const nextCode = await loadNextWaybillCode();
+    const nextCode = await loadNextWaybillCode(defaultOrigin);
+    const defaultOriginCode = getHubCode(hubs, defaultOrigin);
     setSelectedBillId(null);
     setForm(
       applyPricingToForm({
         ...emptyOrderForm(),
-        soBill: nextCode || nextEcoBillCodeFromCodes(bills.map((item) => item.waybill_code)),
+        soBill: nextCode || nextEcoBillCodeFromCodes(bills.map((item) => item.waybill_code), defaultOriginCode),
         originHubId: defaultOrigin,
         destHubId: defaultDest,
         noiDen: 'HCM',

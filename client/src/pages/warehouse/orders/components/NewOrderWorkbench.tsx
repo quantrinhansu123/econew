@@ -171,7 +171,7 @@ export default function NewOrderWorkbench({
                   <CompactInput
                     value={form.soBill}
                     onChange={(e) => setField('soBill', e.target.value.toUpperCase())}
-                    placeholder="ECO-1"
+                    placeholder="ECO-HAN-1"
                     className="font-bold text-primary"
                   />
                 </CompactField>

@@ -75,7 +75,8 @@ export class WaybillsService {
     await this.assertActiveHub(dto.origin_hub_id);
     await this.assertActiveHub(dto.dest_hub_id);
 
-    const waybillCode = await this.resolveWaybillCode(dto.waybill_code);
+    const originHub = await this.getActiveHub(dto.origin_hub_id);
+    const waybillCode = await this.resolveWaybillCode(dto.waybill_code, originHub.code);
     const order = await this.ordersService.createFromWaybillEntry(dto, currentUser);
     const record = this.waybillsRepository.create({
       waybill_code: waybillCode,
@@ -1062,8 +1063,13 @@ export class WaybillsService {
   }
 
   private async assertActiveHub(hubId: string) {
+    await this.getActiveHub(hubId);
+  }
+
+  private async getActiveHub(hubId: string) {
     const hub = await this.hubsRepository.findOne({ where: { id: hubId, is_active: true, deleted_at: IsNull() } });
     if (!hub) throw new BadRequestException('Hub is missing or inactive');
+    return hub;
   }
 
   private async assertHubAccess(hubId: string, currentUser: UserEntity) {
@@ -1076,14 +1082,22 @@ export class WaybillsService {
     if (![waybill.origin_hub_id, waybill.dest_hub_id, waybill.current_hub_id].includes(currentUser.hub_id)) throw new ForbiddenException('User cannot access this waybill outside assigned hub');
   }
 
-  async previewNextWaybillCode(): Promise<{ waybill_code: string }> {
-    return { waybill_code: await this.generateUniqueCode() };
+  async previewNextWaybillCode(originHubId: string | undefined, currentUser: UserEntity): Promise<{ waybill_code: string }> {
+    const hubId = originHubId?.trim() || currentUser.hub_id;
+    if (!hubId) throw new BadRequestException('origin_hub_id is required');
+    await this.assertHubAccess(hubId, currentUser);
+    const hub = await this.getActiveHub(hubId);
+    return { waybill_code: await this.generateUniqueCode(hub.code) };
   }
 
-  private async resolveWaybillCode(explicit?: string): Promise<string> {
+  private async resolveWaybillCode(explicit: string | undefined, originHubCode: string): Promise<string> {
     const code = explicit?.trim();
     if (!code) throw new BadRequestException('Waybill code is required');
     const normalized = code.toUpperCase();
+    const expectedPrefix = this.formatEcoBillPrefix(originHubCode);
+    if (!normalized.startsWith(`${expectedPrefix}-`)) {
+      throw new BadRequestException(`Waybill code must start with ${expectedPrefix}-`);
+    }
     await this.assertUniqueWaybillCode(normalized);
     return normalized;
   }
@@ -1097,35 +1111,45 @@ export class WaybillsService {
     }
   }
 
-  private async getMaxEcoBillSequence(): Promise<number> {
+  private async getMaxEcoBillSequence(hubCode: string): Promise<number> {
+    const prefix = this.formatEcoBillPrefix(hubCode);
     const row = await this.waybillsRepository
       .createQueryBuilder('waybill')
       .select(
         `MAX(
           CASE
-            WHEN waybill.waybill_code ~* '^ECO-?[0-9]+$'
-            THEN CAST(REGEXP_REPLACE(waybill.waybill_code, '^ECO-?', '', 'i') AS BIGINT)
+            WHEN waybill.waybill_code ~* :codePattern
+            THEN CAST(REGEXP_REPLACE(waybill.waybill_code, :codeReplacePattern, '', 'i') AS BIGINT)
             ELSE NULL
           END
         )`,
         'maxSeq',
       )
       .where('waybill.deleted_at IS NULL')
+      .setParameters({
+        codePattern: `^${prefix}-[0-9]+$`,
+        codeReplacePattern: `^${prefix}-`,
+      })
       .getRawOne<{ maxSeq: string | null }>();
 
     return Number(row?.maxSeq ?? 0) || 0;
   }
 
-  private formatEcoBillCode(sequence: number): string {
-    return `ECO-${Math.max(1, Math.floor(sequence))}`;
+  private formatEcoBillPrefix(hubCode: string): string {
+    const normalizedHubCode = String(hubCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!normalizedHubCode) throw new BadRequestException('Hub code is required');
+    return `ECO-${normalizedHubCode}`;
   }
 
-  /** STT liên tục: ECO-1 → ECO-2 → … */
-  private async generateUniqueCode(): Promise<string> {
-    let sequence = (await this.getMaxEcoBillSequence()) + 1;
+  private formatEcoBillCode(hubCode: string, sequence: number): string {
+    return `${this.formatEcoBillPrefix(hubCode)}-${Math.max(1, Math.floor(sequence))}`;
+  }
+
+  private async generateUniqueCode(hubCode: string): Promise<string> {
+    let sequence = (await this.getMaxEcoBillSequence(hubCode)) + 1;
 
     for (let attempt = 0; attempt < 1000; attempt += 1) {
-      const code = this.formatEcoBillCode(sequence + attempt);
+      const code = this.formatEcoBillCode(hubCode, sequence + attempt);
       const existing = await this.waybillsRepository.findOne({
         where: { waybill_code: code, deleted_at: IsNull() } as any,
       });
@@ -1212,6 +1236,7 @@ export class WaybillsService {
     }
     if (!isManager(currentUser.role_mask)) {
       delete result.cost_amount;
+      delete result.cod_amount;
       delete result.freight_amount;
       delete result.cc_amount;
     }
