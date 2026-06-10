@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
+import { corsOriginDelegate } from '../src/cors.config';
 
 type ServerHandler = (request: unknown, response: unknown) => void;
 
@@ -9,8 +10,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] });
 
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? true,
+    origin: corsOriginDelegate,
     credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
   app.setGlobalPrefix('api/v1');
   await app.init();

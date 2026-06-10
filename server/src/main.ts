@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { corsOriginDelegate } from './cors.config';
 
 function registerHealthRoute(app: NestExpressApplication) {
   const payload = () => ({
@@ -20,14 +21,10 @@ function registerHealthRoute(app: NestExpressApplication) {
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',').map((o) => o.trim()) ?? [
-      'http://localhost:5173',
-      'http://localhost:6060',
-      'http://127.0.0.1:6060',
-      'http://localhost:4173',
-      'http://127.0.0.1:4173',
-    ],
+    origin: corsOriginDelegate,
     credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(
