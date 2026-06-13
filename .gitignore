@@ -53,3 +53,5 @@ Thumbs.db
 *.sqlite3
 
 .agents/
+.claude/
+.codex/

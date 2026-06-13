@@ -29,6 +29,7 @@ import { VehicleCostModule } from './vehicle-costs/vehicle-cost.module';
 import { VehicleDirectoryModule } from './vehicle-directory/vehicle-directory.module';
 import { WaybillsModule } from './waybills/waybills.module';
 import { WarehouseModule } from './warehouses/warehouse.module';
+import { AttendanceModule } from './attendance/attendance.module';
 import { OrdersModule } from './orders/orders.module';
 
 const getPositiveInteger = (value: string | undefined, fallback: number) => {
@@ -103,6 +104,7 @@ const getPositiveInteger = (value: string | undefined, fallback: number) => {
     CashJournalEntryModule,
     FundBalanceModule,
     WarehouseModule,
+    AttendanceModule,
   ],
   controllers: [AppController],
 })

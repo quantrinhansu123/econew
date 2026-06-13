@@ -26,6 +26,8 @@ import { VehicleCostEntity } from './vehicle-costs/vehicle-cost.entity';
 import { VehicleDirectoryEntity } from './vehicle-directory/vehicle-directory.entity';
 import { WaybillEntity } from './waybills/waybill.entity';
 import { WarehouseEntity } from './warehouses/warehouse.entity';
+import { AttendanceLocationEntity } from './attendance/attendance-location.entity';
+import { AttendanceLogEntity } from './attendance/attendance-log.entity';
 
 const getPositiveInteger = (value: string | undefined, fallback: number) => {
   const parsed = Number(value);
@@ -66,6 +68,8 @@ export default new DataSource({
     VendorEntity,
     VendorDebtEntryEntity,
     VendorPaymentEntity,
+    AttendanceLocationEntity,
+    AttendanceLogEntity,
   ],
   migrations: ['src/migrations/*.ts'],
   synchronize: false,
