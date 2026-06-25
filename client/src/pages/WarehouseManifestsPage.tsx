@@ -25,7 +25,7 @@ import {
   type ManifestBoardGroup,
 } from './warehouse/manifests/manifestHubUtils';
 import type { AddWaybillsFormState, AssignTripFormState, BadgeConfig, FilterOption, HubSummary, LoadPlanningFilters, LoadPlanningManifest, ManifestFormState, ManifestListResponse, ManifestWaybill, TripListResponse, TripSummary } from './warehouse/manifests/types';
-import { canAddWaybillsToManifest } from './warehouse/manifests/types';
+import { canAddWaybillsToManifest, addWaybillsDisabledReason } from './warehouse/manifests/types';
 import {
   buildInventoryTripLinesQuery,
   filterManifestAddableInventoryRows,
@@ -45,13 +45,14 @@ const statusConfig: Record<string, BadgeConfig> = {
   CLOSED: { label: 'Đã đóng', className: 'bg-emerald-50 text-emerald-700' },
   MANIFEST_CLOSED: { label: 'Đã đóng', className: 'bg-emerald-50 text-emerald-700' },
   ASSIGNED: { label: 'Đã gán chuyến', className: 'bg-indigo-50 text-indigo-700' },
-  IN_TRANSIT: { label: 'Đang vận chuyển', className: 'bg-amber-50 text-amber-700' },
+  IN_TRANSIT: { label: 'Đang chạy', className: 'bg-amber-50 text-amber-700' },
   CANCELLED: { label: 'Đã hủy', className: 'bg-red-50 text-red-600' },
 };
 const tripStatusConfig: Record<string, BadgeConfig> = {
   PLANNED: { label: 'Đã lên kế hoạch', className: 'bg-blue-50 text-blue-700' },
   READY: { label: 'Sẵn sàng', className: 'bg-emerald-50 text-emerald-700' },
   IN_TRANSIT: { label: 'Đang chạy', className: 'bg-amber-50 text-amber-700' },
+  ARRIVED: { label: 'Xe đã đến', className: 'bg-emerald-50 text-emerald-700' },
   COMPLETED: { label: 'Hoàn tất', className: 'bg-slate-100 text-slate-600' },
   WAITING_LOAD: { label: 'Chờ bốc', className: 'bg-slate-100 text-slate-600' },
   LOADED: { label: 'Đã bốc', className: 'bg-blue-50 text-blue-700' },
@@ -59,7 +60,7 @@ const tripStatusConfig: Record<string, BadgeConfig> = {
   DELIVERED: { label: 'Đã giao', className: 'bg-emerald-50 text-emerald-700' },
 };
 const statusOptions: FilterOption[] = [
-  { value: 'DRAFT', label: 'Nháp' }, { value: 'OPEN', label: 'Đang gom' }, { value: 'CLOSED', label: 'Đã đóng' }, { value: 'ASSIGNED', label: 'Đã gán chuyến' }, { value: 'IN_TRANSIT', label: 'Đang vận chuyển' },
+  { value: 'DRAFT', label: 'Nháp' }, { value: 'OPEN', label: 'Đang gom' }, { value: 'CLOSED', label: 'Đã đóng' }, { value: 'ASSIGNED', label: 'Đã gán chuyến' }, { value: 'IN_TRANSIT', label: 'Đang chạy' },
 ];
 const defaultFilters: LoadPlanningFilters = { keyword: '', status: [], origin_hub_id: [], dest_hub_id: [], trip_id: [], date_from: '', date_to: '', page: 1, limit: 100 };
 
@@ -76,6 +77,7 @@ const canViewPage = (mask: number) =>
   hasRole(mask, MANAGER) ||
   hasRole(mask, DIRECTOR);
 const canAssignTrip = (mask: number) => hasRole(mask, DISPATCHER) || hasRole(mask, MANAGER) || hasRole(mask, DIRECTOR);
+const canAddWaybillsAction = (mask: number) => hasRole(mask, PACKER) || canAssignTrip(mask);
 const canViewPricing = (mask: number) => hasRole(mask, MANAGER) || hasRole(mask, DIRECTOR);
 const normalizeList = (response: ManifestListResponse | LoadPlanningManifest[]) => Array.isArray(response) ? response : response.data || response.items || response.manifests || [];
 const normalizeTripList = (response: TripListResponse | TripSummary[]) => Array.isArray(response) ? response : response.data || response.items || response.trips || [];
@@ -130,6 +132,15 @@ const truckLabel = (manifest: LoadPlanningManifest) => resolveTruckPlate(manifes
 const driverLabel = (manifest: LoadPlanningManifest) => { const trip = manifestTrip(manifest); return trip?.driver_name || trip?.driver?.name || trip?.driver?.full_name || trip?.truck?.ten_lai_xe || trip?.truck?.driver?.name || trip?.truck?.driver?.full_name || 'Chưa gán'; };
 const getWaybillCount = (manifest: LoadPlanningManifest) => Number(manifest.waybill_count ?? manifest.total_waybills ?? manifest.waybills?.length ?? 0);
 
+function resolveManifestDisplayStatus(manifest: LoadPlanningManifest): { config?: BadgeConfig; fallback: string } {
+  const tripStatus = String(manifestTrip(manifest)?.status || '').trim();
+  if (tripStatus) {
+    return { config: tripStatusConfig[tripStatus], fallback: tripStatus };
+  }
+  const manifestStatus = String(manifest.status || '').trim();
+  return { config: statusConfig[manifestStatus], fallback: manifestStatus };
+}
+
 export default function WarehouseManifestsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -139,6 +150,7 @@ export default function WarehouseManifestsPage() {
   const allowed = canViewPage(roleMask);
   const mayAssign = canAssignTrip(roleMask);
   const canManageManifest = mayAssign;
+  const canAddWaybills = canAddWaybillsAction(roleMask);
   const [filters, setFilters] = useState<LoadPlanningFilters>(defaultFilters);
   const [draftFilters, setDraftFilters] = useState<LoadPlanningFilters>(defaultFilters);
   const [manifests, setManifests] = useState<LoadPlanningManifest[]>([]);
@@ -316,7 +328,7 @@ export default function WarehouseManifestsPage() {
   }
   function closeAddWaybills() { setIsAddWaybillsClosing(true); window.setTimeout(() => { setIsAddWaybillsOpen(false); setAddWaybillsManifest(null); setIsAddWaybillsClosing(false); }, 180); }
   async function openAddWaybills(manifest: LoadPlanningManifest) {
-    if (!canManageManifest || !canAddWaybillsToManifest(manifest)) return;
+    if (!canAddWaybills || !canAddWaybillsToManifest(manifest)) return;
     setAddWaybillsForm({ keyword: '', page: 1, limit: 200 });
     setAddWaybillsError('');
     setAddWaybillsManifest(manifest);
@@ -448,7 +460,7 @@ export default function WarehouseManifestsPage() {
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
-          {isLoading ? <StateBlock icon={<Loader2 size={22} className="animate-spin" />} title="Đang tải danh sách bảng kê..." /> : error ? <StateBlock icon={<AlertTriangle size={22} />} title={error} /> : !hubManifests.length ? <StateBlock icon={<PackageCheck size={22} />} title="Chưa có bảng kê phù hợp." /> : <ManifestAllTable hubView={userHubView} manifests={hubManifests} canManage={canManageManifest} onDetail={openDetail} onArrivedDetail={openArrivedTruckDetail} onEdit={openEdit} onAddWaybills={openAddWaybills} onPrint={openPrint} onDelete={confirmDeleteManifest} />}
+          {isLoading ? <StateBlock icon={<Loader2 size={22} className="animate-spin" />} title="Đang tải danh sách bảng kê..." /> : error ? <StateBlock icon={<AlertTriangle size={22} />} title={error} /> : !hubManifests.length ? <StateBlock icon={<PackageCheck size={22} />} title="Chưa có bảng kê phù hợp." /> : <ManifestAllTable hubView={userHubView} manifests={hubManifests} canManage={canManageManifest} canAddWaybills={canAddWaybills} onDetail={openDetail} onArrivedDetail={openArrivedTruckDetail} onEdit={openEdit} onAddWaybills={openAddWaybills} onPrint={openPrint} onDelete={confirmDeleteManifest} />}
         </div>
 
         <div className="shrink-0 border-t border-border bg-card px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[12px] font-bold text-muted-foreground">{`${rangeStart}-${rangeEnd}/Tổng:${total}`}</p><div className="flex items-center gap-2"><SearchableSelect value={String(filters.limit)} onValueChange={value => updateFilters({ limit: Number(value), page: 1 })} options={[{ value: '20', label: '20' }, { value: '50', label: '50' }, { value: '100', label: '100' }]} className="h-9 w-[88px] rounded-lg bg-white px-3 text-[13px] text-muted-foreground" searchPlaceholder="Tìm số dòng..." /><span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button><span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span><span className="text-[13px] font-bold text-foreground">/ {totalPages}</span></div></div></div>
@@ -469,6 +481,7 @@ function ManifestAllTable({
   hubView,
   manifests,
   canManage,
+  canAddWaybills,
   onDetail,
   onArrivedDetail,
   onEdit,
@@ -479,6 +492,7 @@ function ManifestAllTable({
   hubView: HubViewCode;
   manifests: LoadPlanningManifest[];
   canManage: boolean;
+  canAddWaybills: boolean;
   onDetail: (manifest: LoadPlanningManifest) => void;
   onArrivedDetail: (manifest: LoadPlanningManifest) => void;
   onEdit: (manifest: LoadPlanningManifest) => void;
@@ -526,9 +540,9 @@ function ManifestAllTable({
               const group = resolveManifestBoardGroup(manifest, hubView);
               const openMode: 'detail' | 'arrived' = group === 'arrived' ? 'arrived' : 'detail';
               const open = () => (openMode === 'arrived' ? onArrivedDetail(manifest) : onDetail(manifest));
-              const trip = manifestTrip(manifest);
               const isDraft = manifest.status === 'DRAFT';
               const mayAddWaybills = canAddWaybillsToManifest(manifest);
+              const addWaybillsHint = addWaybillsDisabledReason(manifest, canAddWaybills);
 
               return (
                 <tr key={manifest.id} className="border-b border-border hover:bg-muted/10">
@@ -549,17 +563,17 @@ function ManifestAllTable({
                   <td className="px-3 py-3 align-top text-[13px] font-bold">{hubLabel(manifest.dest_hub, manifest.dest_hub_id)}</td>
                   <td className="px-3 py-3 align-top text-center text-[13px] font-bold">{formatNumber(getWaybillCount(manifest))}</td>
                   <td className="px-3 py-3 align-top">
-                    <div className="flex flex-wrap gap-1">
-                      <Badge config={statusConfig[String(manifest.status || '')]} fallback={manifest.status} />
-                      {trip?.status && <Badge config={tripStatusConfig[String(trip.status)]} fallback={trip.status} />}
-                    </div>
+                    {(() => {
+                      const displayStatus = resolveManifestDisplayStatus(manifest);
+                      return <Badge config={displayStatus.config} fallback={displayStatus.fallback} />;
+                    })()}
                   </td>
                   <td className="px-3 py-3 align-top text-[13px]">{formatDate(expectedArrival(manifest))}</td>
                   <td className="px-3 py-3 align-top">
                     <div className="inline-flex flex-nowrap gap-1">
                       <IconAction label="Xem" onClick={open} icon={<Eye size={14} />} />
                       <IconAction label="Sửa" disabled={!canManage || !isDraft} onClick={() => onEdit(manifest)} icon={<Edit size={14} />} />
-                      <IconAction label="Thêm đơn" disabled={!canManage || !mayAddWaybills} onClick={() => onAddWaybills(manifest)} icon={<FilePlus2 size={14} />} />
+                      <IconAction label="Thêm đơn" hint={addWaybillsHint || undefined} disabled={Boolean(addWaybillsHint) || !mayAddWaybills} onClick={() => onAddWaybills(manifest)} icon={<FilePlus2 size={14} />} />
                       <IconAction label="In bảng kê" onClick={() => onPrint(manifest)} icon={<Printer size={14} />} />
                       <IconAction label="Xóa" danger disabled={!canManage || !isDraft} onClick={() => onDelete(manifest)} icon={<Trash2 size={14} />} />
                     </div>
@@ -573,8 +587,8 @@ function ManifestAllTable({
     </div>
   );
 }
-function IconAction({ label, icon, disabled, danger, onClick }: { label: string; icon: ReactNode; disabled?: boolean; danger?: boolean; onClick: () => void }) {
-  return <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick} className={clsx('inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45', danger && 'text-red-500 hover:bg-red-50')}>{icon}</button>;
+function IconAction({ label, hint, icon, disabled, danger, onClick }: { label: string; hint?: string; icon: ReactNode; disabled?: boolean; danger?: boolean; onClick: () => void }) {
+  return <button type="button" title={hint || label} aria-label={label} disabled={disabled} onClick={onClick} className={clsx('inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45', danger && 'text-red-500 hover:bg-red-50')}>{icon}</button>;
 }function Badge({ config, fallback }: { config?: BadgeConfig; fallback?: string | null }) { return <span className={`inline-flex h-7 items-center rounded-full px-3 text-[12px] font-bold ${config?.className || 'bg-slate-100 text-slate-600'}`}>{config?.label || fallback || '—'}</span>; }
 function StateBlock({ icon, title }: { icon: ReactNode; title: string }) { return <div className="flex-1 min-h-[360px] flex items-center justify-center"><div className="flex flex-col items-center gap-3 text-center text-muted-foreground"><div className="text-primary">{icon}</div><p className="text-[13px] font-bold">{title}</p></div></div>; }
 function DateInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-muted-foreground"><CalendarDays size={15} /><span>{label}</span><input type="date" value={value} onChange={event => onChange(event.target.value)} className="bg-transparent text-foreground outline-none" /></label>; }

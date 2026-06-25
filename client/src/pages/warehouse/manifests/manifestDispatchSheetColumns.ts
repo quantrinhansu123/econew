@@ -45,3 +45,36 @@ const meta: Partial<Record<DispatchSheetColumnId, DispatchSheetColumnMeta>> = {
 export function getDispatchSheetColumnMeta(id: DispatchSheetColumnId): DispatchSheetColumnMeta {
   return meta[id] ?? { id };
 }
+
+/** Tỷ lệ cột khi in A4 ngang — tổng ~96% (4% vị trí hàng). */
+export const DISPATCH_SHEET_PRINT_WIDTHS: Partial<Record<DispatchSheetColumnId, string>> = {
+  ngayBoc: '5%',
+  maTinh: '5%',
+  tenCtv: '7%',
+  dv: '3%',
+  matHang: '9%',
+  noiTra: '7%',
+  soLuong: '5%',
+  diaChiNhan: '18%',
+  tinhTrangGiaoHang: '8%',
+  ngayHoanThanh: '6%',
+  keHoach: '5%',
+  tangHaThuKhach: '6%',
+  maBill: '8%',
+  ghiChu: '6%',
+  kg: '4%',
+  m3: '4%',
+  cuoc: '5%',
+  laiXeThuHo: '5%',
+  bcThuHo: '5%',
+  ghiChu1: '5%',
+  ghiChu2: '5%',
+  duKienToiHcm: '6%',
+  qd: '3%',
+};
+
+export function dispatchSheetHeaderClass(columnId: DispatchSheetColumnId): string {
+  if (columnId === 'diaChiNhan') return 'dispatch-col-address';
+  if (columnId === 'matHang' || columnId === 'tenCtv' || columnId === 'noiTra' || columnId === 'ghiChu') return 'dispatch-col-item';
+  return '';
+}

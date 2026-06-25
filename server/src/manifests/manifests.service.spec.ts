@@ -67,6 +67,7 @@ describe('ManifestsService', () => {
     splitsRepo = makeRepo();
     hubsRepo = makeRepo();
     tripsRepo = makeRepo();
+    tripsRepo.findOne.mockResolvedValue(null);
     hubsRepo.findOne.mockResolvedValue({ id: '1', is_active: true });
     manifestsRepo.findOne.mockImplementation(async (options: any) => {
       if (options?.where?.manifest_code) return null;
@@ -174,9 +175,21 @@ describe('ManifestsService', () => {
     expect(waybillsRepo.save).toHaveBeenCalledWith([expect.objectContaining({ manifest_id: '10', status: WaybillState.MANIFEST_CLOSED, current_state: WaybillState.MANIFEST_CLOSED })]);
   });
 
-  it('addWaybills sau khi gán chuyến phải bị chặn', async () => {
-    manifestsRepo.findOne.mockResolvedValue(draftManifest({ status: ManifestStatus.ASSIGNED_TO_TRIP }));
+  it('addWaybills sau khi chuyến IN_TRANSIT phải bị chặn', async () => {
+    manifestsRepo.findOne.mockResolvedValue(draftManifest({ status: ManifestStatus.ASSIGNED_TO_TRIP, trip_id: '5' }));
+    tripsRepo.findOne.mockResolvedValue({ id: '5', status: TripStatus.IN_TRANSIT });
     await expect(service.addWaybills('10', { waybill_ids: ['100'] }, dispatcher)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('addWaybills khi chuyến PLANNED vẫn được phép', async () => {
+    const manifest = draftManifest({ status: ManifestStatus.ASSIGNED_TO_TRIP, trip_id: '5' });
+    manifestsRepo.findOne.mockImplementation(async (options: any) => options?.where?.manifest_code ? null : manifest);
+    tripsRepo.findOne.mockResolvedValue({ id: '5', status: TripStatus.PLANNED });
+    linksRepo.find.mockResolvedValue([]);
+    waybillsRepo.find.mockResolvedValue([waybill({ status: WaybillState.IN_WAREHOUSE, current_state: WaybillState.IN_WAREHOUSE })]);
+    linksRepo.create.mockImplementation((value) => value);
+    await service.addWaybills('10', { waybill_ids: ['100'] }, dispatcher);
+    expect(linksRepo.save).toHaveBeenCalled();
   });
 
   it('add waybill RECEIVED vào manifest DRAFT được phép', async () => {

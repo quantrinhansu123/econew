@@ -14,15 +14,38 @@ export interface ManifestFormState { origin_hub_id: string; dest_hub_id: string;
 export interface CloseManifestFormState { seal_code: string; note: string; }
 export interface AddWaybillsFormState { keyword: string; page: number; limit: number; }
 
+const DEPARTED_TRIP_STATUSES = ['IN_TRANSIT', 'ARRIVED', 'COMPLETED'] as const;
+
+export function manifestTripStatus(manifest?: Pick<LoadPlanningManifest, 'trip' | 'trips'> | null) {
+  return String(manifest?.trip?.status || manifest?.trips?.[0]?.status || '').trim();
+}
+
 export function canAddWaybillsToManifest(manifest?: Pick<LoadPlanningManifest, 'status' | 'trip' | 'trips'> | null) {
   if (!manifest) return false;
+
+  const tripStatus = manifestTripStatus(manifest);
+  if (DEPARTED_TRIP_STATUSES.includes(tripStatus as (typeof DEPARTED_TRIP_STATUSES)[number])) return false;
+
   const status = String(manifest.status || '');
   if (status === 'DRAFT' || status === 'CLOSED') return true;
-  if (status === 'ASSIGNED_TO_TRIP') {
-    const tripStatus = String(manifest.trip?.status || manifest.trips?.[0]?.status || '');
-    return tripStatus === 'PLANNED' || tripStatus === '';
+  if (status === 'ASSIGNED_TO_TRIP' || status === 'IN_TRANSIT') {
+    return tripStatus === '' || tripStatus === 'PLANNED';
   }
   return false;
+}
+
+export function addWaybillsDisabledReason(
+  manifest: Pick<LoadPlanningManifest, 'status' | 'trip' | 'trips'> | null | undefined,
+  canAddByRole: boolean,
+): string | null {
+  if (!canAddByRole) return 'Chỉ PACKER hoặc điều phối mới được thêm đơn';
+  if (!manifest) return null;
+  const tripStatus = manifestTripStatus(manifest);
+  if (DEPARTED_TRIP_STATUSES.includes(tripStatus as (typeof DEPARTED_TRIP_STATUSES)[number])) {
+    return 'Xe đã khởi hành — không thể thêm đơn vào bảng kê';
+  }
+  if (!canAddWaybillsToManifest(manifest)) return 'Bảng kê không ở trạng thái cho phép thêm đơn';
+  return null;
 }
 
 export function canRemoveWaybillsFromManifest(manifest?: Pick<LoadPlanningManifest, 'status'> | null) {

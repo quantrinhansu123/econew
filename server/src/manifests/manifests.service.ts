@@ -134,7 +134,7 @@ export class ManifestsService {
   async addWaybills(id: string, dto: AddWaybillsToManifestDto, currentUser: UserEntity): Promise<ManifestRecord> {
     this.assertRole(currentUser, [Roles.DISPATCHER, Roles.PACKER, Roles.MANAGER, Roles.DIRECTOR]);
     const manifest = await this.findOne(id, currentUser);
-    this.assertCanAddWaybills(manifest);
+    await this.assertCanAddWaybills(manifest);
 
     type ManifestAddLine = { waybill_id: string; package_count?: number; loading_position?: number };
     const rawLines: ManifestAddLine[] = dto.items?.length
@@ -614,17 +614,22 @@ export class ManifestsService {
   }
 
   private async assertCanAddWaybills(manifest: ManifestRecord) {
-    const status = manifest.status as ManifestStatus;
-    if ([ManifestStatus.DRAFT, ManifestStatus.CLOSED].includes(status)) return;
-
-    if (status === ManifestStatus.ASSIGNED_TO_TRIP) {
-      const tripId = manifest.trip_id ?? manifest.trip?.id;
-      if (!tripId) return;
+    const tripId = manifest.trip_id ?? manifest.trip?.id;
+    if (tripId) {
       const trip = await this.tripsRepository.findOne({ where: { id: String(tripId) } as any });
+      if (trip && [TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED].includes(trip.status as TripStatus)) {
+        throw new ConflictException('Không thể thêm đơn sau khi xe đã khởi hành');
+      }
       if (trip?.status === TripStatus.PLANNED) return;
     }
 
-    throw new ConflictException('Không thể thêm đơn sau khi xe đã khởi hành');
+    const status = manifest.status as ManifestStatus;
+    if ([ManifestStatus.DRAFT, ManifestStatus.CLOSED, ManifestStatus.ASSIGNED_TO_TRIP].includes(status)) return;
+    if (status === ManifestStatus.IN_TRANSIT) {
+      throw new ConflictException('Không thể thêm đơn sau khi xe đã khởi hành');
+    }
+
+    throw new ConflictException('Không thể thêm đơn cho bảng kê ở trạng thái này');
   }
 
   private assertWaybillCanBeAdded(manifest: ManifestRecord, waybill: WaybillRecord) {

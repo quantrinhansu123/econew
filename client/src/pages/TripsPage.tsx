@@ -11,7 +11,7 @@ type TripKanbanStatus = (typeof tripKanbanStatuses)[number];
 
 const tripKanbanColumns: Array<{ id: TripKanbanStatus; title: string; tone: string }> = [
   { id: 'PLANNED', title: 'Chờ khởi hành', tone: 'border-amber-200 bg-amber-50 text-amber-800' },
-  { id: 'IN_TRANSIT', title: 'Xe đã khởi hành', tone: 'border-blue-200 bg-blue-50 text-blue-700' },
+  { id: 'IN_TRANSIT', title: 'Đang chạy', tone: 'border-blue-200 bg-blue-50 text-blue-700' },
   { id: 'ARRIVED', title: 'Xe đã đến', tone: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
   { id: 'COMPLETED', title: 'Hoàn tất chuyến', tone: 'border-slate-200 bg-slate-100 text-slate-700' },
 ];
@@ -26,7 +26,7 @@ const formatDate = (value?: string | null) => (
 
 const tripStatusLabel = (status?: string | null) => {
   if (status === 'PLANNED') return 'Chờ khởi hành';
-  if (status === 'IN_TRANSIT') return 'Xe đã khởi hành';
+  if (status === 'IN_TRANSIT') return 'Đang chạy';
   if (status === 'ARRIVED') return 'Xe đã đến';
   if (status === 'COMPLETED') return 'Hoàn tất chuyến';
   return status || '—';

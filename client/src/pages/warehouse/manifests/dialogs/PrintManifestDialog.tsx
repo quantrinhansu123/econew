@@ -4,9 +4,14 @@ import { Loader2, Printer, X } from 'lucide-react';
 import DispatchPrintColumnDropdown from '../../../print/DispatchPrintColumnDropdown';
 import type { DispatchPrintColumnId } from '../../../print/dispatchPrintColumns';
 import { loadVisibleDispatchColumnIds, saveVisibleDispatchColumnIds } from '../../../print/dispatchPrintColumns';
-import LoadPlanningPrintTemplate from '../../../print/LoadPlanningPrintTemplate';
-import { buildManifestPrintPayload } from '../../../print/manifestPrintUtils';
 import '../../../print/inventory-stock-list.css';
+import ManifestDispatchPrintView from '../ManifestDispatchPrintView';
+import {
+  buildManifestPrintRows,
+  manifestPrintCode,
+  normalizeManifestPrintLinks,
+  sortManifestPrintLinks,
+} from '../manifestDispatchPrintUtils';
 import type { LoadPlanningManifest } from '../types';
 
 interface Props {
@@ -17,8 +22,6 @@ interface Props {
   showPricing: boolean;
   onClose: () => void;
 }
-
-const code = (manifest?: LoadPlanningManifest | null) => manifest?.manifest_code || manifest?.code || (manifest ? `BK-${manifest.id}` : '—');
 
 const PRINT_STYLE = `@media print {
   body > *:not(.manifest-print-dialog-root) { display: none !important; }
@@ -54,13 +57,13 @@ const PRINT_STYLE = `@media print {
 export default function PrintManifestDialog({ isOpen, isClosing, isLoading, manifest, showPricing, onClose }: Props) {
   const [printColumnIds, setPrintColumnIds] = useState<DispatchPrintColumnId[]>(() => loadVisibleDispatchColumnIds(showPricing));
 
-  const printData = useMemo(() => {
-    if (!manifest) return null;
-    const payload = buildManifestPrintPayload(manifest, showPricing);
-    return { ...payload, visibleColumnIds: printColumnIds };
-  }, [manifest, printColumnIds, showPricing]);
+  const links = useMemo(() => {
+    if (!manifest) return [];
+    return sortManifestPrintLinks(normalizeManifestPrintLinks(manifest));
+  }, [manifest]);
 
-  const hasRows = Boolean(printData?.groups?.some((group) => group.rows.length > 0));
+  const rows = useMemo(() => buildManifestPrintRows(links), [links]);
+  const hasRows = links.length > 0;
 
   if (!isOpen) return null;
 
@@ -70,7 +73,7 @@ export default function PrintManifestDialog({ isOpen, isClosing, isLoading, mani
   };
 
   return createPortal(
-    <div className="manifest-print-dialog-root fixed inset-0 z-[9999] flex justify-end print:static print:block print:bg-white print:p-0">
+    <div className="manifest-print-dialog-root manifest-dispatch-print-page fixed inset-0 z-[9999] flex justify-end print:static print:block print:bg-white print:p-0">
       <style>{PRINT_STYLE}</style>
       <div className="fixed inset-0 bg-black/40 backdrop-blur-md print:hidden" onClick={onClose} />
       <div
@@ -79,7 +82,7 @@ export default function PrintManifestDialog({ isOpen, isClosing, isLoading, mani
         <div className="manifest-print-dialog-toolbar flex shrink-0 items-center justify-between border-b border-border bg-white px-5 py-4 print:hidden">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-primary">In bảng kê phát hàng</p>
-            <h2 className="text-lg font-extrabold text-foreground">{code(manifest)}</h2>
+            <h2 className="text-lg font-extrabold text-foreground">{manifest ? manifestPrintCode(manifest) : '—'}</h2>
           </div>
           <div className="flex items-center gap-2">
             <DispatchPrintColumnDropdown value={printColumnIds} canViewPricing={showPricing} onChange={updatePrintColumnIds} />
@@ -103,12 +106,17 @@ export default function PrintManifestDialog({ isOpen, isClosing, isLoading, mani
               <Loader2 className="animate-spin" size={18} />
               Đang tải dữ liệu in...
             </div>
-          ) : !hasRows || !printData ? (
+          ) : !hasRows || !manifest ? (
             <div className="flex min-h-[320px] items-center justify-center text-[13px] font-bold text-muted-foreground print:hidden">
               Bảng kê chưa có dòng hàng để in.
             </div>
           ) : (
-            <LoadPlanningPrintTemplate data={printData} />
+            <ManifestDispatchPrintView
+              manifest={manifest}
+              links={links}
+              rows={rows}
+              visibleColumnIds={printColumnIds}
+            />
           )}
         </div>
       </div>

@@ -11,7 +11,7 @@ import {
   type DispatchFieldKey,
   type DispatchLink,
 } from './manifestDispatchDefaults';
-import { getDispatchSheetColumnMeta } from './manifestDispatchSheetColumns';
+import { dispatchSheetHeaderClass, DISPATCH_SHEET_PRINT_WIDTHS, getDispatchSheetColumnMeta } from './manifestDispatchSheetColumns';
 import type { LoadPlanningManifest, ManifestDispatchFields } from './types';
 
 type EditableRows = Record<string, ManifestDispatchFields>;
@@ -189,17 +189,26 @@ export default function ManifestDispatchSheetTable({
   }
 
   return (
-    <table className="manifest-dispatch-sheet-table w-full min-w-[1900px] border-collapse text-center text-[12px] text-slate-950">
+    <table className="manifest-dispatch-sheet-table w-full border-collapse text-center text-[12px] text-slate-950">
+      <colgroup>
+        <col className="dispatch-col-location" style={{ width: '4%' }} />
+        {dataColumns.map((columnId) => (
+          <col key={columnId} style={{ width: DISPATCH_SHEET_PRINT_WIDTHS[columnId] || '5%' }} />
+        ))}
+      </colgroup>
       <thead>
         <tr className="bg-[#c6efce] text-[11px] font-black">
-          <th className="dispatch-col-location w-14 border border-black bg-yellow-300 px-1 py-2">Vị trí hàng</th>
+          <th className="dispatch-col-location border border-black bg-yellow-300 px-1 py-2">
+            Vị trí
+            <br />
+            hàng
+          </th>
           {dataColumns.map((columnId) => {
-            const meta = getDispatchSheetColumnMeta(columnId);
+            const columnMeta = getDispatchSheetColumnMeta(columnId);
             return (
               <th
                 key={columnId}
-                className={`border border-black px-1 py-2 ${meta.cellClass || ''}`}
-                style={{ minWidth: meta.minWidth }}
+                className={`border border-black px-1 py-2 ${columnMeta.cellClass || ''} ${dispatchSheetHeaderClass(columnId)}`}
               >
                 {renderHeaderLabel(columnId)}
               </th>
@@ -216,9 +225,9 @@ export default function ManifestDispatchSheetTable({
                 {link.loading_position ?? index + 1}
               </td>
               {dataColumns.map((columnId) => {
-                const meta = getDispatchSheetColumnMeta(columnId);
+                const columnMeta = getDispatchSheetColumnMeta(columnId);
                 return (
-                  <td key={columnId} className={`border border-black p-0 ${meta.cellClass || ''}`}>
+                  <td key={columnId} className={`border border-black p-0 ${columnMeta.cellClass || ''} ${dispatchSheetHeaderClass(columnId)}`}>
                     {renderDataCell(columnId, link, waybillId)}
                   </td>
                 );
@@ -263,7 +272,7 @@ export default function ManifestDispatchSheetTable({
           })}
         </tr>
         <tr>
-          <td colSpan={dataColumns.length + 1} className="border border-black px-3 py-2 text-left text-[12px] font-bold">
+          <td colSpan={dataColumns.length + 1} className="border border-black px-3 py-2 text-left text-[12px] font-bold manifest-dispatch-trip-footer">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               <span><strong>Xe:</strong> {driverLabel(manifest)}</span>
               <span><strong>Ngày:</strong> {formatShortDate(manifest.closed_at || manifest.created_at)}</span>
