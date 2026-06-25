@@ -233,12 +233,6 @@ export default function StackOntoTruckDialog({
 
   const removeRow = (waybillId: string) => setRows((prev) => prev.filter((row) => row.waybill_id !== waybillId));
 
-  const addBackRows = () => {
-    const existing = new Set(rows.map((row) => row.waybill_id));
-    const missing = buildStackFormRows(waybills).filter((row) => !existing.has(row.waybill_id));
-    if (missing.length) setRows((prev) => [...prev, ...missing]);
-  };
-
   async function handleSubmit() {
     setError('');
     if (!shared.truck_id) {
@@ -384,11 +378,7 @@ export default function StackOntoTruckDialog({
                     <label className="mb-1 block text-[12px] font-bold uppercase tracking-wide text-slate-700">Cước NCC</label>
                     <input value={shared.vendor_cost} onChange={(e) => setShared((prev) => ({ ...prev, vendor_cost: formatDonGia(e.target.value) }))} placeholder="Nhập sau..." className="h-11 w-full rounded-lg border border-amber-300 bg-amber-50/40 px-3 text-right text-[15px] font-bold outline-none focus:border-primary" />
                   </div>
-                  <div className="col-span-12 flex justify-end md:col-span-3">
-                    <button type="button" onClick={addBackRows} disabled={rows.length === waybills.length} className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"><Plus size={15} />Thêm lại đơn đã bỏ</button>
-                  </div>
                 </div>
-                <p className="mt-2 text-right text-[10px] font-medium text-muted-foreground">Cước chuyến xe · ghi công nợ NCC một lần cho toàn bộ danh sách</p>
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-border">

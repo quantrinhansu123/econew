@@ -39,7 +39,48 @@ export function getTripStatus(manifest: LoadPlanningManifest): string {
 }
 
 export function isInTransitManifest(manifest: LoadPlanningManifest): boolean {
-  return IN_TRANSIT_TRIP_STATUSES.includes(getTripStatus(manifest));
+  const tripStatus = getTripStatus(manifest);
+  if (IN_TRANSIT_TRIP_STATUSES.includes(tripStatus)) return true;
+  const manifestStatus = String(manifest.status || '');
+  return manifestStatus === 'IN_TRANSIT' || manifestStatus === 'ASSIGNED_TO_TRIP';
+}
+
+export type ManifestBoardGroup = 'departed' | 'expected' | 'arrived' | 'other';
+
+export function resolveManifestBoardGroup(manifest: LoadPlanningManifest, hubView: HubViewCode): ManifestBoardGroup {
+  if (hubView === 'HAN') {
+    if (isOutboundFromHub(manifest, hubView) && isInTransitManifest(manifest)) return 'departed';
+  } else {
+    if (isInboundToHub(manifest, hubView) && isInTransitManifest(manifest)) return 'expected';
+    if (isInboundToHub(manifest, hubView) && isArrivedManifest(manifest)) return 'arrived';
+  }
+  return 'other';
+}
+
+export function manifestBoardGroupLabel(group: ManifestBoardGroup, hubView: HubViewCode): string {
+  if (group === 'departed') return departedColumnTitle(hubView);
+  if (group === 'expected') return expectedArrivalColumnTitle(hubView);
+  if (group === 'arrived') return arrivedColumnTitle(hubView);
+  return 'Chờ xếp / nháp';
+}
+
+const manifestBoardGroupOrder: Record<ManifestBoardGroup, number> = {
+  departed: 1,
+  expected: 2,
+  arrived: 3,
+  other: 4,
+};
+
+export function compareManifestBoardRows(
+  a: LoadPlanningManifest,
+  b: LoadPlanningManifest,
+  hubView: HubViewCode,
+) {
+  const groupDiff =
+    manifestBoardGroupOrder[resolveManifestBoardGroup(a, hubView)] -
+    manifestBoardGroupOrder[resolveManifestBoardGroup(b, hubView)];
+  if (groupDiff !== 0) return groupDiff;
+  return String(b.created_at || '').localeCompare(String(a.created_at || ''));
 }
 
 export function isArrivedManifest(manifest: LoadPlanningManifest): boolean {

@@ -38,7 +38,7 @@ export class TripsController {
   }
 
   @Get()
-  @RequireRoles(Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List trips with filters and pagination' })
   findAll(@Query() query: QueryTripsDto, @CurrentUser() currentUser: UserEntity) {
     return this.tripsService.findAll(query, currentUser);

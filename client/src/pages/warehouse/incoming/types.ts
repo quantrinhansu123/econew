@@ -33,14 +33,18 @@ export interface IncomingTrip {
   dest_hub?: IncomingHub | null;
   departure_time?: string | null;
   arrival_time?: string | null;
+  expected_arrival_time?: string | null;
   estimated_arrival_time?: string | null;
   status?: string | null;
   manifest?: IncomingManifest | null;
   waybill_count?: number | null;
   total_waybills?: number | null;
   total_weight?: number | string | null;
+  planned_total_weight?: number | string | null;
   total_volumetric_weight?: number | string | null;
   total_m3?: number | string | null;
+  planned_total_volume?: number | string | null;
+  license_plate?: string | null;
 }
 
 export interface IncomingTripListResponse {

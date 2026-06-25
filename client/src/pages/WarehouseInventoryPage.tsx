@@ -134,6 +134,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [waybills, setWaybills] = useState<WaybillInventoryItem[]>([]);
   const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [total, setTotal] = useState(0);
+  const [filterTotals, setFilterTotals] = useState({ orderCount: 0, totalFreight: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -267,11 +268,19 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       const rawItems = normalizeList(response);
       const items = isAllOrders ? sortAllOrders(rawItems) : rawItems.filter(isIncompleteSplitRow);
       setWaybills(items);
-      setTotal(Array.isArray(response) ? items.length : response.meta?.total_waybills ?? response.meta?.total ?? items.length);
+      const orderCount = Array.isArray(response)
+        ? items.length
+        : response.meta?.total_waybills ?? response.meta?.total ?? items.length;
+      setTotal(orderCount);
+      setFilterTotals({
+        orderCount,
+        totalFreight: Array.isArray(response) ? 0 : Number(response.meta?.total_freight ?? 0),
+      });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không thể tải danh sách tồn kho theo chuyến.');
       setWaybills([]);
       setTotal(0);
+      setFilterTotals({ orderCount: 0, totalFreight: 0 });
     } finally {
       setIsLoading(false);
     }
@@ -439,10 +448,26 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       )}
 
       {isAllOrders ? (
-        <div className="rounded-xl border border-border bg-card px-4 py-2.5 text-[13px] text-muted-foreground">
-          <span className="font-extrabold text-foreground">Danh sách đơn</span>
-          {' — '}
-          Hiển thị toàn bộ vận đơn theo ngày và mã bill, có thể lọc theo khoảng ngày bốc hàng.
+        <div className="space-y-3">
+          <div className="rounded-xl border border-border bg-card px-4 py-2.5 text-[13px] text-muted-foreground">
+            <span className="font-extrabold text-foreground">Danh sách đơn</span>
+            {' — '}
+            Hiển thị toàn bộ vận đơn theo ngày và mã bill, có thể lọc theo khoảng ngày bốc hàng.
+          </div>
+          <div className={clsx('grid grid-cols-1 gap-3', canViewPricing ? 'sm:grid-cols-2' : 'sm:grid-cols-1')}>
+            <FilterSummaryCard
+              label="Tổng đơn (theo bộ lọc)"
+              value={isLoading ? '…' : `${filterTotals.orderCount.toLocaleString('vi-VN')} đơn`}
+              tone="blue"
+            />
+            {canViewPricing && (
+              <FilterSummaryCard
+                label="Tổng cước phí (theo bộ lọc)"
+                value={isLoading ? '…' : `${filterTotals.totalFreight.toLocaleString('vi-VN')} đ`}
+                tone="emerald"
+              />
+            )}
+          </div>
         </div>
       ) : (
         <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-[13px] text-amber-900">
@@ -1165,6 +1190,18 @@ function DateGroup({ draftFilters, setDraftFilters, openGroups, setOpenGroups }:
 function Badge({ config, fallback }: { config?: BadgeConfig; fallback: ReactNode }) { return <span className={clsx('inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-black whitespace-nowrap', config?.className || 'bg-muted text-muted-foreground border-border')}>{config?.label || fallback}</span>; }
 function MobileInfo({ label, value }: { label: string; value: ReactNode }) { return <div className="min-w-0"><span className="text-muted-foreground">{label}: </span><span className="font-bold text-foreground break-words">{value}</span></div>; }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label><span className="mb-2 block text-[12px] font-bold text-foreground">{label}</span>{children}</label>; }
+function FilterSummaryCard({ label, value, tone }: { label: string; value: string; tone: 'blue' | 'emerald' }) {
+  const toneClass = tone === 'emerald'
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+    : 'border-blue-200 bg-blue-50 text-blue-800';
+  return (
+    <div className={clsx('rounded-2xl border p-4 shadow-sm', toneClass)}>
+      <p className="text-[11px] font-bold uppercase tracking-wide opacity-80">{label}</p>
+      <p className="mt-1 text-[20px] font-extrabold">{value}</p>
+    </div>
+  );
+}
+
 function Alert({ message, tone = 'amber' }: { message: string; tone?: 'amber' | 'red' }) { return <div className={clsx('flex gap-2 rounded-2xl border px-4 py-3 text-[13px] font-bold', tone === 'red' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800')}><AlertTriangle size={16} className="mt-0.5 shrink-0" />{message}</div>; }
 function StateCard({ icon, title, description, compact = false }: { icon: ReactNode; title: string; description: string; compact?: boolean }) { return <div className={clsx('flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-white text-center', compact ? 'm-5 min-h-[320px] p-6' : 'min-h-[420px] p-8')}><div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">{icon}</div><h3 className="text-base font-black text-foreground">{title}</h3><p className="mt-2 max-w-md text-[13px] leading-6 text-muted-foreground">{description}</p></div>; }
 

@@ -8,6 +8,7 @@ import { VendorDebtEntryEntity } from '../vendors/vendor-debt-entry.entity';
 import { VendorEntity } from '../vendors/vendor.entity';
 import { ExpensesModule } from '../expenses/expenses.module';
 import { VendorsModule } from '../vendors/vendors.module';
+import { WaybillsModule } from '../waybills/waybills.module';
 import { WaybillEntity } from '../waybills/waybill.entity';
 import { WaybillSplitEntity } from '../waybills/waybill-split.entity';
 import { TripEntity } from './trip.entity';
@@ -19,6 +20,7 @@ import { TripsService } from './trips.service';
     TypeOrmModule.forFeature([TripEntity, TruckEntity, ManifestEntity, ManifestWaybillEntity, WaybillEntity, WaybillSplitEntity, HubEntity, VendorEntity, VendorDebtEntryEntity]),
     VendorsModule,
     ExpensesModule,
+    WaybillsModule,
   ],
   controllers: [TripsController],
   providers: [TripsService],

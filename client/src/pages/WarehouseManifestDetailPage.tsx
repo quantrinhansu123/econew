@@ -7,18 +7,14 @@ import { DateTimePicker } from '../components/ui/DateTimePicker';
 import DispatchPrintColumnDropdown from './print/DispatchPrintColumnDropdown';
 import type { DispatchPrintColumnId } from './print/dispatchPrintColumns';
 import {
-  getDispatchColumnDef,
   loadVisibleDispatchColumnIds,
   saveVisibleDispatchColumnIds,
 } from './print/dispatchPrintColumns';
 import {
-  computeDispatchTotals,
-  formatReceiverAddressWithPhone,
-  getDispatchCellValue,
   type DispatchFieldKey,
   type DispatchLink,
 } from './warehouse/manifests/manifestDispatchDefaults';
-import { getDispatchSheetColumnMeta } from './warehouse/manifests/manifestDispatchSheetColumns';
+import ManifestDispatchSheetTable, { rowKey } from './warehouse/manifests/ManifestDispatchSheetTable';
 import type { LoadPlanningManifest, ManifestDispatchFields } from './warehouse/manifests/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -70,10 +66,6 @@ const toDateTimeLocalValue = (value?: string | null) => {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 };
 
-function rowKey(link: RowLink) {
-  return String(link.waybill_id ?? link.waybill?.id ?? '');
-}
-
 function normalizeLinks(manifest: LoadPlanningManifest | null): RowLink[] {
   if (!manifest) return [];
   if (manifest.manifest_waybills?.length) return manifest.manifest_waybills as RowLink[];
@@ -82,39 +74,6 @@ function normalizeLinks(manifest: LoadPlanningManifest | null): RowLink[] {
 
 function isArrived(manifest: LoadPlanningManifest) {
   return ['COMPLETED', 'ARRIVED', 'AT_DEST_HUB', 'Xe đã đến'].includes(String(manifest.trip?.status || manifest.status || ''));
-}
-
-function renderAddressCell(value: string) {
-  const phoneMatch = value.match(/SĐT:\s*([^·]+)/i);
-  if (!phoneMatch) return <span className="text-left text-[12px] font-semibold">{value}</span>;
-  const phone = phoneMatch[1].trim();
-  const address = value.replace(/·?\s*SĐT:\s*[^·]+/i, '').trim();
-  return (
-    <div className="px-1.5 py-2 text-left text-[12px] font-semibold leading-snug">
-      {phone ? <div className="font-black text-red-600">SĐT: {phone}</div> : null}
-      {address ? <div>{address}</div> : null}
-    </div>
-  );
-}
-
-function renderQuantityCell(rows: EditableRows, link: RowLink, waybillId: string, onCellChange: (waybillId: string, key: DispatchFieldKey, value: string) => void) {
-  const qty = getDispatchCellValue(rows, link, waybillId, 'so_luong');
-  const unit = getDispatchCellValue(rows, link, waybillId, 'loai') || 'kiện';
-  return (
-    <div className="min-h-[50px] px-1 py-2">
-      <input
-        value={qty}
-        onChange={(event) => onCellChange(waybillId, 'so_luong', event.target.value)}
-        className="w-full border-0 bg-transparent text-center text-[12px] font-black text-red-600 outline-none focus:bg-white focus:ring-2 focus:ring-primary/30"
-      />
-      <input
-        value={unit}
-        onChange={(event) => onCellChange(waybillId, 'loai', event.target.value)}
-        className="mt-1 w-full border-0 bg-transparent text-center text-[11px] font-semibold text-muted-foreground outline-none focus:bg-white focus:ring-2 focus:ring-primary/30"
-        placeholder="kiện"
-      />
-    </div>
-  );
 }
 
 export default function WarehouseManifestDetailPage() {
@@ -308,61 +267,6 @@ function DispatchSheetDialog(props: {
   onClose: () => void;
 }) {
   const { manifest, links, rows, keyword, isSaving, visibleColumnIds, showPricing, onKeywordChange, onCellChange, onVisibleColumnsChange, onSave, onClose } = props;
-  const totals = useMemo(() => computeDispatchTotals(links, rows, rowKey), [links, rows]);
-  const dataColumns = visibleColumnIds.filter((id) => id !== 'viTriHang');
-
-  function renderHeaderLabel(columnId: DispatchPrintColumnId) {
-    const def = getDispatchColumnDef(columnId);
-    return def.header.split('\n').map((line, index) => (
-      <span key={`${columnId}-${index}`}>
-        {index > 0 ? <br /> : null}
-        {line}
-      </span>
-    ));
-  }
-
-  function renderDataCell(columnId: DispatchPrintColumnId, link: RowLink, waybillId: string) {
-    const meta = getDispatchSheetColumnMeta(columnId);
-    const fieldKey = meta.fieldKey;
-
-    if (columnId === 'soLuong') {
-      return renderQuantityCell(rows, link, waybillId, onCellChange);
-    }
-
-    if (columnId === 'diaChiNhan') {
-      const value = getDispatchCellValue(rows, link, waybillId, 'dia_chi') || formatReceiverAddressWithPhone(link);
-      return renderAddressCell(value);
-    }
-
-    if (columnId === 'cuoc') {
-      const saved = getDispatchCellValue(rows, link, waybillId, 'bc_thu_ho');
-      const value = saved || String(link.waybill?.cost_amount ?? '');
-      return (
-        <div className="min-h-[50px] px-1.5 py-2 text-right text-[12px] font-black text-red-600">
-          {value ? Number(value).toLocaleString('vi-VN') : ''}
-        </div>
-      );
-    }
-
-    if (!fieldKey) return null;
-
-    const value = getDispatchCellValue(rows, link, waybillId, fieldKey);
-    if (meta.readOnly) {
-      return (
-        <div className={`min-h-[50px] px-1.5 py-2 text-[12px] font-semibold ${meta.money ? 'text-right font-black text-red-600' : 'text-center'}`}>
-          {value}
-        </div>
-      );
-    }
-
-    return (
-      <textarea
-        value={value}
-        onChange={(event) => onCellChange(waybillId, fieldKey, event.target.value)}
-        className={`min-h-[50px] w-full resize-y border-0 bg-transparent px-1.5 py-2 text-[12px] font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-primary/30 ${meta.money ? 'text-right font-black text-red-600' : 'text-center'}`}
-      />
-    );
-  }
 
   return <div className="manifest-dispatch-print-root fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 print:static print:block print:bg-white print:p-0">
     <style>{`@media print { body > *:not(.manifest-dispatch-print-root) { display: none !important; } .manifest-dispatch-print-root { display: block !important; position: static !important; inset: auto !important; background: #fff !important; padding: 0 !important; } .manifest-dispatch-print-panel { display: block !important; max-height: none !important; max-width: none !important; overflow: visible !important; border-radius: 0 !important; box-shadow: none !important; } .manifest-dispatch-print-toolbar { display: none !important; } .manifest-dispatch-print-body { display: block !important; overflow: visible !important; max-height: none !important; } }`}</style>
@@ -376,78 +280,13 @@ function DispatchSheetDialog(props: {
       </div>
       <div className="shrink-0 border-b border-border px-4 py-3 text-center"><h2 className="text-[16px] font-black uppercase tracking-wide text-foreground">BẢNG KÊ PHÁT HÀNG ECO</h2><p className="mt-1 text-[12px] font-bold text-muted-foreground">{manifestCode(manifest)} · {links.length} dòng hàng</p></div>
       <div className="manifest-dispatch-print-body min-h-0 flex-1 overflow-auto custom-scrollbar">
-        {!links.length ? <StateBlock icon={<PackageCheck size={22} />} title="Bảng kê chưa có dòng hàng phù hợp." /> : (
-          <table className="w-full min-w-[1800px] border-collapse text-center text-[12px] text-slate-950">
-            <thead>
-              <tr className="bg-green-50 text-[11px] font-black">
-                <th className="w-14 border border-slate-700 bg-yellow-300 px-1 py-2">Vị trí hàng</th>
-                {dataColumns.map((columnId) => {
-                  const def = getDispatchColumnDef(columnId);
-                  const meta = getDispatchSheetColumnMeta(columnId);
-                  return (
-                    <th key={columnId} className={`border border-slate-700 px-1 py-2 ${meta.cellClass || ''}`} style={{ minWidth: meta.minWidth }}>
-                      {renderHeaderLabel(columnId)}
-                      {!def.label && columnId === 'tinhTrangGiaoHang' ? 'TÌNH TRẠNG GIAO HÀNG' : null}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {links.map((link, index) => {
-                const waybillId = rowKey(link);
-                return (
-                  <tr key={waybillId || index} className="align-middle odd:bg-white even:bg-slate-50">
-                    <td className="border border-slate-700 bg-yellow-300 px-1 py-2 font-black text-blue-900">{link.loading_position ?? index + 1}</td>
-                    {dataColumns.map((columnId) => {
-                      const meta = getDispatchSheetColumnMeta(columnId);
-                      return (
-                        <td key={columnId} className={`border border-slate-700 p-0 ${meta.cellClass || ''}`}>
-                          {renderDataCell(columnId, link, waybillId)}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-100 font-black">
-                <td className="border border-slate-700 bg-yellow-300 px-2 py-2 text-right" colSpan={1}>TỔNG</td>
-                {dataColumns.map((columnId) => {
-                  if (columnId === 'soLuong') {
-                    return <td key={columnId} className="border border-slate-700 px-2 py-2 text-center">{totals.soLuong} {totals.unitLabel}</td>;
-                  }
-                  if (columnId === 'tangHaThuKhach') {
-                    return <td key={columnId} className="border border-slate-700 px-2 py-2 text-right text-red-600">{totals.cod ? totals.cod.toLocaleString('vi-VN') : ''}</td>;
-                  }
-                  if (columnId === 'kg') {
-                    return <td key={columnId} className="border border-slate-700 px-2 py-2 text-right">{totals.kg ? totals.kg.toLocaleString('vi-VN') : ''}</td>;
-                  }
-                  if (columnId === 'm3') {
-                    return <td key={columnId} className="border border-slate-700 px-2 py-2 text-right">{totals.m3 ? totals.m3.toLocaleString('vi-VN') : ''}</td>;
-                  }
-                  return <td key={columnId} className="border border-slate-700 px-2 py-2" />;
-                })}
-              </tr>
-              <tr>
-                <td colSpan={dataColumns.length + 1} className="border border-slate-700 px-3 py-2 text-left text-[12px] font-bold">
-                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-                    <span><strong>Xe:</strong> {driverLabel(manifest)}</span>
-                    <span><strong>Ngày:</strong> {formatDateTime(manifest.closed_at || manifest.created_at)}</span>
-                    <span><strong>BKS:</strong> {truckLabel(manifest)}</span>
-                    <span><strong>SĐT:</strong> {driverPhoneLabel(manifest)}</span>
-                    {expectedArrival(manifest) ? (
-                      <span className="rounded bg-yellow-300 px-3 py-1 font-black">
-                        dự kiến {formatDateTime(expectedArrival(manifest))} tới
-                      </span>
-                    ) : null}
-                  </div>
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        )}
+        <ManifestDispatchSheetTable
+          manifest={manifest}
+          links={links}
+          rows={rows}
+          visibleColumnIds={visibleColumnIds}
+          onCellChange={onCellChange}
+        />
       </div>
     </div>
   </div>;

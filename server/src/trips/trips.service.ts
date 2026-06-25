@@ -12,6 +12,7 @@ import { TruckStatus } from '../trucks/dto/truck.enums';
 import { TruckEntity } from '../trucks/truck.entity';
 import { UserEntity } from '../users/user.entity';
 import { VendorsService } from '../vendors/vendors.service';
+import { WaybillsService } from '../waybills/waybills.service';
 import { WaybillEntity } from '../waybills/waybill.entity';
 import { WaybillSplitEntity } from '../waybills/waybill-split.entity';
 import { ArriveTripDto } from './dto/arrive-trip.dto';
@@ -43,6 +44,7 @@ export class TripsService {
     @InjectRepository(HubEntity) private readonly hubsRepository: Repository<HubEntity>,
     @InjectRepository(WaybillSplitEntity) private readonly waybillSplitsRepository: Repository<WaybillSplitEntity>,
     private readonly vendorsService: VendorsService,
+    private readonly waybillsService: WaybillsService,
   ) {}
 
   async create(dto: CreateTripDto, currentUser: UserEntity): Promise<TripEntity> {
@@ -90,6 +92,24 @@ export class TripsService {
   }
 
   async findAll(query: QueryTripsDto, currentUser: UserEntity) {
+    const hubScopeId =
+      query.end_hub_id != null
+        ? String(query.end_hub_id)
+        : query.start_hub_id != null
+          ? String(query.start_hub_id)
+          : isManager(currentUser.role_mask)
+            ? undefined
+            : currentUser.hub_id ?? undefined;
+
+    const backfillStatuses = new Set<string>([
+      TripStatus.IN_TRANSIT,
+      TripStatus.ARRIVED,
+      TripStatus.COMPLETED,
+    ]);
+    if (!query.status || backfillStatuses.has(String(query.status))) {
+      await this.waybillsService.backfillInTransitTripsForHub(hubScopeId);
+    }
+
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 10);
     const qb = this.tripsRepository.createQueryBuilder('trip')
@@ -239,6 +259,11 @@ export class TripsService {
 
   async getExpectedArrivals(query: QueryExpectedArrivalsDto, currentUser: UserEntity) {
     const limit = clampPaginationLimit(query.limit, 50);
+    const endHubId = query.end_hub_id != null ? String(query.end_hub_id) : currentUser.hub_id;
+    if (endHubId) {
+      await this.waybillsService.backfillInTransitTripsForHub(endHubId);
+    }
+
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('truck.vendor', 'vendor')
@@ -250,7 +275,6 @@ export class TripsService {
       .addOrderBy('trip.arrival_time', 'ASC')
       .take(limit);
 
-    const endHubId = query.end_hub_id != null ? String(query.end_hub_id) : currentUser.hub_id;
     if (endHubId) qb.andWhere('trip.end_hub_id = :endHubId', { endHubId });
     this.applyHubScope(qb, currentUser);
 
@@ -261,6 +285,8 @@ export class TripsService {
       const volume = waybills.reduce((sum, wb) => sum + Number(wb.the_tich_m3 ?? 0), 0);
       return {
         ...trip,
+        manifest_code: trip.manifest?.manifest_code ?? null,
+        seal_code: trip.manifest?.seal_code ?? null,
         waybill_count: waybills.length,
         planned_total_weight: weight,
         planned_total_volume: volume,

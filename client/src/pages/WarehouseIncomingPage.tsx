@@ -23,12 +23,12 @@ const formatTime = (value?: string | null) => value ? new Intl.DateTimeFormat('v
 const formatUpdatedAt = (date: Date | null) => date ? new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(date) : '—';
 const formatHub = (hub?: IncomingHub | null, fallback?: string | number | null) => hub?.code || hub?.name || (fallback ? `Hub #${fallback}` : '—');
 const getManifest = (trip: IncomingTrip): IncomingManifest | null => trip.manifest || null;
-const getArrivalTime = (trip: IncomingTrip) => trip.arrival_time || trip.estimated_arrival_time || null;
-const getManifestCode = (trip: IncomingTrip) => trip.manifest_code || getManifest(trip)?.manifest_code || 'Chưa có manifest';
+const getArrivalTime = (trip: IncomingTrip) => trip.expected_arrival_time || trip.arrival_time || trip.estimated_arrival_time || null;
+const getManifestCode = (trip: IncomingTrip) => trip.manifest_code || getManifest(trip)?.manifest_code || trip.manifest?.manifest_code || 'Chưa có manifest';
 const getSealCode = (trip: IncomingTrip) => trip.seal_code || getManifest(trip)?.seal_code || 'Chưa niêm phong';
 const getWaybillCount = (trip: IncomingTrip) => trip.waybill_count ?? trip.total_waybills ?? getManifest(trip)?.waybill_count ?? getManifest(trip)?.total_waybills ?? 0;
-const getTotalWeight = (trip: IncomingTrip) => trip.total_weight ?? getManifest(trip)?.total_weight ?? 0;
-const getTotalM3 = (trip: IncomingTrip) => trip.total_m3 ?? trip.total_volumetric_weight ?? getManifest(trip)?.total_m3 ?? getManifest(trip)?.total_volumetric_weight ?? 0;
+const getTotalWeight = (trip: IncomingTrip) => trip.planned_total_weight ?? trip.total_weight ?? getManifest(trip)?.total_weight ?? 0;
+const getTotalM3 = (trip: IncomingTrip) => trip.planned_total_volume ?? trip.total_m3 ?? trip.total_volumetric_weight ?? getManifest(trip)?.total_m3 ?? getManifest(trip)?.total_volumetric_weight ?? 0;
 const getOriginHub = (trip: IncomingTrip) => formatHub(trip.origin_hub || trip.start_hub || getManifest(trip)?.origin_hub, trip.origin_hub_id || trip.start_hub_id || getManifest(trip)?.origin_hub_id);
 const getDestinationHub = (trip: IncomingTrip) => formatHub(trip.end_hub || trip.dest_hub || getManifest(trip)?.dest_hub, trip.end_hub_id || getManifest(trip)?.dest_hub_id);
 
@@ -63,14 +63,10 @@ export default function WarehouseIncomingPage() {
     if (showLoading) setIsLoading(true);
     setError('');
     try {
-      const query = new URLSearchParams({ status: 'IN_TRANSIT', end_hub_id: String(hubId) });
-      const response = await apiRequest<IncomingTripListResponse | IncomingTrip[]>(`/trips?${query.toString()}`);
-      const list = normalizeList(response).filter(trip => String(trip.status || '').toUpperCase() === 'IN_TRANSIT');
-      const detailedTrips = await Promise.all(list.map(async (trip) => {
-        if (trip.manifest && getWaybillCount(trip) > 0) return trip;
-        try { return await apiRequest<IncomingTrip>(`/trips/${trip.id}`); } catch { return trip; }
-      }));
-      setTrips(detailedTrips);
+      const query = new URLSearchParams({ end_hub_id: String(hubId), limit: '50' });
+      const response = await apiRequest<IncomingTripListResponse | IncomingTrip[]>(`/trips/expected-arrivals?${query.toString()}`);
+      const list = normalizeList(response);
+      setTrips(list);
       setUpdatedAt(new Date());
     } catch (err) {
       setTrips([]);
@@ -97,7 +93,7 @@ export default function WarehouseIncomingPage() {
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-orange-200 bg-orange-50 text-orange-600"><TruckIcon size={18} /></div>
               <div className="min-w-0">
                 <h1 className="truncate text-[15px] font-extrabold text-foreground md:text-[18px]">Thông báo hàng đến dự kiến</h1>
-                <p className="hidden text-[12px] font-medium text-muted-foreground md:block">Theo dõi chuyến IN_TRANSIT đang về bưu cục hiện tại.</p>
+                <p className="hidden text-[12px] font-medium text-muted-foreground md:block">Theo dõi chuyến đã xếp hàng/khởi hành đang về bưu cục hiện tại.</p>
               </div>
             </div>
             <div className="ml-auto flex h-10 items-center gap-2 rounded-lg border border-border bg-muted/10 px-3 text-[12px] font-bold text-muted-foreground">

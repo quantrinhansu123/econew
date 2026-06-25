@@ -8,14 +8,16 @@
   body {
     margin: 0;
     background: #fff !important;
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: 'Times New Roman', Times, serif;
   }
   .inventory-stock-table--dispatch {
-    font-size: 6.5pt;
+    font-size: 6.8pt;
+    font-family: 'Times New Roman', Times, serif !important;
   }
   .inventory-stock-table--dispatch th,
   .inventory-stock-table--dispatch td {
-    padding: 1px 2px;
+    padding: 2px 2px;
+    font-family: 'Times New Roman', Times, serif !important;
   }
   .inventory-print-toolbar {
     display: none !important;
@@ -34,7 +36,7 @@
   min-height: 100vh;
   background: #e8eef5;
   padding: 12px;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .inventory-stock-sheet {
@@ -43,6 +45,7 @@
   padding: 3px 4px 4px;
   max-width: 297mm;
   margin: 0 auto;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .inventory-stock-title {
@@ -51,19 +54,24 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2px;
-  margin: 0 0 3px;
+  margin: 0 0 4px;
   color: #000;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .dispatch-print-info {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 18px;
-  margin: 0 0 3px;
-  padding: 0 2px;
-  font-size: 8pt;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 28px;
+  margin: 0 0 4px;
+  padding: 0 4px;
+  font-size: 8.5pt;
   font-weight: 700;
   color: #000;
+  text-align: center;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .dispatch-print-info strong {
@@ -74,6 +82,7 @@
   font-size: 7.5pt;
   margin: 6px 2px 0;
   color: #444;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .inventory-stock-table {
@@ -101,17 +110,19 @@
   font-weight: 700;
   text-align: center;
   font-size: 7pt;
-  line-height: 1.15;
+  line-height: 1.12;
   vertical-align: middle;
-  padding: 2px 1px;
+  padding: 3px 2px;
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .inventory-stock-table--dispatch {
-  font-size: 7.2pt;
-  line-height: 1.2;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 7.4pt;
+  line-height: 1.18;
 }
 
 .inventory-stock-table--dispatch th,
@@ -234,7 +245,7 @@
 }
 
 .inventory-stock-table .col-location {
-  width: 3.5%;
+  width: 3.2%;
   font-weight: 700;
   text-align: center;
   vertical-align: middle;
@@ -245,22 +256,27 @@
   background: #ffff00 !important;
 }
 
-.inventory-stock-table .col-date { width: 4.5%; }
-.inventory-stock-table .col-province { width: 4.5%; }
-.inventory-stock-table .col-company { width: 10%; }
-.inventory-stock-table .col-service { width: 3%; }
-.inventory-stock-table .col-item { width: 12%; }
-.inventory-stock-table .col-place { width: 11%; }
-.inventory-stock-table .col-qty { width: 5%; }
-.inventory-stock-table .col-recipient-address { width: 27%; }
-.inventory-stock-table .col-delivery-status { width: 6%; }
-.inventory-stock-table .col-completion-date { width: 5%; }
-.inventory-stock-table .col-plan { width: 4.5%; }
-.inventory-stock-table .col-surcharge { width: 6.5%; }
-.inventory-stock-table .col-fee { width: 6.5%; }
+/* Cột bảng kê phát hàng — tỷ lệ cân đối theo mẫu Excel */
+.inventory-stock-table .col-date { width: 4.2%; }
+.inventory-stock-table .col-province { width: 4.2%; }
+.inventory-stock-table .col-company { width: 5.5%; }
+.inventory-stock-table .col-service { width: 2.8%; }
+.inventory-stock-table .col-item { width: 7.5%; }
+.inventory-stock-table .col-place { width: 6.5%; }
+.inventory-stock-table .col-qty { width: 4.5%; }
+.inventory-stock-table .col-recipient-address { width: 20.4%; }
+.inventory-stock-table .col-delivery-status { width: 7%; }
+.inventory-stock-table .col-completion-date { width: 5.5%; }
+.inventory-stock-table .col-plan { width: 4.2%; }
+.inventory-stock-table .col-surcharge { width: 5.5%; }
+.inventory-stock-table .col-fee { width: 5.5%; }
 .inventory-stock-table .col-driver { width: 4.5%; }
 .inventory-stock-table .col-post { width: 4.5%; }
-.inventory-stock-table .col-bill { width: 8%; }
+.inventory-stock-table .col-bill { width: 9.5%; }
+.inventory-stock-table .col-weight,
+.inventory-stock-table .col-volume {
+  width: 3.5%;
+}
 
 .inventory-stock-table .item-note,
 .inventory-stock-table .qty-highlight {
@@ -290,22 +306,22 @@
 .dispatch-print-trip-footer {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 20px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 24px;
   margin-top: 8px;
   padding: 8px 10px;
   font-size: 11px;
   font-weight: 700;
+  font-family: 'Times New Roman', Times, serif;
+  text-align: center;
 }
 
 .dispatch-print-eta {
   background: #ffff00;
   padding: 4px 10px;
   font-weight: 800;
-}
-
-.inventory-stock-table .col-weight,
-.inventory-stock-table .col-volume {
-  width: 4%;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .inventory-stock-table tbody .col-weight,

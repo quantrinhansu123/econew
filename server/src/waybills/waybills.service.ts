@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
 import { HubEntity } from '../hubs/hub.entity';
-import { CustomerPaymentStatus, PaymentType } from '../common/enums';
+import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
 import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
 import { ManifestEntity } from '../manifests/manifest.entity';
@@ -298,6 +298,15 @@ export class WaybillsService {
 
     this.applyIncompleteSplitFilter(qb, query.only_incomplete_split);
 
+    let totalFreight: number | undefined;
+    if (isManager(currentUser.role_mask)) {
+      const freightQb = qb.clone();
+      const freightRow = await freightQb
+        .select('COALESCE(SUM(COALESCE(waybill.freight_amount, waybill.cost_amount, 0)), 0)', 'total_freight')
+        .getRawOne<{ total_freight: string }>();
+      totalFreight = Number(freightRow?.total_freight) || 0;
+    }
+
     const [waybills, totalWaybills] = await qb
       .orderBy('waybill.created_at', 'DESC')
       .skip((page - 1) * limit)
@@ -351,6 +360,7 @@ export class WaybillsService {
         limit,
         total_pages: Math.max(1, Math.ceil(totalWaybills / limit)),
         only_incomplete_split: onlyIncompleteSplit,
+        total_freight: totalFreight,
       },
     };
   }
@@ -607,7 +617,7 @@ export class WaybillsService {
         carrier_label: carrierLabel,
         note: line.note?.trim() || null,
         expected_arrival_at: expectedArrivalAt,
-        load_status: WaybillSplitLoadStatus.DEPARTED,
+        load_status: WaybillSplitLoadStatus.LOADED,
         created_by: currentUser.id,
       }));
 
@@ -643,8 +653,129 @@ export class WaybillsService {
     }
 
     const manifest = manifestWaybills.length ? await this.createClosedManifestForStack(manifestWaybills, currentUser) : null;
+    let tripId: string | null = null;
 
-    return { saved_count: saved.length, manifest_id: manifest?.id ?? null, manifest_code: manifest?.manifest_code ?? null, items: saved };
+    if (manifest && dto.items[0]?.truck_id) {
+      const trip = await this.createInTransitTripForStack(
+        manifest,
+        String(dto.items[0].truck_id),
+        saved.map((row) => ({
+          split_id: String(row.split_id),
+          expected_arrival_at: row.expected_arrival_at as Date | string | null | undefined,
+        })),
+        manifestWaybills,
+      );
+      tripId = trip.id;
+    }
+
+    return {
+      saved_count: saved.length,
+      manifest_id: manifest?.id ?? null,
+      manifest_code: manifest?.manifest_code ?? null,
+      trip_id: tripId,
+      items: saved,
+    };
+  }
+
+  async backfillInTransitTripsForDestHub(destHubId: string) {
+    return this.backfillInTransitTripsForHub(destHubId);
+  }
+
+  async backfillInTransitTripsForHub(hubId?: string) {
+    const qb = this.manifestsRepository
+      .createQueryBuilder('manifest')
+      .leftJoin(TripEntity, 'existingTrip', 'existingTrip.manifest_id = manifest.id')
+      .where('manifest.status IN (:...statuses)', { statuses: [ManifestStatus.CLOSED, ManifestStatus.IN_TRANSIT] })
+      .andWhere('existingTrip.id IS NULL');
+
+    if (hubId) {
+      qb.andWhere('(manifest.dest_hub_id = :hubId OR manifest.origin_hub_id = :hubId)', { hubId: String(hubId) });
+    }
+
+    const manifests = await qb.getMany();
+
+    let created = 0;
+    for (const manifest of manifests) {
+      const manifestLinks = await this.manifestWaybillsRepository.find({
+        where: { manifest_id: String(manifest.id) },
+      });
+      const waybillIds = manifestLinks.map((row) => row.waybill_id);
+      if (!waybillIds.length) continue;
+
+      const splits = await this.splitsRepository.find({
+        where: {
+          waybill_id: In(waybillIds),
+          load_status: In([WaybillSplitLoadStatus.LOADED, WaybillSplitLoadStatus.DEPARTED]),
+        } as any,
+      });
+      if (!splits.length) continue;
+
+      const truckId = splits.find((split) => split.truck_id)?.truck_id;
+      if (!truckId) continue;
+
+      const waybills = await this.waybillsRepository.find({
+        where: { id: In(waybillIds), deleted_at: IsNull() } as any,
+      });
+
+      await this.createInTransitTripForStack(
+        manifest,
+        String(truckId),
+        splits.map((split) => ({
+          split_id: split.id,
+          expected_arrival_at: split.expected_arrival_at,
+        })),
+        waybills.map((waybill) => ({ waybill: waybill as WaybillRecord })),
+      );
+      created += 1;
+    }
+
+    return created;
+  }
+
+  private async createInTransitTripForStack(
+    manifest: ManifestEntity,
+    truckId: string,
+    splitRows: Array<{ split_id: string | number; expected_arrival_at?: Date | string | null }>,
+    _waybillRows: Array<{ waybill: WaybillRecord }>,
+  ): Promise<TripEntity> {
+    const expectedTimes = splitRows
+      .map((row) => (row.expected_arrival_at ? new Date(row.expected_arrival_at) : null))
+      .filter((value): value is Date => value != null && !Number.isNaN(value.getTime()));
+    const expectedArrival = expectedTimes.length
+      ? new Date(Math.max(...expectedTimes.map((value) => value.getTime())))
+      : null;
+
+    const existingTrip = await this.tripsRepository.findOne({
+      where: { manifest_id: String(manifest.id) } as any,
+    });
+    if (existingTrip) {
+      const splitIds = splitRows.map((row) => String(row.split_id)).filter(Boolean);
+      if (splitIds.length) {
+        await this.splitsRepository.update({ id: In(splitIds) }, { trip_id: existingTrip.id });
+      }
+      return existingTrip;
+    }
+
+    const trip = await this.tripsRepository.save(this.tripsRepository.create({
+      truck_id: truckId,
+      manifest_id: String(manifest.id),
+      start_hub_id: String(manifest.origin_hub_id),
+      end_hub_id: String(manifest.dest_hub_id),
+      departure_time: new Date(),
+      arrival_time: expectedArrival,
+      expected_arrival_time: expectedArrival,
+      status: TripStatus.PLANNED,
+    }));
+
+    manifest.status = ManifestStatus.CLOSED;
+    await this.manifestsRepository.save(manifest);
+
+    const splitIds = splitRows.map((row) => String(row.split_id)).filter(Boolean);
+    if (splitIds.length) {
+      await this.splitsRepository.update({ id: In(splitIds) }, { trip_id: trip.id });
+    }
+
+    return trip;
   }
 
   private async createClosedManifestForStack(rows: Array<{ waybill: WaybillRecord; loading_position: number | null }>, currentUser: UserEntity) {

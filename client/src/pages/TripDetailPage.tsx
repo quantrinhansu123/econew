@@ -70,6 +70,18 @@ const formatDate = (value?: string | null) => value ? new Intl.DateTimeFormat('v
 const formatNumber = (value?: number | string | null, suffix = '') => value == null || value === '' ? '—' : `${new Intl.NumberFormat('vi-VN').format(Number(value))}${suffix}`;
 const tripStatusLabel = (status?: string | null) => tripStatusOptions.find(option => option.value === status)?.label || status || '—';
 
+const compareLoadingPosition = (a: WaybillSummary, b: WaybillSummary) => {
+  const posA = Number(a.loading_position);
+  const posB = Number(b.loading_position);
+  const aValid = Number.isFinite(posA) && posA > 0;
+  const bValid = Number.isFinite(posB) && posB > 0;
+  if (!aValid && !bValid) return String(a.waybill_code || '').localeCompare(String(b.waybill_code || ''), 'vi');
+  if (!aValid) return 1;
+  if (!bValid) return -1;
+  if (posA !== posB) return posA - posB;
+  return String(a.waybill_code || '').localeCompare(String(b.waybill_code || ''), 'vi');
+};
+
 export default function TripDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -122,7 +134,7 @@ export default function TripDetailPage() {
     return raw.filter(waybill => {
       const textMatch = !keyword || [waybill.waybill_code, waybill.sender_info, waybill.receiver_info].some(value => String(value || '').toLowerCase().includes(keyword));
       return textMatch && (!filters.current_state.length || filters.current_state.includes(String(waybill.current_state || ''))) && (!filters.origin_hub_id.length || filters.origin_hub_id.includes(normalizeId(waybill.origin_hub_id))) && (!filters.dest_hub_id.length || filters.dest_hub_id.includes(normalizeId(waybill.dest_hub_id))) && (!filters.payment_type.length || filters.payment_type.includes(String(waybill.payment_type || '')));
-    });
+    }).sort(compareLoadingPosition);
   }, [manifest, filters]);
 
   const total = waybills.length;

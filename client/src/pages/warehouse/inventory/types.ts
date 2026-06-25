@@ -118,6 +118,7 @@ export interface InventoryListResponse {
     total?: number;
     total_waybills?: number;
     total_lines?: number;
+    total_freight?: number;
     page?: number;
     limit?: number;
     only_incomplete_split?: boolean;

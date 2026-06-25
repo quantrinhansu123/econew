@@ -417,7 +417,37 @@ export class ManifestsService {
       relations: ['origin_hub', 'dest_hub', 'trips', 'trips.truck', 'trips.truck.driver', 'manifest_waybills', 'manifest_waybills.waybill', 'manifest_waybills.waybill.dest_hub'],
     }) as ManifestRecord | null;
     if (!manifest) throw new NotFoundException('Manifest not found');
+    this.sortManifestWaybills(manifest);
     return manifest;
+  }
+
+  private sortManifestWaybills(manifest: ManifestRecord) {
+    const compareLinks = (
+      a: ManifestWaybillEntity & Record<string, any>,
+      b: ManifestWaybillEntity & Record<string, any>,
+    ) => {
+      const posA = Number(a.loading_position);
+      const posB = Number(b.loading_position);
+      const aValid = Number.isFinite(posA) && posA > 0;
+      const bValid = Number.isFinite(posB) && posB > 0;
+      if (!aValid && !bValid) {
+        return String(a.waybill?.waybill_code || a.waybill_id || '').localeCompare(
+          String(b.waybill?.waybill_code || b.waybill_id || ''),
+          'vi',
+        );
+      }
+      if (!aValid) return 1;
+      if (!bValid) return -1;
+      if (posA !== posB) return posA - posB;
+      return String(a.waybill?.waybill_code || a.waybill_id || '').localeCompare(
+        String(b.waybill?.waybill_code || b.waybill_id || ''),
+        'vi',
+      );
+    };
+
+    if (manifest.manifest_waybills?.length) {
+      manifest.manifest_waybills.sort(compareLinks);
+    }
   }
 
   private async enrichTransportSummaries(manifests: ManifestRecord[]): Promise<void> {
@@ -583,11 +613,18 @@ export class ManifestsService {
     if (changed.length) await this.waybillsRepository.save(changed as any);
   }
 
-  private assertCanAddWaybills(manifest: ManifestRecord) {
-    const allowed = [ManifestStatus.DRAFT, ManifestStatus.CLOSED];
-    if (!allowed.includes(manifest.status as ManifestStatus)) {
-      throw new ConflictException('Cannot add waybills after manifest is assigned to a trip');
+  private async assertCanAddWaybills(manifest: ManifestRecord) {
+    const status = manifest.status as ManifestStatus;
+    if ([ManifestStatus.DRAFT, ManifestStatus.CLOSED].includes(status)) return;
+
+    if (status === ManifestStatus.ASSIGNED_TO_TRIP) {
+      const tripId = manifest.trip_id ?? manifest.trip?.id;
+      if (!tripId) return;
+      const trip = await this.tripsRepository.findOne({ where: { id: String(tripId) } as any });
+      if (trip?.status === TripStatus.PLANNED) return;
     }
+
+    throw new ConflictException('Không thể thêm đơn sau khi xe đã khởi hành');
   }
 
   private assertWaybillCanBeAdded(manifest: ManifestRecord, waybill: WaybillRecord) {

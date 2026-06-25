@@ -14,8 +14,15 @@ export interface ManifestFormState { origin_hub_id: string; dest_hub_id: string;
 export interface CloseManifestFormState { seal_code: string; note: string; }
 export interface AddWaybillsFormState { keyword: string; page: number; limit: number; }
 
-export function canAddWaybillsToManifest(manifest?: Pick<LoadPlanningManifest, 'status'> | null) {
-  return manifest?.status === 'DRAFT' || manifest?.status === 'CLOSED';
+export function canAddWaybillsToManifest(manifest?: Pick<LoadPlanningManifest, 'status' | 'trip' | 'trips'> | null) {
+  if (!manifest) return false;
+  const status = String(manifest.status || '');
+  if (status === 'DRAFT' || status === 'CLOSED') return true;
+  if (status === 'ASSIGNED_TO_TRIP') {
+    const tripStatus = String(manifest.trip?.status || manifest.trips?.[0]?.status || '');
+    return tripStatus === 'PLANNED' || tripStatus === '';
+  }
+  return false;
 }
 
 export function canRemoveWaybillsFromManifest(manifest?: Pick<LoadPlanningManifest, 'status'> | null) {
