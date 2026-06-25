@@ -81,7 +81,7 @@ function cellValue(waybill: WaybillInventoryItem, colId: InventoryColumnId, show
     case 'total_amount':
       return showPricing ? formatMoney(resolveFreight(waybill) + resolveTransitFee(waybill)) : '';
     case 'thu_ho_khach':
-      return formatMoney(Number(waybill.allocated_cod ?? waybill.cod_amount || 0));
+      return formatMoney(Number((waybill.allocated_cod ?? waybill.cod_amount) || 0));
     case 'payment_method':
       return resolvePaymentMethod(waybill);
     case 'customer_payment_status':
