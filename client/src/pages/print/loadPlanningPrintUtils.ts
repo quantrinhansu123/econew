@@ -68,6 +68,25 @@ const isCarrierGoodsNote = (note: string, item: LoadPlanningBoardItem) => {
 const extra = (item: LoadPlanningBoardItem, key: string) =>
   (item as unknown as Record<string, string | number | null | undefined>)[key];
 
+function parseNoteField(note: string | null | undefined, key: string) {
+  const match = (note || '').match(new RegExp(`${key}=([^|]+)`, 'i'));
+  return match?.[1]?.trim() || '';
+}
+
+function resolveWaybillGoods(waybill: WaybillInventoryItem | undefined) {
+  const record = waybill as (WaybillInventoryItem & { item_name?: string | null }) | undefined;
+  return String(
+    record?.mat_hang ||
+      record?.noi_dung ||
+      record?.item_name ||
+      parseNoteField(record?.note || record?.notes, 'content') ||
+      parseNoteField(record?.order?.note, 'content') ||
+      record?.order?.goods_description ||
+      record?.order?.noi_dung ||
+      '',
+  ).trim();
+}
+
 function mapItemToDispatchRow(item: LoadPlanningBoardItem, showPricing: boolean): DispatchPrintRow {
   const cod = Number(extra(item, 'allocated_cod') ?? 0);
   const freight = Number(item.allocated_freight ?? 0);
@@ -211,7 +230,7 @@ export function mapStackOntoTruckToPrintPayload(
       maTinh: String(waybill?.noi_den || waybill?.dest_hub?.code || '').trim(),
       tenCtv: String((waybill as { ten_cty?: string | null })?.ten_cty || waybill?.ma_kh || parseContactName(waybill?.sender_info)).trim(),
       dv: 'TC',
-      matHang: row.waybill_code,
+      matHang: resolveWaybillGoods(waybill),
       matHangNote: '',
       noiTra: String(waybill?.dest_hub?.name || waybill?.receiver_address || parseContactName(waybill?.receiver_info)).trim(),
       soLuong: String(pkg),

@@ -107,6 +107,9 @@ export class WaybillEntity {
   @Column({ type: 'varchar', nullable: true })
   note: string | null;
 
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  noi_dung: string | null;
+
   @Column({ type: 'varchar', length: 128, nullable: true })
   xe_lay: string | null;
 

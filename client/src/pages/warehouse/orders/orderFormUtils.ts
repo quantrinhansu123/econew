@@ -338,6 +338,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     cc_amount: paymentType === 'CC' ? freight : 0,
     xe_lay: form.xeLay.trim() || undefined,
     xe_phat: form.xePhat.trim() || undefined,
+    noi_dung: form.noiDung.trim() || undefined,
     note: [
       form.maKh && `ma_kh=${form.maKh}`,
       form.noiDung && `content=${form.noiDung}`,

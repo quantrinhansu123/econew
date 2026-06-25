@@ -23,6 +23,7 @@ export interface WaybillInventoryItem {
   id: string | number;
   order_id?: string | number | null;
   order_code?: string | null;
+  order?: { note?: string | null; goods_description?: string | null; noi_dung?: string | null } | null;
   waybill_code?: string | null;
   code?: string | null;
   sender_info?: string | null;
@@ -55,6 +56,8 @@ export interface WaybillInventoryItem {
   note?: string | null;
   notes?: string | null;
   ma_kh?: string | null;
+  noi_dung?: string | null;
+  mat_hang?: string | null;
   noi_den?: string | null;
   loaded_at?: string | null;
   the_tich_m3?: number | string | null;

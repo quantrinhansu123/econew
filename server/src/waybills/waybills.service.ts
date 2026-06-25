@@ -45,6 +45,12 @@ const parseNoteField = (note: string | null | undefined, key: string) => {
   return match?.[1]?.trim() || '';
 };
 
+const plainGoodsNote = (note: string | null | undefined) => {
+  const text = (note || '').trim();
+  if (!text || /(^|\|)\s*[a-z_]+\s*=/i.test(text)) return '';
+  return text;
+};
+
 const STATE_TRANSITIONS: Record<string, WaybillStatus[]> = {
   [WaybillStatus.RECEIVED]: [WaybillStatus.IN_WAREHOUSE, WaybillStatus.MANIFEST_CLOSED],
   [WaybillStatus.IN_WAREHOUSE]: [WaybillStatus.MANIFEST_CLOSED],
@@ -112,6 +118,7 @@ export class WaybillsService {
       cc_amount: dto.cc_amount ?? 0,
       package_count: dto.package_count ?? 1,
       note: dto.note ?? null,
+      noi_dung: dto.noi_dung?.trim() || parseNoteField(dto.note, 'content') || null,
       ma_kh: parseNoteField(dto.note, 'ma_kh') || null,
       xe_lay: dto.xe_lay?.trim() || null,
       xe_phat: dto.xe_phat?.trim() || null,
@@ -847,7 +854,7 @@ export class WaybillsService {
       : String(wbExtra.dich_vu ?? wbExtra.loai_bp ?? 'TC').slice(0, 4).toUpperCase() || 'TC';
     const note = split.note?.trim() ?? waybill.note?.trim() ?? '';
     const parenthetical = note.match(/\([^)]+\)/)?.[0] ?? null;
-    const goodsBody = String(wbExtra.noi_dung ?? '').trim() || waybill.waybill_code;
+    const goodsBody = this.resolveGoodsContent(waybill) || waybill.waybill_code;
     const matHangNote = parenthetical ?? (note && /xe|kiện|lô/i.test(note) ? note : null);
     const deliveryType = String(wbExtra.loai_giao_hang ?? '').trim() || 'Giao tận nơi';
     const noiTra = `Kho ${hubCode} ${deliveryType}`;
@@ -1212,6 +1219,7 @@ export class WaybillsService {
 
     return {
       ...waybill,
+      mat_hang: this.resolveGoodsContent(waybill) || null,
       split_id: split?.id ?? null,
       trip_id: split?.trip_id ?? null,
       truck_id: split?.truck_id ?? split?.trip?.truck_id ?? null,
@@ -1234,6 +1242,7 @@ export class WaybillsService {
 
   private sanitize(waybill: WaybillRecord, currentUser: UserEntity): WaybillRecord {
     const result: Record<string, any> = { ...waybill, status: this.getStatus(waybill) };
+    result.noi_dung = this.resolveGoodsContent(waybill) || null;
     if (waybill.order?.order_code) {
       result.order_code = waybill.order.order_code;
       result.order_id = waybill.order_id ?? waybill.order.id;
@@ -1250,6 +1259,17 @@ export class WaybillsService {
     }
     delete result.deleted_at;
     return result as WaybillRecord;
+  }
+
+  private resolveGoodsContent(waybill: WaybillRecord): string {
+    return (
+      String(waybill.noi_dung ?? '').trim() ||
+      parseNoteField(waybill.note, 'content') ||
+      parseNoteField(waybill.order?.note, 'content') ||
+      String((waybill.order as Record<string, unknown> | null | undefined)?.goods_description ?? '').trim() ||
+      String((waybill.order as Record<string, unknown> | null | undefined)?.noi_dung ?? '').trim() ||
+      plainGoodsNote(waybill.order?.note)
+    );
   }
 }
 
