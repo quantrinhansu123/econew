@@ -8,7 +8,9 @@ import { Roles } from '../common/roles';
 import { UserEntity } from '../users/user.entity';
 import { CreateVendorPaymentDto } from './dto/create-vendor-payment.dto';
 import { BulkDeleteVendorPaymentsDto } from './dto/bulk-delete-vendor-payments.dto';
+import { BulkUpdateTripVendorPaymentDto } from './dto/bulk-update-trip-vendor-payment.dto';
 import { QueryVendorDebtDto } from './dto/query-vendor-debt.dto';
+import { QueryVendorTripPayablesDto } from './dto/query-vendor-trip-payables.dto';
 import { QueryVendorPaymentsDto } from './dto/query-vendor-payments.dto';
 import { QueryVendorsDto } from './dto/query-vendors.dto';
 import { UpdateVendorStatusDto } from './dto/update-vendor-status.dto';
@@ -47,6 +49,20 @@ export class VendorsController {
   @ApiOperation({ summary: 'Công nợ phải trả theo nhà cung cấp' })
   debtReport(@Query() query: QueryVendorDebtDto) {
     return this.vendorsService.getDebtReport(query);
+  }
+
+  @Get('trip-payables')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Sổ phải trả NCC theo chuyến xe đã khởi hành' })
+  tripPayables(@Query() query: QueryVendorTripPayablesDto, @CurrentUser() currentUser: UserEntity) {
+    return this.vendorsService.getTripPayablesLedger(query, currentUser);
+  }
+
+  @Patch('trip-payables/payment-status')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Cập nhật trạng thái thanh toán nhiều chuyến NCC' })
+  bulkUpdateTripPaymentStatus(@Body() dto: BulkUpdateTripVendorPaymentDto, @CurrentUser() currentUser: UserEntity) {
+    return this.vendorsService.bulkUpdateTripVendorPayment(dto, currentUser);
   }
 
   @Get('payments')

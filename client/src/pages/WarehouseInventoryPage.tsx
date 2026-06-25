@@ -26,6 +26,12 @@ import {
   getStorageAgeRowClass,
   loadVisibleColumnIds,
   resolveFreight,
+  resolveCustomerName,
+  resolveServiceType,
+  resolveBillingUnit,
+  resolveUnitPrice,
+  resolveTransitFee,
+  resolvePaymentMethod,
   resolveLoadedAt,
   resolveMaKh,
   resolveNoiDen,
@@ -41,12 +47,21 @@ import type { BadgeConfig, FilterOption, HubSummary, InventoryFilters, Inventory
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const WAREHOUSE = 1;
+const ACCOUNTANT = 16;
 const MANAGER = 32;
 const DIRECTOR = 64;
 const DISPATCHER = 8;
 const MUTABLE_WAYBILL_STATUSES = ['RECEIVED', 'IN_WAREHOUSE'];
-const defaultFilters: InventoryFilters = { keyword: '', ma_kh: '', statuses: [], hubIds: [], paymentTypes: [], priorities: [], receivedFrom: '', receivedTo: '', page: 1, limit: 10 };
+const defaultFilters: InventoryFilters = { keyword: '', ma_kh: '', statuses: [], customerPaymentStatuses: [], hubIds: [], paymentTypes: [], priorities: [], receivedFrom: '', receivedTo: '', page: 1, limit: 10 };
 const allOrdersDefaultFilters: InventoryFilters = { ...defaultFilters, limit: 50 };
+const customerPaymentStatusOptions: FilterOption[] = [
+  { value: 'PAID', label: 'Đã TT' },
+  { value: 'SENT_STATEMENT', label: 'Đã gửi bảng kê' },
+];
+const customerPaymentStatusText: Record<string, string> = {
+  PAID: 'Đã TT',
+  SENT_STATEMENT: 'Đã gửi bảng kê',
+};
 
 export type InventoryPageVariant = 'split-pending' | 'all-orders';
 
@@ -142,6 +157,9 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [isCashVoucherOpen, setIsCashVoucherOpen] = useState(false);
   const [isCashVoucherClosing, setIsCashVoucherClosing] = useState(false);
   const [selectedWaybillIds, setSelectedWaybillIds] = useState<string[]>([]);
+  const [isPaymentStatusDialogOpen, setIsPaymentStatusDialogOpen] = useState(false);
+  const [customerPaymentStatus, setCustomerPaymentStatus] = useState<'PAID' | 'SENT_STATEMENT' | ''>('');
+  const [customerPaymentNote, setCustomerPaymentNote] = useState('');
   const [isStackOpen, setIsStackOpen] = useState(false);
   const [isStackClosing, setIsStackClosing] = useState(false);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
@@ -150,6 +168,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const canViewPricing = hasManagerAccess(user?.role_mask ?? 0);
   const canViewPage = isAllOrders ? canEditWaybill(user?.role_mask ?? 0) : canViewPricing;
   const canUpdate = canMutateInventory(user?.role_mask ?? 0);
+  const canUpdateCustomerPayment = ((user?.role_mask ?? 0) & (ACCOUNTANT | MANAGER | DIRECTOR)) !== 0;
+  const selectionEnabled = (!isAllOrders && canUpdate) || (isAllOrders && canUpdateCustomerPayment);
   const canEdit = canEditWaybill(user?.role_mask ?? 0);
   const canDelete = hasManagerAccess(user?.role_mask ?? 0);
   const [visibleColumnIds, setVisibleColumnIds] = useState<InventoryColumnId[]>(() =>
@@ -157,7 +177,14 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   );
   const totalPages = Math.max(1, Math.ceil(total / filters.limit));
   const hubOptions = useMemo(() => hubs.map(hub => ({ value: String(hub.id), label: formatHub(hub) })), [hubs]);
-  const activeFilterCount = filters.statuses.length + filters.hubIds.length + filters.paymentTypes.length + filters.priorities.length + Number(Boolean(filters.receivedFrom || filters.receivedTo)) + Number(Boolean(filters.ma_kh.trim()));
+  const activeFilterCount =
+    filters.statuses.length +
+    filters.customerPaymentStatuses.length +
+    filters.hubIds.length +
+    filters.paymentTypes.length +
+    filters.priorities.length +
+    Number(Boolean(filters.receivedFrom || filters.receivedTo)) +
+    Number(Boolean(filters.ma_kh.trim()));
   const visibleColumns = useMemo(
     () => INVENTORY_COLUMNS.filter((col) => visibleColumnIds.includes(col.id)),
     [visibleColumnIds],
@@ -247,6 +274,30 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       setTotal(0);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function updateCustomerPaymentStatus() {
+    if (!selectedWaybillIds.length || !canUpdateCustomerPayment) return;
+    setIsDeleting(true);
+    setActionError('');
+    try {
+      await apiRequest('/waybills/inventory/customer-payment-status', {
+        method: 'PATCH',
+        body: {
+          waybill_ids: selectedWaybillIds.map(Number),
+          status: customerPaymentStatus || null,
+          note: customerPaymentNote.trim() || undefined,
+        },
+      });
+      setIsPaymentStatusDialogOpen(false);
+      setCustomerPaymentStatus('');
+      setCustomerPaymentNote('');
+      await loadInventory();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Không cập nhật được tình trạng thanh toán.');
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -412,7 +463,41 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                 {activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
               </>
             )}
-            {isAllOrders && <div className="min-w-0 flex-1 text-[15px] font-extrabold text-foreground">Danh sách đơn</div>}
+            {isAllOrders && (
+              <>
+                <div className="relative min-w-[180px] flex-1 md:max-w-[280px]">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={filters.keyword}
+                    onChange={(event) => updateFilters({ keyword: event.target.value })}
+                    placeholder="Tìm bill, khách, sđt..."
+                    className="h-10 w-full rounded-lg border border-border bg-muted/10 pl-9 pr-3 text-[13px] font-medium outline-none focus:ring-2 focus:ring-primary/10"
+                  />
+                </div>
+                <input
+                  value={filters.ma_kh}
+                  onChange={(event) => updateFilters({ ma_kh: event.target.value })}
+                  placeholder="Lọc mã khách"
+                  className="h-10 w-[160px] rounded-lg border border-border px-3 text-[13px] font-medium"
+                />
+                <select
+                  value={filters.customerPaymentStatuses[0] || ''}
+                  onChange={(event) =>
+                    updateFilters({
+                      customerPaymentStatuses: event.target.value ? [event.target.value] : [],
+                    })
+                  }
+                  className="h-10 w-[180px] rounded-lg border border-border px-3 text-[13px] font-medium"
+                >
+                  <option value="">TT thanh toán: Tất cả</option>
+                  {customerPaymentStatusOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
             <div className="hidden flex-1 md:block" />
             {!isAllOrders && canUpdate && (
               <button
@@ -430,6 +515,16 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               </button>
             )}
             {isAllOrders && <DateRangePicker value={{ from: filters.receivedFrom, to: filters.receivedTo }} onChange={({ from, to }) => updateFilters({ receivedFrom: from || '', receivedTo: to || '' })} placeholder="Từ ngày - Đến ngày" className="w-[18.5rem] shrink-0" />}
+            {isAllOrders && canUpdateCustomerPayment && (
+              <button
+                type="button"
+                disabled={!selectedWaybillIds.length}
+                onClick={() => setIsPaymentStatusDialogOpen(true)}
+                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[13px] font-extrabold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+              >
+                Cập nhật TT ({selectedWaybillIds.length})
+              </button>
+            )}
             {isAllOrders && activeFilterCount > 0 && <button onClick={clearFilters} className="h-10 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100">× Xóa {activeFilterCount} bộ lọc</button>}
             <button
               type="button"
@@ -490,7 +585,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               <table className="hidden md:table w-full min-w-[1280px] text-left border-collapse">
                 <thead className="bg-slate-100 text-[11px] uppercase tracking-wider text-slate-600">
                   <tr>
-                    {!isAllOrders && canUpdate && (
+                    {selectionEnabled && (
                       <th className="w-10 px-2 py-2.5 font-bold border-r border-border text-center">
                         <input
                           type="checkbox"
@@ -518,7 +613,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       canUpdate={canUpdate}
                       canEdit={canEdit}
                       canDelete={canDelete}
-                      showSelection={!isAllOrders && canUpdate}
+                      showSelection={selectionEnabled}
                       selected={selectedWaybillIds.includes(String(waybill.id))}
                       onToggleSelect={toggleSelectRow}
                       openActionMenuId={openActionMenuId}
@@ -534,7 +629,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                 </tbody>
                 <tfoot className="bg-slate-50 text-[12px] font-extrabold text-foreground">
                   <tr>
-                    {!isAllOrders && canUpdate && <td className="border-t border-border px-2 py-2.5 border-r" />}
+                    {selectionEnabled && <td className="border-t border-border px-2 py-2.5 border-r" />}
                     {visibleColumns.map((col) => (
                       <td key={col.id} className="border-t border-border px-4 py-2.5 border-r last:border-r-0">
                         {col.id === 'order_code' ? 'Tổng cộng' : ''}
@@ -608,6 +703,55 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
           void loadInventory();
         }}
       />
+      {isPaymentStatusDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <h3 className="text-[15px] font-extrabold">Cập nhật tình trạng TT ({selectedWaybillIds.length} đơn)</h3>
+              <button type="button" onClick={() => setIsPaymentStatusDialogOpen(false)} className="rounded-lg p-2 hover:bg-muted">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <label className="block text-[11px] font-bold uppercase text-muted-foreground">
+                Trạng thái
+                <select
+                  value={customerPaymentStatus}
+                  onChange={(e) => setCustomerPaymentStatus(e.target.value as 'PAID' | 'SENT_STATEMENT' | '')}
+                  className="mt-1 h-10 w-full rounded-lg border border-border px-3 text-[13px] font-bold"
+                >
+                  <option value="">Bỏ trống</option>
+                  <option value="SENT_STATEMENT">Đã gửi bảng kê</option>
+                  <option value="PAID">Đã TT</option>
+                </select>
+              </label>
+              <label className="block text-[11px] font-bold uppercase text-muted-foreground">
+                Ghi chú
+                <textarea
+                  value={customerPaymentNote}
+                  onChange={(e) => setCustomerPaymentNote(e.target.value)}
+                  className="mt-1 min-h-[88px] w-full rounded-lg border border-border px-3 py-2 text-[13px]"
+                  placeholder="Ghi chú thanh toán theo mã khách/đơn..."
+                />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+              <button type="button" onClick={() => setIsPaymentStatusDialogOpen(false)} className="h-10 rounded-lg border border-border px-4 text-[13px] font-bold">
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => void updateCustomerPaymentStatus()}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-bold text-white disabled:opacity-50"
+              >
+                {isDeleting ? <Loader2 size={16} className="animate-spin" /> : null}
+                Lưu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -647,6 +791,17 @@ function InventoryRow({
         return <td className={`${cellClass} font-bold text-violet-800`}>{waybill.order_code || '—'}</td>;
       case 'waybill_code':
         return <td className={`${cellClass} font-extrabold text-primary`}>{displayCode(waybill)}</td>;
+      case 'customer_name':
+        return <td className={`${cellClass} font-semibold`}>{resolveCustomerName(waybill)}</td>;
+      case 'bill_info':
+        return (
+          <td className={cellClass}>
+            <p className="font-bold">{displayCode(waybill)}</p>
+            <p className="text-[11px] text-muted-foreground truncate">{waybill.noi_dung || waybill.mat_hang || '—'}</p>
+          </td>
+        );
+      case 'service_type':
+        return <td className={cellClass}>{resolveServiceType(waybill)}</td>;
       case 'trip_label':
         return (
           <td className={cellClass}>
@@ -675,6 +830,28 @@ function InventoryRow({
         return <td className={clsx(cellClass, 'font-bold text-primary')}>{resolveReceiverPhone(waybill)}</td>;
       case 'noi_den':
         return <td className={cellClass}>{resolveNoiDen(waybill)}</td>;
+      case 'billing_unit':
+        return <td className={cellClass}>{resolveBillingUnit(waybill)}</td>;
+      case 'unit_price':
+        return <td className={`${cellClass} font-bold text-right`}>{displayValue(resolveUnitPrice(waybill), ' đ')}</td>;
+      case 'transit_fee':
+        return <td className={`${cellClass} font-bold text-right`}>{displayValue(resolveTransitFee(waybill), ' đ')}</td>;
+      case 'total_amount': {
+        const totalAmount = resolveFreight(waybill) + resolveTransitFee(waybill);
+        return <td className={`${cellClass} font-bold text-right`}>{canViewPricing ? displayValue(totalAmount, ' đ') : '—'}</td>;
+      }
+      case 'thu_ho_khach':
+        return <td className={`${cellClass} font-bold text-right`}>{displayValue(waybill.allocated_cod ?? waybill.cod_amount, ' đ')}</td>;
+      case 'payment_method':
+        return <td className={cellClass}>{resolvePaymentMethod(waybill)}</td>;
+      case 'customer_payment_status': {
+        const status = String(waybill.customer_payment_status || '');
+        const label = customerPaymentStatusText[status] || '—';
+        const tone = status === 'PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : status === 'SENT_STATEMENT' ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200';
+        return <td className={cellClass}><span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${tone}`}>{label}</span></td>;
+      }
+      case 'customer_payment_note':
+        return <td className={cellClass}>{waybill.customer_payment_note || '—'}</td>;
       case 'route':
         return (
           <td className="overflow-visible px-4 py-3 border-r border-border">

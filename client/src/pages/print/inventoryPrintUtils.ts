@@ -4,6 +4,12 @@ import {
   computeGrandTotals,
   loadVisibleColumnIds,
   resolveFreight,
+  resolveCustomerName,
+  resolveServiceType,
+  resolveBillingUnit,
+  resolveUnitPrice,
+  resolveTransitFee,
+  resolvePaymentMethod,
   resolveLoadedAt,
   resolveMaKh,
   resolveNoiDen,
@@ -54,12 +60,38 @@ function cellValue(waybill: WaybillInventoryItem, colId: InventoryColumnId, show
       return '';
     case 'waybill_code':
       return waybill.waybill_code || waybill.code || String(waybill.id);
+    case 'customer_name':
+      return resolveCustomerName(waybill);
+    case 'bill_info':
+      return waybill.noi_dung || waybill.mat_hang || '';
+    case 'service_type':
+      return resolveServiceType(waybill);
     case 'loaded_at':
       return formatDate(resolveLoadedAt(waybill));
     case 'received_at':
       return formatDate(waybill.received_at || waybill.created_at);
     case 'noi_den':
       return resolveNoiDen(waybill);
+    case 'billing_unit':
+      return resolveBillingUnit(waybill);
+    case 'unit_price':
+      return formatMoney(resolveUnitPrice(waybill));
+    case 'transit_fee':
+      return formatMoney(resolveTransitFee(waybill));
+    case 'total_amount':
+      return showPricing ? formatMoney(resolveFreight(waybill) + resolveTransitFee(waybill)) : '';
+    case 'thu_ho_khach':
+      return formatMoney(Number(waybill.allocated_cod ?? waybill.cod_amount || 0));
+    case 'payment_method':
+      return resolvePaymentMethod(waybill);
+    case 'customer_payment_status':
+      return waybill.customer_payment_status === 'PAID'
+        ? 'Đã TT'
+        : waybill.customer_payment_status === 'SENT_STATEMENT'
+          ? 'Đã gửi bảng kê'
+          : '';
+    case 'customer_payment_note':
+      return waybill.customer_payment_note || '';
     case 'route': {
       const route = resolveRoute(waybill);
       return route === '—' ? '' : route;
@@ -102,7 +134,9 @@ function cellValue(waybill: WaybillInventoryItem, colId: InventoryColumnId, show
 export function buildInventoryQueryForPrint(filters: InventoryFilters) {
   const params = new URLSearchParams({ page: '1', limit: '500' });
   if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
+  if (filters.ma_kh.trim()) params.set('ma_kh', filters.ma_kh.trim());
   if (filters.statuses.length) params.set('status', filters.statuses.join(','));
+  if (filters.customerPaymentStatuses.length) params.set('customer_payment_status', filters.customerPaymentStatuses.join(','));
   if (filters.hubIds.length) params.set('hub_id', filters.hubIds.join(','));
   if (filters.paymentTypes.length) params.set('payment_type', filters.paymentTypes.join(','));
   if (filters.priorities.length) params.set('priority', filters.priorities.join(','));
@@ -114,7 +148,9 @@ export function buildInventoryQueryForPrint(filters: InventoryFilters) {
 export function summarizeFilters(filters: InventoryFilters) {
   const parts: string[] = [];
   if (filters.keyword.trim()) parts.push(`Từ khóa: ${filters.keyword.trim()}`);
+  if (filters.ma_kh.trim()) parts.push(`Mã KH: ${filters.ma_kh.trim()}`);
   if (filters.statuses.length) parts.push(`TT: ${filters.statuses.join(', ')}`);
+  if (filters.customerPaymentStatuses.length) parts.push(`TT thanh toán: ${filters.customerPaymentStatuses.join(', ')}`);
   if (filters.hubIds.length) parts.push(`Hub: ${filters.hubIds.length} bưu cục`);
   if (filters.receivedFrom || filters.receivedTo) {
     parts.push(`Ngày nhận: ${filters.receivedFrom || '…'} → ${filters.receivedTo || '…'}`);

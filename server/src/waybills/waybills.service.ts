@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
 import { HubEntity } from '../hubs/hub.entity';
-import { PaymentType } from '../common/enums';
+import { CustomerPaymentStatus, PaymentType } from '../common/enums';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
 import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
 import { ManifestEntity } from '../manifests/manifest.entity';
@@ -27,6 +27,7 @@ import { TruckEntity } from '../trucks/truck.entity';
 import { WaybillSplitEntity } from './waybill-split.entity';
 import { WaybillCashVoucherEntity } from './waybill-cash-voucher.entity';
 import { BulkStackOntoTruckDto } from './dto/bulk-stack-onto-truck.dto';
+import { BulkUpdateCustomerPaymentStatusDto } from './dto/bulk-update-customer-payment-status.dto';
 import { SaveWaybillSplitsDto } from './dto/save-waybill-splits.dto';
 import { QueryLoadPlanningBoardDto } from './dto/query-load-planning-board.dto';
 import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
@@ -360,6 +361,31 @@ export class WaybillsService {
 
   getOverdue(query: QueryWaybillsDto, currentUser: UserEntity) {
     return this.findAll({ ...query, to_date: new Date().toISOString() }, currentUser);
+  }
+
+  async bulkUpdateCustomerPaymentStatus(dto: BulkUpdateCustomerPaymentStatusDto, _currentUser: UserEntity) {
+    const ids = [...new Set((dto.waybill_ids ?? []).map((id) => String(id)).filter(Boolean))];
+    if (!ids.length) throw new BadRequestException('waybill_ids is required');
+
+    const rows = await this.waybillsRepository.find({
+      where: { id: In(ids), deleted_at: IsNull() } as any,
+      select: ['id', 'customer_payment_status', 'customer_payment_note'],
+    }) as WaybillRecord[];
+    if (rows.length !== ids.length) throw new NotFoundException('One or more waybills not found');
+
+    const status = dto.status ?? null;
+    const note = dto.note?.trim() || null;
+    for (const row of rows) {
+      row.customer_payment_status = status;
+      row.customer_payment_note = note;
+    }
+    await this.waybillsRepository.save(rows);
+
+    return {
+      updated_count: rows.length,
+      waybill_ids: rows.map((row) => row.id),
+      status,
+    };
   }
 
   async getPackageSplits(id: string, currentUser: UserEntity) {
@@ -1025,6 +1051,9 @@ export class WaybillsService {
 
     const paymentTypes = this.parseList(query.payment_type);
     if (paymentTypes.length) qb.andWhere('waybill.payment_type IN (:...paymentTypes)', { paymentTypes });
+
+    const customerPaymentStatuses = this.parseList(query.customer_payment_status);
+    if (customerPaymentStatuses.length) qb.andWhere('waybill.customer_payment_status IN (:...customerPaymentStatuses)', { customerPaymentStatuses });
 
     const priorities = this.parseList(query.priority);
     if (priorities.length) qb.andWhere('waybill.priority IN (:...priorities)', { priorities });

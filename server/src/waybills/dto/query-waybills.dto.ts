@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { normalizePaginationLimit } from '../../common/pagination';
+import { CustomerPaymentStatus } from '../../common/enums';
 import { WaybillPriority, WaybillStatus } from './waybill.enums';
 
 export class QueryWaybillsDto {
@@ -15,6 +16,7 @@ export class QueryWaybillsDto {
   @ApiPropertyOptional({ description: 'Alias for current_hub_id used by inventory filters' }) @IsOptional() @IsString() hub_id?: string;
   @ApiPropertyOptional({ enum: WaybillPriority, description: 'Single priority or comma-separated priorities' }) @IsOptional() @IsString() priority?: string;
   @ApiPropertyOptional({ description: 'Single payment type or comma-separated payment types' }) @IsOptional() @IsString() payment_type?: string;
+  @ApiPropertyOptional({ enum: CustomerPaymentStatus, description: 'Single customer payment status or comma-separated statuses' }) @IsOptional() @IsString() customer_payment_status?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() route_code?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() from_date?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() to_date?: string;

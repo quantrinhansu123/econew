@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import { AlertTriangle, ArrowLeft, ArrowRight, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Edit, Eye, FilePlus2, Filter, Loader2, PackageCheck, Plus, Printer, Save, Search, Trash2, Truck, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Edit, Eye, FilePlus2, Filter, Loader2, PackageCheck, Plus, Printer, Search, Trash2, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
@@ -14,6 +14,19 @@ import PrintManifestDialog from './warehouse/manifests/dialogs/PrintManifestDial
 import type { AuthUserProfile } from './login/types';
 import AssignManifestTripDialog from './warehouse/manifests/dialogs/AssignManifestTripDialog';
 import ManifestDetailDialog from './warehouse/manifests/dialogs/ManifestDetailDialog';
+import ArrivedTruckWaybillDialog from './warehouse/manifests/dialogs/ArrivedTruckWaybillDialog';
+import {
+  arrivedColumnTitle,
+  departedColumnTitle,
+  expectedArrivalColumnTitle,
+  filterManifestsForHub,
+  isArrivedManifest,
+  isInboundToHub,
+  isInTransitManifest,
+  isOutboundFromHub,
+  resolveUserHubView,
+  type HubViewCode,
+} from './warehouse/manifests/manifestHubUtils';
 import type { AddWaybillsFormState, AssignTripFormState, BadgeConfig, FilterOption, HubSummary, LoadPlanningFilters, LoadPlanningManifest, ManifestFormState, ManifestListResponse, ManifestWaybill, TripListResponse, TripSummary } from './warehouse/manifests/types';
 import { canAddWaybillsToManifest } from './warehouse/manifests/types';
 import {
@@ -166,6 +179,13 @@ export default function WarehouseManifestsPage() {
   const [isPrintClosing, setIsPrintClosing] = useState(false);
   const [isPrintLoading, setIsPrintLoading] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
+  const [arrivedTruckManifest, setArrivedTruckManifest] = useState<LoadPlanningManifest | null>(null);
+  const [isArrivedTruckOpen, setIsArrivedTruckOpen] = useState(false);
+  const [isArrivedTruckClosing, setIsArrivedTruckClosing] = useState(false);
+  const [isArrivedTruckLoading, setIsArrivedTruckLoading] = useState(false);
+
+  const userHubView = useMemo(() => resolveUserHubView(user, hubs), [user, hubs]);
+  const hubManifests = useMemo(() => filterManifestsForHub(manifests, userHubView), [manifests, userHubView]);
 
   const hubOptions = useMemo(() => hubs.map(hub => ({ value: String(hub.id), label: hub.code ? `${hub.code} · ${hub.name || 'Bưu cục'}` : hub.name || `Hub #${hub.id}` })), [hubs]);
   const tripOptions = useMemo(() => trips.map(trip => ({ value: String(trip.id), label: tripLabel(trip) })), [trips]);
@@ -223,6 +243,28 @@ export default function WarehouseManifestsPage() {
     try { setDetailManifest(await apiRequest<LoadPlanningManifest>(`/manifests/${manifest.id}`)); }
     catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không thể tải chi tiết bảng kê.'); }
     finally { setIsDetailLoading(false); }
+  }
+
+  const closeArrivedTruck = () => {
+    setIsArrivedTruckClosing(true);
+    window.setTimeout(() => {
+      setIsArrivedTruckOpen(false);
+      setArrivedTruckManifest(null);
+      setIsArrivedTruckClosing(false);
+    }, 180);
+  };
+
+  async function openArrivedTruckDetail(manifest: LoadPlanningManifest) {
+    setIsArrivedTruckOpen(true);
+    setIsArrivedTruckLoading(true);
+    setArrivedTruckManifest(manifest);
+    try {
+      setArrivedTruckManifest(await apiRequest<LoadPlanningManifest>(`/manifests/${manifest.id}`));
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Không thể tải danh sách đơn trên xe.');
+    } finally {
+      setIsArrivedTruckLoading(false);
+    }
   }
 
   async function updateDetailDispatchFields(waybill: ManifestWaybill, fields: Record<string, string>) {
@@ -402,13 +444,14 @@ export default function WarehouseManifestsPage() {
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
-          {isLoading ? <StateBlock icon={<Loader2 size={22} className="animate-spin" />} title="Đang tải danh sách bảng kê..." /> : error ? <StateBlock icon={<AlertTriangle size={22} />} title={error} /> : !manifests.length ? <StateBlock icon={<PackageCheck size={22} />} title="Chưa có bảng kê phù hợp." /> : <ManifestKanbanBoard manifests={manifests} mayAssign={mayAssign} canManage={canManageManifest} isSubmitting={isSubmitting} onDetail={openDetail} onAssign={openAssign} onEdit={openEdit} onAddWaybills={openAddWaybills} onCloseManifest={confirmCloseManifest} onPrint={openPrint} onDelete={confirmDeleteManifest} onUpdateExpectedArrival={updateExpectedArrival} />}
+          {isLoading ? <StateBlock icon={<Loader2 size={22} className="animate-spin" />} title="Đang tải danh sách bảng kê..." /> : error ? <StateBlock icon={<AlertTriangle size={22} />} title={error} /> : !hubManifests.length ? <StateBlock icon={<PackageCheck size={22} />} title="Chưa có bảng kê phù hợp." /> : <ManifestKanbanBoard hubView={userHubView} manifests={hubManifests} mayAssign={mayAssign} canManage={canManageManifest} isSubmitting={isSubmitting} onDetail={openDetail} onArrivedDetail={openArrivedTruckDetail} onAssign={openAssign} onEdit={openEdit} onAddWaybills={openAddWaybills} onCloseManifest={confirmCloseManifest} onPrint={openPrint} onDelete={confirmDeleteManifest} onUpdateExpectedArrival={updateExpectedArrival} />}
         </div>
 
         <div className="shrink-0 border-t border-border bg-card px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[12px] font-bold text-muted-foreground">{`${rangeStart}-${rangeEnd}/Tổng:${total}`}</p><div className="flex items-center gap-2"><SearchableSelect value={String(filters.limit)} onValueChange={value => updateFilters({ limit: Number(value), page: 1 })} options={[{ value: '10', label: '10' }, { value: '20', label: '20' }, { value: '50', label: '50' }]} className="h-9 w-[88px] rounded-lg bg-white px-3 text-[13px] text-muted-foreground" searchPlaceholder="Tìm số dòng..." /><span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button><span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span><span className="text-[13px] font-bold text-foreground">/ {totalPages}</span></div></div></div>
       </div>
       <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} tripOptions={tripOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />
-      <ManifestDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} isSubmitting={isSubmitting} manifest={detailManifest} statusConfig={statusConfig} canManage={canManageManifest} onClose={closeDetail} onRemoveWaybill={confirmRemoveWaybill} onUpdateDispatchFields={updateDetailDispatchFields} onUpdateExpectedArrival={updateExpectedArrival} />
+      <ManifestDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} isSubmitting={isSubmitting} manifest={detailManifest} statusConfig={statusConfig} canManage={canManageManifest} showHubDeliveryStatus={userHubView === 'HCM'} onClose={closeDetail} onRemoveWaybill={confirmRemoveWaybill} onUpdateDispatchFields={updateDetailDispatchFields} onUpdateExpectedArrival={updateExpectedArrival} />
+      <ArrivedTruckWaybillDialog isOpen={isArrivedTruckOpen} isClosing={isArrivedTruckClosing} isLoading={isArrivedTruckLoading} manifest={arrivedTruckManifest} canManage={canManageManifest} onClose={closeArrivedTruck} onSaved={async () => { await fetchManifests(); if (arrivedTruckManifest) setArrivedTruckManifest(await apiRequest<LoadPlanningManifest>(`/manifests/${arrivedTruckManifest.id}`)); }} />
       <AddEditManifestDialog isOpen={isFormOpen} isClosing={isFormClosing} isEditMode={isEditMode} isSubmitting={isSubmitting} formState={formState} hubs={hubs} onChange={(key, value) => setFormState(prev => ({ ...prev, [key]: value }))} onClose={closeForm} onSubmit={submitForm} />
       <AddWaybillsToManifestDialog isOpen={isAddWaybillsOpen} isClosing={isAddWaybillsClosing} isLoading={isWaybillLoading} isSubmitting={isSubmitting} error={addWaybillsError} manifest={addWaybillsManifest} originHubLabel={addWaybillsManifest ? resolveManifestOriginHubLabel(addWaybillsManifest, hubs) : '—'} waybills={waybillChoices} total={waybillTotal} formState={addWaybillsForm} onChange={patch => setAddWaybillsForm(prev => ({ ...prev, ...patch }))} onClose={closeAddWaybills} onSubmit={submitAddWaybills} />
       <PrintManifestDialog isOpen={isPrintOpen} isClosing={isPrintClosing} isLoading={isPrintLoading} manifest={printManifest} showPricing={canViewPricing(roleMask)} onClose={closePrint} />
@@ -418,130 +461,105 @@ export default function WarehouseManifestsPage() {
   );
 }
 
-function isExpectedArrivalManifest(manifest: LoadPlanningManifest) { return ['ARRIVED', 'AT_DEST_HUB', 'COMPLETED', 'Xe đã đến'].includes(String(manifestTrip(manifest)?.status || manifest.status || '')); }
+function ManifestKanbanBoard({ hubView, manifests, onArrivedDetail, ...actions }: { hubView: HubViewCode; manifests: LoadPlanningManifest[]; onArrivedDetail: (manifest: LoadPlanningManifest) => void } & Omit<ManifestItemProps, 'manifest' | 'openMode'>) {
+  const outboundDeparted = manifests.filter((manifest) => isOutboundFromHub(manifest, hubView) && isInTransitManifest(manifest));
+  const inboundExpected = manifests.filter((manifest) => isInboundToHub(manifest, hubView) && isInTransitManifest(manifest));
+  const inboundArrived = manifests.filter((manifest) => isInboundToHub(manifest, hubView) && isArrivedManifest(manifest));
 
-const ORIGIN_LANES: Array<{ id: ManifestOriginLane; title: string; headerTone: string }> = [
-  { id: 'HAN', title: 'Xuất phát từ HN', headerTone: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
-  { id: 'HCM', title: 'Xuất phát từ HCM', headerTone: 'border-indigo-200 bg-indigo-50 text-indigo-800' },
-];
-
-function ManifestKanbanBoard({ manifests, ...actions }: { manifests: LoadPlanningManifest[] } & Omit<ManifestItemProps, 'manifest'>) {
-  const laneManifests = (origin: ManifestOriginLane) => manifests.filter((manifest) => manifestOriginLane(manifest) === origin);
-  const departed = (origin: ManifestOriginLane) => laneManifests(origin).filter((manifest) => !isExpectedArrivalManifest(manifest));
-  const expected = (origin: ManifestOriginLane) => laneManifests(origin).filter(isExpectedArrivalManifest);
+  const columns =
+    hubView === 'HAN'
+      ? [{ id: 'departed', title: departedColumnTitle('HAN'), items: outboundDeparted, openMode: 'detail' as const }]
+      : [
+          { id: 'expected', title: expectedArrivalColumnTitle('HCM'), items: inboundExpected, openMode: 'detail' as const },
+          { id: 'arrived', title: arrivedColumnTitle('HCM'), items: inboundArrived, openMode: 'arrived' as const },
+        ];
 
   return (
-    <div className="min-w-[1080px] p-3">
-      <div className="mb-2 grid grid-cols-4 gap-3">
-        {ORIGIN_LANES.map((lane) => (
-          <div key={lane.id} className={clsx('col-span-2 flex items-center justify-between rounded-xl border px-4 py-2.5', lane.headerTone)}>
-            <h2 className="text-[14px] font-black">{lane.title}</h2>
-            <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-black text-foreground">{laneManifests(lane.id).length}</span>
-          </div>
-        ))}
+    <div className="p-3">
+      <div className="mb-3 flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5">
+        <h2 className="text-[14px] font-black text-primary">Bảng kê · {hubView === 'HAN' ? 'Bưu cục Hà Nội' : 'Bưu cục TP.HCM'}</h2>
+        <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-black text-foreground">{manifests.length} xe</span>
       </div>
 
-      <div className="grid min-h-[520px] grid-cols-4 gap-3">
-        <KanbanColumn title="Xe đã khởi hành" count={departed('HAN').length} tone="border-blue-200 bg-blue-50 text-blue-700">
-          {departed('HAN').length ? departed('HAN').map((manifest) => <ManifestCard key={manifest.id} manifest={manifest} {...actions} />) : <EmptyKanban title="Chưa có bảng kê" />}
-        </KanbanColumn>
-        <KanbanColumn title="Dự kiến đến" count={expected('HAN').length} tone="border-amber-200 bg-amber-50 text-amber-700">
-          {expected('HAN').length ? expected('HAN').map((manifest) => <ManifestCard key={manifest.id} manifest={manifest} {...actions} />) : <EmptyKanban title="Chưa có bảng kê" />}
-        </KanbanColumn>
-        <KanbanColumn title="Xe đã khởi hành" count={departed('HCM').length} tone="border-blue-200 bg-blue-50 text-blue-700">
-          {departed('HCM').length ? departed('HCM').map((manifest) => <ManifestCard key={manifest.id} manifest={manifest} {...actions} />) : <EmptyKanban title="Chưa có bảng kê" />}
-        </KanbanColumn>
-        <KanbanColumn title="Dự kiến đến" count={expected('HCM').length} tone="border-amber-200 bg-amber-50 text-amber-700">
-          {expected('HCM').length ? expected('HCM').map((manifest) => <ManifestCard key={manifest.id} manifest={manifest} {...actions} />) : <EmptyKanban title="Chưa có bảng kê" />}
-        </KanbanColumn>
+      <div className={clsx('grid gap-3', columns.length > 1 ? 'lg:grid-cols-2' : 'grid-cols-1')}>
+        {columns.map((column) => (
+          <KanbanColumn key={column.id} title={column.title} count={column.items.length} tone={column.id === 'arrived' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : column.id === 'expected' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-blue-200 bg-blue-50 text-blue-700'}>
+            <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+              {column.items.length
+                ? column.items.map((manifest) => (
+                    <ManifestCard
+                      key={manifest.id}
+                      manifest={manifest}
+                      openMode={column.openMode}
+                      onArrivedDetail={onArrivedDetail}
+                      {...actions}
+                    />
+                  ))
+                : <EmptyKanban title="Chưa có xe" className="min-w-full" />}
+            </div>
+          </KanbanColumn>
+        ))}
       </div>
     </div>
   );
 }
 function KanbanColumn({ title, count, tone, children }: { title: string; count: number; tone: string; children: React.ReactNode }) {
   return (
-    <section className="flex min-h-[480px] flex-col rounded-xl border border-border bg-white">
-      <div className={clsx('flex items-center justify-between rounded-t-xl border-b px-3 py-2.5', tone)}>
-        <h3 className="text-[13px] font-black">{title}</h3>
+    <section className="flex min-h-[220px] flex-col rounded-xl border border-border bg-white">
+      <div className={clsx('flex items-center justify-between rounded-t-xl border-b px-3 py-2', tone)}>
+        <h3 className="text-[12px] font-black">{title}</h3>
         <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-foreground">{count}</span>
       </div>
-      <div className="flex-1 space-y-2 overflow-auto p-2 custom-scrollbar">{children}</div>
+      <div className="flex-1 p-2">{children}</div>
     </section>
   );
 }
-function EmptyKanban({ title }: { title: string }) {
-  return <div className="flex min-h-[180px] items-center justify-center rounded-xl border border-dashed border-border bg-slate-50 text-center text-[12px] font-bold text-muted-foreground">{title}</div>;
+function EmptyKanban({ title, className = '' }: { title: string; className?: string }) {
+  return <div className={clsx('flex min-h-[120px] min-w-[220px] items-center justify-center rounded-xl border border-dashed border-border bg-slate-50 text-center text-[12px] font-bold text-muted-foreground', className)}>{title}</div>;
 }
 function ManifestCard(props: ManifestItemProps) {
-  const { manifest } = props;
+  const { manifest, openMode, onDetail, onArrivedDetail } = props;
   const trip = manifestTrip(manifest);
-  return <article className="group rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-colors duration-200 hover:border-primary/30 hover:bg-blue-50/20">
-    <div className="flex items-start justify-between gap-2">
-      <div className="min-w-0">
-        <h3 className="truncate text-[14px] font-extrabold text-primary">{manifestCode(manifest)}</h3>
-        <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-blue-800">
-          <span>{hubLabel(manifest.origin_hub, manifest.origin_hub_id)}</span>
-          <ArrowRight size={12} className="shrink-0 text-blue-500" />
-          <span>{hubLabel(manifest.dest_hub, manifest.dest_hub_id)}</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-foreground">{formatNumber(getWaybillCount(manifest))} đơn</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-foreground">{formatNumber(getTotalWeight(manifest), ' kg')}</span>
-        </p>
+  const open = () => (openMode === 'arrived' ? onArrivedDetail(manifest) : onDetail(manifest));
+  return <article className="group w-[248px] shrink-0 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm transition-colors duration-200 hover:border-primary/30 hover:bg-blue-50/20">
+    <button type="button" onClick={open} className="w-full text-left">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="truncate text-[13px] font-extrabold text-primary">{manifestCode(manifest)}</h3>
+          <p className="mt-0.5 truncate text-[10px] font-bold text-slate-600">{truckLabel(manifest)} · {formatNumber(getWaybillCount(manifest))} đơn</p>
+        </div>
+        <Badge config={statusConfig[String(manifest.status || '')]} fallback={manifest.status} />
       </div>
-      <Badge config={statusConfig[String(manifest.status || '')]} fallback={manifest.status} />
-    </div>
-    <div className="mt-2 grid grid-cols-3 gap-x-2 gap-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2 text-[11px]">
-      <CompactCell label="BSX" value={truckLabel(manifest)} />
-      <CompactCell label="Tài xế" value={driverLabel(manifest)} />
-      <CompactCell label="SĐT" value={driverPhoneLabel(manifest)} />
-      <CompactCell label="Đóng lúc" value={formatDate(manifest.closed_at || manifest.created_at)} />
-      <ExpectedArrivalCompact manifest={manifest} canManage={props.canManage} isSubmitting={props.isSubmitting} onUpdateExpectedArrival={props.onUpdateExpectedArrival} className="col-span-2" />
-      <CompactCell label="Người đóng" value={closedBy(manifest)} />
-      <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-1.5">
-        {trip?.status && <Badge config={tripStatusConfig[String(trip.status)]} fallback={trip.status} />}
-        {manifestTransportHeadline(manifest) !== truckLabel(manifest) && <span className="truncate font-black text-slate-900">{manifestTransportHeadline(manifest)}</span>}
+      <div className="mt-2 grid grid-cols-2 gap-1 rounded-lg border border-slate-100 bg-slate-50 p-1.5 text-[10px]">
+        <CompactCell label="Tài xế" value={driverLabel(manifest)} />
+        <CompactCell label="Dự kiến đến" value={formatDate(expectedArrival(manifest))} />
+        <CompactCell label="BSX" value={truckLabel(manifest)} className="col-span-2" />
       </div>
-    </div>
+    </button>
+    <div className="mt-2 flex items-center gap-1">{trip?.status && <Badge config={tripStatusConfig[String(trip.status)]} fallback={trip.status} />}</div>
     <div className="mt-2"><Actions {...props} /></div>
   </article>;
 }
-interface ManifestItemProps { manifest: LoadPlanningManifest; mayAssign: boolean; canManage: boolean; isSubmitting: boolean; onDetail: (manifest: LoadPlanningManifest) => void; onAssign: (manifest: LoadPlanningManifest) => void; onEdit: (manifest: LoadPlanningManifest) => void; onAddWaybills: (manifest: LoadPlanningManifest) => void; onCloseManifest: (manifest: LoadPlanningManifest) => void; onPrint: (manifest: LoadPlanningManifest) => void; onDelete: (manifest: LoadPlanningManifest) => void; onUpdateExpectedArrival: (manifest: LoadPlanningManifest, value: string) => Promise<void>; }
+interface ManifestItemProps { manifest: LoadPlanningManifest; openMode?: 'detail' | 'arrived'; mayAssign: boolean; canManage: boolean; isSubmitting: boolean; onDetail: (manifest: LoadPlanningManifest) => void; onArrivedDetail: (manifest: LoadPlanningManifest) => void; onAssign: (manifest: LoadPlanningManifest) => void; onEdit: (manifest: LoadPlanningManifest) => void; onAddWaybills: (manifest: LoadPlanningManifest) => void; onCloseManifest: (manifest: LoadPlanningManifest) => void; onPrint: (manifest: LoadPlanningManifest) => void; onDelete: (manifest: LoadPlanningManifest) => void; onUpdateExpectedArrival: (manifest: LoadPlanningManifest, value: string) => Promise<void>; }
 function CompactCell({ label, value, className = '' }: { label: string; value: ReactNode; className?: string }) {
   return <div className={`min-w-0 ${className}`}><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p><p className="truncate font-black text-slate-950">{value}</p></div>;
 }
-function ExpectedArrivalCompact({ manifest, canManage, isSubmitting, onUpdateExpectedArrival, className = '' }: Pick<ManifestItemProps, 'manifest' | 'canManage' | 'isSubmitting' | 'onUpdateExpectedArrival'> & { className?: string }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [value, setValue] = useState(() => toDateTimeLocalValue(expectedArrival(manifest)));
-  const startEdit = () => { setValue(toDateTimeLocalValue(expectedArrival(manifest))); setIsEditing(true); };
-  const save = async () => { await onUpdateExpectedArrival(manifest, value); setIsEditing(false); };
-  if (isEditing) {
-    return <div className="col-span-3 space-y-1.5 rounded-lg border border-amber-200 bg-amber-50/60 p-2">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Dự kiến đến</p>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <DateTimePicker value={value} onChange={setValue} disabled={isSubmitting} placeholder="Chọn ngày" className="h-8 min-w-[150px] flex-1" />
-        <button disabled={isSubmitting} onClick={() => void save()} className="inline-flex h-8 items-center gap-1 rounded-lg bg-primary px-2 text-[11px] font-black text-white disabled:opacity-50">{isSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}Lưu</button>
-        <button disabled={isSubmitting} onClick={() => setIsEditing(false)} className="inline-flex h-8 items-center rounded-lg border border-border bg-white px-2 text-[11px] font-black text-muted-foreground">Hủy</button>
-      </div>
-    </div>;
-  }
-  return <CompactCell className={className} label="Dự kiến đến" value={<span className="inline-flex min-w-0 items-center gap-1">{formatDate(expectedArrival(manifest))}{canManage && <button type="button" onClick={startEdit} className="shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-700 hover:bg-amber-100">Sửa</button>}</span>} />;
-}
-function Actions({ manifest, canManage, onDetail, onEdit, onAddWaybills, onPrint, onDelete }: ManifestItemProps) {
+function Actions({ manifest, canManage, onDetail, onArrivedDetail, openMode, onEdit, onAddWaybills, onPrint, onDelete }: ManifestItemProps) {
   const isDraft = manifest.status === 'DRAFT';
   const mayAddWaybills = canAddWaybillsToManifest(manifest);
+  const open = () => (openMode === 'arrived' ? onArrivedDetail(manifest) : onDetail(manifest));
   return (
-    <div className="inline-flex flex-nowrap gap-2">
-      <IconAction label="Xem" onClick={() => onDetail(manifest)} icon={<Eye size={15} />} />
-      <IconAction label="Sửa" disabled={!canManage || !isDraft} onClick={() => onEdit(manifest)} icon={<Edit size={15} />} />
-      <IconAction label="Thêm đơn" disabled={!canManage || !mayAddWaybills} onClick={() => onAddWaybills(manifest)} icon={<FilePlus2 size={15} />} />
-      <IconAction label="In bảng kê" onClick={() => onPrint(manifest)} icon={<Printer size={15} />} />
-      <IconAction label="Xóa" danger disabled={!canManage || !isDraft} onClick={() => onDelete(manifest)} icon={<Trash2 size={15} />} />
+    <div className="inline-flex flex-nowrap gap-1">
+      <IconAction label="Xem" onClick={open} icon={<Eye size={14} />} />
+      <IconAction label="Sửa" disabled={!canManage || !isDraft} onClick={() => onEdit(manifest)} icon={<Edit size={14} />} />
+      <IconAction label="Thêm đơn" disabled={!canManage || !mayAddWaybills} onClick={() => onAddWaybills(manifest)} icon={<FilePlus2 size={14} />} />
+      <IconAction label="In bảng kê" onClick={() => onPrint(manifest)} icon={<Printer size={14} />} />
+      <IconAction label="Xóa" danger disabled={!canManage || !isDraft} onClick={() => onDelete(manifest)} icon={<Trash2 size={14} />} />
     </div>
   );
 }
 function IconAction({ label, icon, disabled, danger, onClick }: { label: string; icon: ReactNode; disabled?: boolean; danger?: boolean; onClick: () => void }) {
-  return <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick} className={clsx('inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45', danger && 'text-red-500 hover:bg-red-50')}>{icon}</button>;
+  return <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick} className={clsx('inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45', danger && 'text-red-500 hover:bg-red-50')}>{icon}</button>;
 }function Badge({ config, fallback }: { config?: BadgeConfig; fallback?: string | null }) { return <span className={`inline-flex h-7 items-center rounded-full px-3 text-[12px] font-bold ${config?.className || 'bg-slate-100 text-slate-600'}`}>{config?.label || fallback || '—'}</span>; }
 function StateBlock({ icon, title }: { icon: ReactNode; title: string }) { return <div className="flex-1 min-h-[360px] flex items-center justify-center"><div className="flex flex-col items-center gap-3 text-center text-muted-foreground"><div className="text-primary">{icon}</div><p className="text-[13px] font-bold">{title}</p></div></div>; }
 function DateInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-muted-foreground"><CalendarDays size={15} /><span>{label}</span><input type="date" value={value} onChange={event => onChange(event.target.value)} className="bg-transparent text-foreground outline-none" /></label>; }

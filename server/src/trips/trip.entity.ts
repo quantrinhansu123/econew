@@ -1,5 +1,5 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
-import { TripStatus } from '../common/enums';
+import { TripStatus, VendorTripPaymentStatus } from '../common/enums';
 import { ExpenseEntity } from '../expenses/expense.entity';
 import { HubEntity } from '../hubs/hub.entity';
 import { ManifestEntity } from '../manifests/manifest.entity';
@@ -57,6 +57,12 @@ export class TripEntity {
 
   @Column({ type: 'varchar', nullable: true })
   driver_phone: string | null;
+
+  @Column({ type: 'enum', enum: VendorTripPaymentStatus, default: VendorTripPaymentStatus.UNPAID })
+  vendor_payment_status: VendorTripPaymentStatus;
+
+  @Column({ type: 'decimal', default: 0 })
+  vendor_paid_amount: string;
 
   @CreateDateColumn({ type: 'timestamp' })
   created_at: Date;

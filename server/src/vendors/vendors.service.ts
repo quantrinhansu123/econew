@@ -2,11 +2,15 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, Repository } from 'typeorm';
 import { clampPaginationLimit } from '../common/pagination';
+import { TripStatus, VendorTripPaymentStatus } from '../common/enums';
 import { Roles } from '../common/roles';
+import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
+import { BulkUpdateTripVendorPaymentDto } from './dto/bulk-update-trip-vendor-payment.dto';
 import { CreateVendorPaymentDto } from './dto/create-vendor-payment.dto';
 import { QueryVendorDebtDto } from './dto/query-vendor-debt.dto';
+import { QueryVendorTripPayablesDto } from './dto/query-vendor-trip-payables.dto';
 import { QueryVendorPaymentsDto } from './dto/query-vendor-payments.dto';
 import { QueryVendorsDto } from './dto/query-vendors.dto';
 import { UpdateVendorStatusDto } from './dto/update-vendor-status.dto';
@@ -17,6 +21,7 @@ import { VendorEntity } from './vendor.entity';
 
 export const DEFAULT_VENDOR_CODE = 'CONG_LE';
 export const DEFAULT_VENDOR_NAME = 'Công lẻ';
+const DEPARTED_TRIP_STATUSES = [TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED];
 
 const mutableFields: Array<keyof UpsertVendorDto> = ['code', 'name', 'service_type', 'contact_name', 'phone', 'email', 'province', 'contract_type', 'status', 'routes', 'pricing', 'metadata'];
 
@@ -41,6 +46,7 @@ export class VendorsService {
     @InjectRepository(VendorDebtEntryEntity) private readonly debtEntriesRepository: Repository<VendorDebtEntryEntity>,
     @InjectRepository(VendorPaymentEntity) private readonly paymentsRepository: Repository<VendorPaymentEntity>,
     @InjectRepository(TripEntity) private readonly tripsRepository: Repository<TripEntity>,
+    @InjectRepository(ManifestWaybillEntity) private readonly manifestWaybillsRepository: Repository<ManifestWaybillEntity>,
   ) {}
 
   async create(dto: UpsertVendorDto, currentUser: UserEntity) {
@@ -187,6 +193,79 @@ export class VendorsService {
     };
   }
 
+  async getTripPayablesLedger(query: QueryVendorTripPayablesDto, _currentUser: UserEntity) {
+    const page = query.page ?? 1;
+    const limit = clampPaginationLimit(query.limit, 50);
+    const qb = this.tripsRepository.createQueryBuilder('trip')
+      .innerJoinAndSelect('trip.truck', 'truck')
+      .innerJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('trip.manifest', 'manifest')
+      .leftJoinAndSelect('trip.start_hub', 'start_hub')
+      .leftJoinAndSelect('trip.end_hub', 'end_hub')
+      .where('trip.status IN (:...statuses)', { statuses: DEPARTED_TRIP_STATUSES })
+      .andWhere('(COALESCE(trip.trip_cost, 0) > 0 OR COALESCE(trip.other_costs, 0) > 0)');
+
+    if (query.vendor_id) qb.andWhere('truck.vendor_id = :vendorId', { vendorId: String(query.vendor_id) });
+    if (query.from) qb.andWhere('trip.departure_time >= :from', { from: query.from });
+    if (query.to) qb.andWhere('trip.departure_time <= :to', { to: query.to });
+    if (query.payment_status) qb.andWhere('trip.vendor_payment_status = :paymentStatus', { paymentStatus: query.payment_status });
+    if (query.keyword?.trim()) {
+      const keyword = `%${query.keyword.trim()}%`;
+      qb.andWhere(new Brackets((inner) => inner
+        .where('vendor.name ILIKE :keyword', { keyword })
+        .orWhere('vendor.code ILIKE :keyword', { keyword })
+        .orWhere('trip.driver_name ILIKE :keyword', { keyword })
+        .orWhere('trip.driver_phone ILIKE :keyword', { keyword })
+        .orWhere('truck.bks ILIKE :keyword', { keyword })
+        .orWhere('truck.license_plate ILIKE :keyword', { keyword })
+        .orWhere('manifest.manifest_code ILIKE :keyword', { keyword })));
+    }
+
+    const [trips, total] = await qb
+      .orderBy('trip.departure_time', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    const revenueMap = await this.computeManifestRevenueMap(trips.map((trip) => trip.manifest_id).filter(Boolean) as string[]);
+    const items = trips.map((trip) => this.mapTripPayableRow(trip, revenueMap));
+    const summary = items.reduce(
+      (acc, row) => ({
+        trip_count: acc.trip_count + 1,
+        total_payable: acc.total_payable + row.total_payable,
+        total_paid: acc.total_paid + row.total_paid,
+        total_receivable: acc.total_receivable + row.total_receivable,
+        estimated_profit: acc.estimated_profit + row.estimated_profit,
+      }),
+      { trip_count: 0, total_payable: 0, total_paid: 0, total_receivable: 0, estimated_profit: 0 },
+    );
+
+    return { items, summary, meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
+  }
+
+  async bulkUpdateTripVendorPayment(dto: BulkUpdateTripVendorPaymentDto, currentUser: UserEntity) {
+    this.assertRole(currentUser, [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR]);
+    const tripIds = [...new Set(dto.trip_ids.map((id) => String(id)))];
+    const trips = await this.tripsRepository.find({ where: { id: In(tripIds) }, relations: ['truck'] });
+    if (trips.length !== tripIds.length) throw new NotFoundException('One or more trips not found');
+
+    for (const trip of trips) {
+      const payable = this.tripCost(trip);
+      let paid = dto.paid_amount;
+      if (paid == null) {
+        if (dto.payment_status === VendorTripPaymentStatus.PAID) paid = payable;
+        else if (dto.payment_status === VendorTripPaymentStatus.UNPAID) paid = 0;
+        else paid = Number(trip.vendor_paid_amount ?? 0);
+      }
+      if (paid > payable) paid = payable;
+      trip.vendor_paid_amount = String(paid);
+      trip.vendor_payment_status = this.resolveVendorPaymentStatus(paid, payable, dto.payment_status);
+      await this.tripsRepository.save(trip);
+    }
+
+    return { updated_count: trips.length, trip_ids: tripIds };
+  }
+
   async listPayments(vendorId: string) {
     await this.findOne(vendorId);
     return this.paymentsRepository.find({
@@ -268,6 +347,18 @@ export class VendorsService {
         trips: linkedTrips,
       }),
     );
+
+    if (linkedTrips.length) {
+      const perTrip = dto.amount / linkedTrips.length;
+      for (const trip of linkedTrips) {
+        const payable = this.tripCost(trip);
+        const currentPaid = Number(trip.vendor_paid_amount ?? 0);
+        const nextPaid = Math.min(payable, currentPaid + perTrip);
+        trip.vendor_paid_amount = String(nextPaid);
+        trip.vendor_payment_status = this.resolveVendorPaymentStatus(nextPaid, payable);
+        await this.tripsRepository.save(trip);
+      }
+    }
 
     const balance = (await this.computeBalancesForVendors([vendorId])).get(vendorId)!;
     vendor.payable_balance = String(Math.max(0, balance.remaining));
@@ -372,6 +463,60 @@ export class VendorsService {
   private tripCost(trip: TripEntity): number {
     const cost = Number(trip.trip_cost ?? trip.other_costs ?? 0);
     return Number.isFinite(cost) ? cost : 0;
+  }
+
+  private resolveVendorPaymentStatus(paid: number, payable: number, preferred?: VendorTripPaymentStatus): VendorTripPaymentStatus {
+    if (preferred === VendorTripPaymentStatus.UNPAID) return VendorTripPaymentStatus.UNPAID;
+    if (payable <= 0 || paid >= payable) return VendorTripPaymentStatus.PAID;
+    if (paid > 0) return VendorTripPaymentStatus.PARTIAL;
+    return preferred ?? VendorTripPaymentStatus.UNPAID;
+  }
+
+  private mapTripPayableRow(trip: TripEntity, revenueMap: Map<string, number>) {
+    const totalPayable = this.tripCost(trip);
+    const totalPaid = Number(trip.vendor_paid_amount ?? 0);
+    const totalReceivable = revenueMap.get(String(trip.manifest_id ?? '')) ?? 0;
+    const fuelCost = Number(trip.fuel_cost ?? 0);
+    const otherCosts = Number(trip.other_costs ?? 0);
+    const totalCost = totalPayable + fuelCost + otherCosts;
+    const estimatedProfit = totalReceivable - totalCost;
+    return {
+      id: trip.id,
+      departure_time: trip.departure_time,
+      status: trip.status,
+      vendor: trip.truck?.vendor ? { id: trip.truck.vendor.id, code: trip.truck.vendor.code, name: trip.truck.vendor.name } : null,
+      driver_name: trip.driver_name || trip.truck?.ten_lai_xe || null,
+      driver_phone: trip.driver_phone || null,
+      license_plate: trip.truck?.bks || trip.truck?.license_plate || null,
+      manifest_id: trip.manifest_id,
+      manifest_code: trip.manifest?.manifest_code ?? null,
+      start_hub: trip.start_hub ? { id: trip.start_hub.id, code: trip.start_hub.code, name: trip.start_hub.name } : null,
+      end_hub: trip.end_hub ? { id: trip.end_hub.id, code: trip.end_hub.code, name: trip.end_hub.name } : null,
+      total_payable: totalPayable,
+      total_paid: totalPaid,
+      total_remaining: Math.max(0, totalPayable - totalPaid),
+      total_receivable: totalReceivable,
+      fuel_cost: fuelCost,
+      other_costs: otherCosts,
+      estimated_profit: estimatedProfit,
+      payment_status: trip.vendor_payment_status ?? VendorTripPaymentStatus.UNPAID,
+    };
+  }
+
+  private async computeManifestRevenueMap(manifestIds: string[]) {
+    const map = new Map<string, number>();
+    const uniqueIds = [...new Set(manifestIds.map(String).filter(Boolean))];
+    if (!uniqueIds.length) return map;
+    const links = await this.manifestWaybillsRepository.find({
+      where: { manifest_id: In(uniqueIds) },
+      relations: ['waybill'],
+    });
+    for (const link of links) {
+      const manifestId = String(link.manifest_id);
+      const amount = Number(link.waybill?.cost_amount ?? 0);
+      map.set(manifestId, (map.get(manifestId) ?? 0) + amount);
+    }
+    return map;
   }
 
   private async computeBalancesForVendors(vendorIds: string[]) {

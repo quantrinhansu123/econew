@@ -1,6 +1,7 @@
 export type WaybillInventoryStatus = 'RECEIVED' | 'IN_WAREHOUSE' | 'MANIFEST_CLOSED' | 'AT_DEST_HUB' | 'OUT_FOR_DELIVERY' | string;
 export type PaymentType = 'PP' | 'CC' | 'COD' | string;
 export type PriorityLevel = 'HIGH' | 'NORMAL' | 'LOW' | 'URGENT' | string;
+export type CustomerPaymentStatus = 'SENT_STATEMENT' | 'PAID' | '' | null;
 
 export interface HubSummary {
   id: string | number;
@@ -76,6 +77,8 @@ export interface WaybillInventoryItem {
   split_note?: string | null;
   allocated_freight?: number | null;
   allocated_cod?: number | null;
+  customer_payment_status?: CustomerPaymentStatus;
+  customer_payment_note?: string | null;
 }
 
 export interface WaybillInventoryDetail extends WaybillInventoryItem {
@@ -94,6 +97,7 @@ export interface InventoryFilters {
   keyword: string;
   ma_kh: string;
   statuses: string[];
+  customerPaymentStatuses: string[];
   hubIds: string[];
   paymentTypes: string[];
   priorities: string[];

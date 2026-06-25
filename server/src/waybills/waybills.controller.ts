@@ -18,6 +18,7 @@ import { UpdateCodFeeDto } from './dto/update-cod-fee.dto';
 import { UpdateWaybillStatusDto } from './dto/update-waybill-status.dto';
 import { UpdateWaybillDto } from './dto/update-waybill.dto';
 import { BulkStackOntoTruckDto } from './dto/bulk-stack-onto-truck.dto';
+import { BulkUpdateCustomerPaymentStatusDto } from './dto/bulk-update-customer-payment-status.dto';
 import { SaveWaybillSplitsDto } from './dto/save-waybill-splits.dto';
 import { QueryLoadPlanningBoardDto } from './dto/query-load-planning-board.dto';
 import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
@@ -61,6 +62,13 @@ export class WaybillsController {
   @ApiOperation({ summary: 'Bulk stack selected inventory lines onto trucks (waybill_splits)' })
   bulkStackOntoTruck(@Body() dto: BulkStackOntoTruckDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.bulkStackOntoTruck(dto, currentUser);
+  }
+
+  @Patch('inventory/customer-payment-status')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Bulk update customer payment status for waybills' })
+  bulkUpdateCustomerPaymentStatus(@Body() dto: BulkUpdateCustomerPaymentStatusDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.bulkUpdateCustomerPaymentStatus(dto, currentUser);
   }
 
   @Get('inventory')

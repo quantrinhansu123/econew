@@ -101,6 +101,26 @@ function renderDispatchCell(id: DispatchPrintColumnId, row: DispatchPrintRow): R
           <span className="dispatch-cell-inner">{row.ghiChu}</span>
         </td>
       );
+    case 'ghiChu1':
+      return (
+        <td className={def.cssClass}>
+          <span className="dispatch-cell-inner">{row.ghiChu1}</span>
+        </td>
+      );
+    case 'ghiChu2':
+      return (
+        <td className={def.cssClass}>
+          <span className="dispatch-cell-inner">{row.ghiChu2}</span>
+        </td>
+      );
+    case 'kg':
+      return <td className={`${def.cssClass} col-right`}>{row.kg}</td>;
+    case 'm3':
+      return <td className={`${def.cssClass} col-right`}>{row.m3}</td>;
+    case 'duKienToiHcm':
+      return <td className={`${def.cssClass} col-center`}>{row.duKienToiHcm}</td>;
+    case 'qd':
+      return <td className={`${def.cssClass} col-center`}>{row.qd}</td>;
     default:
       return <td className={alignClass}>{null}</td>;
   }
@@ -150,6 +170,22 @@ function renderFooterCells(
       cells.push(
         <td key={id} className={`${def.cssClass} col-right font-bold`}>
           {showPricing && totals.cuoc ? formatDispatchMoney(totals.cuoc) : ''}
+        </td>,
+      );
+      return;
+    }
+    if (id === 'kg') {
+      cells.push(
+        <td key={id} className={`${def.cssClass} col-right font-bold`}>
+          {totals.kg ? totals.kg.toLocaleString('vi-VN') : ''}
+        </td>,
+      );
+      return;
+    }
+    if (id === 'm3') {
+      cells.push(
+        <td key={id} className={`${def.cssClass} col-right font-bold`}>
+          {totals.m3 ? totals.m3.toLocaleString('vi-VN') : ''}
         </td>,
       );
       return;
@@ -235,6 +271,19 @@ export default function LoadPlanningPrintTemplate({ data }: Props) {
               </tfoot>
             ) : null}
           </table>
+
+          {(group.driverName || group.driverPhone || group.expectedArrival) ? (
+            <div className="dispatch-print-trip-footer">
+              {group.driverName ? <span><strong>Xe:</strong> {group.driverName}</span> : null}
+              {group.licensePlate ? <span><strong>BKS:</strong> {group.licensePlate}</span> : null}
+              {group.driverPhone ? <span><strong>SĐT:</strong> {group.driverPhone}</span> : null}
+              {group.expectedArrival ? (
+                <span className="dispatch-print-eta">
+                  dự kiến {new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(group.expectedArrival))} tới
+                </span>
+              ) : null}
+            </div>
+          ) : null}
 
           {groupIndex < data.groups.length - 1 ? <div className="dispatch-print-page-break" /> : null}
         </section>

@@ -30,3 +30,14 @@ export enum TripStatus {
   COMPLETED = 'COMPLETED',
 }
 
+export enum VendorTripPaymentStatus {
+  UNPAID = 'UNPAID',
+  PARTIAL = 'PARTIAL',
+  PAID = 'PAID',
+}
+
+export enum CustomerPaymentStatus {
+  SENT_STATEMENT = 'SENT_STATEMENT',
+  PAID = 'PAID',
+}
+

@@ -74,6 +74,7 @@ export class ManifestsService {
   }
 
   async findAll(query: QueryManifestsDto, currentUser: UserEntity) {
+    await this.processScheduledArrivals();
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 20);
     const qb = this.manifestsRepository.createQueryBuilder('manifest').leftJoinAndSelect('manifest.origin_hub', 'origin_hub').leftJoinAndSelect('manifest.dest_hub', 'dest_hub').leftJoinAndSelect('manifest.trips', 'trip').leftJoinAndSelect('trip.truck', 'truck').leftJoinAndSelect('truck.driver', 'driver');
@@ -190,7 +191,7 @@ export class ManifestsService {
           waybill_id: line.waybill_id,
           loading_position: loadingPosition,
           loaded_at: isClosed && packageCount >= remainingPackages ? now : null,
-          dispatch_fields: { so_luong: String(packageCount) },
+          dispatch_fields: this.buildInitialDispatchFields(waybill, packageCount),
         }));
       } else {
         linkDispatchUpdates.push({ waybill_id: line.waybill_id, package_count: packageCount });
@@ -253,7 +254,7 @@ export class ManifestsService {
   async removeWaybill(id: string, waybillId: string, currentUser: UserEntity): Promise<ManifestRecord> {
     this.assertRole(currentUser, [Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR]);
     const manifest = await this.findOne(id, currentUser);
-    this.assertDraft(manifest);
+    this.assertRemovableManifest(manifest);
     const waybill = await this.waybillsRepository.findOne({ where: { id: waybillId, deleted_at: IsNull() } as any }) as WaybillRecord | null;
     if (!waybill) throw new NotFoundException('Waybill not found');
     await this.manifestWaybillsRepository.delete({ manifest_id: id, waybill_id: waybillId });
@@ -327,8 +328,44 @@ export class ManifestsService {
     return this.findOne(id, currentUser);
   }
 
+  private parseContactName(info?: string | null): string {
+    return (info || '').split('|')[0]?.trim() || '';
+  }
+
+  private parseContactPhone(info?: string | null): string {
+    if (!info) return '';
+    return info.split('|').map((part) => part.trim())[1] || '';
+  }
+
+  private parseContactAddress(info?: string | null): string {
+    if (!info) return '';
+    const parts = info.split('|').map((part) => part.trim());
+    return parts.slice(2).join(' | ').trim() || parts[0] || '';
+  }
+
+  private buildInitialDispatchFields(waybill: WaybillRecord, packageCount: number) {
+    const address = waybill.receiver_address?.trim() || this.parseContactAddress(waybill.receiver_info);
+    const phone = waybill.receiver_phone?.trim() || this.parseContactPhone(waybill.receiver_info);
+    const diaChi = phone ? (address ? `${address} · SĐT: ${phone}` : `SĐT: ${phone}`) : address;
+    return this.sanitizeDispatchFields({
+      ma_tinh: waybill.noi_den,
+      ten_cty: this.parseContactName(waybill.sender_info),
+      dv: 'TC',
+      mat_hang: waybill.noi_dung || '',
+      noi_tra: '',
+      so_luong: String(packageCount),
+      loai: 'kiện',
+      dia_chi: diaChi,
+      ma_bill: waybill.waybill_code,
+      ghi_chu_bill: waybill.note,
+      cod: waybill.cod_amount,
+      kg: waybill.weight,
+      m3: waybill.the_tich_m3 ?? waybill.volumetric_weight,
+    });
+  }
+
   private sanitizeDispatchFields(fields: Record<string, unknown>) {
-    const allowed = ['ngay_boc', 'ma_tinh', 'ten_cty', 'dv', 'mat_hang', 'noi_tra', 'so_luong', 'loai', 'dia_chi', 'ghi_chu_1', 'ghi_chu_2', 'ke_hoach', 'lai_xe_thu_ho', 'bc_thu_ho', 'ma_bill', 'ghi_chu_bill', 'kg', 'm3', 'qd', 'du_kien_toi_hcm', 'trang_thai_giao'];
+    const allowed = ['ngay_boc', 'ma_tinh', 'ten_cty', 'dv', 'mat_hang', 'noi_tra', 'so_luong', 'loai', 'dia_chi', 'ghi_chu_1', 'ghi_chu_2', 'ke_hoach', 'lai_xe_thu_ho', 'bc_thu_ho', 'ma_bill', 'ghi_chu_bill', 'kg', 'm3', 'qd', 'du_kien_toi_hcm', 'trang_thai_giao', 'ngay_hoan_thanh', 'cod'];
     return allowed.reduce<Record<string, unknown>>((result, key) => {
       const value = fields[key];
       if (value !== undefined && value !== null) result[key] = typeof value === 'string' ? value.slice(0, 500) : value;
@@ -507,6 +544,43 @@ export class ManifestsService {
 
   private assertDraft(manifest: ManifestRecord) {
     if (manifest.status !== ManifestStatus.DRAFT) throw new ConflictException('Manifest is already closed or locked');
+  }
+
+  private assertRemovableManifest(manifest: ManifestRecord) {
+    const allowed = [ManifestStatus.DRAFT, ManifestStatus.CLOSED];
+    if (!allowed.includes(manifest.status as ManifestStatus)) {
+      throw new ConflictException('Cannot remove waybills after manifest is assigned to a trip');
+    }
+  }
+
+  /** Tự động chuyển chuyến IN_TRANSIT → ARRIVED khi quá expected_arrival_time. */
+  private async processScheduledArrivals(): Promise<void> {
+    const now = new Date();
+    const trips = await this.tripsRepository.find({ where: { status: TripStatus.IN_TRANSIT } as any });
+    for (const trip of trips) {
+      if (!trip.expected_arrival_time) continue;
+      const expected = new Date(trip.expected_arrival_time);
+      if (Number.isNaN(expected.getTime()) || expected > now) continue;
+      trip.status = TripStatus.ARRIVED;
+      trip.arrival_time = trip.arrival_time ?? now;
+      await this.tripsRepository.save(trip);
+      if (trip.manifest_id) {
+        await this.moveManifestWaybills(String(trip.manifest_id), WaybillState.IN_TRANSIT, WaybillState.AT_DEST_HUB);
+      }
+    }
+  }
+
+  private async moveManifestWaybills(manifestId: string, from: WaybillState, to: WaybillState): Promise<void> {
+    const links = await this.manifestWaybillsRepository.find({ where: { manifest_id: manifestId }, relations: ['waybill'] });
+    const changed = links
+      .map((link) => link.waybill)
+      .filter((waybill): waybill is WaybillRecord => Boolean(waybill))
+      .filter((waybill) => this.getWaybillStatus(waybill) === from);
+    changed.forEach((waybill) => {
+      waybill.current_state = to;
+      waybill.status = to;
+    });
+    if (changed.length) await this.waybillsRepository.save(changed as any);
   }
 
   private assertCanAddWaybills(manifest: ManifestRecord) {

@@ -288,3 +288,30 @@
     box-shadow: 0 1px 8px rgba(15, 23, 42, 0.12);
   }
 }
+
+.dispatch-print-trip-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dispatch-print-eta {
+  background: #ffff00;
+  padding: 4px 10px;
+  font-weight: 800;
+}
+
+.inventory-stock-table .col-weight,
+.inventory-stock-table .col-volume {
+  width: 4%;
+}
+
+.inventory-stock-table tbody .col-weight,
+.inventory-stock-table tbody .col-volume {
+  text-align: right;
+  font-weight: 700;
+}

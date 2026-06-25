@@ -4,38 +4,42 @@ import { AlertTriangle, ArrowLeft, ArrowRight, CalendarClock, Edit3, Eye, Loader
 import { useNavigate, useParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { DateTimePicker } from '../components/ui/DateTimePicker';
-import type { LoadPlanningManifest, ManifestDispatchFields, ManifestWaybill } from './warehouse/manifests/types';
+import DispatchPrintColumnDropdown from './print/DispatchPrintColumnDropdown';
+import type { DispatchPrintColumnId } from './print/dispatchPrintColumns';
+import {
+  getDispatchColumnDef,
+  loadVisibleDispatchColumnIds,
+  saveVisibleDispatchColumnIds,
+} from './print/dispatchPrintColumns';
+import {
+  computeDispatchTotals,
+  formatReceiverAddressWithPhone,
+  getDispatchCellValue,
+  type DispatchFieldKey,
+  type DispatchLink,
+} from './warehouse/manifests/manifestDispatchDefaults';
+import { getDispatchSheetColumnMeta } from './warehouse/manifests/manifestDispatchSheetColumns';
+import type { LoadPlanningManifest, ManifestDispatchFields } from './warehouse/manifests/types';
 
-const editableColumns = [
-  { key: 'ngay_boc', label: 'Ngày bốc', className: 'min-w-[76px]' },
-  { key: 'ma_tinh', label: 'Mã Tỉnh', className: 'min-w-[86px]' },
-  { key: 'ten_cty', label: 'Tên CTY', className: 'min-w-[120px]' },
-  { key: 'dv', label: 'DV', className: 'min-w-[58px]' },
-  { key: 'mat_hang', label: 'Mặt Hàng', className: 'min-w-[180px]' },
-  { key: 'noi_tra', label: 'Nơi Trả', className: 'min-w-[130px]' },
-  { key: 'so_luong', label: 'Số Lượng', className: 'min-w-[76px]' },
-  { key: 'loai', label: '', className: 'min-w-[58px]' },
-  { key: 'dia_chi', label: '', className: 'min-w-[300px]' },
-  { key: 'ghi_chu_1', label: 'Ghi chú', className: 'min-w-[140px]' },
-  { key: 'ghi_chu_2', label: '', className: 'min-w-[160px]' },
-  { key: 'ke_hoach', label: 'kế hoạch', className: 'min-w-[150px]' },
-  { key: 'lai_xe_thu_ho', label: 'Lái xe thu hộ', className: 'min-w-[110px]' },
-  { key: 'bc_thu_ho', label: 'BC thu hộ', className: 'min-w-[92px]' },
-  { key: 'ma_bill', label: 'Mã Bill', className: 'min-w-[110px]' },
-  { key: 'ghi_chu_bill', label: 'Ghi chú', className: 'min-w-[140px]' },
-  { key: 'kg', label: 'kg', className: 'min-w-[72px]' },
-  { key: 'm3', label: 'm3', className: 'min-w-[72px]' },
-  { key: 'qd', label: 'QĐ', className: 'min-w-[72px]' },
-  { key: 'du_kien_toi_hcm', label: 'Dự kiến tới HCM:', className: 'min-w-[120px] bg-yellow-300' },
-  { key: 'trang_thai_giao', label: '', className: 'min-w-[120px] bg-green-200' },
-] as const;
+const USER_PROFILE_KEY = 'eco_user_profile';
+const MANAGER = 32;
+const DIRECTOR = 64;
 
-type EditableKey = (typeof editableColumns)[number]['key'];
-type RowLink = { waybill_id?: string | number | null; loading_position?: string | number | null; loaded_at?: string | null; dispatch_fields?: ManifestDispatchFields | null; waybill?: ManifestWaybill | null };
+type RowLink = DispatchLink;
 type EditableRows = Record<string, ManifestDispatchFields>;
 
+function canViewPricing() {
+  try {
+    const raw = localStorage.getItem(USER_PROFILE_KEY) || sessionStorage.getItem(USER_PROFILE_KEY);
+    if (!raw) return false;
+    const roleMask = Number((JSON.parse(raw) as { role_mask?: number }).role_mask ?? 0);
+    return (roleMask & (MANAGER | DIRECTOR)) !== 0;
+  } catch {
+    return false;
+  }
+}
+
 const display = (value?: string | number | null, fallback = '—') => (value == null || value === '' ? fallback : String(value));
-const blank = (value?: string | number | null) => (value == null || value === '' ? '' : String(value));
 const manifestCode = (manifest?: LoadPlanningManifest | null) => manifest?.manifest_code || manifest?.code || (manifest ? `MF-${manifest.id}` : '—');
 const hubLabel = (hub?: { code?: string | null; name?: string | null } | null, id?: string | number | null) => hub?.code || hub?.name || (id ? `Hub #${id}` : '—');
 const manifestTrip = (manifest: LoadPlanningManifest) => manifest.trip ?? manifest.trips?.[0] ?? null;
@@ -51,19 +55,12 @@ const truckLabel = (manifest: LoadPlanningManifest) => resolveTruckPlate(manifes
 const driverLabel = (manifest: LoadPlanningManifest) => manifestTrip(manifest)?.driver_name || manifestTrip(manifest)?.driver?.name || manifestTrip(manifest)?.driver?.full_name || manifestTrip(manifest)?.truck?.ten_lai_xe || manifestTrip(manifest)?.truck?.driver?.name || manifestTrip(manifest)?.truck?.driver?.full_name || 'Chưa gán tài xế';
 const driverPhoneLabel = (manifest: LoadPlanningManifest) => manifestTrip(manifest)?.driver_phone || manifestTrip(manifest)?.driver?.phone || manifestTrip(manifest)?.truck?.driver?.phone || manifestTrip(manifest)?.truck?.phone || 'Chưa có SĐT';
 const expectedArrival = (manifest: LoadPlanningManifest) => manifestTrip(manifest)?.expected_arrival_time || manifestTrip(manifest)?.arrival_time || null;
-const parseName = (info?: string | null) => (info || '').split('|')[0]?.trim() || '';
 const formatNumber = (value?: string | number | null, suffix = '') => value == null || value === '' ? '—' : `${Number(value).toLocaleString('vi-VN')}${suffix}`;
 const formatDateTime = (value?: string | null) => {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
-};
-const formatShortDate = (value?: string | null) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit' }).format(date);
 };
 const toDateTimeLocalValue = (value?: string | null) => {
   if (!value) return '';
@@ -83,37 +80,47 @@ function normalizeLinks(manifest: LoadPlanningManifest | null): RowLink[] {
   return (manifest.waybills ?? []).map((waybill, index) => ({ waybill_id: waybill.id, loading_position: index + 1, dispatch_fields: waybill.dispatch_fields, waybill }));
 }
 
-function defaultField(link: RowLink, key: EditableKey) {
-  const waybill = link.waybill;
-  switch (key) {
-    case 'ngay_boc': return formatShortDate(link.loaded_at ?? null);
-    case 'ma_tinh': return blank(waybill?.noi_den || waybill?.dest_hub_id);
-    case 'ten_cty': return parseName(waybill?.sender_info);
-    case 'dv': return 'TC';
-    case 'mat_hang': return blank((waybill as { item_name?: string | null } | undefined)?.item_name || waybill?.waybill_code);
-    case 'noi_tra': return blank(waybill?.noi_den || waybill?.dest_hub_id);
-    case 'so_luong': return blank(waybill?.package_count) || '1';
-    case 'loai': return 'kiện';
-    case 'dia_chi': return blank(waybill?.receiver_address || waybill?.receiver_info);
-    case 'ma_bill': return blank(waybill?.waybill_code);
-    case 'kg': return blank(waybill?.weight);
-    case 'm3': return blank(waybill?.the_tich_m3 || waybill?.volumetric_weight);
-    default: return '';
-  }
-}
-
-function getCellValue(rows: EditableRows, link: RowLink, key: EditableKey) {
-  const saved = rows[rowKey(link)]?.[key];
-  return saved == null ? defaultField(link, key) : String(saved);
-}
-
 function isArrived(manifest: LoadPlanningManifest) {
   return ['COMPLETED', 'ARRIVED', 'AT_DEST_HUB', 'Xe đã đến'].includes(String(manifest.trip?.status || manifest.status || ''));
+}
+
+function renderAddressCell(value: string) {
+  const phoneMatch = value.match(/SĐT:\s*([^·]+)/i);
+  if (!phoneMatch) return <span className="text-left text-[12px] font-semibold">{value}</span>;
+  const phone = phoneMatch[1].trim();
+  const address = value.replace(/·?\s*SĐT:\s*[^·]+/i, '').trim();
+  return (
+    <div className="px-1.5 py-2 text-left text-[12px] font-semibold leading-snug">
+      {phone ? <div className="font-black text-red-600">SĐT: {phone}</div> : null}
+      {address ? <div>{address}</div> : null}
+    </div>
+  );
+}
+
+function renderQuantityCell(rows: EditableRows, link: RowLink, waybillId: string, onCellChange: (waybillId: string, key: DispatchFieldKey, value: string) => void) {
+  const qty = getDispatchCellValue(rows, link, waybillId, 'so_luong');
+  const unit = getDispatchCellValue(rows, link, waybillId, 'loai') || 'kiện';
+  return (
+    <div className="min-h-[50px] px-1 py-2">
+      <input
+        value={qty}
+        onChange={(event) => onCellChange(waybillId, 'so_luong', event.target.value)}
+        className="w-full border-0 bg-transparent text-center text-[12px] font-black text-red-600 outline-none focus:bg-white focus:ring-2 focus:ring-primary/30"
+      />
+      <input
+        value={unit}
+        onChange={(event) => onCellChange(waybillId, 'loai', event.target.value)}
+        className="mt-1 w-full border-0 bg-transparent text-center text-[11px] font-semibold text-muted-foreground outline-none focus:bg-white focus:ring-2 focus:ring-primary/30"
+        placeholder="kiện"
+      />
+    </div>
+  );
 }
 
 export default function WarehouseManifestDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  const showPricing = canViewPricing();
   const [manifest, setManifest] = useState<LoadPlanningManifest | null>(null);
   const [rows, setRows] = useState<EditableRows>({});
   const [keyword, setKeyword] = useState('');
@@ -122,6 +129,7 @@ export default function WarehouseManifestDetailPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [visibleColumnIds, setVisibleColumnIds] = useState<DispatchPrintColumnId[]>(() => loadVisibleDispatchColumnIds(showPricing));
 
   async function loadManifest() {
     setIsLoading(true);
@@ -159,8 +167,13 @@ export default function WarehouseManifestDetailPage() {
     return links.filter((link) => [link.waybill?.waybill_code, link.waybill?.sender_info, link.waybill?.receiver_info].some((value) => String(value || '').toLowerCase().includes(search)));
   }, [links, keyword]);
 
-  function updateCell(waybillId: string, key: EditableKey, value: string) {
+  function updateCell(waybillId: string, key: DispatchFieldKey, value: string) {
     setRows((prev) => ({ ...prev, [waybillId]: { ...(prev[waybillId] ?? {}), [key]: value } }));
+  }
+
+  function updateVisibleColumns(ids: DispatchPrintColumnId[]) {
+    setVisibleColumnIds(ids);
+    saveVisibleDispatchColumnIds(ids);
   }
 
   async function saveRows() {
@@ -222,7 +235,22 @@ export default function WarehouseManifestDetailPage() {
           )}
         </div>
       </div>
-      {manifest && isDialogOpen && <DispatchSheetDialog manifest={manifest} links={filteredLinks} rows={rows} keyword={keyword} isSaving={isSaving} onKeywordChange={setKeyword} onCellChange={updateCell} onSave={saveRows} onClose={() => setIsDialogOpen(false)} />}
+      {manifest && isDialogOpen && (
+        <DispatchSheetDialog
+          manifest={manifest}
+          links={filteredLinks}
+          rows={rows}
+          keyword={keyword}
+          isSaving={isSaving}
+          visibleColumnIds={visibleColumnIds}
+          showPricing={showPricing}
+          onKeywordChange={setKeyword}
+          onCellChange={updateCell}
+          onVisibleColumnsChange={updateVisibleColumns}
+          onSave={saveRows}
+          onClose={() => setIsDialogOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -265,23 +293,161 @@ function ManifestKanbanCard({ manifest, waybillCount, isSaving, onOpen, onPrint,
   </article>;
 }
 
-function DispatchSheetDialog(props: { manifest: LoadPlanningManifest; links: RowLink[]; rows: EditableRows; keyword: string; isSaving: boolean; onKeywordChange: (value: string) => void; onCellChange: (waybillId: string, key: EditableKey, value: string) => void; onSave: () => Promise<void>; onClose: () => void }) {
-  const { manifest, links, rows, keyword, isSaving, onKeywordChange, onCellChange, onSave, onClose } = props;
+function DispatchSheetDialog(props: {
+  manifest: LoadPlanningManifest;
+  links: RowLink[];
+  rows: EditableRows;
+  keyword: string;
+  isSaving: boolean;
+  visibleColumnIds: DispatchPrintColumnId[];
+  showPricing: boolean;
+  onKeywordChange: (value: string) => void;
+  onCellChange: (waybillId: string, key: DispatchFieldKey, value: string) => void;
+  onVisibleColumnsChange: (ids: DispatchPrintColumnId[]) => void;
+  onSave: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const { manifest, links, rows, keyword, isSaving, visibleColumnIds, showPricing, onKeywordChange, onCellChange, onVisibleColumnsChange, onSave, onClose } = props;
+  const totals = useMemo(() => computeDispatchTotals(links, rows, rowKey), [links, rows]);
+  const dataColumns = visibleColumnIds.filter((id) => id !== 'viTriHang');
+
+  function renderHeaderLabel(columnId: DispatchPrintColumnId) {
+    const def = getDispatchColumnDef(columnId);
+    return def.header.split('\n').map((line, index) => (
+      <span key={`${columnId}-${index}`}>
+        {index > 0 ? <br /> : null}
+        {line}
+      </span>
+    ));
+  }
+
+  function renderDataCell(columnId: DispatchPrintColumnId, link: RowLink, waybillId: string) {
+    const meta = getDispatchSheetColumnMeta(columnId);
+    const fieldKey = meta.fieldKey;
+
+    if (columnId === 'soLuong') {
+      return renderQuantityCell(rows, link, waybillId, onCellChange);
+    }
+
+    if (columnId === 'diaChiNhan') {
+      const value = getDispatchCellValue(rows, link, waybillId, 'dia_chi') || formatReceiverAddressWithPhone(link);
+      return renderAddressCell(value);
+    }
+
+    if (columnId === 'cuoc') {
+      const saved = getDispatchCellValue(rows, link, waybillId, 'bc_thu_ho');
+      const value = saved || String(link.waybill?.cost_amount ?? '');
+      return (
+        <div className="min-h-[50px] px-1.5 py-2 text-right text-[12px] font-black text-red-600">
+          {value ? Number(value).toLocaleString('vi-VN') : ''}
+        </div>
+      );
+    }
+
+    if (!fieldKey) return null;
+
+    const value = getDispatchCellValue(rows, link, waybillId, fieldKey);
+    if (meta.readOnly) {
+      return (
+        <div className={`min-h-[50px] px-1.5 py-2 text-[12px] font-semibold ${meta.money ? 'text-right font-black text-red-600' : columnId === 'diaChiNhan' ? 'text-left' : 'text-center'}`}>
+          {value}
+        </div>
+      );
+    }
+
+    return (
+      <textarea
+        value={value}
+        onChange={(event) => onCellChange(waybillId, fieldKey, event.target.value)}
+        className={`min-h-[50px] w-full resize-y border-0 bg-transparent px-1.5 py-2 text-[12px] font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-primary/30 ${meta.money ? 'text-right font-black text-red-600' : 'text-center'}`}
+      />
+    );
+  }
+
   return <div className="manifest-dispatch-print-root fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 print:static print:block print:bg-white print:p-0">
     <style>{`@media print { body > *:not(.manifest-dispatch-print-root) { display: none !important; } .manifest-dispatch-print-root { display: block !important; position: static !important; inset: auto !important; background: #fff !important; padding: 0 !important; } .manifest-dispatch-print-panel { display: block !important; max-height: none !important; max-width: none !important; overflow: visible !important; border-radius: 0 !important; box-shadow: none !important; } .manifest-dispatch-print-toolbar { display: none !important; } .manifest-dispatch-print-body { display: block !important; overflow: visible !important; max-height: none !important; } }`}</style>
     <div className="manifest-dispatch-print-panel flex max-h-[92vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
       <div className="manifest-dispatch-print-toolbar flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-3">
         <button type="button" onClick={onClose} className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-muted-foreground hover:bg-muted"><X size={15} />Đóng</button>
         <div className="relative min-w-0 flex-1 md:max-w-[520px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={keyword} onChange={(event) => onKeywordChange(event.target.value)} placeholder="Tìm mã vận đơn, người gửi, người nhận..." className="h-10 w-full rounded-lg border border-border bg-white pl-9 pr-3 text-[13px] font-medium outline-none focus:ring-2 focus:ring-primary/10" /></div>
+        <DispatchPrintColumnDropdown value={visibleColumnIds} canViewPricing={showPricing} onChange={onVisibleColumnsChange} className="w-[180px]" />
         <button type="button" onClick={() => window.print()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[13px] font-bold text-emerald-700 hover:bg-emerald-100"><Printer size={15} />In bảng kê</button>
         <button disabled={isSaving} onClick={() => void onSave()} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-extrabold text-white hover:bg-primary/90 disabled:opacity-50">{isSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Lưu thay đổi</button>
       </div>
       <div className="shrink-0 border-b border-border px-4 py-3 text-center"><h2 className="text-[16px] font-black uppercase tracking-wide text-foreground">BẢNG KÊ PHÁT HÀNG ECO</h2><p className="mt-1 text-[12px] font-bold text-muted-foreground">{manifestCode(manifest)} · {links.length} dòng hàng</p></div>
       <div className="manifest-dispatch-print-body min-h-0 flex-1 overflow-auto custom-scrollbar">
-        {!links.length ? <StateBlock icon={<PackageCheck size={22} />} title="Bảng kê chưa có dòng hàng phù hợp." /> : <table className="w-full min-w-[2100px] border-collapse text-center text-[12px] text-slate-950">
-          <thead><tr><th colSpan={editableColumns.length + 1} className="border border-slate-700 bg-white py-1 text-[14px] font-black">BẢNG KÊ PHÁT HÀNG ECO</th></tr><tr className="bg-green-50 text-[11px] font-black"><th className="w-14 border border-slate-700 bg-yellow-300 px-1 py-2">Vị trí hàng</th>{editableColumns.map((column) => <th key={column.key} className={`border border-slate-700 px-1 py-2 ${column.className}`}>{column.label}</th>)}</tr></thead>
-          <tbody>{links.map((link, index) => { const waybillId = rowKey(link); return <tr key={waybillId || index} className="align-middle odd:bg-white even:bg-slate-50"><td className="border border-slate-700 bg-yellow-300 px-1 py-2 font-black text-blue-900">{link.loading_position ?? index + 1}</td>{editableColumns.map((column) => <td key={column.key} className={`border border-slate-700 p-0 ${column.key === 'trang_thai_giao' ? 'bg-green-200' : column.key === 'du_kien_toi_hcm' ? 'bg-green-100' : ''}`}><textarea value={getCellValue(rows, link, column.key)} onChange={(event) => onCellChange(waybillId, column.key, event.target.value)} className="min-h-[50px] w-full resize-y border-0 bg-transparent px-1.5 py-2 text-center text-[12px] font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-primary/30" /></td>)}</tr>; })}</tbody>
-        </table>}
+        {!links.length ? <StateBlock icon={<PackageCheck size={22} />} title="Bảng kê chưa có dòng hàng phù hợp." /> : (
+          <table className="w-full min-w-[1800px] border-collapse text-center text-[12px] text-slate-950">
+            <thead>
+              <tr className="bg-green-50 text-[11px] font-black">
+                <th className="w-14 border border-slate-700 bg-yellow-300 px-1 py-2">Vị trí hàng</th>
+                {dataColumns.map((columnId) => {
+                  const def = getDispatchColumnDef(columnId);
+                  const meta = getDispatchSheetColumnMeta(columnId);
+                  return (
+                    <th key={columnId} className={`border border-slate-700 px-1 py-2 ${meta.cellClass || ''}`} style={{ minWidth: meta.minWidth }}>
+                      {renderHeaderLabel(columnId)}
+                      {!def.label && columnId === 'tinhTrangGiaoHang' ? 'TÌNH TRẠNG GIAO HÀNG' : null}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {links.map((link, index) => {
+                const waybillId = rowKey(link);
+                return (
+                  <tr key={waybillId || index} className="align-middle odd:bg-white even:bg-slate-50">
+                    <td className="border border-slate-700 bg-yellow-300 px-1 py-2 font-black text-blue-900">{link.loading_position ?? index + 1}</td>
+                    {dataColumns.map((columnId) => {
+                      const meta = getDispatchSheetColumnMeta(columnId);
+                      return (
+                        <td key={columnId} className={`border border-slate-700 p-0 ${meta.cellClass || ''}`}>
+                          {renderDataCell(columnId, link, waybillId)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-100 font-black">
+                <td className="border border-slate-700 bg-yellow-300 px-2 py-2 text-right" colSpan={1}>TỔNG</td>
+                {dataColumns.map((columnId) => {
+                  if (columnId === 'soLuong') {
+                    return <td key={columnId} className="border border-slate-700 px-2 py-2 text-center">{totals.soLuong} {totals.unitLabel}</td>;
+                  }
+                  if (columnId === 'tangHaThuKhach') {
+                    return <td key={columnId} className="border border-slate-700 px-2 py-2 text-right text-red-600">{totals.cod ? totals.cod.toLocaleString('vi-VN') : ''}</td>;
+                  }
+                  if (columnId === 'kg') {
+                    return <td key={columnId} className="border border-slate-700 px-2 py-2 text-right">{totals.kg ? totals.kg.toLocaleString('vi-VN') : ''}</td>;
+                  }
+                  if (columnId === 'm3') {
+                    return <td key={columnId} className="border border-slate-700 px-2 py-2 text-right">{totals.m3 ? totals.m3.toLocaleString('vi-VN') : ''}</td>;
+                  }
+                  return <td key={columnId} className="border border-slate-700 px-2 py-2" />;
+                })}
+              </tr>
+              <tr>
+                <td colSpan={dataColumns.length + 1} className="border border-slate-700 px-3 py-2 text-left text-[12px] font-bold">
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                    <span><strong>Xe:</strong> {driverLabel(manifest)}</span>
+                    <span><strong>Ngày:</strong> {formatDateTime(manifest.closed_at || manifest.created_at)}</span>
+                    <span><strong>BKS:</strong> {truckLabel(manifest)}</span>
+                    <span><strong>SĐT:</strong> {driverPhoneLabel(manifest)}</span>
+                    {expectedArrival(manifest) ? (
+                      <span className="rounded bg-yellow-300 px-3 py-1 font-black">
+                        dự kiến {formatDateTime(expectedArrival(manifest))} tới
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
       </div>
     </div>
   </div>;

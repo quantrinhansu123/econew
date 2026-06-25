@@ -181,6 +181,7 @@ export const moduleGroups: ModuleGroup[] = [
       { icon: ClipboardCheck, title: 'Phê duyệt chi phí xe nội bộ', description: 'Duyệt chi phí phát sinh cho xe công ty.', colorScheme: 'blue', path: '/finance/approve/internal', requiredRoleMask: ACCOUNTANT },
       { icon: CreditCard, title: 'Phê duyệt chi phí NCC đường trục', description: 'Duyệt chi phí nhà cung cấp vận tải.', colorScheme: 'purple', path: '/finance/approve/vendor', requiredRoleMask: ACCOUNTANT },
       { icon: Building2, title: 'Công nợ & Thanh toán NCC', description: 'Bảng kê chuyến, phiếu chi và sổ cái dư nợ nhà xe.', colorScheme: 'pink', path: '/finance/vendor-debt', requiredRoleMask: ACCOUNTANT },
+      { icon: Receipt, title: 'Sổ phải trả NCC & Lãi/lỗ xe', description: 'Theo dõi chi NCC, phải thu và lãi/lỗ từng chuyến đã khởi hành.', colorScheme: 'pink', path: '/finance/vendor-trip-ledger', requiredRoleMask: ACCOUNTANT },
       { icon: Calculator, title: 'Đối soát tiền mặt bưu cục', description: 'Theo dõi COD, CC và nộp tiền bưu cục.', colorScheme: 'amber', path: '/finance/hub-reconciliation', requiredRoleMask: ACCOUNTANT },
       { icon: Receipt, title: 'Phiếu thu chi', description: 'Lập và tra cứu phiếu thu, phiếu chi theo chi phí xe.', colorScheme: 'teal', path: '/finance/cash-vouchers', requiredRoleMask: ACCOUNTANT | MANAGER_ROLES },
       { icon: Wallet, title: 'Số quỹ', description: 'Theo dõi số dư quỹ tiền mặt theo mã quỹ và bưu cục.', colorScheme: 'emerald', path: '/finance/fund-balances', requiredRoleMask: ACCOUNTANT | MANAGER_ROLES },

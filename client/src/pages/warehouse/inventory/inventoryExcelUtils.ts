@@ -1,6 +1,12 @@
 import { utils, writeFile } from 'xlsx';
 import {
   resolveFreight,
+  resolveCustomerName,
+  resolveServiceType,
+  resolveBillingUnit,
+  resolveUnitPrice,
+  resolveTransitFee,
+  resolvePaymentMethod,
   resolveLoadedAt,
   resolveMaKh,
   resolveNoiDen,
@@ -34,12 +40,18 @@ export function buildInventoryExcelRows(
     const row: Record<string, string | number> = {
       STT: index + 1,
       'Mã đơn hàng': cell(waybill.order_code),
+      'Tên khách': resolveCustomerName(waybill),
       'Mã vận đơn': cell(waybill.waybill_code || waybill.code),
+      'Bill/Cộng SG': cell(waybill.noi_dung || waybill.mat_hang),
+      'Dịch vụ': resolveServiceType(waybill),
       'Phân xe': cell(waybill.trip_label || waybill.license_plate || 'Chưa phân xe'),
       'Ngày bốc hàng': dateCell(resolveLoadedAt(waybill)),
       'Ngày nhận đơn': dateCell(waybill.received_at || waybill.created_at || null),
       'Trạng thái': statusConfig[status]?.label || status,
       'Tỉnh đến': resolveNoiDen(waybill),
+      ĐVT: resolveBillingUnit(waybill),
+      'Đơn giá': numberCell(resolveUnitPrice(waybill)),
+      'Trung chuyển': numberCell(resolveTransitFee(waybill)),
       'Tuyến': cell(waybill.route_code || waybill.delivery_route),
       'Mã KH': resolveMaKh(waybill),
       'Người gửi': cell(waybill.sender_info),
@@ -50,13 +62,20 @@ export function buildInventoryExcelRows(
       'Trọng lượng (kg)': numberCell(resolveWeightKg(waybill)),
       'Thể tích (m³)': numberCell(resolveVolumeM3(waybill)),
       'Thanh toán': cell(waybill.payment_type),
+      'Hình thức TT': resolvePaymentMethod(waybill),
+      'Tình trạng TT': waybill.customer_payment_status === 'PAID' ? 'Đã TT' : waybill.customer_payment_status === 'SENT_STATEMENT' ? 'Đã gửi bảng kê' : '',
+      'Ghi chú TT': cell(waybill.customer_payment_note),
       COD: numberCell(Number(waybill.allocated_cod ?? waybill.cod_amount ?? 0)),
       'Ưu tiên': priorityConfig[priority]?.label || priority,
       'Hub hiện tại': cell(waybill.current_hub?.name || waybill.current_hub?.code),
       'Hub đến': cell(waybill.dest_hub?.name || waybill.dest_hub?.code),
       'Ghi chú': cell(waybill.split_note || waybill.note || waybill.notes),
     };
-    if (showPricing) row['Cước phí'] = numberCell(Number(waybill.allocated_freight ?? resolveFreight(waybill)) || 0);
+    if (showPricing) {
+      const cuocPhi = Number(waybill.allocated_freight ?? resolveFreight(waybill)) || 0;
+      row['Cước phí'] = numberCell(cuocPhi);
+      row['Thành tiền'] = numberCell(cuocPhi + resolveTransitFee(waybill));
+    }
     return row;
   });
 }

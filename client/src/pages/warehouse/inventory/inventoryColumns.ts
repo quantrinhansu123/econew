@@ -4,10 +4,21 @@ export type InventoryColumnId =
   | 'stack_position'
   | 'order_code'
   | 'waybill_code'
+  | 'customer_name'
+  | 'bill_info'
+  | 'service_type'
   | 'trip_label'
   | 'loaded_at'
   | 'received_at'
   | 'noi_den'
+  | 'billing_unit'
+  | 'unit_price'
+  | 'transit_fee'
+  | 'total_amount'
+  | 'thu_ho_khach'
+  | 'payment_method'
+  | 'customer_payment_status'
+  | 'customer_payment_note'
   | 'route'
   | 'ma_kh'
   | 'receiver_address'
@@ -36,11 +47,22 @@ export interface InventoryColumnDef {
 export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'stack_position', label: 'Vị trí Xếp hàng', defaultVisible: true },
   { id: 'order_code', label: 'Mã đơn hàng', defaultVisible: true },
+  { id: 'customer_name', label: 'Tên khách', defaultVisible: true },
   { id: 'waybill_code', label: 'Mã vận đơn', defaultVisible: true },
+  { id: 'bill_info', label: 'Bill / Cộng SG', defaultVisible: true },
+  { id: 'service_type', label: 'Dịch vụ', defaultVisible: true },
   { id: 'trip_label', label: 'Phân xe', defaultVisible: true },
   { id: 'loaded_at', label: 'Ngày bốc hàng', defaultVisible: true },
   { id: 'received_at', label: 'Ngày nhận đơn', defaultVisible: false },
   { id: 'noi_den', label: 'Tỉnh đến', defaultVisible: true },
+  { id: 'billing_unit', label: 'ĐVT', defaultVisible: true },
+  { id: 'unit_price', label: 'Đơn giá', defaultVisible: true, align: 'right' },
+  { id: 'transit_fee', label: 'Trung chuyển', defaultVisible: true, align: 'right' },
+  { id: 'total_amount', label: 'Thành tiền', defaultVisible: true, managerOnly: true, align: 'right' },
+  { id: 'thu_ho_khach', label: 'Thu hộ khách', defaultVisible: true, align: 'right' },
+  { id: 'payment_method', label: 'Hình thức TT', defaultVisible: true },
+  { id: 'customer_payment_status', label: 'Tình trạng TT', defaultVisible: true },
+  { id: 'customer_payment_note', label: 'Ghi chú TT', defaultVisible: false },
   { id: 'route', label: 'Tuyến', defaultVisible: true },
   { id: 'ma_kh', label: 'Mã KH', defaultVisible: true },
   { id: 'receiver_address', label: 'Địa chỉ đến', defaultVisible: true },
@@ -116,6 +138,42 @@ const parseNote = (note: string | null | undefined, key: string) => {
 
 export function resolveMaKh(waybill: WaybillInventoryItem): string {
   return (waybill as { ma_kh?: string }).ma_kh?.trim() || parseNote(waybill.note || waybill.notes, 'ma_kh') || '—';
+}
+
+export function resolveCustomerName(waybill: WaybillInventoryItem): string {
+  const senderInfo = String(waybill.sender_info || '').trim();
+  if (!senderInfo) return '—';
+  return senderInfo.split('|')[0]?.trim() || senderInfo;
+}
+
+export function resolveServiceType(waybill: WaybillInventoryItem): string {
+  return parseNote(waybill.note || waybill.notes, 'dich_vu') || 'Tiêu chuẩn';
+}
+
+export function resolveBillingUnit(waybill: WaybillInventoryItem): string {
+  return parseNote(waybill.note || waybill.notes, 'billing_unit') || 'Cân';
+}
+
+export function resolveUnitPrice(waybill: WaybillInventoryItem): number {
+  const fromNote = Number(String(parseNote(waybill.note || waybill.notes, 'unit_price')).replace(/[^\d.-]/g, ''));
+  if (Number.isFinite(fromNote) && fromNote > 0) return fromNote;
+  const freight = resolveFreight(waybill);
+  const qty = Math.max(Number(waybill.weight ?? 0), Number(waybill.volumetric_weight ?? 0), 1);
+  return Math.round(freight / qty);
+}
+
+export function resolveTransitFee(waybill: WaybillInventoryItem): number {
+  const fromNote = Number(String(parseNote(waybill.note || waybill.notes, 'trung_chuyen')).replace(/[^\d.-]/g, ''));
+  return Number.isFinite(fromNote) && fromNote > 0 ? fromNote : 0;
+}
+
+export function resolvePaymentMethod(waybill: WaybillInventoryItem): string {
+  const method = parseNote(waybill.note || waybill.notes, 'phuong_thuc');
+  if (method) return method;
+  const pt = String(waybill.payment_type || '').toUpperCase();
+  if (pt === 'COD') return 'COD';
+  if (pt === 'CC') return 'Tiền mặt';
+  return 'Công nợ';
 }
 
 export function resolveNoiDen(waybill: WaybillInventoryItem): string {

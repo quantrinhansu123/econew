@@ -10,7 +10,7 @@ export const isIncompleteSplitRow = (item: WaybillInventoryItem) => {
 };
 
 export function buildInventoryTripLinesQuery(
-  filters: Pick<InventoryFilters, 'page' | 'limit' | 'keyword' | 'hubIds' | 'statuses' | 'paymentTypes' | 'priorities' | 'receivedFrom' | 'receivedTo' | 'ma_kh'>,
+  filters: Pick<InventoryFilters, 'page' | 'limit' | 'keyword' | 'hubIds' | 'statuses' | 'customerPaymentStatuses' | 'paymentTypes' | 'priorities' | 'receivedFrom' | 'receivedTo' | 'ma_kh'>,
   options?: { onlyIncompleteSplit?: boolean },
 ) {
   const params = new URLSearchParams({
@@ -25,6 +25,7 @@ export function buildInventoryTripLinesQuery(
   if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
   if (filters.ma_kh?.trim()) params.set('ma_kh', filters.ma_kh.trim());
   if (filters.statuses.length) params.set('status', filters.statuses.join(','));
+  if (filters.customerPaymentStatuses.length) params.set('customer_payment_status', filters.customerPaymentStatuses.join(','));
   if (filters.hubIds.length) params.set('hub_id', filters.hubIds.join(','));
   if (filters.paymentTypes.length) params.set('payment_type', filters.paymentTypes.join(','));
   if (filters.priorities.length) params.set('priority', filters.priorities.join(','));

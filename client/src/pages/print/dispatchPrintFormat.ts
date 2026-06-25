@@ -23,6 +23,12 @@ export interface DispatchPrintRow {
   bcThuHo: string;
   maBill: string;
   ghiChu: string;
+  ghiChu1: string;
+  ghiChu2: string;
+  kg: string;
+  m3: string;
+  duKienToiHcm: string;
+  qd: string;
   isEmpty?: boolean;
 }
 
@@ -30,6 +36,8 @@ export interface DispatchPrintTotals {
   soLuong: number;
   tangHaThuKhach: number;
   cuoc: number;
+  kg: number;
+  m3: number;
 }
 
 export { DISPATCH_PRINT_COLUMNS, DISPATCH_PRINT_HEADERS } from './dispatchPrintColumns';
@@ -73,6 +81,12 @@ export function buildEmptyDispatchRow(position: number): DispatchPrintRow {
     bcThuHo: '',
     maBill: '',
     ghiChu: '',
+    ghiChu1: '',
+    ghiChu2: '',
+    kg: '',
+    m3: '',
+    duKienToiHcm: '',
+    qd: '',
     isEmpty: true,
   };
 }

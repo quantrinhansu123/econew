@@ -1,5 +1,5 @@
 import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-import { PaymentType, WaybillState } from '../common/enums';
+import { CustomerPaymentStatus, PaymentType, WaybillState } from '../common/enums';
 import { HubEntity } from '../hubs/hub.entity';
 import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
 import { OrderEntity } from '../orders/order.entity';
@@ -106,6 +106,12 @@ export class WaybillEntity {
 
   @Column({ type: 'varchar', nullable: true })
   note: string | null;
+
+  @Column({ type: 'enum', enum: CustomerPaymentStatus, nullable: true })
+  customer_payment_status: CustomerPaymentStatus | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  customer_payment_note: string | null;
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   noi_dung: string | null;

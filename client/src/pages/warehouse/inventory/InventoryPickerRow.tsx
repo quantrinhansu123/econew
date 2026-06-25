@@ -4,6 +4,12 @@ import type { InventoryColumnDef, InventoryColumnId } from './inventoryColumns';
 import {
   getStorageAgeRowClass,
   resolveFreight,
+  resolveCustomerName,
+  resolveServiceType,
+  resolveBillingUnit,
+  resolveUnitPrice,
+  resolveTransitFee,
+  resolvePaymentMethod,
   resolveLoadedAt,
   resolveMaKh,
   resolveNoiDen,
@@ -42,6 +48,12 @@ function renderCell(
       return <td className={`${cellClass} font-bold text-violet-800`}>{waybill.order_code || '—'}</td>;
     case 'waybill_code':
       return <td className={`${cellClass} font-extrabold text-primary`}>{displayCode(waybill)}</td>;
+    case 'customer_name':
+      return <td className={cellClass}>{resolveCustomerName(waybill)}</td>;
+    case 'bill_info':
+      return <td className={cellClass}>{waybill.noi_dung || waybill.mat_hang || '—'}</td>;
+    case 'service_type':
+      return <td className={cellClass}>{resolveServiceType(waybill)}</td>;
     case 'trip_label':
       return (
         <td className={cellClass}>
@@ -78,6 +90,22 @@ function renderCell(
       return <td className={clsx(cellClass, 'font-bold text-primary')}>{resolveReceiverPhone(waybill)}</td>;
     case 'noi_den':
       return <td className={cellClass}>{resolveNoiDen(waybill)}</td>;
+    case 'billing_unit':
+      return <td className={cellClass}>{resolveBillingUnit(waybill)}</td>;
+    case 'unit_price':
+      return <td className={cellClass}>{displayValue(resolveUnitPrice(waybill), ' đ')}</td>;
+    case 'transit_fee':
+      return <td className={cellClass}>{displayValue(resolveTransitFee(waybill), ' đ')}</td>;
+    case 'total_amount':
+      return <td className={cellClass}>{displayValue(resolveFreight(waybill) + resolveTransitFee(waybill), ' đ')}</td>;
+    case 'thu_ho_khach':
+      return <td className={cellClass}>{displayValue(waybill.allocated_cod ?? waybill.cod_amount, ' đ')}</td>;
+    case 'payment_method':
+      return <td className={cellClass}>{resolvePaymentMethod(waybill)}</td>;
+    case 'customer_payment_status':
+      return <td className={cellClass}>{waybill.customer_payment_status === 'PAID' ? 'Đã TT' : waybill.customer_payment_status === 'SENT_STATEMENT' ? 'Đã gửi bảng kê' : '—'}</td>;
+    case 'customer_payment_note':
+      return <td className={cellClass}>{waybill.customer_payment_note || '—'}</td>;
     case 'route':
       return <td className={cellClass}>{resolveRoute(waybill)}</td>;
     case 'ma_kh':

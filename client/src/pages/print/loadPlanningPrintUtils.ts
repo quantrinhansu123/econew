@@ -14,6 +14,9 @@ export interface LoadPlanningPrintGroup {
   licensePlate: string;
   nhaXe: string;
   manifestCode: string;
+  driverName?: string;
+  driverPhone?: string;
+  expectedArrival?: string | null;
   rows: DispatchPrintRow[];
   totals: DispatchPrintTotals;
 }
@@ -117,6 +120,12 @@ function mapItemToDispatchRow(item: LoadPlanningBoardItem, showPricing: boolean)
     bcThuHo: '',
     maBill: fmt(item.waybill_code),
     ghiChu: fmt(extra(item, 'split_note') || item.mat_hang_note),
+    ghiChu1: '',
+    ghiChu2: '',
+    kg: fmt(item.weight),
+    m3: fmt(item.the_tich_m3),
+    duKienToiHcm: '',
+    qd: '',
   };
 }
 
@@ -130,8 +139,10 @@ function buildGroupTotals(rows: DispatchPrintRow[], showPricing: boolean): Dispa
       cuoc:
         acc.cuoc +
         (showPricing ? Number(String(row.cuoc).replace(/\./g, '').replace(/,/g, '') || 0) : 0),
+      kg: acc.kg + (Number(row.kg) || 0),
+      m3: acc.m3 + (Number(row.m3) || 0),
     }),
-    { soLuong: 0, tangHaThuKhach: 0, cuoc: 0 },
+    { soLuong: 0, tangHaThuKhach: 0, cuoc: 0, kg: 0, m3: 0 },
   );
 }
 
@@ -247,6 +258,12 @@ export function mapStackOntoTruckToPrintPayload(
       bcThuHo: '',
       maBill: row.waybill_code,
       ghiChu: row.expected_arrival_label ? `Dự kiến tới ${row.expected_arrival_label}` : String(waybill?.note || waybill?.notes || '').trim(),
+      ghiChu1: '',
+      ghiChu2: '',
+      kg: String(waybill?.weight ?? ''),
+      m3: String(waybill?.the_tich_m3 ?? waybill?.volumetric_weight ?? ''),
+      duKienToiHcm: '',
+      qd: '',
     };
   });
 
