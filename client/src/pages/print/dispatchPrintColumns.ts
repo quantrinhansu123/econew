@@ -68,13 +68,16 @@ export const DISPATCH_PRINT_COLUMN_DEFS: DispatchPrintColumnDef[] = [
 export const DISPATCH_PRINT_COLUMN_STORAGE_KEY = 'eco_dispatch_print_visible_columns_v5';
 
 const defMap = new Map(DISPATCH_PRINT_COLUMN_DEFS.map((def) => [def.id, def]));
+const DISPATCH_NOTE_COLUMNS = new Set<DispatchPrintColumnId>(['ghiChu', 'ghiChu1', 'ghiChu2']);
 
 export function getDispatchColumnDef(id: DispatchPrintColumnId): DispatchPrintColumnDef {
   return defMap.get(id)!;
 }
 
 export function getSelectableDispatchColumns(canViewPricing: boolean): DispatchPrintColumnDef[] {
-  return DISPATCH_PRINT_COLUMN_DEFS.filter((col) => !col.managerOnly || canViewPricing);
+  return DISPATCH_PRINT_COLUMN_DEFS.filter(
+    (col) => !DISPATCH_NOTE_COLUMNS.has(col.id) && (!col.managerOnly || canViewPricing),
+  );
 }
 
 export function getDefaultVisibleDispatchColumnIds(canViewPricing: boolean): DispatchPrintColumnId[] {
@@ -103,7 +106,11 @@ export function resolveVisibleDispatchColumnIds(
   ids: DispatchPrintColumnId[],
   canViewPricing: boolean,
 ): DispatchPrintColumnId[] {
-  const allowed = new Set(getSelectableDispatchColumns(canViewPricing).map((col) => col.id));
+  const allowed = new Set(
+    getSelectableDispatchColumns(canViewPricing)
+      .map((col) => col.id)
+      .filter((id) => !DISPATCH_NOTE_COLUMNS.has(id)),
+  );
   const selected = new Set(ids.filter((id) => allowed.has(id)));
   selected.add('viTriHang');
   const ordered = DISPATCH_PRINT_COLUMN_DEFS.filter((col) => selected.has(col.id)).map((col) => col.id);

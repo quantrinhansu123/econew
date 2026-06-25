@@ -3,7 +3,7 @@ import type { HubSummary, LoadPlanningManifest } from './types';
 
 export type HubViewCode = 'HAN' | 'HCM';
 
-export const IN_TRANSIT_TRIP_STATUSES = ['IN_TRANSIT', 'ASSIGNED_TO_TRIP'];
+export const IN_TRANSIT_TRIP_STATUSES = ['PLANNED', 'ASSIGNED', 'ASSIGNED_TO_TRIP', 'IN_TRANSIT'];
 export const ARRIVED_TRIP_STATUSES = ['ARRIVED', 'COMPLETED', 'AT_DEST_HUB'];
 
 export const HUB_DELIVERY_STATUS_OPTIONS = [

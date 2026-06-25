@@ -349,7 +349,7 @@ function DispatchSheetDialog(props: {
     const value = getDispatchCellValue(rows, link, waybillId, fieldKey);
     if (meta.readOnly) {
       return (
-        <div className={`min-h-[50px] px-1.5 py-2 text-[12px] font-semibold ${meta.money ? 'text-right font-black text-red-600' : columnId === 'diaChiNhan' ? 'text-left' : 'text-center'}`}>
+        <div className={`min-h-[50px] px-1.5 py-2 text-[12px] font-semibold ${meta.money ? 'text-right font-black text-red-600' : 'text-center'}`}>
           {value}
         </div>
       );

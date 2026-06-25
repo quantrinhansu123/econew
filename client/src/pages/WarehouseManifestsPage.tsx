@@ -7,7 +7,6 @@ import { ApiError, apiRequest } from '../lib/api';
 import { FilterSelect } from '../components/ui/FilterSelect';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
-import { DateTimePicker } from '../components/ui/DateTimePicker';
 import AddEditManifestDialog from './warehouse/manifests/dialogs/AddEditManifestDialog';
 import AddWaybillsToManifestDialog from './warehouse/manifests/dialogs/AddWaybillsToManifestDialog';
 import PrintManifestDialog from './warehouse/manifests/dialogs/PrintManifestDialog';
@@ -36,6 +35,8 @@ import {
 } from './warehouse/inventory/inventoryTripLines';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
+const WAREHOUSE = 1;
+const PACKER = 2;
 const DISPATCHER = 8;
 const MANAGER = 32;
 const DIRECTOR = 64;
@@ -70,7 +71,12 @@ const getStoredUser = (): AuthUserProfile | null => {
   try { return JSON.parse(raw) as AuthUserProfile; } catch { return null; }
 };
 const hasRole = (mask: number, role: number) => (mask & role) !== 0;
-const canViewPage = (mask: number) => hasRole(mask, MANAGER) || hasRole(mask, DIRECTOR);
+const canViewPage = (mask: number) =>
+  hasRole(mask, WAREHOUSE) ||
+  hasRole(mask, PACKER) ||
+  hasRole(mask, DISPATCHER) ||
+  hasRole(mask, MANAGER) ||
+  hasRole(mask, DIRECTOR);
 const canAssignTrip = (mask: number) => hasRole(mask, DISPATCHER) || hasRole(mask, MANAGER) || hasRole(mask, DIRECTOR);
 const canViewPricing = (mask: number) => hasRole(mask, MANAGER) || hasRole(mask, DIRECTOR);
 const normalizeList = (response: ManifestListResponse | LoadPlanningManifest[]) => Array.isArray(response) ? response : response.data || response.items || response.manifests || [];
@@ -121,15 +127,10 @@ const tripLabel = (trip?: TripSummary | null, manifestTripId?: string | number |
   if (tripId && !String(tripId).startsWith('split-')) return `Chuyến #${tripId}`;
   return resolveTruckPlate(trip) || 'Chưa gán chuyến';
 };
-const manifestTransportHeadline = (manifest: LoadPlanningManifest) => tripLabel(manifestTrip(manifest), manifest.trip_id);
 const expectedArrival = (manifest: LoadPlanningManifest) => manifestTrip(manifest)?.expected_arrival_time || manifestTrip(manifest)?.arrival_time || null;
 const truckLabel = (manifest: LoadPlanningManifest) => resolveTruckPlate(manifestTrip(manifest)) || 'Chưa có xe';
 const driverLabel = (manifest: LoadPlanningManifest) => { const trip = manifestTrip(manifest); return trip?.driver_name || trip?.driver?.name || trip?.driver?.full_name || trip?.truck?.ten_lai_xe || trip?.truck?.driver?.name || trip?.truck?.driver?.full_name || 'Chưa gán'; };
-const driverPhoneLabel = (manifest: LoadPlanningManifest) => { const trip = manifestTrip(manifest); return trip?.driver_phone || trip?.driver?.phone || trip?.truck?.driver?.phone || trip?.truck?.phone || 'Chưa có SĐT'; };
 const getWaybillCount = (manifest: LoadPlanningManifest) => Number(manifest.waybill_count ?? manifest.total_waybills ?? manifest.waybills?.length ?? 0);
-const getTotalWeight = (manifest: LoadPlanningManifest) => manifest.total_weight ?? manifest.weight_total ?? manifest.waybills?.reduce((sum, item) => sum + Number(item.weight || 0), 0);
-const closedBy = (manifest: LoadPlanningManifest) => manifest.closed_by?.name || manifest.closed_by?.full_name || manifest.closed_by?.username || manifest.created_by?.name || manifest.created_by?.full_name || manifest.created_by?.username || '—';
-const toDateTimeLocalValue = (value?: string | null) => { if (!value) return ''; const date = new Date(value); if (Number.isNaN(date.getTime())) return ''; return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16); };
 
 export default function WarehouseManifestsPage() {
   const navigate = useNavigate();
@@ -342,6 +343,7 @@ export default function WarehouseManifestsPage() {
           keyword: addWaybillsForm.keyword,
           ma_kh: '',
           statuses: [],
+          customerPaymentStatuses: [],
           hubIds: [],
           paymentTypes: [],
           priorities: [],
@@ -418,7 +420,13 @@ export default function WarehouseManifestsPage() {
     }
   }
 
-  if (!allowed) return null;
+  if (!allowed) {
+    return (
+      <div className="h-full min-h-0 flex flex-col gap-2">
+        <StateBlock icon={<AlertTriangle size={22} />} title="Không có quyền truy cập trang bảng kê." />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-2">

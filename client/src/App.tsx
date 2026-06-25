@@ -5,6 +5,8 @@ import MainLayout from './components/layout/MainLayout';
 import Dashboard from './pages/Dashboard';
 import LoginPage from './pages/LoginPage';
 import ModulePage from './pages/ModulePage';
+import WarehouseManifestsPage from './pages/WarehouseManifestsPage';
+import WarehouseManifestDetailPage from './pages/WarehouseManifestDetailPage';
 import { moduleRoutes } from './data/moduleData';
 
 const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage'));
@@ -20,8 +22,6 @@ const WarehouseOrderListPage = lazy(() => import('./pages/WarehouseOrderListPage
 const WarehouseIncomingPage = lazy(() => import('./pages/WarehouseIncomingPage'));
 const WarehousePriorityPage = lazy(() => import('./pages/WarehousePriorityPage'));
 const WarehouseLoadPlanningPage = lazy(() => import('./pages/WarehouseLoadPlanningPage'));
-const WarehouseManifestsPage = lazy(() => import('./pages/WarehouseManifestsPage'));
-const WarehouseManifestDetailPage = lazy(() => import('./pages/WarehouseManifestDetailPage'));
 const WarehouseCustomersPage = lazy(() => import('./pages/WarehouseCustomersPage'));
 const DeliveryHandoverPage = lazy(() => import('./pages/DeliveryHandoverPage'));
 const DeliveryEnRoutePage = lazy(() => import('./pages/DeliveryEnRoutePage'));

@@ -16,6 +16,7 @@ export type DispatchLink = {
     noi_dung?: string | null;
     note?: string | null;
     cod_amount?: number | string | null;
+    cost_amount?: number | string | null;
     package_count?: number | string | null;
     weight?: number | string | null;
     the_tich_m3?: number | string | null;
