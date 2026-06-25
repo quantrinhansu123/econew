@@ -329,3 +329,93 @@
   text-align: right;
   font-weight: 700;
 }
+
+/* Bảng kê phát hàng ECO — ManifestDispatchSheetTable (màn hình + in) */
+.manifest-dispatch-print-page .manifest-dispatch-sheet {
+  max-width: none;
+  width: 100%;
+  overflow: hidden;
+}
+
+.manifest-dispatch-sheet-meta {
+  margin: 0 0 6px;
+  text-align: center;
+  font-size: 8.5pt;
+  font-weight: 700;
+  color: #333;
+}
+
+.manifest-dispatch-sheet-scroll {
+  overflow-x: auto;
+}
+
+.manifest-dispatch-sheet-table {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 7.4pt;
+  line-height: 1.18;
+  table-layout: fixed;
+}
+
+.manifest-dispatch-sheet-table th,
+.manifest-dispatch-sheet-table td {
+  border: 1px solid #000;
+  vertical-align: middle;
+}
+
+.manifest-dispatch-sheet-table thead tr {
+  background: #c6efce !important;
+}
+
+.manifest-dispatch-sheet-table thead th {
+  font-size: 7pt;
+  font-weight: 700;
+  padding: 3px 2px;
+  white-space: normal;
+  line-height: 1.12;
+}
+
+.manifest-dispatch-sheet-table tbody tr:nth-child(even) td:not(.dispatch-col-location) {
+  background: #f3f4f6;
+}
+
+.manifest-dispatch-sheet-table .dispatch-col-location,
+.manifest-dispatch-sheet-table thead th:first-child,
+.manifest-dispatch-sheet-table tfoot td:first-child {
+  background: #ffff00 !important;
+  font-weight: 800;
+  color: #1e3a8a;
+}
+
+.manifest-dispatch-sheet-table tfoot tr:first-child td {
+  background: #f3f4f6;
+  font-weight: 800;
+}
+
+.manifest-dispatch-eta {
+  background: #ffff00 !important;
+  font-weight: 800;
+}
+
+@media print {
+  .manifest-dispatch-print-page .manifest-dispatch-sheet {
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    max-width: none;
+  }
+
+  .manifest-dispatch-sheet-scroll {
+    overflow: visible;
+  }
+
+  .manifest-dispatch-sheet-table {
+    font-size: 6.8pt;
+    min-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .manifest-dispatch-sheet-table th,
+  .manifest-dispatch-sheet-table td {
+    padding: 2px;
+  }
+}

@@ -2,17 +2,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Loader2, Printer } from 'lucide-react';
 import { apiRequest } from '../../lib/api';
-import type { LoadPlanningManifest } from '../warehouse/manifests/types';
+import type { DispatchLink } from '../warehouse/manifests/manifestDispatchDefaults';
+import ManifestDispatchSheetTable, { rowKey } from '../warehouse/manifests/ManifestDispatchSheetTable';
+import type { LoadPlanningManifest, ManifestDispatchFields } from '../warehouse/manifests/types';
 import DispatchPrintColumnDropdown from './DispatchPrintColumnDropdown';
 import type { DispatchPrintColumnId } from './dispatchPrintColumns';
 import { loadVisibleDispatchColumnIds, saveVisibleDispatchColumnIds } from './dispatchPrintColumns';
-import LoadPlanningPrintTemplate from './LoadPlanningPrintTemplate';
-import { buildManifestPrintPayload } from './manifestPrintUtils';
 import './inventory-stock-list.css';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const MANAGER = 32;
 const DIRECTOR = 64;
+
+type EditableRows = Record<string, ManifestDispatchFields>;
 
 function canViewPricing() {
   try {
@@ -24,6 +26,32 @@ function canViewPricing() {
     return false;
   }
 }
+
+function normalizeLinks(manifest: LoadPlanningManifest): DispatchLink[] {
+  if (manifest.manifest_waybills?.length) return manifest.manifest_waybills as DispatchLink[];
+  return (manifest.waybills ?? []).map((waybill, index) => ({
+    waybill_id: waybill.id,
+    loading_position: waybill.loading_position ?? index + 1,
+    dispatch_fields: waybill.dispatch_fields,
+    waybill,
+  }));
+}
+
+function buildRows(links: DispatchLink[]): EditableRows {
+  const rows: EditableRows = {};
+  links.forEach((link) => {
+    const key = rowKey(link);
+    if (!key) return;
+    rows[key] = {
+      ...(link.waybill?.dispatch_fields ?? {}),
+      ...(link.dispatch_fields ?? {}),
+    };
+  });
+  return rows;
+}
+
+const manifestCode = (manifest: LoadPlanningManifest) =>
+  manifest.manifest_code || manifest.code || `BK-${manifest.id}`;
 
 export default function PrintManifestPage() {
   const { id = '' } = useParams();
@@ -47,13 +75,14 @@ export default function PrintManifestPage() {
       .finally(() => setIsLoading(false));
   }, [id]);
 
-  const printData = useMemo(() => {
-    if (!manifest) return null;
-    const payload = buildManifestPrintPayload(manifest, showPricing);
-    return { ...payload, visibleColumnIds: printColumnIds };
-  }, [manifest, printColumnIds, showPricing]);
+  const links = useMemo(() => {
+    if (!manifest) return [];
+    return normalizeLinks(manifest).sort(
+      (a, b) => Number(a.loading_position ?? 9999) - Number(b.loading_position ?? 9999),
+    );
+  }, [manifest]);
 
-  const hasRows = Boolean(printData?.groups?.some((group) => group.rows.length > 0));
+  const rows = useMemo(() => buildRows(links), [links]);
 
   const updatePrintColumnIds = (ids: DispatchPrintColumnId[]) => {
     saveVisibleDispatchColumnIds(ids);
@@ -69,7 +98,7 @@ export default function PrintManifestPage() {
     );
   }
 
-  if (error || !printData || !hasRows) {
+  if (error || !manifest || !links.length) {
     return (
       <div className="inventory-stock-wrap flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md rounded-xl border border-red-200 bg-red-50 p-6 text-center">
@@ -89,7 +118,7 @@ export default function PrintManifestPage() {
   }
 
   return (
-    <div className="inventory-stock-wrap">
+    <div className="inventory-stock-wrap manifest-dispatch-print-page">
       <div className="inventory-print-toolbar mx-auto mb-3 flex max-w-[297mm] flex-wrap items-center justify-between gap-2 print:hidden">
         <button
           type="button"
@@ -115,7 +144,26 @@ export default function PrintManifestPage() {
           </button>
         </div>
       </div>
-      <LoadPlanningPrintTemplate data={printData} />
+
+      <div className="inventory-stock-sheet manifest-dispatch-sheet">
+        <h1 className="inventory-stock-title">BẢNG KÊ PHÁT HÀNG ECO</h1>
+        <p className="manifest-dispatch-sheet-meta">
+          {manifestCode(manifest)} · {links.length} dòng hàng
+        </p>
+        <div className="manifest-dispatch-sheet-scroll">
+          <ManifestDispatchSheetTable
+            manifest={manifest}
+            links={links}
+            rows={rows}
+            visibleColumnIds={printColumnIds}
+            readOnly
+          />
+        </div>
+        <p className="inventory-stock-meta">
+          In lúc:{' '}
+          {new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date())}
+        </p>
+      </div>
     </div>
   );
 }

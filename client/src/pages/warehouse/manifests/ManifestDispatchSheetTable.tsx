@@ -16,11 +16,20 @@ import type { LoadPlanningManifest, ManifestDispatchFields } from './types';
 
 type EditableRows = Record<string, ManifestDispatchFields>;
 
-const formatDateTime = (value?: string | null) => {
+const formatShortDate = (value?: string | null) => {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+};
+
+const formatExpectedArrival = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const time = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
+  const dayMonth = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit' }).format(date);
+  return `dự kiến ${time} ngày ${dayMonth} tới`;
 };
 
 const manifestTrip = (manifest: LoadPlanningManifest) => manifest.trip ?? manifest.trips?.[0] ?? null;
@@ -122,7 +131,12 @@ export default function ManifestDispatchSheetTable({
       if (readOnly || !onCellChange) {
         const qty = getDispatchCellValue(rows, link, waybillId, 'so_luong');
         const unit = getDispatchCellValue(rows, link, waybillId, 'loai') || 'kiện';
-        return <div className="min-h-[50px] px-1 py-2 text-center text-[12px] font-black text-red-600">{qty}<div className="text-[11px] font-semibold text-muted-foreground">{unit}</div></div>;
+        return (
+          <div className="min-h-[50px] px-1 py-2 text-center text-[12px]">
+            <div className="font-black text-slate-950">{qty}</div>
+            <div className="text-[11px] font-semibold text-slate-600">{unit}</div>
+          </div>
+        );
       }
       return renderQuantityCell(rows, link, waybillId, onCellChange);
     }
@@ -145,7 +159,7 @@ export default function ManifestDispatchSheetTable({
     if (!fieldKey) return null;
 
     const value = getDispatchCellValue(rows, link, waybillId, fieldKey);
-    const isRedText = columnId === 'noiTra' || columnId === 'tangHaThuKhach' || columnId === 'ghiChu';
+    const isRedText = columnId === 'noiTra' || columnId === 'tangHaThuKhach' || columnId === 'ghiChu' || columnId === 'tinhTrangGiaoHang';
     const alignClass = meta.money || columnId === 'kg' || columnId === 'm3' ? 'text-right' : 'text-center';
 
     if (readOnly || meta.readOnly || !onCellChange) {
@@ -175,10 +189,10 @@ export default function ManifestDispatchSheetTable({
   }
 
   return (
-    <table className="w-full min-w-[1900px] border-collapse text-center text-[12px] text-slate-950">
+    <table className="manifest-dispatch-sheet-table w-full min-w-[1900px] border-collapse text-center text-[12px] text-slate-950">
       <thead>
         <tr className="bg-[#c6efce] text-[11px] font-black">
-          <th className="w-14 border border-black bg-yellow-300 px-1 py-2">Vị trí hàng</th>
+          <th className="dispatch-col-location w-14 border border-black bg-yellow-300 px-1 py-2">Vị trí hàng</th>
           {dataColumns.map((columnId) => {
             const meta = getDispatchSheetColumnMeta(columnId);
             return (
@@ -198,7 +212,7 @@ export default function ManifestDispatchSheetTable({
           const waybillId = rowKey(link);
           return (
             <tr key={waybillId || index} className="align-middle odd:bg-white even:bg-slate-100">
-              <td className="border border-black bg-yellow-300 px-1 py-2 font-black text-blue-900">
+              <td className="dispatch-col-location border border-black bg-yellow-300 px-1 py-2 font-black text-blue-900">
                 {link.loading_position ?? index + 1}
               </td>
               {dataColumns.map((columnId) => {
@@ -215,7 +229,7 @@ export default function ManifestDispatchSheetTable({
       </tbody>
       <tfoot>
         <tr className="bg-slate-100 font-black">
-          <td className="border border-black bg-yellow-300 px-2 py-2 text-right">TỔNG</td>
+          <td className="dispatch-col-location border border-black bg-yellow-300 px-2 py-2 text-right">TỔNG</td>
           {dataColumns.map((columnId) => {
             if (columnId === 'soLuong') {
               return (
@@ -252,12 +266,12 @@ export default function ManifestDispatchSheetTable({
           <td colSpan={dataColumns.length + 1} className="border border-black px-3 py-2 text-left text-[12px] font-bold">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               <span><strong>Xe:</strong> {driverLabel(manifest)}</span>
-              <span><strong>Ngày:</strong> {formatDateTime(manifest.closed_at || manifest.created_at)}</span>
+              <span><strong>Ngày:</strong> {formatShortDate(manifest.closed_at || manifest.created_at)}</span>
               <span><strong>BKS:</strong> {truckLabel(manifest)}</span>
               <span><strong>SĐT:</strong> {driverPhoneLabel(manifest)}</span>
               {expectedArrival(manifest) ? (
-                <span className="rounded bg-yellow-300 px-3 py-1 font-black">
-                  dự kiến {formatDateTime(expectedArrival(manifest))} tới
+                <span className="manifest-dispatch-eta rounded bg-yellow-300 px-3 py-1 font-black">
+                  {formatExpectedArrival(expectedArrival(manifest))}
                 </span>
               ) : null}
             </div>

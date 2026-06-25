@@ -42,7 +42,7 @@ export const DISPATCH_PRINT_COLUMN_DEFS: DispatchPrintColumnDef[] = [
   { id: 'viTriHang', label: 'Vị trí hàng', header: 'Vị trí hàng', cssClass: 'col-location', align: 'center', defaultVisible: true, required: true },
   { id: 'ngayBoc', label: 'Ngày bốc', header: 'Ngày bốc', cssClass: 'col-date', align: 'center', defaultVisible: true },
   { id: 'maTinh', label: 'Mã Tỉnh', header: 'Mã Tỉnh', cssClass: 'col-province', align: 'center', defaultVisible: true },
-  { id: 'tenCtv', label: 'Tên CTV', header: 'Tên CTV', cssClass: 'col-company', defaultVisible: true },
+  { id: 'tenCtv', label: 'Tên CTY', header: 'Tên CTY', cssClass: 'col-company', defaultVisible: true },
   { id: 'dv', label: 'DV', header: 'DV', cssClass: 'col-service', align: 'center', defaultVisible: true },
   { id: 'matHang', label: 'Mặt Hàng', header: 'Mặt Hàng', cssClass: 'col-item', defaultVisible: true },
   { id: 'noiTra', label: 'Hướng dẫn phát', header: 'Hướng dẫn phát', cssClass: 'col-place', defaultVisible: true },
