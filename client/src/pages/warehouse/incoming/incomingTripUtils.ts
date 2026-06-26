@@ -115,11 +115,42 @@ export const formatArrivedSubline = (trip: IncomingTrip) => {
   return parts.join(' · ');
 };
 
+export const formatTripSubline = (trip: IncomingTrip) => {
+  const arrived = isArrivedTrip(trip);
+  const arrivalTime = getArrivalTime(trip);
+  const parts = [
+    getPlateLabel(trip),
+    `${getWaybillCount(trip).toLocaleString('vi-VN')} đơn`,
+    `${formatNumber(getTotalWeight(trip))} kg`,
+    arrived
+      ? (arrivalTime ? `Đã đến ${formatTime(arrivalTime)}` : 'Đã đến bưu cục')
+      : (trip.departure_time ? `Khởi hành ${formatTime(trip.departure_time)}` : null),
+    !arrived && arrivalTime ? `ETA ${formatTime(arrivalTime)}` : null,
+  ].filter(Boolean);
+  return parts.join(' · ');
+};
+
+export const sortTrips = (trips: IncomingTrip[]) => [...trips].sort((left, right) => {
+  const leftArrived = isArrivedTrip(left) ? 1 : 0;
+  const rightArrived = isArrivedTrip(right) ? 1 : 0;
+  if (leftArrived !== rightArrived) return leftArrived - rightArrived;
+  const leftInTransit = normalizeTripStatus(left.status) === 'IN_TRANSIT' ? 0 : 1;
+  const rightInTransit = normalizeTripStatus(right.status) === 'IN_TRANSIT' ? 0 : 1;
+  if (leftInTransit !== rightInTransit) return leftInTransit - rightInTransit;
+  const leftTime = new Date(getArrivalTime(left) || left.departure_time || 0).getTime();
+  const rightTime = new Date(getArrivalTime(right) || right.departure_time || 0).getTime();
+  return rightTime - leftTime;
+});
+
 export const sortArrivedTrips = (trips: IncomingTrip[]) => [...trips].sort((left, right) => {
   const leftTime = new Date(getArrivalTime(left) || left.departure_time || 0).getTime();
   const rightTime = new Date(getArrivalTime(right) || right.departure_time || 0).getTime();
   return rightTime - leftTime;
 });
+
+export const filterTripsByOrigin = (trips: IncomingTrip[], lane: OriginLane) => (
+  sortTrips(trips.filter((trip) => getOriginLane(trip) === lane))
+);
 
 export const filterArrivedTripsByOrigin = (trips: IncomingTrip[], lane: OriginLane) => (
   sortArrivedTrips(trips.filter((trip) => getOriginLane(trip) === lane))

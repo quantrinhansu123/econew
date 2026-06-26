@@ -1,7 +1,7 @@
 import { clsx } from 'clsx';
 import type { IncomingTrip } from './types';
 import {
-  formatArrivedSubline,
+  formatTripSubline,
   getManifestCode,
   getRouteLabel,
   getTripStatusLabel,
@@ -48,7 +48,7 @@ export function IncomingTripTable({
                       {getManifestCode(trip)} · {getRouteLabel(trip)}
                     </p>
                     <p className="mt-0.5 truncate text-[11px] font-medium text-muted-foreground">
-                      {formatArrivedSubline(trip)}
+                      {formatTripSubline(trip)}
                     </p>
                   </td>
                   <td className="w-[96px] px-2 py-2 align-middle text-right">
