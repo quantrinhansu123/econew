@@ -45,6 +45,19 @@ export interface IncomingTrip {
   total_m3?: number | string | null;
   planned_total_volume?: number | string | null;
   license_plate?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  vendor_name?: string | null;
+  vehicle_type?: string | null;
+  truck?: {
+    license_plate?: string | null;
+    bks?: string | null;
+    ten_lai_xe?: string | null;
+    loai_xe?: string | null;
+    nha_xe?: string | null;
+    vendor?: { name?: string | null } | null;
+    driver?: { name?: string | null; phone?: string | null } | null;
+  } | null;
 }
 
 export interface IncomingTripListResponse {

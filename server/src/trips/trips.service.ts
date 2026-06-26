@@ -268,6 +268,7 @@ export class TripsService {
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('truck.driver', 'driver')
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .leftJoinAndSelect('manifest.origin_hub', 'manifest_origin_hub')
       .leftJoinAndSelect('manifest.dest_hub', 'manifest_dest_hub')
@@ -310,6 +311,17 @@ export class TripsService {
         planned_total_weight: weight,
         planned_total_volume: volume,
         license_plate: trip.truck?.license_plate ?? trip.truck?.bks ?? null,
+        driver_name: trip.driver_name?.trim()
+          || trip.truck?.ten_lai_xe?.trim()
+          || trip.truck?.driver?.name?.trim()
+          || null,
+        driver_phone: trip.driver_phone?.trim()
+          || trip.truck?.driver?.phone?.trim()
+          || null,
+        vendor_name: trip.truck?.vendor?.name?.trim()
+          || trip.truck?.nha_xe?.trim()
+          || null,
+        vehicle_type: trip.truck?.loai_xe?.trim() || null,
       };
     }));
     return { data, total: data.length };

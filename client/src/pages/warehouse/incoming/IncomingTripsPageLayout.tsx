@@ -1,6 +1,6 @@
-import { AlertTriangle, ArrowLeft, Loader2, RefreshCw, Truck as TruckIcon } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CalendarDays, Loader2, RefreshCw, Truck as TruckIcon, X } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { formatUpdatedAt } from './incomingTripUtils';
+import { formatFilterDateLabel, formatUpdatedAt, type IncomingTripSummary } from './incomingTripUtils';
 import { IncomingStateBlock } from './IncomingTripTable';
 
 export function IncomingTripsPageLayout({
@@ -9,6 +9,9 @@ export function IncomingTripsPageLayout({
   isLoading,
   error,
   updatedAt,
+  filterDate = '',
+  onFilterDateChange,
+  summary,
   children,
 }: {
   title: string;
@@ -16,6 +19,9 @@ export function IncomingTripsPageLayout({
   isLoading: boolean;
   error: string;
   updatedAt: Date | null;
+  filterDate?: string;
+  onFilterDateChange?: (value: string) => void;
+  summary?: IncomingTripSummary;
   children: ReactNode;
 }) {
   return (
@@ -27,7 +33,7 @@ export function IncomingTripsPageLayout({
         </div>
       )}
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
-        <div className="border-b border-border bg-card p-3 shrink-0">
+        <div className="border-b border-border bg-card p-3 shrink-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => window.history.back()}
@@ -50,6 +56,43 @@ export function IncomingTripsPageLayout({
               <span>{formatUpdatedAt(updatedAt)}</span>
             </div>
           </div>
+
+          {summary && onFilterDateChange && (
+            <>
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/10 p-2">
+                <label className="inline-flex h-9 min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[12px] font-bold text-foreground">
+                  <CalendarDays size={14} className="shrink-0 text-primary" />
+                  <span className="shrink-0 text-muted-foreground">Lọc ngày</span>
+                  <input
+                    type="date"
+                    value={filterDate}
+                    onChange={(event) => onFilterDateChange(event.target.value)}
+                    className="min-w-0 flex-1 bg-transparent text-[12px] font-extrabold outline-none"
+                  />
+                </label>
+                {filterDate && (
+                  <button
+                    type="button"
+                    onClick={() => onFilterDateChange('')}
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-border bg-white px-3 text-[12px] font-extrabold text-muted-foreground hover:bg-muted"
+                  >
+                    <X size={14} />
+                    Bỏ lọc
+                  </button>
+                )}
+                <div className="flex flex-wrap items-center gap-2 md:ml-auto">
+                  <SummaryChip label="Tổng chuyến" value={summary.total} tone="border-slate-200 bg-white text-slate-800" />
+                  <SummaryChip label="Dự kiến đến" value={summary.expectedArriving} tone="border-amber-200 bg-amber-50 text-amber-800" />
+                  <SummaryChip label="Đã đến" value={summary.arrived} tone="border-emerald-200 bg-emerald-50 text-emerald-800" />
+                </div>
+              </div>
+              <p className="text-[11px] font-semibold text-muted-foreground">
+                {filterDate
+                  ? `Đang lọc ngày ${formatFilterDateLabel(filterDate)} — số liệu tổng hợp theo ngày đã chọn.`
+                  : 'Chưa chọn ngày — số liệu tổng hợp trên toàn bộ chuyến đang hiển thị.'}
+              </p>
+            </>
+          )}
         </div>
 
         {isLoading ? (
@@ -60,6 +103,23 @@ export function IncomingTripsPageLayout({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function SummaryChip({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: string;
+}) {
+  return (
+    <div className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 ${tone}`}>
+      <span className="text-[11px] font-bold">{label}</span>
+      <span className="text-[15px] font-black tabular-nums">{value}</span>
     </div>
   );
 }

@@ -69,7 +69,91 @@ export const getDestinationHub = (trip: IncomingTrip) => (
 
 export const getRouteLabel = (trip: IncomingTrip) => `${getOriginHub(trip)} → ${getDestinationHub(trip)}`;
 
-export const getPlateLabel = (trip: IncomingTrip) => trip.license_plate?.trim() || `Chuyến #${trip.id}`;
+export const getPlateLabel = (trip: IncomingTrip) => trip.license_plate?.trim() || trip.truck?.license_plate?.trim() || trip.truck?.bks?.trim() || `Chuyến #${trip.id}`;
+
+export const getDriverName = (trip: IncomingTrip) => (
+  trip.driver_name?.trim()
+  || trip.truck?.ten_lai_xe?.trim()
+  || trip.truck?.driver?.name?.trim()
+  || '—'
+);
+
+export const getDriverPhone = (trip: IncomingTrip) => (
+  trip.driver_phone?.trim()
+  || trip.truck?.driver?.phone?.trim()
+  || '—'
+);
+
+export const getVendorName = (trip: IncomingTrip) => (
+  trip.vendor_name?.trim()
+  || trip.truck?.vendor?.name?.trim()
+  || trip.truck?.nha_xe?.trim()
+  || '—'
+);
+
+export const getVehicleType = (trip: IncomingTrip) => (
+  trip.vehicle_type?.trim()
+  || trip.truck?.loai_xe?.trim()
+  || '—'
+);
+
+export const getTripScheduleTime = (trip: IncomingTrip) => {
+  if (isArrivedTrip(trip)) return trip.arrival_time || trip.expected_arrival_time || trip.estimated_arrival_time || null;
+  return trip.expected_arrival_time || trip.estimated_arrival_time || trip.arrival_time || null;
+};
+
+export const getTripDateKey = (trip: IncomingTrip) => {
+  const source = getTripScheduleTime(trip);
+  if (!source) return null;
+  const date = new Date(source);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+};
+
+export const formatTripArrivalDate = (trip: IncomingTrip) => {
+  const source = getTripScheduleTime(trip);
+  if (!source) return { day: '—', time: '', full: 'Chưa có ngày' };
+  const date = new Date(source);
+  if (Number.isNaN(date.getTime())) return { day: '—', time: '', full: 'Chưa có ngày' };
+  return {
+    day: new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date),
+    time: new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(date),
+    full: new Intl.DateTimeFormat('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(date),
+  };
+};
+
+export const filterTripsByDate = (trips: IncomingTrip[], filterDate: string) => {
+  if (!filterDate) return trips;
+  return trips.filter((trip) => getTripDateKey(trip) === filterDate);
+};
+
+export const isExpectedArrivingTrip = (trip: IncomingTrip) => normalizeTripStatus(trip.status) === 'IN_TRANSIT';
+
+export interface IncomingTripSummary {
+  total: number;
+  expectedArriving: number;
+  arrived: number;
+}
+
+export const summarizeIncomingTrips = (trips: IncomingTrip[]): IncomingTripSummary => ({
+  total: trips.length,
+  expectedArriving: trips.filter(isExpectedArrivingTrip).length,
+  arrived: trips.filter(isArrivedTrip).length,
+});
+
+export const formatFilterDateLabel = (filterDate: string) => {
+  if (!filterDate) return 'Tất cả ngày';
+  const date = new Date(`${filterDate}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return filterDate;
+  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+};
 
 export const normalizeHubCode = (hub?: IncomingHub | null): OriginLane | null => {
   const code = hub?.code?.trim().toUpperCase();
