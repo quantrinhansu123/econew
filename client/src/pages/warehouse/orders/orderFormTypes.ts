@@ -3,6 +3,7 @@ export type OrderWorkbenchTab = 'khach-hang' | 'hang-hoa' | 'thanh-toan';
 export interface BillListItem {
   id: string;
   date: string;
+  createdAt?: string | null;
   waybill_code: string;
   package_count: number;
   destination: string;

@@ -86,6 +86,7 @@ export default function WarehouseOrderNewPage() {
   const [showPricingOnPrint, setShowPricingOnPrint] = useState(true);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [billFilterDate, setBillFilterDate] = useState('');
 
   const canCreate = hasCreateRole(user?.role_mask ?? 0);
   const loginName = getLoginDisplayName(user as Parameters<typeof getLoginDisplayName>[0]);
@@ -99,10 +100,15 @@ export default function WarehouseOrderNewPage() {
     return Number(String(v).replace(/[^\d.-]/g, '')) || 0;
   }, [form.chieuDai, form.chieuRong, form.chieuCao]);
 
-  const loadBills = useCallback(async () => {
+  const loadBills = useCallback(async (dateFilter = billFilterDate) => {
     try {
+      const query = new URLSearchParams({ limit: '100', page: '1' });
+      if (dateFilter) {
+        query.set('from_date', dateFilter);
+        query.set('to_date', `${dateFilter}T23:59:59.999`);
+      }
       const response = await apiRequest<WaybillDetail[] | { items?: WaybillDetail[]; data?: WaybillDetail[] }>(
-        '/waybills?limit=50&page=1',
+        `/waybills?${query.toString()}`,
       );
       const list = extractList(response);
       const billItems = list.map(waybillToBillItem);
@@ -112,7 +118,7 @@ export default function WarehouseOrderNewPage() {
       setBills([]);
       return [];
     }
-  }, []);
+  }, [billFilterDate]);
 
   const loadNextWaybillCode = useCallback(async (originHubId?: string) => {
     try {
@@ -369,6 +375,21 @@ export default function WarehouseOrderNewPage() {
     window.open(`/print/waybill/${printableBillId}${query ? `?${query}` : ''}`, '_blank', 'noopener');
   };
 
+  const handleBulkPrintBills = (billIds: string[]) => {
+    if (!billIds.length) return;
+    const query = new URLSearchParams({
+      ids: billIds.join(','),
+      print: '1',
+      pricing: showPricingOnPrint ? 'show' : 'hide',
+    }).toString();
+    window.open(`/print/waybills?${query}`, '_blank', 'noopener');
+  };
+
+  const handleBillFilterDateChange = (value: string) => {
+    setBillFilterDate(value);
+    void loadBills(value);
+  };
+
   const closeSuccess = () => {
     setIsSuccessClosing(true);
     window.setTimeout(() => {
@@ -453,6 +474,9 @@ export default function WarehouseOrderNewPage() {
             printableBillId={printableBillId}
             showPricingOnPrint={showPricingOnPrint}
             onShowPricingOnPrintChange={setShowPricingOnPrint}
+            billFilterDate={billFilterDate}
+            onBillFilterDateChange={handleBillFilterDateChange}
+            onBulkPrintBills={handleBulkPrintBills}
             canManage={canCreate}
             isSubmitting={isSubmitting}
             error={actionError}

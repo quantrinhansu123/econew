@@ -34,6 +34,9 @@ interface Props {
   printableBillId: string | null;
   showPricingOnPrint: boolean;
   onShowPricingOnPrintChange: (value: boolean) => void;
+  billFilterDate: string;
+  onBillFilterDateChange: (value: string) => void;
+  onBulkPrintBills: (billIds: string[]) => void;
   canManage: boolean;
   isSubmitting: boolean;
   error?: string;
@@ -59,6 +62,9 @@ export default function NewOrderWorkbench({
   printableBillId,
   showPricingOnPrint,
   onShowPricingOnPrintChange,
+  billFilterDate,
+  onBillFilterDateChange,
+  onBulkPrintBills,
   canManage,
   isSubmitting,
   error,
@@ -332,6 +338,9 @@ export default function NewOrderWorkbench({
           onDelete={onDeleteBill}
           canDelete={canManage}
           isDeleting={isSubmitting}
+          filterDate={billFilterDate}
+          onFilterDateChange={onBillFilterDateChange}
+          onBulkPrint={onBulkPrintBills}
         />
       </div>
     </div>

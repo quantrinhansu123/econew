@@ -991,3 +991,21 @@
   bottom: 2.5mm;
   transform: rotate(-8deg);
 }
+
+.waybill-bulk-print-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media print {
+  .waybill-bulk-print-item {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .waybill-bulk-print-item:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}

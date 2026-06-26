@@ -55,6 +55,7 @@ const HrStaffListPage = lazy(() => import('./pages/hr/HrStaffListPage'));
 const HrAttendancePage = lazy(() => import('./pages/hr/HrAttendancePage'));
 const AdminAttendanceLocationsPage = lazy(() => import('./pages/hr/AdminAttendanceLocationsPage'));
 const PrintWaybillPage = lazy(() => import('./pages/print/PrintWaybillPage'));
+const PrintWaybillsBulkPage = lazy(() => import('./pages/print/PrintWaybillsBulkPage'));
 const PrintInventoryStockPage = lazy(() => import('./pages/print/PrintInventoryStockPage'));
 const PrintLoadPlanningPage = lazy(() => import('./pages/print/PrintLoadPlanningPage'));
 const PrintManifestPage = lazy(() => import('./pages/print/PrintManifestPage'));
@@ -147,6 +148,14 @@ function App() {
           element={(
             <Suspense fallback={null}>
               <PrintWaybillPage />
+            </Suspense>
+          )}
+        />
+        <Route
+          path="/print/waybills"
+          element={(
+            <Suspense fallback={null}>
+              <PrintWaybillsBulkPage />
             </Suspense>
           )}
         />

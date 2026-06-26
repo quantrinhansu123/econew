@@ -237,6 +237,7 @@ export function waybillToBillItem(waybill: WaybillDetail): BillListItem {
   return {
     id: String(waybill.id),
     date: formatBillDate(waybill.created_at || waybill.received_at),
+    createdAt: waybill.created_at || waybill.received_at || null,
     waybill_code: waybill.waybill_code || waybill.code || `#${waybill.id}`,
     package_count: Number(waybill.package_count) || 1,
     destination: hubCodeLabel(waybill.dest_hub, waybill.dest_hub_id),
