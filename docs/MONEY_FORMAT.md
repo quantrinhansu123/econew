@@ -192,8 +192,10 @@ Bảng chuyến xe trên `/warehouse/incoming` (`IncomingTripTable`) có nhóm c
 | **Phải trả** | `trips.trip_cost` | Cước phải trả NCC |
 | **Bồi P trả** | `trips.vendor_paid_amount` | Số tiền đã chi / bồi hoàn |
 | **Phí khác** | `trips.other_costs` | Chi phí phát sinh khác |
-| **Lái xe đã thu** | `total_collect` (tổng từ waybill) | COD + CC trên chuyến |
+| **Phải thu** | `total_collect` (tổng từ waybill) | COD + CC — số tiền phải thu trên chuyến |
+| **Lái xe đã thu** | `total_collect` (hiện tại) | Tiền lái xe đã thu trên xe (cùng nguồn cho đến khi có field riêng) |
 | **Ghi chú** | `trips.vendor_payment_note` | Nhập khi **Thanh toán**; header màu đỏ |
+| **Thao tác** | Menu ⋮ (`RowActionsMenu`) | Xem · Sửa · Xóa · Thanh toán — không render nhiều nút trong cell |
 
 Hiển thị tiền: `formatMoney()` + `tabular-nums`. Ô trống / 0 → `—`.
 

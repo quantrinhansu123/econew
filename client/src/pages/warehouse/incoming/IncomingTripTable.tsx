@@ -15,6 +15,7 @@ import {
   getTripOtherCosts,
   getTripPaidAmount,
   getTripPayableAmount,
+  getTripReceivableAmount,
   getTripStatusLabel,
   getTripStatusTone,
   getVendorPaymentStatusLabel,
@@ -44,6 +45,7 @@ const BASE_HEADERS_BEFORE_PAYABLE = [
 const PAYABLE_SUB_HEADERS = ['Phải trả', 'Bồi P trả', 'Phí khác'] as const;
 
 const BASE_HEADERS_AFTER_PAYABLE = [
+  'Phải thu',
   'Lái xe đã thu',
   'Ghi chú',
   'Trạng thái thanh toán',
@@ -92,7 +94,7 @@ export function IncomingTripTable({
             {emptyText}
           </div>
         ) : (
-          <table className="w-full min-w-[2100px] border-collapse text-left">
+          <table className="w-full min-w-[2120px] border-collapse text-left">
             <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
               <tr className="border-b border-border">
                 {headersBefore.map((header) => (
@@ -109,11 +111,12 @@ export function IncomingTripTable({
                     rowSpan={2}
                     className={clsx(
                       'whitespace-nowrap px-3 py-2.5 align-middle',
+                      header === 'Phải thu' && 'text-right min-w-[108px]',
                       header === 'Lái xe đã thu' && 'text-right min-w-[108px]',
-                      header === 'Ghi chú' && 'min-w-[180px] text-red-600',
+                      header === 'Ghi chú' && 'w-[120px] max-w-[120px] text-red-600',
                       header === 'Trạng thái thanh toán' && 'text-center min-w-[108px]',
                       header === 'Trạng thái' && 'text-center',
-                      header === 'Thao tác' && 'text-center min-w-[220px]',
+                      header === 'Thao tác' && 'text-center min-w-[72px]',
                     )}
                   >
                     {header}
@@ -167,11 +170,14 @@ export function IncomingTripTable({
                     <td className="whitespace-nowrap px-3 py-2 text-right font-bold tabular-nums text-muted-foreground">
                       {formatMoneyCell(getTripOtherCosts(trip))}
                     </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-extrabold tabular-nums text-sky-700">
+                      {formatMoneyCell(getTripReceivableAmount(trip))}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right font-extrabold tabular-nums text-emerald-700">
                       {formatMoneyCell(getDriverCollectedAmount(trip))}
                     </td>
-                    <td className="max-w-[220px] px-3 py-2 text-[12px] font-medium text-foreground" title={paymentNote || undefined}>
-                      <span className="line-clamp-2">{paymentNote || '—'}</span>
+                    <td className="w-[120px] max-w-[120px] px-2 py-2 text-[12px] font-medium text-foreground" title={paymentNote || undefined}>
+                      <span className="line-clamp-2 break-words">{paymentNote || '—'}</span>
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-center">
                       <span className={clsx('inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-[10px] font-extrabold leading-tight whitespace-nowrap', getVendorPaymentStatusTone(trip))}>

@@ -276,6 +276,28 @@ Mobile `< md`: không dùng bảng ngang. Dùng card dọc giống pattern:
 </article>
 ```
 
+### Cột Thao tác — menu ba chấm dọc
+
+**Bắt buộc** với bảng có nhiều action trên từng dòng (Xem, Sửa, Xóa, Thanh toán, …): gom vào **một nút ba chấm dọc** (`MoreVertical`), không render hàng nút có chữ trong cell.
+
+```tsx
+import { RowActionsMenu, RowActionsMenuItem } from '@/components/ui/RowActionsMenu';
+
+<RowActionsMenu label="Thao tác chuyến xe">
+  <RowActionsMenuItem icon={<Eye size={14} />} label="Xem" tone="primary" onClick={() => onView(row)} />
+  <RowActionsMenuItem icon={<Edit size={14} />} label="Sửa" tone="amber" disabled={!canEdit} onClick={() => onEdit(row)} />
+  <RowActionsMenuItem icon={<Trash2 size={14} />} label="Xóa" tone="danger" disabled={!canDelete} onClick={() => onDelete(row)} />
+</RowActionsMenu>
+```
+
+| Quy tắc | Chi tiết |
+|---|---|
+| Trigger | `h-8 w-8`, `MoreVertical`, `aria-label` mô tả |
+| Menu | `absolute right-0 z-30`, `rounded-xl`, `shadow-xl`, đóng khi click ngoài / `Escape` |
+| Item | `RowActionsMenuItem` — icon + label, `tone` theo mức độ (primary / amber / emerald / danger) |
+| Cột bảng | `text-center`, `min-w-[72px]` — chỉ đủ chỗ cho nút ⋮ |
+| Tham chiếu | `IncomingTripRowActions.tsx`, `WarehouseInventoryPage` (pattern tương tự) |
+
 ### Empty/loading state và footer pagination
 
 Empty/loading state nằm trong body `flex-1`, không thay thế toàn bộ card:
@@ -558,6 +580,26 @@ alert('Đã lưu');
 ```
 
 ## 4. Component `/ui` đang có và cách dùng
+
+### `RowActionsMenu`
+
+Menu thao tác từng dòng trong bảng — nút **ba chấm dọc**, dropdown danh sách action.
+
+```tsx
+import { RowActionsMenu, RowActionsMenuItem } from '@/components/ui/RowActionsMenu';
+
+<RowActionsMenu label="Mở thao tác" align="right">
+  <RowActionsMenuItem icon={<Eye size={14} />} label="Xem" onClick={handleView} />
+</RowActionsMenu>
+```
+
+| Prop / thành phần | Mục đích |
+|---|---|
+| `RowActionsMenu` | State mở/đóng, click-outside, `align` `left` \| `right` |
+| `RowActionsMenuItem` | Một dòng action; `tone`: `primary` \| `amber` \| `emerald` \| `danger` |
+| `disabled` + `title` | Ẩn/hiện quyền và tooltip lý do không bấm được |
+
+Xem thêm mục **Cột Thao tác — menu ba chấm dọc** (§2).
 
 ### `ActionCard`
 

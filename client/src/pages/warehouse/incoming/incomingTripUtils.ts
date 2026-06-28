@@ -304,6 +304,9 @@ export const isExpectedArrivingTrip = (trip: IncomingTrip) => normalizeTripStatu
 
 export const getTotalCollect = (trip: IncomingTrip) => normalizeNumber(trip.total_collect);
 
+/** Tổng COD + CC trên chuyến — số tiền phải thu */
+export const getTripReceivableAmount = (trip: IncomingTrip) => getTotalCollect(trip);
+
 export const getTripPayableAmount = (trip: IncomingTrip) => normalizeNumber(trip.trip_cost);
 
 export const getTripPaidAmount = (trip: IncomingTrip) => normalizeNumber(trip.vendor_paid_amount);
