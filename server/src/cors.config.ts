@@ -10,9 +10,11 @@ const DEV_CORS_ORIGINS = [
 const BUILTIN_CORS_ORIGINS = [
   'https://eco-webapp.vercel.app',
   'https://eco-webapp-htung0403.vercel.app',
+  'https://econew-six.vercel.app',
 ];
 
-const VERCEL_PREVIEW_ORIGIN = /^https:\/\/eco-webapp[\w-]*\.vercel\.app$/i;
+/** Mọi preview/production deploy trên Vercel (*.vercel.app). */
+const VERCEL_PREVIEW_ORIGIN = /^https:\/\/[\w-]+\.vercel\.app$/i;
 const RENDER_ORIGIN = /^https:\/\/[\w-]+\.onrender\.com$/i;
 
 export function isAllowedCorsOrigin(origin?: string | null): boolean {
