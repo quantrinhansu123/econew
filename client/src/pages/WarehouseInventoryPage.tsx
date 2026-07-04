@@ -18,13 +18,17 @@ import WaybillCashVoucherDialog from './warehouse/inventory/dialogs/WaybillCashV
 import StackOntoTruckDialog from './warehouse/inventory/dialogs/StackOntoTruckDialog';
 import { mapWaybillsToPrintRows, saveInventoryPrintPayload, summarizeFilters } from './print/inventoryPrintUtils';
 import InventoryColumnPicker from './warehouse/inventory/InventoryColumnPicker';
+import AllOrdersTableHeader from './warehouse/inventory/AllOrdersTableHeader';
 import { downloadInventoryExcel } from './warehouse/inventory/inventoryExcelUtils';
 import {
-  INVENTORY_COLUMNS,
   canCollectCashPayment,
   computeGrandTotals,
   getStorageAgeRowClass,
   loadVisibleColumnIds,
+  loadAllOrdersVisibleColumnIds,
+  resolveVisibleColumnViews,
+  resolveCongSg,
+  resolvePackageCountSl,
   resolveFreight,
   resolveCustomerName,
   resolveServiceType,
@@ -41,6 +45,7 @@ import {
   resolveWeightKg,
   saveVisibleColumnIds,
   type InventoryColumnId,
+  type InventoryColumnView,
 } from './warehouse/inventory/inventoryColumns';
 import { buildInventoryTripLinesQuery, isIncompleteSplitRow } from './warehouse/inventory/inventoryTripLines';
 import type { BadgeConfig, FilterOption, HubSummary, InventoryFilters, InventoryListResponse, WaybillInventoryDetail, WaybillInventoryItem } from './warehouse/inventory/types';
@@ -174,7 +179,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const canEdit = canEditWaybill(user?.role_mask ?? 0);
   const canDelete = hasManagerAccess(user?.role_mask ?? 0);
   const [visibleColumnIds, setVisibleColumnIds] = useState<InventoryColumnId[]>(() =>
-    loadVisibleColumnIds(canViewPricing),
+    isAllOrders ? loadAllOrdersVisibleColumnIds() : loadVisibleColumnIds(canViewPricing),
   );
   const totalPages = Math.max(1, Math.ceil(total / filters.limit));
   const hubOptions = useMemo(() => hubs.map(hub => ({ value: String(hub.id), label: formatHub(hub) })), [hubs]);
@@ -187,8 +192,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     Number(Boolean(filters.receivedFrom || filters.receivedTo)) +
     Number(Boolean(filters.ma_kh.trim()));
   const visibleColumns = useMemo(
-    () => INVENTORY_COLUMNS.filter((col) => visibleColumnIds.includes(col.id)),
-    [visibleColumnIds],
+    () => resolveVisibleColumnViews(visibleColumnIds, variant, canViewPricing),
+    [visibleColumnIds, variant, canViewPricing],
   );
   const grandTotals = useMemo(
     () => computeGrandTotals(waybills, canViewPricing),
@@ -540,16 +545,6 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               </button>
             )}
             {isAllOrders && <DateRangePicker value={{ from: filters.receivedFrom, to: filters.receivedTo }} onChange={({ from, to }) => updateFilters({ receivedFrom: from || '', receivedTo: to || '' })} placeholder="Từ ngày - Đến ngày" className="w-[18.5rem] shrink-0" />}
-            {isAllOrders && canUpdateCustomerPayment && (
-              <button
-                type="button"
-                disabled={!selectedWaybillIds.length}
-                onClick={() => setIsPaymentStatusDialogOpen(true)}
-                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[13px] font-extrabold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
-              >
-                Cập nhật TT ({selectedWaybillIds.length})
-              </button>
-            )}
             {isAllOrders && activeFilterCount > 0 && <button onClick={clearFilters} className="h-10 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100">× Xóa {activeFilterCount} bộ lọc</button>}
             <button
               type="button"
@@ -562,7 +557,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             </button>
             <button
               onClick={() => setIsColumnPickerOpen(true)}
-              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground hover:bg-muted"
+              className={clsx(
+                'inline-flex h-10 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground hover:bg-muted',
+                isAllOrders && 'hidden',
+              )}
             >
               <SlidersHorizontal size={16} />
               <span className="hidden sm:inline">Cột</span>
@@ -608,37 +606,46 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
           {isLoading ? <StateCard compact icon={<Loader2 className="animate-spin" size={24} />} title="Đang tải dữ liệu" description={isAllOrders ? 'Hệ thống đang lấy danh sách đơn từ API.' : 'Hệ thống đang lấy danh sách vận đơn tồn kho từ API.'} /> : waybills.length === 0 ? <StateCard compact icon={<Package size={24} />} title={isAllOrders ? 'Chưa có đơn' : 'Chưa có đơn cần chia'} description={isAllOrders ? 'Chưa có vận đơn nào trong hệ thống.' : 'Tất cả đơn tồn kho đã phân hết kiện lên xe, hoặc thử đổi bộ lọc.'} /> : (
             <>
               <table className="hidden md:table w-full min-w-[1280px] text-left border-collapse">
-                <thead className="bg-slate-100 text-[11px] uppercase tracking-wider text-slate-600">
-                  <tr>
-                    {selectionEnabled && (
-                      <th className="w-10 px-2 py-2.5 font-bold border-r border-border text-center">
-                        <input
-                          type="checkbox"
-                          checked={allRowsSelected}
-                          onChange={toggleSelectAll}
-                          className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
-                          aria-label="Chọn tất cả"
-                        />
-                      </th>
-                    )}
-                    {visibleColumns.map((col) => (
-                      <th key={col.id} className="px-4 py-2.5 font-bold border-r border-border last:border-r-0 whitespace-nowrap">
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
+                <thead className="text-[11px] uppercase tracking-wider text-slate-600">
+                  {isAllOrders ? (
+                    <AllOrdersTableHeader
+                      columns={visibleColumns}
+                      selectionEnabled={false}
+                    />
+                  ) : (
+                    <tr className="bg-slate-100">
+                      {selectionEnabled && (
+                        <th className="w-10 px-2 py-2.5 font-bold border-r border-border text-center">
+                          <input
+                            type="checkbox"
+                            checked={allRowsSelected}
+                            onChange={toggleSelectAll}
+                            className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
+                            aria-label="Chọn tất cả"
+                          />
+                        </th>
+                      )}
+                      {visibleColumns.map((col) => (
+                        <th key={col.id} className="px-4 py-2.5 font-bold border-r border-border last:border-r-0 whitespace-nowrap">
+                          {col.label}
+                        </th>
+                      ))}
+                    </tr>
+                  )}
                 </thead>
                 <tbody>
-                  {waybills.map((waybill) => (
+                  {waybills.map((waybill, rowIndex) => (
                     <InventoryRow
                       key={`${waybill.id}-${waybill.split_id ?? 'base'}`}
                       waybill={waybill}
                       columns={visibleColumns}
+                      rowIndex={(filters.page - 1) * filters.limit + rowIndex + 1}
+                      isAllOrders={isAllOrders}
                       canViewPricing={canViewPricing}
                       canUpdate={canUpdate}
                       canEdit={canEdit}
                       canDelete={canDelete}
-                      showSelection={selectionEnabled}
+                      showSelection={selectionEnabled && !isAllOrders}
                       selected={selectedWaybillIds.includes(String(waybill.id))}
                       onToggleSelect={toggleSelectRow}
                       openActionMenuId={openActionMenuId}
@@ -652,6 +659,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                     />
                   ))}
                 </tbody>
+                {!isAllOrders && (
                 <tfoot className="bg-slate-50 text-[12px] font-extrabold text-foreground">
                   <tr>
                     {selectionEnabled && <td className="border-t border-border px-2 py-2.5 border-r" />}
@@ -666,6 +674,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                     ))}
                   </tr>
                 </tfoot>
+                )}
               </table>
               <div className="grid gap-3 p-3 md:hidden">{waybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} canUpdate={canUpdate} canEdit={canEdit} canDelete={canDelete} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onDelete={confirmDeleteWaybill} onSplit={openSplit} onCashVoucher={openCashVoucher} />)}</div>
             </>
@@ -697,6 +706,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         />
       )}
       <SplitOrderDialog isOpen={isBoardOpen} isClosing={isBoardClosing} waybill={null} onClose={closeBoard} />
+      {!isAllOrders && (
       <InventoryColumnPicker
         isOpen={isColumnPickerOpen}
         visibleIds={visibleColumnIds}
@@ -707,6 +717,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         }}
         onClose={() => setIsColumnPickerOpen(false)}
       />
+      )}
       <ConfirmDialog dialog={confirmDialog} isSubmitting={isDeleting} onClose={() => setConfirmDialog(null)} />
       <WaybillCashVoucherDialog
         isOpen={isCashVoucherOpen}
@@ -784,6 +795,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
 function InventoryRow({
   waybill,
   columns,
+  rowIndex,
+  isAllOrders,
   canViewPricing,
   canUpdate,
   canEdit,
@@ -800,7 +813,9 @@ function InventoryRow({
   onSplit,
   onCashVoucher,
 }: InventoryItemProps & {
-  columns: typeof INVENTORY_COLUMNS;
+  columns: InventoryColumnView[];
+  rowIndex?: number;
+  isAllOrders?: boolean;
   canViewPricing: boolean;
   showSelection?: boolean;
   selected?: boolean;
@@ -810,12 +825,20 @@ function InventoryRow({
 
   const renderCell = (colId: InventoryColumnId) => {
     switch (colId) {
+      case 'stt':
+        return <td className={`${cellClass} text-center font-bold text-muted-foreground`}>{rowIndex ?? '—'}</td>;
+      case 'cong_sg':
+        return <td className={cellClass}>{resolveCongSg(waybill)}</td>;
       case 'stack_position':
         return <td className={`${cellClass} min-w-[72px] text-muted-foreground`}>&nbsp;</td>;
       case 'order_code':
         return <td className={`${cellClass} font-bold text-violet-800`}>{waybill.order_code || '—'}</td>;
       case 'waybill_code':
-        return <td className={`${cellClass} font-extrabold text-primary`}>{displayCode(waybill)}</td>;
+        return (
+          <td className={`${cellClass} ${isAllOrders ? 'font-bold' : 'font-extrabold text-primary'}`}>
+            {displayCode(waybill)}
+          </td>
+        );
       case 'customer_name':
         return <td className={`${cellClass} font-semibold`}>{resolveCustomerName(waybill)}</td>;
       case 'bill_info':
@@ -863,7 +886,11 @@ function InventoryRow({
         return <td className={`${cellClass} font-bold text-right`}>{displayValue(resolveTransitFee(waybill), ' đ')}</td>;
       case 'total_amount': {
         const totalAmount = resolveFreight(waybill) + resolveTransitFee(waybill);
-        return <td className={`${cellClass} font-bold text-right`}>{canViewPricing ? displayValue(totalAmount, ' đ') : '—'}</td>;
+        return (
+          <td className={clsx(cellClass, 'font-bold text-right', isAllOrders && 'bg-emerald-50/80 text-emerald-800')}>
+            {canViewPricing ? displayValue(totalAmount, ' đ') : '—'}
+          </td>
+        );
       }
       case 'thu_ho_khach':
         return <td className={`${cellClass} font-bold text-right`}>{displayValue(waybill.allocated_cod ?? waybill.cod_amount, ' đ')}</td>;
@@ -873,10 +900,14 @@ function InventoryRow({
         const status = String(waybill.customer_payment_status || '');
         const label = customerPaymentStatusText[status] || '—';
         const tone = status === 'PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : status === 'SENT_STATEMENT' ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200';
-        return <td className={cellClass}><span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${tone}`}>{label}</span></td>;
+        return (
+          <td className={clsx(cellClass, isAllOrders && 'bg-yellow-50/80')}>
+            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${tone}`}>{label}</span>
+          </td>
+        );
       }
       case 'customer_payment_note':
-        return <td className={cellClass}>{waybill.customer_payment_note || '—'}</td>;
+        return <td className={clsx(cellClass, isAllOrders && 'max-w-[120px]')}>{waybill.customer_payment_note || '—'}</td>;
       case 'route':
         return (
           <td className="overflow-visible px-4 py-3 border-r border-border">
@@ -894,12 +925,14 @@ function InventoryRow({
         return <td className={cellClass}>{resolveReceiverAddress(waybill)}</td>;
       case 'package_count':
         return (
-          <td className={`${cellClass} font-medium`}>
-            {waybill.remaining_packages != null
-              ? `${waybill.remaining_packages} / ${waybill.order_total_packages ?? waybill.package_count ?? waybill.remaining_packages}`
-              : waybill.trip_package_count != null
-                ? `${waybill.trip_package_count} / ${waybill.order_total_packages ?? waybill.package_count ?? waybill.trip_package_count}`
-                : displayValue(waybill.package_count || waybill.declared_package_count)}
+          <td className={`${cellClass} font-medium text-right`}>
+            {isAllOrders
+              ? resolvePackageCountSl(waybill)
+              : waybill.remaining_packages != null
+                ? `${waybill.remaining_packages} / ${waybill.order_total_packages ?? waybill.package_count ?? waybill.remaining_packages}`
+                : waybill.trip_package_count != null
+                  ? `${waybill.trip_package_count} / ${waybill.order_total_packages ?? waybill.package_count ?? waybill.trip_package_count}`
+                  : displayValue(waybill.package_count || waybill.declared_package_count)}
           </td>
         );
       case 'weight':
@@ -955,7 +988,15 @@ function InventoryRow({
   };
 
   return (
-    <tr className={clsx('border-b border-border align-top transition-colors', getStorageAgeRowClass(waybill), selected && 'bg-amber-50/60')}>
+    <tr
+      className={clsx(
+        'border-b border-border align-top transition-colors',
+        getStorageAgeRowClass(waybill),
+        selected && 'bg-amber-50/60',
+        isAllOrders && 'cursor-pointer hover:bg-sky-50/50',
+      )}
+      onClick={isAllOrders ? () => onDetail(waybill) : undefined}
+    >
       {showSelection && (
         <td className="w-10 border-r border-border px-2 py-3 text-center">
           <input

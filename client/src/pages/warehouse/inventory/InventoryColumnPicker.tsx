@@ -1,27 +1,44 @@
 import { SlidersHorizontal, X } from 'lucide-react';
 import type { InventoryColumnId } from './inventoryColumns';
-import { INVENTORY_COLUMNS } from './inventoryColumns';
+import {
+  ALL_ORDERS_DISALLOWED_COLUMN_IDS,
+  ALL_ORDERS_FINANCIAL_COLUMN_IDS,
+  ALL_ORDERS_SENDER_COLUMN_IDS,
+  INVENTORY_COLUMNS,
+  resolveAllOrdersColumnLabel,
+} from './inventoryColumns';
 
 interface Props {
   isOpen: boolean;
   visibleIds: InventoryColumnId[];
   canViewPricing: boolean;
+  mode?: 'inventory' | 'all-orders';
   onChange: (ids: InventoryColumnId[]) => void;
   onClose: () => void;
 }
 
-export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPricing, onChange, onClose }: Props) {
+export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPricing, mode = 'inventory', onChange, onClose }: Props) {
   if (!isOpen) return null;
 
   const toggle = (id: InventoryColumnId) => {
-    if (id === 'waybill_code' || id === 'actions') return;
+    if (id === 'waybill_code' || id === 'actions' || id === 'stt') return;
     const set = new Set(visibleIds);
     if (set.has(id)) set.delete(id);
     else set.add(id);
     onChange(Array.from(set));
   };
 
-  const options = INVENTORY_COLUMNS.filter((col) => col.id !== 'actions' && (!col.managerOnly || canViewPricing));
+  const options = INVENTORY_COLUMNS.filter((col) => {
+    if (col.id === 'actions' || col.id === 'stt') return false;
+    if (mode === 'all-orders') {
+      if (ALL_ORDERS_DISALLOWED_COLUMN_IDS.includes(col.id)) return false;
+      return (
+        col.id === 'waybill_code' ||
+        [...ALL_ORDERS_SENDER_COLUMN_IDS, ...ALL_ORDERS_FINANCIAL_COLUMN_IDS].includes(col.id)
+      );
+    }
+    return !col.managerOnly || canViewPricing;
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4">
@@ -52,7 +69,9 @@ export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPrici
                 onChange={() => toggle(col.id)}
                 className="h-4 w-4 rounded border-border text-primary"
               />
-              <span className="text-[13px] font-bold text-foreground">{col.label}</span>
+              <span className="text-[13px] font-bold text-foreground">
+                {mode === 'all-orders' ? resolveAllOrdersColumnLabel(col.id) : col.label}
+              </span>
             </label>
           ))}
         </div>

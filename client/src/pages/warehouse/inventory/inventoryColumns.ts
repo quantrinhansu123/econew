@@ -1,6 +1,8 @@
 import type { WaybillInventoryItem } from './types';
 
 export type InventoryColumnId =
+  | 'stt'
+  | 'cong_sg'
   | 'stack_position'
   | 'order_code'
   | 'waybill_code'
@@ -45,6 +47,8 @@ export interface InventoryColumnDef {
 }
 
 export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
+  { id: 'stt', label: 'STT', defaultVisible: false },
+  { id: 'cong_sg', label: 'Cộng SG', defaultVisible: false },
   { id: 'stack_position', label: 'Vị trí Xếp hàng', defaultVisible: true },
   { id: 'order_code', label: 'Mã đơn hàng', defaultVisible: true },
   { id: 'customer_name', label: 'Tên khách', defaultVisible: true },
@@ -82,6 +86,116 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
 ];
 
 export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v6';
+
+/** Không dùng trên danh sách đơn — thay bằng Bill + Cộng SG riêng */
+export const ALL_ORDERS_DISALLOWED_COLUMN_IDS: InventoryColumnId[] = [
+  'route',
+  'stack_position',
+  'bill_info',
+];
+
+/** Cột STT — luôn đứng đầu bảng */
+export const ALL_ORDERS_PREFIX_COLUMN_IDS: InventoryColumnId[] = ['stt'];
+
+/** Cột nhóm "Thông tin người gửi" — theo bảng Excel danh sách đơn */
+export const ALL_ORDERS_SENDER_COLUMN_IDS: InventoryColumnId[] = [
+  'received_at',
+  'customer_name',
+  'waybill_code',
+  'cong_sg',
+  'service_type',
+  'noi_den',
+  'package_count',
+  'billing_unit',
+];
+
+/** Cột nhóm thanh toán / cước phí */
+export const ALL_ORDERS_FINANCIAL_COLUMN_IDS: InventoryColumnId[] = [
+  'unit_price',
+  'total_amount',
+  'thu_ho_khach',
+  'payment_method',
+  'customer_payment_status',
+  'customer_payment_note',
+];
+
+export const ALL_ORDERS_FIXED_COLUMN_IDS: InventoryColumnId[] = [
+  ...ALL_ORDERS_PREFIX_COLUMN_IDS,
+  ...ALL_ORDERS_SENDER_COLUMN_IDS,
+  ...ALL_ORDERS_FINANCIAL_COLUMN_IDS,
+];
+
+/** @deprecated Dùng ALL_ORDERS_FIXED_COLUMN_IDS */
+export const ALL_ORDERS_DEFAULT_COLUMN_IDS = ALL_ORDERS_FIXED_COLUMN_IDS;
+
+export function getAllOrdersFixedColumnIds(): InventoryColumnId[] {
+  return [...ALL_ORDERS_FIXED_COLUMN_IDS];
+}
+
+const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
+  received_at: 'Ngày nhận',
+  customer_name: 'Tên khách',
+  waybill_code: 'Bill',
+  cong_sg: 'Cộng SG',
+  service_type: 'Dịch vụ',
+  noi_den: 'Nơi đến',
+  package_count: 'SL',
+  billing_unit: 'ĐVT',
+  stt: 'STT',
+  unit_price: 'Đơn giá',
+  total_amount: 'Thành tiền',
+  thu_ho_khach: 'Thu hộ khách',
+  payment_method: 'Hình thức thanh toán',
+  customer_payment_status: 'Tình trạng TT',
+  customer_payment_note: 'Ghi chú',
+};
+
+export type InventoryColumnView = InventoryColumnDef & {
+  headerClass?: string;
+};
+
+export function resolveAllOrdersColumnLabel(id: InventoryColumnId): string {
+  return ALL_ORDERS_COLUMN_LABELS[id] ?? INVENTORY_COLUMNS.find((col) => col.id === id)?.label ?? id;
+}
+
+export function resolveVisibleColumnViews(
+  visibleColumnIds: InventoryColumnId[],
+  variant: 'split-pending' | 'all-orders',
+  canViewPricing: boolean,
+): InventoryColumnView[] {
+  const ids = variant === 'all-orders' ? getAllOrdersFixedColumnIds() : visibleColumnIds;
+  return ids
+    .map((id) => {
+      const base = INVENTORY_COLUMNS.find((col) => col.id === id);
+      if (!base) return null;
+      if (base.managerOnly && !canViewPricing && variant !== 'all-orders') return null;
+      if (variant !== 'all-orders') return base;
+      const headerClass =
+        id === 'total_amount'
+          ? 'bg-emerald-100 text-emerald-900'
+          : id === 'customer_payment_status'
+            ? 'bg-yellow-100 text-yellow-900'
+            : undefined;
+      return {
+        ...base,
+        label: resolveAllOrdersColumnLabel(id),
+        headerClass,
+      };
+    })
+    .filter((col): col is InventoryColumnView => col != null);
+}
+
+export function getAllOrdersDefaultVisibleColumnIds(): InventoryColumnId[] {
+  return getAllOrdersFixedColumnIds();
+}
+
+export function loadAllOrdersVisibleColumnIds(): InventoryColumnId[] {
+  return getAllOrdersFixedColumnIds();
+}
+
+export function saveAllOrdersVisibleColumnIds(_ids: InventoryColumnId[]) {
+  /* Danh sách đơn: cột cố định theo mockup, không lưu tùy chỉnh */
+}
 
 export function getDefaultVisibleColumnIds(canViewPricing: boolean): InventoryColumnId[] {
   return INVENTORY_COLUMNS.filter((col) => {
@@ -138,6 +252,15 @@ const parseNote = (note: string | null | undefined, key: string) => {
 
 export function resolveMaKh(waybill: WaybillInventoryItem): string {
   return (waybill as { ma_kh?: string }).ma_kh?.trim() || parseNote(waybill.note || waybill.notes, 'ma_kh') || '—';
+}
+
+export function resolveCongSg(waybill: WaybillInventoryItem): string {
+  return waybill.noi_dung?.trim() || waybill.mat_hang?.trim() || waybill.order?.noi_dung?.trim() || '—';
+}
+
+export function resolvePackageCountSl(waybill: WaybillInventoryItem): string {
+  const count = Number(waybill.package_count ?? waybill.declared_package_count ?? waybill.order_total_packages ?? 0);
+  return Number.isFinite(count) && count > 0 ? String(count) : '—';
 }
 
 export function resolveCustomerName(waybill: WaybillInventoryItem): string {
