@@ -11,6 +11,7 @@ describe('cors.config', () => {
   it('allows production frontend and preview URLs', () => {
     expect(isAllowedCorsOrigin('https://eco-webapp.vercel.app')).toBe(true);
     expect(isAllowedCorsOrigin('https://eco-webapp-git-main-htung0403.vercel.app')).toBe(true);
+    expect(isAllowedCorsOrigin('https://eco-transport-api.onrender.com')).toBe(true);
   });
 
   it('merges env origins with built-in production URLs', () => {

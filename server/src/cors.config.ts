@@ -13,12 +13,14 @@ const BUILTIN_CORS_ORIGINS = [
 ];
 
 const VERCEL_PREVIEW_ORIGIN = /^https:\/\/eco-webapp[\w-]*\.vercel\.app$/i;
+const RENDER_ORIGIN = /^https:\/\/[\w-]+\.onrender\.com$/i;
 
 export function isAllowedCorsOrigin(origin?: string | null): boolean {
   if (!origin) return true;
   const allowed = resolveCorsOriginList();
   if (allowed.includes(origin)) return true;
-  return VERCEL_PREVIEW_ORIGIN.test(origin);
+  if (VERCEL_PREVIEW_ORIGIN.test(origin)) return true;
+  return RENDER_ORIGIN.test(origin);
 }
 
 export function resolveCorsOriginList(): string[] {

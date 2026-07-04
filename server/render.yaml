@@ -1,0 +1,38 @@
+# Render Blueprint — https://github.com/quantrinhansu123/econew
+# Dashboard: New > Blueprint > connect repo, Root Directory = server (or deploy Web Service manually)
+
+services:
+  - type: web
+    name: eco-transport-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_POOLER_DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: payment-proofs
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 1h
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: CORS_ORIGIN
+        value: https://eco-webapp.vercel.app
+      - key: DB_POOL_MAX
+        value: "5"
+      - key: DB_CONNECTION_TIMEOUT_MS
+        value: "10000"
+      - key: DB_IDLE_TIMEOUT_MS
+        value: "10000"

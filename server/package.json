@@ -7,6 +7,7 @@
     "start": "nest start",
     "dev": "nest start --watch",
     "start:dev": "nest start --watch",
+    "start:prod": "node dist/main.js",
     "typeorm": "node -r ts-node/register ./node_modules/typeorm/cli.js -d src/data-source.ts",
     "migration:generate": "pnpm typeorm migration:generate src/migrations/InitialSchema",
     "migration:run": "pnpm typeorm migration:run",
