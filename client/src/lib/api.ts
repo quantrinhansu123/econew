@@ -1,3 +1,5 @@
+import { connectionErrorMessage, DEV_API_ORIGIN, DEV_API_PORT, resolveApiBaseUrl } from './apiBaseUrl';
+
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown;
   token?: string | null;
@@ -24,8 +26,7 @@ export class ApiError extends Error {
   }
 }
 
-const DEV_API_PORT = 3001;
-const DEV_API_ORIGIN = `http://127.0.0.1:${DEV_API_PORT}`;
+const CONNECTION_ERROR = connectionErrorMessage();
 
 const STATUS_MESSAGES: Record<number, string> = {
   401: 'Phiên đăng nhập hết hạn hoặc chưa đăng nhập. Vui lòng đăng nhập lại.',
@@ -33,22 +34,6 @@ const STATUS_MESSAGES: Record<number, string> = {
   404: 'Không tìm thấy API. Kiểm tra backend NestJS đang chạy (npm run dev trong thư mục server).',
   502: 'Không kết nối được backend. Chạy `cd server && npm run dev`, đợi dòng "API listening..." rồi thử lại.',
   503: 'Backend tạm thời không khả dụng.',
-};
-
-const resolveApiBaseUrl = () => {
-  // Dev: mặc định proxy Vite (/api/v1 → backend theo PORT trong server/.env). Tránh .env trỏ nhầm frontend.
-  if (import.meta.env.DEV && import.meta.env.VITE_API_URL_DIRECT !== 'true') {
-    return '/api/v1';
-  }
-
-  const fromEnv = import.meta.env.VITE_API_URL?.trim();
-  if (fromEnv) {
-    const fixedHost = fromEnv.replace(/\/\/localhost\b/i, '//127.0.0.1');
-    const base = fixedHost.replace(/\/$/, '');
-    return base.endsWith('/api/v1') ? base : `${base}/api/v1`;
-  }
-  if (import.meta.env.DEV) return '/api/v1';
-  return `${DEV_API_ORIGIN}/api/v1`;
 };
 
 export const API_BASE_URL = resolveApiBaseUrl();
@@ -171,11 +156,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   try {
     response = await fetch(`${API_BASE_URL}${requestPath}`, buildRequest(token ?? getStoredAccessToken()));
   } catch {
-    throw new ApiError(
-      0,
-      'Không kết nối được server. Kiểm tra backend (npm run start:dev trong server) và refresh trang.',
-      null,
-    );
+    throw new ApiError(0, CONNECTION_ERROR, null);
   }
 
   if (response.status === 401 && requestPath !== '/auth/login' && requestPath !== '/auth/refresh') {

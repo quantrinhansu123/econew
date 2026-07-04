@@ -1,17 +1,9 @@
 import { ApiError } from './api';
-
-const ACCESS_TOKEN_KEY = 'eco_access_token';
-
-const resolveApiBaseUrl = () => {
-  if (import.meta.env.DEV && import.meta.env.VITE_API_URL_DIRECT !== 'true') {
-    return '/api/v1';
-  }
-  const configured = import.meta.env.VITE_API_URL?.trim();
-  if (configured) return configured.replace(/\/$/, '');
-  return '/api/v1';
-};
+import { resolveApiBaseUrl } from './apiBaseUrl';
 
 const API_BASE_URL = resolveApiBaseUrl();
+
+const ACCESS_TOKEN_KEY = 'eco_access_token';
 
 const getStoredAccessToken = () => {
   if (typeof window === 'undefined') return null;

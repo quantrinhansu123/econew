@@ -1,10 +1,21 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "installCommand": "cd client && pnpm install --frozen-lockfile",
+  "installCommand": "cd client && pnpm install --frozen-lockfile && cd ../server && pnpm install --frozen-lockfile",
   "buildCommand": "cd client && pnpm build",
   "outputDirectory": "client/dist",
+  "functions": {
+    "server/api/index.ts": {
+      "maxDuration": 10,
+      "memory": 1024,
+      "regions": ["sin1"]
+    }
+  },
   "rewrites": [
+    {
+      "source": "/api/v1/(.*)",
+      "destination": "/server/api/index.ts"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
@@ -17,6 +28,15 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/api/v1/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
         }
       ]
     }
