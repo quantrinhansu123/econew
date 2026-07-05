@@ -12,11 +12,23 @@ Webapp B2B quản lý logistics — NestJS + React + PostgreSQL (Supabase).
 | `server/` | NestJS REST API (`/api/v1`) |
 | `docs/` | Tài liệu nội bộ (định dạng tiền, deploy, …) |
 
+## Yêu cầu
+
+- [Node.js LTS](https://nodejs.org) (≥ 20)
+- **pnpm** — bật qua Corepack (không cần npm):
+
+```bash
+corepack enable
+corepack prepare pnpm@latest --activate
+```
+
 ## Dev local
+
+Dự án dùng **pnpm** cho cả frontend và backend (không dùng npm/yarn).
 
 ```bash
 # Backend (port theo server/.env, mặc định 3002)
-cd server && npm install && npm run dev
+cd server && pnpm install && pnpm dev
 
 # Frontend (http://localhost:6060, proxy /api → backend)
 cd client && pnpm install && pnpm dev

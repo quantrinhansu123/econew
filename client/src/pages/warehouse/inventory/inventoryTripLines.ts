@@ -1,5 +1,6 @@
 import type { InventoryFilters } from './types';
 import type { WaybillInventoryItem } from './types';
+import { expandOrderStatusGroups } from './orderStatusUtils';
 
 export const isIncompleteSplitRow = (item: WaybillInventoryItem) => {
   if (item.split_id) return false;
@@ -10,8 +11,24 @@ export const isIncompleteSplitRow = (item: WaybillInventoryItem) => {
 };
 
 export function buildInventoryTripLinesQuery(
-  filters: Pick<InventoryFilters, 'page' | 'limit' | 'keyword' | 'hubIds' | 'statuses' | 'customerPaymentStatuses' | 'paymentTypes' | 'priorities' | 'receivedFrom' | 'receivedTo' | 'ma_kh'>,
-  options?: { onlyIncompleteSplit?: boolean },
+  filters: Pick<
+    InventoryFilters,
+    | 'page'
+    | 'limit'
+    | 'keyword'
+    | 'hubIds'
+    | 'statuses'
+    | 'orderStatusGroups'
+    | 'noiDenKeyword'
+    | 'billingUnits'
+    | 'customerPaymentStatuses'
+    | 'paymentTypes'
+    | 'priorities'
+    | 'receivedFrom'
+    | 'receivedTo'
+    | 'ma_kh'
+  >,
+  options?: { onlyIncompleteSplit?: boolean; listScope?: 'all_orders' },
 ) {
   const params = new URLSearchParams({
     page: String(filters.page),
@@ -19,16 +36,23 @@ export function buildInventoryTripLinesQuery(
   });
   if (filters.receivedFrom) params.set('received_from', filters.receivedFrom);
   if (filters.receivedTo) params.set('received_to', filters.receivedTo);
-  if (options?.onlyIncompleteSplit !== false) {
+  if (options?.onlyIncompleteSplit) {
     params.set('only_incomplete_split', '1');
+  }
+  if (options?.listScope === 'all_orders') {
+    params.set('list_scope', 'all_orders');
   }
   if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
   if (filters.ma_kh?.trim()) params.set('ma_kh', filters.ma_kh.trim());
-  if (filters.statuses.length) params.set('status', filters.statuses.join(','));
+  const statusFromGroups = expandOrderStatusGroups(filters.orderStatusGroups);
+  const statuses = [...new Set([...filters.statuses, ...statusFromGroups])];
+  if (statuses.length) params.set('status', statuses.join(','));
   if (filters.customerPaymentStatuses.length) params.set('customer_payment_status', filters.customerPaymentStatuses.join(','));
   if (filters.hubIds.length) params.set('hub_id', filters.hubIds.join(','));
   if (filters.paymentTypes.length) params.set('payment_type', filters.paymentTypes.join(','));
   if (filters.priorities.length) params.set('priority', filters.priorities.join(','));
+  if (filters.noiDenKeyword.trim()) params.set('noi_den', filters.noiDenKeyword.trim());
+  if (filters.billingUnits.length) params.set('billing_unit', filters.billingUnits.join(','));
   return params.toString();
 }
 

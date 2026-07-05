@@ -3,6 +3,7 @@ import {
   ALL_ORDERS_FINANCIAL_COLUMN_IDS,
   ALL_ORDERS_PREFIX_COLUMN_IDS,
   ALL_ORDERS_SENDER_COLUMN_IDS,
+  ALL_ORDERS_SUFFIX_COLUMN_IDS,
   type InventoryColumnView,
 } from './inventoryColumns';
 
@@ -26,7 +27,8 @@ export default function AllOrdersTableHeader({
     (col) =>
       !ALL_ORDERS_PREFIX_COLUMN_IDS.includes(col.id) &&
       !ALL_ORDERS_SENDER_COLUMN_IDS.includes(col.id) &&
-      !ALL_ORDERS_FINANCIAL_COLUMN_IDS.includes(col.id),
+      !ALL_ORDERS_FINANCIAL_COLUMN_IDS.includes(col.id) &&
+      ALL_ORDERS_SUFFIX_COLUMN_IDS.includes(col.id),
   );
 
   return (

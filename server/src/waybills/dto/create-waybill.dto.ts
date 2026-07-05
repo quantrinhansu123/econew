@@ -19,6 +19,7 @@ export class CreateWaybillDto {
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) freight_amount?: number;
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) cc_amount?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() note?: string;
+  @ApiPropertyOptional({ description: 'Tỉnh đến của địa chỉ nhận' }) @IsOptional() @IsString() noi_den?: string;
   @ApiPropertyOptional({ description: 'Nội dung hàng / mặt hàng' }) @IsOptional() @IsString() noi_dung?: string;
   @ApiPropertyOptional({ description: 'Biển số xe lấy hàng — nhiều xe cách nhau bởi dấu phẩy' })
   @IsOptional()

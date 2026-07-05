@@ -14,6 +14,11 @@ import {
   resolveReceiverPhone,
   resolveVolumeM3,
   resolveWeightKg,
+  resolveSurcharge,
+  resolveTotalAmount,
+  resolveBillingQtyDetail,
+  resolveOrderStatusBadge,
+  resolveCongSg,
 } from './inventoryColumns';
 import type { BadgeConfig, WaybillInventoryItem } from './types';
 
@@ -42,15 +47,18 @@ export function buildInventoryExcelRows(
       'Mã đơn hàng': cell(waybill.order_code),
       'Tên khách': resolveCustomerName(waybill),
       'Mã vận đơn': cell(waybill.waybill_code || waybill.code),
-      'Bill/Cộng SG': cell(waybill.noi_dung || waybill.mat_hang),
+      'Bill/Nội dung': resolveCongSg(waybill),
       'Dịch vụ': resolveServiceType(waybill),
       'Phân xe': cell(waybill.trip_label || waybill.license_plate || 'Chưa phân xe'),
       'Ngày bốc hàng': dateCell(resolveLoadedAt(waybill)),
       'Ngày nhận đơn': dateCell(waybill.received_at || waybill.created_at || null),
-      'Trạng thái': statusConfig[status]?.label || status,
-      'Tỉnh đến': resolveNoiDen(waybill),
+      'Trạng thái': resolveOrderStatusBadge(waybill).label,
+      'Nơi đến': resolveNoiDen(waybill),
+      'Địa chỉ': resolveReceiverAddress(waybill),
       ĐVT: resolveBillingUnit(waybill),
+      'Kg / khối': resolveBillingQtyDetail(waybill),
       'Đơn giá': numberCell(resolveUnitPrice(waybill)),
+      'Phụ phí': numberCell(resolveSurcharge(waybill)),
       'Trung chuyển': numberCell(resolveTransitFee(waybill)),
       'Tuyến': cell(waybill.route_code || waybill.delivery_route),
       'Mã KH': resolveMaKh(waybill),
@@ -74,7 +82,7 @@ export function buildInventoryExcelRows(
     if (showPricing) {
       const cuocPhi = Number(waybill.allocated_freight ?? resolveFreight(waybill)) || 0;
       row['Cước phí'] = numberCell(cuocPhi);
-      row['Thành tiền'] = numberCell(cuocPhi + resolveTransitFee(waybill));
+      row['Thành tiền'] = numberCell(resolveTotalAmount(waybill));
     }
     return row;
   });

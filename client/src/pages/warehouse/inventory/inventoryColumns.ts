@@ -1,4 +1,6 @@
 import type { WaybillInventoryItem } from './types';
+import { extractProvinceFromAddress, isHubCode, normalizeProvinceLabel } from '../../../lib/vietnamProvince';
+import { resolveOrderStatusGroup, orderStatusGroupConfig } from './orderStatusUtils';
 
 export type InventoryColumnId =
   | 'stt'
@@ -13,8 +15,11 @@ export type InventoryColumnId =
   | 'loaded_at'
   | 'received_at'
   | 'noi_den'
+  | 'order_status'
   | 'billing_unit'
+  | 'billing_qty_detail'
   | 'unit_price'
+  | 'surcharge'
   | 'transit_fee'
   | 'total_amount'
   | 'thu_ho_khach'
@@ -59,8 +64,11 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'loaded_at', label: 'Ngày bốc hàng', defaultVisible: true },
   { id: 'received_at', label: 'Ngày nhận đơn', defaultVisible: false },
   { id: 'noi_den', label: 'Tỉnh đến', defaultVisible: true },
+  { id: 'order_status', label: 'Trạng thái đơn', defaultVisible: true },
   { id: 'billing_unit', label: 'ĐVT', defaultVisible: true },
+  { id: 'billing_qty_detail', label: 'Kg / khối', defaultVisible: true, align: 'right' },
   { id: 'unit_price', label: 'Đơn giá', defaultVisible: true, align: 'right' },
+  { id: 'surcharge', label: 'Phụ phí', defaultVisible: true, managerOnly: true, align: 'right' },
   { id: 'transit_fee', label: 'Trung chuyển', defaultVisible: true, align: 'right' },
   { id: 'total_amount', label: 'Thành tiền', defaultVisible: true, managerOnly: true, align: 'right' },
   { id: 'thu_ho_khach', label: 'Thu hộ khách', defaultVisible: true, align: 'right' },
@@ -105,13 +113,17 @@ export const ALL_ORDERS_SENDER_COLUMN_IDS: InventoryColumnId[] = [
   'cong_sg',
   'service_type',
   'noi_den',
+  'receiver_address',
+  'order_status',
   'package_count',
   'billing_unit',
+  'billing_qty_detail',
 ];
 
 /** Cột nhóm thanh toán / cước phí */
 export const ALL_ORDERS_FINANCIAL_COLUMN_IDS: InventoryColumnId[] = [
   'unit_price',
+  'surcharge',
   'total_amount',
   'thu_ho_khach',
   'payment_method',
@@ -119,10 +131,13 @@ export const ALL_ORDERS_FINANCIAL_COLUMN_IDS: InventoryColumnId[] = [
   'customer_payment_note',
 ];
 
+export const ALL_ORDERS_SUFFIX_COLUMN_IDS: InventoryColumnId[] = ['actions'];
+
 export const ALL_ORDERS_FIXED_COLUMN_IDS: InventoryColumnId[] = [
   ...ALL_ORDERS_PREFIX_COLUMN_IDS,
   ...ALL_ORDERS_SENDER_COLUMN_IDS,
   ...ALL_ORDERS_FINANCIAL_COLUMN_IDS,
+  ...ALL_ORDERS_SUFFIX_COLUMN_IDS,
 ];
 
 /** @deprecated Dùng ALL_ORDERS_FIXED_COLUMN_IDS */
@@ -136,12 +151,16 @@ const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   received_at: 'Ngày nhận',
   customer_name: 'Tên khách',
   waybill_code: 'Bill',
-  cong_sg: 'Cộng SG',
+  cong_sg: 'Nội dung',
   service_type: 'Dịch vụ',
   noi_den: 'Nơi đến',
+  receiver_address: 'Địa chỉ',
+  order_status: 'Trạng thái',
+  billing_qty_detail: 'Kg / khối',
+  surcharge: 'Phụ phí',
+  stt: 'STT',
   package_count: 'SL',
   billing_unit: 'ĐVT',
-  stt: 'STT',
   unit_price: 'Đơn giá',
   total_amount: 'Thành tiền',
   thu_ho_khach: 'Thu hộ khách',
@@ -173,6 +192,8 @@ export function resolveVisibleColumnViews(
       const headerClass =
         id === 'total_amount'
           ? 'bg-emerald-100 text-emerald-900'
+          : id === 'surcharge'
+            ? 'bg-orange-50 text-orange-900'
           : id === 'customer_payment_status'
             ? 'bg-yellow-100 text-yellow-900'
             : undefined;
@@ -255,7 +276,14 @@ export function resolveMaKh(waybill: WaybillInventoryItem): string {
 }
 
 export function resolveCongSg(waybill: WaybillInventoryItem): string {
-  return waybill.noi_dung?.trim() || waybill.mat_hang?.trim() || waybill.order?.noi_dung?.trim() || '—';
+  const note = waybill.note || waybill.notes || '';
+  return (
+    waybill.noi_dung?.trim()
+    || parseNote(note, 'content')
+    || waybill.mat_hang?.trim()
+    || waybill.order?.noi_dung?.trim()
+    || '—'
+  );
 }
 
 export function resolvePackageCountSl(waybill: WaybillInventoryItem): string {
@@ -278,11 +306,10 @@ export function resolveBillingUnit(waybill: WaybillInventoryItem): string {
 }
 
 export function resolveUnitPrice(waybill: WaybillInventoryItem): number {
-  const fromNote = Number(String(parseNote(waybill.note || waybill.notes, 'unit_price')).replace(/[^\d.-]/g, ''));
+  const note = waybill.note || waybill.notes || '';
+  const fromNote = Number(String(parseNote(note, 'unit_price')).replace(/\D/g, ''));
   if (Number.isFinite(fromNote) && fromNote > 0) return fromNote;
-  const freight = resolveFreight(waybill);
-  const qty = Math.max(Number(waybill.weight ?? 0), Number(waybill.volumetric_weight ?? 0), 1);
-  return Math.round(freight / qty);
+  return 0;
 }
 
 export function resolveTransitFee(waybill: WaybillInventoryItem): number {
@@ -300,9 +327,58 @@ export function resolvePaymentMethod(waybill: WaybillInventoryItem): string {
 }
 
 export function resolveNoiDen(waybill: WaybillInventoryItem): string {
-  const noiDen = (waybill as { noi_den?: string }).noi_den?.trim();
-  if (noiDen) return noiDen;
-  return waybill.dest_hub?.name || waybill.dest_hub?.code?.toUpperCase() || '—';
+  const note = waybill.note || waybill.notes || '';
+  const fromNote = parseNote(note, 'tinh_den') || parseNote(note, 'huyen');
+  if (fromNote) return normalizeProvinceLabel(fromNote);
+
+  const stored = (waybill as { noi_den?: string }).noi_den?.trim();
+  if (stored && !isHubCode(stored)) return normalizeProvinceLabel(stored);
+
+  const address = resolveReceiverAddress(waybill);
+  const fromAddress = extractProvinceFromAddress(address);
+  if (fromAddress) return fromAddress;
+
+  const hubName = waybill.dest_hub?.name?.trim();
+  if (hubName && !isHubCode(hubName)) return hubName;
+
+  return stored || waybill.dest_hub?.code?.toUpperCase() || '—';
+}
+
+export function resolveSurcharge(waybill: WaybillInventoryItem): number {
+  const note = waybill.note || waybill.notes || '';
+  if (note.includes('phu_phi=')) {
+    const fromPhuPhi = Number(String(parseNote(note, 'phu_phi')).replace(/\D/g, ''));
+    return Number.isFinite(fromPhuPhi) ? fromPhuPhi : 0;
+  }
+  const fromGiamGia = Number(String(parseNote(note, 'giamGia')).replace(/\D/g, ''));
+  if (Number.isFinite(fromGiamGia) && fromGiamGia > 0) return fromGiamGia;
+  return 0;
+}
+
+export function resolveTotalAmount(waybill: WaybillInventoryItem): number {
+  const note = waybill.note || waybill.notes || '';
+  if (note.includes('thanh_toan=')) {
+    const fromBill = Number(String(parseNote(note, 'thanh_toan')).replace(/\D/g, ''));
+    if (Number.isFinite(fromBill)) return fromBill;
+  }
+  return Math.max(0, resolveFreight(waybill) - resolveSurcharge(waybill));
+}
+
+export function resolveBillingQtyDetail(waybill: WaybillInventoryItem): string {
+  const kg = resolveWeightKg(waybill);
+  const volKg = Number(waybill.volumetric_weight ?? 0);
+  const m3 = resolveVolumeM3(waybill);
+  const unit = resolveBillingUnit(waybill);
+  const parts: string[] = [];
+  if (kg > 0) parts.push(`${kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg`);
+  if (volKg > 0) parts.push(`${volKg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg khối`);
+  if (m3 > 0) parts.push(`${m3.toFixed(2)} m³`);
+  if (!parts.length) return '—';
+  return unit ? `${parts.join(' · ')} (${unit})` : parts.join(' · ');
+}
+
+export function resolveOrderStatusBadge(waybill: WaybillInventoryItem) {
+  return orderStatusGroupConfig[resolveOrderStatusGroup(waybill)];
 }
 
 export function resolveRoute(waybill: WaybillInventoryItem): string {

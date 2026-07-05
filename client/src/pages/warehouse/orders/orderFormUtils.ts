@@ -1,6 +1,7 @@
 import type { HubSummary, PaymentType, WaybillDetail } from './types';
 import { emptyOrderForm } from './orderFormData';
 import type { BillListItem, NewOrderFormState } from './orderFormTypes';
+import { extractProvinceFromAddress } from '../../../lib/vietnamProvince';
 
 const parseNumber = (value: string) => Number(String(value).replace(/[^\d.-]/g, ''));
 
@@ -154,6 +155,10 @@ const NOTE_METADATA_KEYS = new Set([
   'dimensions_cm',
   'volumetric_weight',
   'the_tich_m3',
+  'phu_phi',
+  'thanh_toan',
+  'tinh_den',
+  'huyen',
 ]);
 
 function stripNoteMetadata(note: string) {
@@ -206,7 +211,12 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     noiDen: destCode || 'HCM',
     originHubId: originId,
     destHubId: destId,
-    huyen: waybill.dest_hub?.name || '',
+    huyen:
+      (waybill as { noi_den?: string }).noi_den?.trim()
+      || parseNoteField(note, 'tinh_den')
+      || parseNoteField(note, 'huyen')
+      || waybill.dest_hub?.name
+      || '',
     soBill: waybill.waybill_code || waybill.code || '',
     klKg: String(waybill.weight ?? ''),
     soKien: String(waybill.package_count ?? 1),
@@ -216,7 +226,7 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     donGiaDonVi: billingUnit,
     dvdb: formatDisplayNumber((waybill as { dvdb?: number }).dvdb, 0) || '0',
     cod: formatDonGia(String(waybill.cod_amount ?? '0')),
-    giamGia: '0',
+    giamGia: formatDonGia(String(parseNoteField(note, 'phu_phi') || parseNoteField(note, 'giamGia') || '0')),
     phuongThuc: phuongThucFromWaybill(waybill),
     noiDung: parseNoteField(note, 'content'),
     ghiChu: stripNoteMetadata(note),
@@ -317,8 +327,11 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
   const paymentType = paymentTypeFromForm(form);
   const freight = calcCuocChinhAmount(form);
   const cod = parseMoneyAmount(form.cod);
+  const surcharge = parseMoneyAmount(form.giamGia);
+  const thanhToan = Math.max(0, parseMoneyAmount(form.thanhToan) || freight - surcharge);
   const weight = parseNumber(form.klKg);
   const volumeM3 = parseNumber(form.m3);
+  const receiverProvince = form.huyen.trim() || extractProvinceFromAddress(form.diaChiNhan.trim());
 
   return {
     waybill_code: form.soBill.trim().toUpperCase(),
@@ -328,6 +341,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     receiver_name: form.nguoiNhan.trim(),
     receiver_phone: normalizeVnPhone(form.dienThoaiNhan.trim()) || '0900000000',
     receiver_address: form.diaChiNhan.trim(),
+    noi_den: receiverProvince || undefined,
     origin_hub_id: form.originHubId,
     dest_hub_id: form.destHubId,
     weight: weight || parseNumber(form.klQuyDoi) || 1,
@@ -336,7 +350,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     package_count: Math.max(1, parseInt(form.soKien, 10) || 1),
     freight_amount: freight,
     cod_amount: cod,
-    cc_amount: paymentType === 'CC' ? freight : 0,
+    cc_amount: paymentType === 'CC' ? thanhToan : 0,
     xe_lay: form.xeLay.trim() || undefined,
     xe_phat: form.xePhat.trim() || undefined,
     noi_dung: form.noiDung.trim() || undefined,
@@ -348,6 +362,10 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
       form.phuongThuc && `phuong_thuc=${form.phuongThuc}`,
       form.donGiaDonVi && `billing_unit=${form.donGiaDonVi}`,
       `unit_price=${parseMoneyAmount(form.donGia)}`,
+      `phu_phi=${surcharge}`,
+      `thanh_toan=${thanhToan}`,
+      receiverProvince && `tinh_den=${receiverProvince}`,
+      form.huyen.trim() && `huyen=${form.huyen.trim()}`,
       `dimensions_cm=${form.chieuDai}x${form.chieuRong}x${form.chieuCao}`,
       `volumetric_weight=${volumetricWeight}`,
       `the_tich_m3=${volumeM3}`,

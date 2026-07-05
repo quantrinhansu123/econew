@@ -39,6 +39,17 @@ type WaybillRecord = WaybillEntity & Record<string, any>;
 
 const FINAL_STATUSES = [WaybillStatus.DELIVERED, WaybillStatus.RETURNED, WaybillStatus.CANCELLED];
 const INVENTORY_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE, WaybillStatus.MANIFEST_CLOSED, WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY];
+const ALL_ORDER_LIST_STATUSES = [
+  WaybillStatus.RECEIVED,
+  WaybillStatus.IN_WAREHOUSE,
+  WaybillStatus.MANIFEST_CLOSED,
+  WaybillStatus.LOADED,
+  WaybillStatus.IN_TRANSIT,
+  WaybillStatus.AT_DEST_HUB,
+  WaybillStatus.OUT_FOR_DELIVERY,
+  WaybillStatus.DELIVERED,
+  WaybillStatus.RETURNED,
+];
 const MUTABLE_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE];
 const ROUTE_ASSIGNABLE_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE, WaybillStatus.AT_DEST_HUB];
 const parseNoteField = (note: string | null | undefined, key: string) => {
@@ -121,6 +132,7 @@ export class WaybillsService {
       note: dto.note ?? null,
       noi_dung: dto.noi_dung?.trim() || parseNoteField(dto.note, 'content') || null,
       ma_kh: parseNoteField(dto.note, 'ma_kh') || null,
+      noi_den: dto.noi_den?.trim() || parseNoteField(dto.note, 'tinh_den') || parseNoteField(dto.note, 'huyen') || null,
       xe_lay: dto.xe_lay?.trim() || null,
       xe_phat: dto.xe_phat?.trim() || null,
       expected_delivery_at: dto.expected_delivery_at ? new Date(dto.expected_delivery_at) : null,
@@ -267,9 +279,12 @@ export class WaybillsService {
   async getInventoryTripLines(query: QueryWaybillsDto, currentUser: UserEntity) {
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 20);
+    const defaultStatuses = query.list_scope === 'all_orders'
+      ? ALL_ORDER_LIST_STATUSES.join(',')
+      : INVENTORY_STATUSES.join(',');
     const inventoryQuery = {
       ...query,
-      status: query.status ?? INVENTORY_STATUSES.join(','),
+      status: query.status ?? defaultStatuses,
       current_hub_id: this.resolveInventoryHubFilter(query, currentUser),
       page,
       limit,
@@ -1172,6 +1187,29 @@ export class WaybillsService {
       qb.andWhere(new Brackets((builder) => builder
         .where('UPPER(TRIM(waybill.ma_kh)) = UPPER(TRIM(:maKh))', { maKh })
         .orWhere('waybill.note ILIKE :maKhNotePattern', { maKhNotePattern: `%ma_kh=${maKh}%` })));
+    }
+
+    if (query.noi_den?.trim()) {
+      const noiDen = `%${query.noi_den.trim()}%`;
+      qb.andWhere(new Brackets((builder) => builder
+        .where('waybill.noi_den ILIKE :noiDen', { noiDen })
+        .orWhere('waybill.receiver_address ILIKE :noiDen', { noiDen })
+        .orWhere('waybill.receiver_info ILIKE :noiDen', { noiDen })
+        .orWhere('waybill.note ILIKE :noiDenNote', { noiDenNote: `%tinh_den=${query.noi_den.trim()}%` })));
+    }
+
+    if (query.billing_unit?.trim()) {
+      const billingUnits = this.parseList(query.billing_unit);
+      if (billingUnits.length) {
+        qb.andWhere(new Brackets((builder) => {
+          billingUnits.forEach((unit, index) => {
+            const param = `billingUnit${index}`;
+            const pattern = `%billing_unit=${unit}%`;
+            if (index === 0) builder.where(`waybill.note ILIKE :${param}`, { [param]: pattern });
+            else builder.orWhere(`waybill.note ILIKE :${param}`, { [param]: pattern });
+          });
+        }));
+      }
     }
 
     const statuses = this.parseList(query.status);

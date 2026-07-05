@@ -43,11 +43,16 @@ import {
   resolveReceiverPhone,
   resolveVolumeM3,
   resolveWeightKg,
+  resolveSurcharge,
+  resolveTotalAmount,
+  resolveBillingQtyDetail,
+  resolveOrderStatusBadge,
   saveVisibleColumnIds,
   type InventoryColumnId,
   type InventoryColumnView,
 } from './warehouse/inventory/inventoryColumns';
 import { buildInventoryTripLinesQuery, isIncompleteSplitRow } from './warehouse/inventory/inventoryTripLines';
+import { ORDER_STATUS_GROUP_OPTIONS } from './warehouse/inventory/orderStatusUtils';
 import type { BadgeConfig, FilterOption, HubSummary, InventoryFilters, InventoryListResponse, WaybillInventoryDetail, WaybillInventoryItem } from './warehouse/inventory/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -57,8 +62,15 @@ const MANAGER = 32;
 const DIRECTOR = 64;
 const DISPATCHER = 8;
 const MUTABLE_WAYBILL_STATUSES = ['RECEIVED', 'IN_WAREHOUSE'];
-const defaultFilters: InventoryFilters = { keyword: '', ma_kh: '', statuses: [], customerPaymentStatuses: [], hubIds: [], paymentTypes: [], priorities: [], receivedFrom: '', receivedTo: '', page: 1, limit: 10 };
+const defaultFilters: InventoryFilters = { keyword: '', ma_kh: '', statuses: [], orderStatusGroups: [], noiDenKeyword: '', billingUnits: [], customerPaymentStatuses: [], hubIds: [], paymentTypes: [], priorities: [], receivedFrom: '', receivedTo: '', page: 1, limit: 10 };
 const allOrdersDefaultFilters: InventoryFilters = { ...defaultFilters, limit: 50 };
+const billingUnitFilterOptions: FilterOption[] = [
+  { value: 'Cân', label: 'Cân' },
+  { value: 'Khối', label: 'Khối' },
+  { value: 'Trọn gói', label: 'Trọn gói' },
+  { value: 'Chuyến', label: 'Chuyến' },
+  { value: 'Lô', label: 'Lô' },
+];
 const customerPaymentStatusOptions: FilterOption[] = [
   { value: 'PAID', label: 'Đã TT' },
   { value: 'SENT_STATEMENT', label: 'Đã gửi bảng kê' },
@@ -115,7 +127,10 @@ const actionMenuId = (waybill: WaybillInventoryItem) => `${waybill.id}-${waybill
 const formatHub = (hub: HubSummary | null | undefined, fallback?: string | number | null) => hub ? [hub.code?.toUpperCase(), hub.name].filter(Boolean).join(' · ') || `Hub #${hub.id}` : fallback ? `Hub #${fallback}` : '—';
 
 const buildQuery = (filters: InventoryFilters, variant: InventoryPageVariant) =>
-  buildInventoryTripLinesQuery(filters, { onlyIncompleteSplit: variant === 'split-pending' });
+  buildInventoryTripLinesQuery(filters, {
+    onlyIncompleteSplit: variant === 'split-pending',
+    listScope: variant === 'all-orders' ? 'all_orders' : undefined,
+  });
 
 const sortAllOrders = (items: WaybillInventoryItem[]) =>
   [...items].sort((a, b) => {
@@ -185,12 +200,15 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const hubOptions = useMemo(() => hubs.map(hub => ({ value: String(hub.id), label: formatHub(hub) })), [hubs]);
   const activeFilterCount =
     filters.statuses.length +
+    filters.orderStatusGroups.length +
     filters.customerPaymentStatuses.length +
     filters.hubIds.length +
     filters.paymentTypes.length +
     filters.priorities.length +
+    filters.billingUnits.length +
     Number(Boolean(filters.receivedFrom || filters.receivedTo)) +
-    Number(Boolean(filters.ma_kh.trim()));
+    Number(Boolean(filters.ma_kh.trim())) +
+    Number(Boolean(filters.noiDenKeyword.trim()));
   const visibleColumns = useMemo(
     () => resolveVisibleColumnViews(visibleColumnIds, variant, canViewPricing),
     [visibleColumnIds, variant, canViewPricing],
@@ -242,7 +260,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       return next;
     });
   };
-  const setFilterArray = (key: keyof Pick<InventoryFilters, 'statuses' | 'hubIds' | 'paymentTypes' | 'priorities'>, value: string[]) => updateFilters({ [key]: value } as Partial<InventoryFilters>);
+  const setFilterArray = (
+    key: keyof Pick<InventoryFilters, 'statuses' | 'orderStatusGroups' | 'hubIds' | 'paymentTypes' | 'priorities' | 'billingUnits'>,
+    value: string[],
+  ) => updateFilters({ [key]: value } as Partial<InventoryFilters>);
 
   useEffect(() => { if (canViewPage) void loadHubs(); }, [canViewPage]);
   useEffect(() => {
@@ -526,6 +547,12 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                     </option>
                   ))}
                 </select>
+                <input
+                  value={filters.noiDenKeyword}
+                  onChange={(event) => updateFilters({ noiDenKeyword: event.target.value })}
+                  placeholder="Lọc tỉnh đến"
+                  className="hidden h-10 w-[150px] rounded-lg border border-border px-3 text-[13px] font-medium xl:block"
+                />
               </>
             )}
             <div className="hidden flex-1 md:block" />
@@ -600,12 +627,52 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                 <DayPicker value={filters.receivedTo} onChange={value => updateFilters({ receivedTo: value })} placeholder="Đến ngày" className="h-7 min-w-[8.5rem] w-[8.5rem] shrink-0 border-0 bg-transparent pl-0 pr-6 text-[12px] focus:ring-0" />
               </div>
             </div>}
+          {isAllOrders && (
+            <div className="hidden flex-wrap items-center gap-2 md:flex">
+              <FilterSelect
+                multiple
+                icon={Tag}
+                placeholder="Trạng thái đơn"
+                searchPlaceholder="Tìm trạng thái..."
+                options={[...ORDER_STATUS_GROUP_OPTIONS]}
+                value={filters.orderStatusGroups}
+                onValueChange={(value) => setFilterArray('orderStatusGroups', value)}
+                className="h-9 min-w-[170px]"
+              />
+              <input
+                value={filters.noiDenKeyword}
+                onChange={(event) => updateFilters({ noiDenKeyword: event.target.value })}
+                placeholder="Lọc tỉnh đến"
+                className="h-9 w-[150px] rounded-lg border border-border px-3 text-[13px] font-medium"
+              />
+              <FilterSelect
+                multiple
+                icon={CreditCard}
+                placeholder="Hình thức TT"
+                searchPlaceholder="Tìm thanh toán..."
+                options={paymentOptions}
+                value={filters.paymentTypes}
+                onValueChange={(value) => setFilterArray('paymentTypes', value)}
+                className="h-9 min-w-[150px]"
+              />
+              <FilterSelect
+                multiple
+                icon={Package}
+                placeholder="ĐVT"
+                searchPlaceholder="Tìm ĐVT..."
+                options={billingUnitFilterOptions}
+                value={filters.billingUnits}
+                onValueChange={(value) => setFilterArray('billingUnits', value)}
+                className="h-9 min-w-[130px]"
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
           {isLoading ? <StateCard compact icon={<Loader2 className="animate-spin" size={24} />} title="Đang tải dữ liệu" description={isAllOrders ? 'Hệ thống đang lấy danh sách đơn từ API.' : 'Hệ thống đang lấy danh sách vận đơn tồn kho từ API.'} /> : waybills.length === 0 ? <StateCard compact icon={<Package size={24} />} title={isAllOrders ? 'Chưa có đơn' : 'Chưa có đơn cần chia'} description={isAllOrders ? 'Chưa có vận đơn nào trong hệ thống.' : 'Tất cả đơn tồn kho đã phân hết kiện lên xe, hoặc thử đổi bộ lọc.'} /> : (
             <>
-              <table className="hidden md:table w-full min-w-[1280px] text-left border-collapse">
+              <table className={clsx('hidden md:table w-full border-collapse', isAllOrders ? 'table-fixed text-[12px]' : 'min-w-[1280px] text-left')}>
                 <thead className="text-[11px] uppercase tracking-wider text-slate-600">
                   {isAllOrders ? (
                     <AllOrdersTableHeader
@@ -821,7 +888,10 @@ function InventoryRow({
   selected?: boolean;
   onToggleSelect?: (waybillId: string | number) => void;
 }) {
-  const cellClass = 'px-4 py-3 border-r border-border text-[13px] max-w-[200px] truncate';
+  const cellClass = clsx(
+    'border-r border-border max-w-[200px] truncate',
+    isAllOrders ? 'px-2 py-2 text-[12px]' : 'px-4 py-3 text-[13px]',
+  );
 
   const renderCell = (colId: InventoryColumnId) => {
     switch (colId) {
@@ -877,15 +947,43 @@ function InventoryRow({
       case 'receiver_phone':
         return <td className={clsx(cellClass, 'font-bold text-primary')}>{resolveReceiverPhone(waybill)}</td>;
       case 'noi_den':
-        return <td className={cellClass}>{resolveNoiDen(waybill)}</td>;
+        return <td className={clsx(cellClass, 'font-semibold')}>{resolveNoiDen(waybill)}</td>;
+      case 'receiver_address':
+        return (
+          <td className={clsx(cellClass, 'whitespace-normal')} title={resolveReceiverAddress(waybill)}>
+            {resolveReceiverAddress(waybill)}
+          </td>
+        );
+      case 'order_status': {
+        const badge = resolveOrderStatusBadge(waybill);
+        return (
+          <td className={cellClass}>
+            <span className={clsx('inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold whitespace-nowrap', badge.className)}>
+              {badge.label}
+            </span>
+          </td>
+        );
+      }
       case 'billing_unit':
         return <td className={cellClass}>{resolveBillingUnit(waybill)}</td>;
+      case 'billing_qty_detail':
+        return (
+          <td className={clsx(cellClass, 'text-right font-medium whitespace-normal')} title={resolveBillingQtyDetail(waybill)}>
+            {resolveBillingQtyDetail(waybill)}
+          </td>
+        );
       case 'unit_price':
-        return <td className={`${cellClass} font-bold text-right`}>{displayValue(resolveUnitPrice(waybill), ' đ')}</td>;
+        return <td className={`${cellClass} font-bold text-right tabular-nums`}>{displayValue(resolveUnitPrice(waybill) || null, ' đ')}</td>;
       case 'transit_fee':
         return <td className={`${cellClass} font-bold text-right`}>{displayValue(resolveTransitFee(waybill), ' đ')}</td>;
+      case 'surcharge':
+        return (
+          <td className={clsx(cellClass, 'font-bold text-right tabular-nums', isAllOrders && 'bg-orange-50/70 text-orange-900')}>
+            {canViewPricing ? displayValue(resolveSurcharge(waybill), ' đ') : '—'}
+          </td>
+        );
       case 'total_amount': {
-        const totalAmount = resolveFreight(waybill) + resolveTransitFee(waybill);
+        const totalAmount = resolveTotalAmount(waybill);
         return (
           <td className={clsx(cellClass, 'font-bold text-right', isAllOrders && 'bg-emerald-50/80 text-emerald-800')}>
             {canViewPricing ? displayValue(totalAmount, ' đ') : '—'}
@@ -921,8 +1019,6 @@ function InventoryRow({
         );
       case 'ma_kh':
         return <td className={cellClass}>{resolveMaKh(waybill)}</td>;
-      case 'receiver_address':
-        return <td className={cellClass}>{resolveReceiverAddress(waybill)}</td>;
       case 'package_count':
         return (
           <td className={`${cellClass} font-medium text-right`}>
@@ -965,21 +1061,43 @@ function InventoryRow({
         );
       case 'actions':
         return (
-          <td className="px-4 py-3">
-            <Actions
-              waybill={waybill}
-              canEdit={canEdit}
-              canDelete={canDelete}
-              isMutable={isMutableWaybill(waybill)}
-              isOpen={openActionMenuId === actionMenuId(waybill)}
-              onToggle={() => onToggleActionMenu(actionMenuId(waybill))}
-              onClose={onCloseActionMenu}
-              onDetail={onDetail}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onSplit={onSplit}
-              onCashVoucher={onCashVoucher}
-            />
+          <td className={clsx(isAllOrders ? 'px-2 py-2' : 'px-4 py-3')} onClick={(event) => event.stopPropagation()}>
+            {isAllOrders ? (
+              <div className="flex items-center justify-center gap-1">
+                <button
+                  type="button"
+                  title="Xem đơn"
+                  onClick={() => onDetail(waybill)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-foreground hover:bg-muted"
+                >
+                  <Eye size={14} />
+                </button>
+                <button
+                  type="button"
+                  title={!canEdit || !isMutableWaybill(waybill) ? 'Chỉ sửa được đơn nhập kho' : 'Sửa đơn'}
+                  disabled={!canEdit || !isMutableWaybill(waybill)}
+                  onClick={() => onEdit(waybill)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-primary hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <Pencil size={14} />
+                </button>
+              </div>
+            ) : (
+              <Actions
+                waybill={waybill}
+                canEdit={canEdit}
+                canDelete={canDelete}
+                isMutable={isMutableWaybill(waybill)}
+                isOpen={openActionMenuId === actionMenuId(waybill)}
+                onToggle={() => onToggleActionMenu(actionMenuId(waybill))}
+                onClose={onCloseActionMenu}
+                onDetail={onDetail}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onSplit={onSplit}
+                onCashVoucher={onCashVoucher}
+              />
+            )}
           </td>
         );
       default:

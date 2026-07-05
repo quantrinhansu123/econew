@@ -23,6 +23,9 @@ export class QueryWaybillsDto {
   @ApiPropertyOptional({ description: 'Alias for from_date used by inventory filters' }) @IsOptional() @IsString() received_from?: string;
   @ApiPropertyOptional({ description: 'Alias for to_date used by inventory filters' }) @IsOptional() @IsString() received_to?: string;
   @ApiPropertyOptional({ description: 'Only waybills with remaining unallocated packages (1/true)' }) @IsOptional() @IsString() only_incomplete_split?: string;
+  @ApiPropertyOptional({ description: 'all_orders — danh sách đơn đầy đủ trạng thái' }) @IsOptional() @IsString() list_scope?: string;
+  @ApiPropertyOptional({ description: 'Lọc tỉnh đến / địa chỉ nhận' }) @IsOptional() @IsString() noi_den?: string;
+  @ApiPropertyOptional({ description: 'Lọc đơn vị tính cước trong note (billing_unit=...)' }) @IsOptional() @IsString() billing_unit?: string;
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number = 1;
   @ApiPropertyOptional({ default: 20 }) @IsOptional() @Transform(normalizePaginationLimit) @IsInt() @Min(1) @Max(100) limit?: number = 20;
 }

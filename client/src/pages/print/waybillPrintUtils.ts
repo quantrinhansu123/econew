@@ -60,6 +60,10 @@ const NOTE_METADATA_KEYS = new Set([
   'dimensions_cm',
   'volumetric_weight',
   'the_tich_m3',
+  'phu_phi',
+  'thanh_toan',
+  'tinh_den',
+  'huyen',
 ]);
 
 function stripNoteMetadata(note: string) {
@@ -139,7 +143,13 @@ export function buildWaybillPrintData(waybill: WaybillDetail, showPricing: boole
     maBcNhan: waybill.dest_hub?.code?.toUpperCase() || '',
     tenKhNhan: receiverName,
     diaChiNhan: receiverAddress,
-    tinhNhan: waybill.dest_hub?.code?.toUpperCase() || waybill.dest_hub?.name || '',
+    tinhNhan:
+      parseNoteField(note, 'tinh_den')
+      || parseNoteField(note, 'huyen')
+      || (waybill as { noi_den?: string }).noi_den?.trim()
+      || waybill.dest_hub?.name
+      || waybill.dest_hub?.code?.toUpperCase()
+      || '',
     sdtNhan: (waybill as { receiver_phone?: string }).receiver_phone || receiver.phone,
     moTaHang: noiDung,
     soKien: String(waybill.package_count ?? 1),

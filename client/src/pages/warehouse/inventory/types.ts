@@ -97,6 +97,9 @@ export interface InventoryFilters {
   keyword: string;
   ma_kh: string;
   statuses: string[];
+  orderStatusGroups: string[];
+  noiDenKeyword: string;
+  billingUnits: string[];
   customerPaymentStatuses: string[];
   hubIds: string[];
   paymentTypes: string[];
