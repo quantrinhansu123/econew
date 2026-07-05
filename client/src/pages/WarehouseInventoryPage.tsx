@@ -380,7 +380,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   };
 
   const openEdit = (waybill: WaybillInventoryItem) => {
-    navigate('/orders/new', { state: { waybillId: String(waybill.id) } });
+    navigate(`/orders/new?edit=${encodeURIComponent(String(waybill.id))}`);
   };
 
   const confirmDeleteWaybill = (waybill: WaybillInventoryItem) => {
@@ -550,7 +550,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                 <input
                   value={filters.noiDenKeyword}
                   onChange={(event) => updateFilters({ noiDenKeyword: event.target.value })}
-                  placeholder="Lọc tỉnh đến"
+                  placeholder="Lọc nơi đến"
                   className="hidden h-10 w-[150px] rounded-lg border border-border px-3 text-[13px] font-medium xl:block"
                 />
               </>
@@ -642,7 +642,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               <input
                 value={filters.noiDenKeyword}
                 onChange={(event) => updateFilters({ noiDenKeyword: event.target.value })}
-                placeholder="Lọc tỉnh đến"
+                placeholder="Lọc nơi đến"
                 className="h-9 w-[150px] rounded-lg border border-border px-3 text-[13px] font-medium"
               />
               <FilterSelect
@@ -910,7 +910,19 @@ function InventoryRow({
           </td>
         );
       case 'customer_name':
-        return <td className={`${cellClass} font-semibold`}>{resolveCustomerName(waybill)}</td>;
+        return (
+          <td
+            className={clsx(
+              'border-r border-border font-semibold',
+              isAllOrders
+                ? 'px-2 py-2 text-[12px] min-w-[100px] max-w-[160px] whitespace-normal leading-snug line-clamp-2'
+                : clsx(cellClass),
+            )}
+            title={resolveCustomerName(waybill)}
+          >
+            {resolveCustomerName(waybill)}
+          </td>
+        );
       case 'bill_info':
         return (
           <td className={cellClass}>
@@ -950,8 +962,8 @@ function InventoryRow({
         return <td className={clsx(cellClass, 'font-semibold')}>{resolveNoiDen(waybill)}</td>;
       case 'receiver_address':
         return (
-          <td className={clsx(cellClass, 'whitespace-normal')} title={resolveReceiverAddress(waybill)}>
-            {resolveReceiverAddress(waybill)}
+          <td className={clsx(cellClass, 'whitespace-normal align-top')} title={resolveReceiverAddress(waybill)}>
+            <span className="line-clamp-2 block max-w-[220px]">{resolveReceiverAddress(waybill)}</span>
           </td>
         );
       case 'order_status': {
@@ -1067,16 +1079,23 @@ function InventoryRow({
                 <button
                   type="button"
                   title="Xem đơn"
-                  onClick={() => onDetail(waybill)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDetail(waybill);
+                  }}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-foreground hover:bg-muted"
                 >
                   <Eye size={14} />
                 </button>
                 <button
                   type="button"
-                  title={!canEdit || !isMutableWaybill(waybill) ? 'Chỉ sửa được đơn nhập kho' : 'Sửa đơn'}
-                  disabled={!canEdit || !isMutableWaybill(waybill)}
-                  onClick={() => onEdit(waybill)}
+                  title={!canEdit ? 'Cần quyền WAREHOUSE trở lên' : 'Sửa đơn'}
+                  disabled={!canEdit}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (!canEdit) return;
+                    onEdit(waybill);
+                  }}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-primary hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <Pencil size={14} />

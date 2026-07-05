@@ -1,5 +1,4 @@
 import type { WaybillInventoryItem } from './types';
-import { extractProvinceFromAddress, isHubCode, normalizeProvinceLabel } from '../../../lib/vietnamProvince';
 import { resolveOrderStatusGroup, orderStatusGroupConfig } from './orderStatusUtils';
 
 export type InventoryColumnId =
@@ -63,7 +62,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'trip_label', label: 'Phân xe', defaultVisible: true },
   { id: 'loaded_at', label: 'Ngày bốc hàng', defaultVisible: true },
   { id: 'received_at', label: 'Ngày nhận đơn', defaultVisible: false },
-  { id: 'noi_den', label: 'Tỉnh đến', defaultVisible: true },
+  { id: 'noi_den', label: 'Nơi đến', defaultVisible: true },
   { id: 'order_status', label: 'Trạng thái đơn', defaultVisible: true },
   { id: 'billing_unit', label: 'ĐVT', defaultVisible: true },
   { id: 'billing_qty_detail', label: 'Kg / khối', defaultVisible: true, align: 'right' },
@@ -77,7 +76,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'customer_payment_note', label: 'Ghi chú TT', defaultVisible: false },
   { id: 'route', label: 'Tuyến', defaultVisible: true },
   { id: 'ma_kh', label: 'Mã KH', defaultVisible: true },
-  { id: 'receiver_address', label: 'Địa chỉ đến', defaultVisible: true },
+  { id: 'receiver_address', label: 'Địa chỉ nhận', defaultVisible: true },
   { id: 'receiver_phone', label: 'SĐT người nhận', defaultVisible: true },
   { id: 'package_count', label: 'Kiện còn / đơn', defaultVisible: true, align: 'right' },
   { id: 'weight', label: 'Trọng lượng (kg)', defaultVisible: true, align: 'right' },
@@ -154,7 +153,7 @@ const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   cong_sg: 'Nội dung',
   service_type: 'Dịch vụ',
   noi_den: 'Nơi đến',
-  receiver_address: 'Địa chỉ',
+  receiver_address: 'Địa chỉ nhận',
   order_status: 'Trạng thái',
   billing_qty_detail: 'Kg / khối',
   surcharge: 'Phụ phí',
@@ -327,21 +326,18 @@ export function resolvePaymentMethod(waybill: WaybillInventoryItem): string {
 }
 
 export function resolveNoiDen(waybill: WaybillInventoryItem): string {
-  const note = waybill.note || waybill.notes || '';
-  const fromNote = parseNote(note, 'tinh_den') || parseNote(note, 'huyen');
-  if (fromNote) return normalizeProvinceLabel(fromNote);
+  return waybill.dest_hub?.code?.trim().toUpperCase() || '';
+}
 
-  const stored = (waybill as { noi_den?: string }).noi_den?.trim();
-  if (stored && !isHubCode(stored)) return normalizeProvinceLabel(stored);
-
-  const address = resolveReceiverAddress(waybill);
-  const fromAddress = extractProvinceFromAddress(address);
-  if (fromAddress) return fromAddress;
-
-  const hubName = waybill.dest_hub?.name?.trim();
-  if (hubName && !isHubCode(hubName)) return hubName;
-
-  return stored || waybill.dest_hub?.code?.toUpperCase() || '—';
+export function resolveReceiverAddress(waybill: WaybillInventoryItem): string {
+  if (waybill.receiver_address?.trim()) return waybill.receiver_address.trim();
+  const info = waybill.receiver_info || '';
+  if (!info.trim()) return '';
+  if (info.includes('|')) {
+    const parts = info.split('|').map((part) => part.trim());
+    return parts[2] || parts[parts.length - 1] || '';
+  }
+  return info.trim();
 }
 
 export function resolveSurcharge(waybill: WaybillInventoryItem): number {
@@ -384,16 +380,6 @@ export function resolveOrderStatusBadge(waybill: WaybillInventoryItem) {
 export function resolveRoute(waybill: WaybillInventoryItem): string {
   const route = waybill.route_code?.trim() || waybill.delivery_route?.trim();
   return route || '—';
-}
-
-export function resolveReceiverAddress(waybill: WaybillInventoryItem): string {
-  if (waybill.receiver_address?.trim()) return waybill.receiver_address.trim();
-  const info = waybill.receiver_info || '';
-  if (info.includes('|')) {
-    const parts = info.split('|').map((p) => p.trim());
-    return parts[2] || parts[parts.length - 1] || info;
-  }
-  return info || '—';
 }
 
 export function resolveWeightKg(waybill: WaybillInventoryItem): number {

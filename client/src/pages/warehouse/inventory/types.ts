@@ -60,6 +60,7 @@ export interface WaybillInventoryItem {
   noi_dung?: string | null;
   mat_hang?: string | null;
   noi_den?: string | null;
+  customer_destination_province?: string | null;
   loaded_at?: string | null;
   the_tich_m3?: number | string | null;
   split_id?: string | number | null;

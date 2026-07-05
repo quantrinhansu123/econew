@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, FileSpreadsheet, Loader2, ShieldAlert } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { getLoginDisplayName, getStoredAuthUser } from '../lib/authUser';
 import CreateWaybillSuccessDialog from './warehouse/orders/dialogs/CreateWaybillSuccessDialog';
@@ -71,6 +71,10 @@ const getHubCode = (hubs: HubSummary[], hubId: string) =>
 export default function WarehouseOrderNewPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editWaybillId = searchParams.get('edit')?.trim() || '';
+  const loadedEditIdRef = useRef('');
+  const skipNewFormInitRef = useRef(Boolean(editWaybillId));
   const [user] = useState<UserSummary | null>(() => getStoredUser());
   const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [bills, setBills] = useState<BillListItem[]>([]);
@@ -138,9 +142,19 @@ export default function WarehouseOrderNewPage() {
         const response = await apiRequest<HubSummary[] | { data?: HubSummary[]; hubs?: HubSummary[] }>('/hubs/active');
         const activeHubs = extractList(response).filter(normalizeActive);
         setHubs(activeHubs);
+        const billItems = await loadBills();
+
+        const pendingEditId =
+          searchParams.get('edit')?.trim()
+          || (location.state as { waybillId?: string } | null)?.waybillId?.trim()
+          || '';
+        if (pendingEditId || skipNewFormInitRef.current) {
+          if (pendingEditId) skipNewFormInitRef.current = true;
+          return;
+        }
+
         const defaultOrigin = user?.hub_id ? String(user.hub_id) : String(activeHubs[0]?.id || '');
         const defaultDest = String(activeHubs.find((h) => h.code?.toUpperCase() === 'HCM')?.id || activeHubs[1]?.id || '');
-        const billItems = await loadBills();
         const nextCode = await loadNextWaybillCode(defaultOrigin);
         const defaultOriginCode = getHubCode(activeHubs, defaultOrigin);
         setForm(() =>
@@ -160,20 +174,33 @@ export default function WarehouseOrderNewPage() {
       }
     };
     void load();
-  }, [loadBills, loadNextWaybillCode, loginName, user?.hub_id]);
+  }, [loadBills, loadNextWaybillCode, location.state, loginName, searchParams, user?.hub_id]);
 
   useEffect(() => {
     const state = location.state as { maKh?: string; nguoiGui?: string; waybillId?: string } | null;
+    const waybillId = editWaybillId || state?.waybillId?.trim() || '';
 
-    if (state?.waybillId && !isLoading && hubs.length > 0) {
-      const waybillId = state.waybillId;
+    if (waybillId) {
+      if (isLoading || hubs.length === 0) return;
+      if (loadedEditIdRef.current === waybillId) return;
+      loadedEditIdRef.current = waybillId;
+      skipNewFormInitRef.current = true;
       void (async () => {
+        setActionError('');
         try {
           const detail = await apiRequest<WaybillDetail>(`/waybills/${waybillId}`);
           setSelectedBillId(String(waybillId));
+          setSelectedCustomer(null);
           setForm(waybillToOrderForm(detail, hubs));
-          navigate(location.pathname, { replace: true, state: null });
+          if (editWaybillId) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete('edit');
+            setSearchParams(nextParams, { replace: true });
+          } else {
+            navigate(location.pathname, { replace: true, state: null });
+          }
         } catch {
+          loadedEditIdRef.current = '';
           setActionError('Không tải được vận đơn để sửa.');
         }
       })();
@@ -206,7 +233,7 @@ export default function WarehouseOrderNewPage() {
         }),
       );
     })();
-  }, [location.state, isLoading, hubs, navigate, location.pathname]);
+  }, [editWaybillId, location.state, isLoading, hubs, navigate, location.pathname, searchParams, setSearchParams]);
 
   const setField = <K extends keyof NewOrderFormState>(key: K, value: NewOrderFormState[K]) => {
     setForm((prev) => {
@@ -284,6 +311,8 @@ export default function WarehouseOrderNewPage() {
   };
 
   const handleNew = async () => {
+    skipNewFormInitRef.current = false;
+    loadedEditIdRef.current = '';
     const defaultOrigin = user?.hub_id ? String(user.hub_id) : String(hubs[0]?.id || '');
     const defaultDest = String(hubs.find((h) => h.code?.toUpperCase() === 'HCM')?.id || hubs[1]?.id || '');
     const nextCode = await loadNextWaybillCode(defaultOrigin);

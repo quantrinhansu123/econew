@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
+import { CustomerEntity } from '../customers/customer.entity';
 import { HubEntity } from '../hubs/hub.entity';
 import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
@@ -84,6 +85,7 @@ export class WaybillsService {
     @InjectRepository(ManifestEntity) private readonly manifestsRepository: Repository<ManifestEntity>,
     @InjectRepository(ManifestWaybillEntity) private readonly manifestWaybillsRepository: Repository<ManifestWaybillEntity>,
     @InjectRepository(WaybillCashVoucherEntity) private readonly cashVouchersRepository: Repository<WaybillCashVoucherEntity>,
+    @InjectRepository(CustomerEntity) private readonly customersRepository: Repository<CustomerEntity>,
     private readonly ordersService: OrdersService,
     private readonly vendorsService: VendorsService,
   ) {}
@@ -169,22 +171,49 @@ export class WaybillsService {
   }
 
   async update(id: string, dto: UpdateWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
-    const waybill = await this.findMutable(id, currentUser);
-    if (!MUTABLE_STATUSES.includes(this.getStatus(waybill))) throw new ConflictException('Waybill is locked by manifest or trip');
-    if (dto.waybill_code !== undefined) {
-      const normalized = dto.waybill_code.trim().toUpperCase();
+    const waybill = await this.findEditable(id, currentUser);
+    const patch: UpdateWaybillDto = { ...dto };
+
+    if (this.isLogisticsLocked(waybill)) {
+      delete patch.origin_hub_id;
+      delete patch.dest_hub_id;
+    }
+
+    if (patch.waybill_code !== undefined) {
+      const normalized = patch.waybill_code.trim().toUpperCase();
       if (!normalized) throw new BadRequestException('Waybill code is required');
       if (normalized !== waybill.waybill_code) {
         await this.assertUniqueWaybillCode(normalized, id);
         waybill.waybill_code = normalized;
       }
-      delete dto.waybill_code;
+      delete patch.waybill_code;
     }
-    Object.assign(waybill, dto, { updated_by: currentUser.id });
-    if (dto.freight_amount !== undefined) waybill.cost_amount = String(dto.freight_amount);
-    if (dto.note !== undefined || dto.cc_amount !== undefined || dto.cod_amount !== undefined) waybill.payment_type = this.resolvePaymentType(dto);
-    if (dto.sender_name || dto.sender_phone || dto.sender_address) waybill.sender_info = this.packContact(waybill.sender_name, waybill.sender_phone, waybill.sender_address);
-    if (dto.receiver_name || dto.receiver_phone || dto.receiver_address) waybill.receiver_info = this.packContact(waybill.receiver_name, waybill.receiver_phone, waybill.receiver_address);
+
+    Object.assign(waybill, patch, { updated_by: currentUser.id });
+    if (patch.freight_amount !== undefined) waybill.cost_amount = String(patch.freight_amount);
+    if (patch.note !== undefined || patch.cc_amount !== undefined || patch.cod_amount !== undefined) {
+      waybill.payment_type = this.resolvePaymentType({ ...waybill, ...patch } as CreateWaybillDto);
+    }
+    if (patch.sender_name || patch.sender_phone || patch.sender_address) {
+      waybill.sender_info = this.packContact(waybill.sender_name, waybill.sender_phone, waybill.sender_address);
+    }
+    if (patch.receiver_name || patch.receiver_phone || patch.receiver_address) {
+      waybill.receiver_info = this.packContact(waybill.receiver_name, waybill.receiver_phone, waybill.receiver_address);
+    }
+    if (patch.note !== undefined) {
+      waybill.ma_kh = parseNoteField(patch.note, 'ma_kh') || waybill.ma_kh;
+      waybill.noi_dung = patch.noi_dung?.trim() || parseNoteField(patch.note, 'content') || waybill.noi_dung;
+    }
+    if (patch.noi_dung !== undefined) {
+      waybill.noi_dung = patch.noi_dung.trim() || null;
+    }
+    if (patch.noi_den !== undefined || patch.note !== undefined) {
+      waybill.noi_den = patch.noi_den?.trim()
+        || parseNoteField(patch.note, 'tinh_den')
+        || parseNoteField(patch.note, 'huyen')
+        || waybill.noi_den;
+    }
+
     return this.sanitize(await this.waybillsRepository.save(waybill), currentUser);
   }
 
@@ -346,9 +375,11 @@ export class WaybillsService {
     }, new Map());
 
     const onlyIncompleteSplit = this.isTruthyQueryFlag(query.only_incomplete_split);
+    const customerDestinationMap = await this.loadCustomerDestinationMap(waybills);
 
     const items = waybills.flatMap((waybill) => {
       const sanitized = this.sanitize(waybill as WaybillRecord, currentUser);
+      const customerDestinationProvince = this.resolveCustomerDestinationProvince(waybill as WaybillRecord, customerDestinationMap);
       const waybillSplits = splitsByWaybill.get(waybill.id) ?? [];
 
       if (onlyIncompleteSplit) {
@@ -356,13 +387,13 @@ export class WaybillsService {
         const allocated = waybillSplits.reduce((sum, row) => sum + Number(row.package_count ?? 0), 0);
         const remaining = totalPackages - allocated;
         if (remaining <= 0) return [];
-        return [this.mapInventoryTripLine(sanitized, null, remaining)];
+        return [this.mapInventoryTripLine(sanitized, null, remaining, customerDestinationProvince)];
       }
 
       if (!waybillSplits.length) {
-        return vendorId ? [] : [this.mapInventoryTripLine(sanitized, null)];
+        return vendorId ? [] : [this.mapInventoryTripLine(sanitized, null, undefined, customerDestinationProvince)];
       }
-      return waybillSplits.map((split) => this.mapInventoryTripLine(sanitized, split));
+      return waybillSplits.map((split) => this.mapInventoryTripLine(sanitized, split, undefined, customerDestinationProvince));
     });
 
     return {
@@ -1170,6 +1201,25 @@ export class WaybillsService {
     };
   }
 
+  private async findEditable(id: string, currentUser: UserEntity): Promise<WaybillRecord> {
+    const waybill = await this.waybillsRepository.findOne({
+      where: { id, deleted_at: IsNull() } as any,
+      relations: ['origin_hub', 'dest_hub'],
+    }) as WaybillRecord | null;
+    if (!waybill) throw new NotFoundException('Waybill not found');
+    this.assertWaybillAccess(waybill, currentUser);
+    if (this.getStatus(waybill) === WaybillStatus.CANCELLED) {
+      throw new ConflictException('Cancelled waybill cannot be updated');
+    }
+    return waybill;
+  }
+
+  private isLogisticsLocked(waybill: WaybillRecord): boolean {
+    return !MUTABLE_STATUSES.includes(this.getStatus(waybill))
+      || Boolean(waybill.manifest_id)
+      || Boolean(waybill.trip_id);
+  }
+
   private async findMutable(id: string, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findOne(id, currentUser);
     if (waybill.manifest_id || waybill.trip_id) throw new ConflictException('Waybill is locked by manifest or trip');
@@ -1190,12 +1240,13 @@ export class WaybillsService {
     }
 
     if (query.noi_den?.trim()) {
-      const noiDen = `%${query.noi_den.trim()}%`;
+      const noiDenRaw = query.noi_den.trim();
+      const noiDen = `%${noiDenRaw}%`;
       qb.andWhere(new Brackets((builder) => builder
         .where('waybill.noi_den ILIKE :noiDen', { noiDen })
         .orWhere('waybill.receiver_address ILIKE :noiDen', { noiDen })
         .orWhere('waybill.receiver_info ILIKE :noiDen', { noiDen })
-        .orWhere('waybill.note ILIKE :noiDenNote', { noiDenNote: `%tinh_den=${query.noi_den.trim()}%` })));
+        .orWhere('waybill.note ILIKE :noiDenNote', { noiDenNote: `%tinh_den=${noiDenRaw}%` })));
     }
 
     if (query.billing_unit?.trim()) {
@@ -1402,7 +1453,12 @@ export class WaybillsService {
     return this.sanitize(await this.waybillsRepository.save(waybill), currentUser);
   }
 
-  private mapInventoryTripLine(waybill: WaybillRecord, split: WaybillSplitEntity | null, remainingPackages?: number) {
+  private mapInventoryTripLine(
+    waybill: WaybillRecord,
+    split: WaybillSplitEntity | null,
+    remainingPackages?: number,
+    customerDestinationProvince?: string | null,
+  ) {
     const totalPackages = this.resolveTotalPackages(waybill);
     const totalFreight = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0);
     const totalCod = Number(waybill.cod_amount ?? 0);
@@ -1417,6 +1473,7 @@ export class WaybillsService {
 
     return {
       ...waybill,
+      customer_destination_province: customerDestinationProvince ?? null,
       mat_hang: this.resolveGoodsContent(waybill) || null,
       split_id: split?.id ?? null,
       trip_id: split?.trip_id ?? null,
@@ -1436,6 +1493,35 @@ export class WaybillsService {
       allocated_freight: split ? Math.round(totalFreight * ratio) : totalFreight,
       allocated_cod: split ? Math.round(totalCod * ratio) : totalCod,
     };
+  }
+
+  private resolveWaybillMaKh(waybill: Pick<WaybillRecord, 'ma_kh' | 'note'>): string {
+    return (waybill.ma_kh?.trim() || parseNoteField(waybill.note, 'ma_kh')).toUpperCase();
+  }
+
+  private async loadCustomerDestinationMap(waybills: WaybillEntity[]): Promise<Map<string, string>> {
+    const codes = [...new Set(waybills.map((waybill) => this.resolveWaybillMaKh(waybill as WaybillRecord)).filter(Boolean))];
+    if (!codes.length) return new Map();
+
+    const rows = await this.customersRepository
+      .createQueryBuilder('customer')
+      .select(['customer.code', 'customer.destination_province'])
+      .where('customer.deleted_at IS NULL')
+      .andWhere('UPPER(TRIM(customer.code)) IN (:...codes)', { codes })
+      .getMany();
+
+    return rows.reduce<Map<string, string>>((map, row) => {
+      const code = row.code?.trim().toUpperCase();
+      const province = row.destination_province?.trim();
+      if (code && province) map.set(code, province);
+      return map;
+    }, new Map());
+  }
+
+  private resolveCustomerDestinationProvince(waybill: WaybillRecord, customerDestinationMap: Map<string, string>): string | null {
+    const code = this.resolveWaybillMaKh(waybill);
+    if (!code) return null;
+    return customerDestinationMap.get(code) ?? null;
   }
 
   private sanitize(waybill: WaybillRecord, currentUser: UserEntity): WaybillRecord {

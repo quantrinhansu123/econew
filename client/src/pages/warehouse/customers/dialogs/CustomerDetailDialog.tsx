@@ -518,7 +518,7 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
                               <button
                                 type="button"
                                 title="Sửa đơn"
-                                onClick={() => navigate('/orders/new', { state: { waybillId: String(order.id) } })}
+                                onClick={() => navigate(`/orders/new?edit=${encodeURIComponent(String(order.id))}`)}
                                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border hover:bg-muted"
                               >
                                 <Edit size={14} />

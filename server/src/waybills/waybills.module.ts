@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CustomerEntity } from '../customers/customer.entity';
 import { HubEntity } from '../hubs/hub.entity';
 import { OrdersModule } from '../orders/orders.module';
 import { VendorsModule } from '../vendors/vendors.module';
@@ -15,7 +16,7 @@ import { WaybillsService } from './waybills.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([WaybillEntity, WaybillSplitEntity, WaybillCashVoucherEntity, HubEntity, TripEntity, TruckEntity, ManifestEntity, ManifestWaybillEntity]),
+    TypeOrmModule.forFeature([WaybillEntity, WaybillSplitEntity, WaybillCashVoucherEntity, HubEntity, TripEntity, TruckEntity, ManifestEntity, ManifestWaybillEntity, CustomerEntity]),
     OrdersModule,
     VendorsModule,
   ],

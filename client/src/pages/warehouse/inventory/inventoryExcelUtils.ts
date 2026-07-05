@@ -54,7 +54,7 @@ export function buildInventoryExcelRows(
       'Ngày nhận đơn': dateCell(waybill.received_at || waybill.created_at || null),
       'Trạng thái': resolveOrderStatusBadge(waybill).label,
       'Nơi đến': resolveNoiDen(waybill),
-      'Địa chỉ': resolveReceiverAddress(waybill),
+      'Địa chỉ nhận': resolveReceiverAddress(waybill),
       ĐVT: resolveBillingUnit(waybill),
       'Kg / khối': resolveBillingQtyDetail(waybill),
       'Đơn giá': numberCell(resolveUnitPrice(waybill)),

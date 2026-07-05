@@ -163,7 +163,7 @@ export class WaybillsController {
 
   @Patch(':id')
   @RequireRoles(Roles.WAREHOUSE, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Update a mutable waybill' })
+  @ApiOperation({ summary: 'Update waybill bill data (logistics fields locked after manifest/trip)' })
   update(@Param('id') id: string, @Body() dto: UpdateWaybillDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.update(id, dto, currentUser);
   }
