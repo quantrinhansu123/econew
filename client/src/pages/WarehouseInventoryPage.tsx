@@ -63,7 +63,7 @@ const DIRECTOR = 64;
 const DISPATCHER = 8;
 const MUTABLE_WAYBILL_STATUSES = ['RECEIVED', 'IN_WAREHOUSE'];
 const defaultFilters: InventoryFilters = { keyword: '', ma_kh: '', statuses: [], orderStatusGroups: [], noiDenKeyword: '', billingUnits: [], customerPaymentStatuses: [], hubIds: [], paymentTypes: [], priorities: [], receivedFrom: '', receivedTo: '', page: 1, limit: 10 };
-const allOrdersDefaultFilters: InventoryFilters = { ...defaultFilters, limit: 50 };
+const allOrdersDefaultFilters: InventoryFilters = { ...defaultFilters, limit: 25 };
 const billingUnitFilterOptions: FilterOption[] = [
   { value: 'Cân', label: 'Cân' },
   { value: 'Khối', label: 'Khối' },

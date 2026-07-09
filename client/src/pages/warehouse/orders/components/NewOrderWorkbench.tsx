@@ -37,6 +37,7 @@ interface Props {
   billFilterDate: string;
   onBillFilterDateChange: (value: string) => void;
   onBulkPrintBills: (billIds: string[]) => void;
+  onPrintBill: (bill: BillListItem) => void;
   canManage: boolean;
   isSubmitting: boolean;
   error?: string;
@@ -65,6 +66,7 @@ export default function NewOrderWorkbench({
   billFilterDate,
   onBillFilterDateChange,
   onBulkPrintBills,
+  onPrintBill,
   canManage,
   isSubmitting,
   error,
@@ -341,6 +343,7 @@ export default function NewOrderWorkbench({
           filterDate={billFilterDate}
           onFilterDateChange={onBillFilterDateChange}
           onBulkPrint={onBulkPrintBills}
+          onPrintBill={onPrintBill}
         />
       </div>
     </div>

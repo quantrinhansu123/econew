@@ -31,8 +31,8 @@ services:
       - key: CORS_ORIGIN
         value: https://eco-webapp.vercel.app
       - key: DB_POOL_MAX
-        value: "5"
+        value: "10"
       - key: DB_CONNECTION_TIMEOUT_MS
         value: "10000"
       - key: DB_IDLE_TIMEOUT_MS
-        value: "10000"
+        value: "30000"

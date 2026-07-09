@@ -398,10 +398,15 @@ export default function WarehouseOrderNewPage() {
     return bills.find((bill) => bill.waybill_code.toUpperCase() === code)?.id ?? null;
   }, [selectedBillId, form.soBill, bills]);
 
-  const openPrintBill = (params: Record<string, string> = {}) => {
-    if (!printableBillId) return;
+  const openPrintBill = (params: Record<string, string> = {}, billId?: string | null) => {
+    const id = billId ?? printableBillId;
+    if (!id) return;
     const query = new URLSearchParams({ ...params, pricing: showPricingOnPrint ? 'show' : 'hide' }).toString();
-    window.open(`/print/waybill/${printableBillId}${query ? `?${query}` : ''}`, '_blank', 'noopener');
+    window.open(`/print/waybill/${id}${query ? `?${query}` : ''}`, '_blank', 'noopener');
+  };
+
+  const handlePrintBill = (bill: BillListItem) => {
+    openPrintBill({ print: '1' }, bill.id);
   };
 
   const handleBulkPrintBills = (billIds: string[]) => {
@@ -506,6 +511,7 @@ export default function WarehouseOrderNewPage() {
             billFilterDate={billFilterDate}
             onBillFilterDateChange={handleBillFilterDateChange}
             onBulkPrintBills={handleBulkPrintBills}
+            onPrintBill={handlePrintBill}
             canManage={canCreate}
             isSubmitting={isSubmitting}
             error={actionError}

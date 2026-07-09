@@ -1,7 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
-import { CustomerEntity } from '../customers/customer.entity';
 import { HubEntity } from '../hubs/hub.entity';
 import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
@@ -85,7 +84,6 @@ export class WaybillsService {
     @InjectRepository(ManifestEntity) private readonly manifestsRepository: Repository<ManifestEntity>,
     @InjectRepository(ManifestWaybillEntity) private readonly manifestWaybillsRepository: Repository<ManifestWaybillEntity>,
     @InjectRepository(WaybillCashVoucherEntity) private readonly cashVouchersRepository: Repository<WaybillCashVoucherEntity>,
-    @InjectRepository(CustomerEntity) private readonly customersRepository: Repository<CustomerEntity>,
     private readonly ordersService: OrdersService,
     private readonly vendorsService: VendorsService,
   ) {}
@@ -342,23 +340,27 @@ export class WaybillsService {
 
     this.applyIncompleteSplitFilter(qb, query.only_incomplete_split);
 
-    let totalFreight: number | undefined;
-    if (isManager(currentUser.role_mask)) {
-      const freightQb = qb.clone();
-      const freightRow = await freightQb
-        .select('COALESCE(SUM(COALESCE(waybill.freight_amount, waybill.cost_amount, 0)), 0)', 'total_freight')
-        .getRawOne<{ total_freight: string }>();
-      totalFreight = Number(freightRow?.total_freight) || 0;
-    }
+    const onlyIncompleteSplit = this.isTruthyQueryFlag(query.only_incomplete_split);
+    const needsSplits = Boolean(vendorId) || onlyIncompleteSplit || query.list_scope !== 'all_orders';
+    const includeFreightTotal = isManager(currentUser.role_mask);
 
-    const [waybills, totalWaybills] = await qb
-      .orderBy('waybill.created_at', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getManyAndCount();
+    const [freightRow, totalWaybills, waybills] = await Promise.all([
+      includeFreightTotal
+        ? qb.clone()
+          .select('COALESCE(SUM(COALESCE(waybill.freight_amount, waybill.cost_amount, 0)), 0)', 'total_freight')
+          .getRawOne<{ total_freight: string }>()
+        : Promise.resolve(null),
+      qb.clone().getCount(),
+      qb.clone()
+        .orderBy('waybill.created_at', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getMany(),
+    ]);
+    const totalFreight = includeFreightTotal ? Number(freightRow?.total_freight) || 0 : undefined;
 
     const waybillIds = waybills.map((waybill) => waybill.id);
-    const splits = waybillIds.length
+    const splits = needsSplits && waybillIds.length
       ? await this.splitsRepository.find({
         where: { waybill_id: In(waybillIds) },
         relations: ['trip', 'trip.truck', 'truck'],
@@ -374,12 +376,8 @@ export class WaybillsService {
       return map;
     }, new Map());
 
-    const onlyIncompleteSplit = this.isTruthyQueryFlag(query.only_incomplete_split);
-    const customerDestinationMap = await this.loadCustomerDestinationMap(waybills);
-
     const items = waybills.flatMap((waybill) => {
       const sanitized = this.sanitize(waybill as WaybillRecord, currentUser);
-      const customerDestinationProvince = this.resolveCustomerDestinationProvince(waybill as WaybillRecord, customerDestinationMap);
       const waybillSplits = splitsByWaybill.get(waybill.id) ?? [];
 
       if (onlyIncompleteSplit) {
@@ -387,13 +385,13 @@ export class WaybillsService {
         const allocated = waybillSplits.reduce((sum, row) => sum + Number(row.package_count ?? 0), 0);
         const remaining = totalPackages - allocated;
         if (remaining <= 0) return [];
-        return [this.mapInventoryTripLine(sanitized, null, remaining, customerDestinationProvince)];
+        return [this.mapInventoryTripLine(sanitized, null, remaining)];
       }
 
       if (!waybillSplits.length) {
-        return vendorId ? [] : [this.mapInventoryTripLine(sanitized, null, undefined, customerDestinationProvince)];
+        return vendorId ? [] : [this.mapInventoryTripLine(sanitized, null)];
       }
-      return waybillSplits.map((split) => this.mapInventoryTripLine(sanitized, split, undefined, customerDestinationProvince));
+      return waybillSplits.map((split) => this.mapInventoryTripLine(sanitized, split));
     });
 
     return {
@@ -1241,12 +1239,17 @@ export class WaybillsService {
 
     if (query.noi_den?.trim()) {
       const noiDenRaw = query.noi_den.trim();
-      const noiDen = `%${noiDenRaw}%`;
-      qb.andWhere(new Brackets((builder) => builder
-        .where('waybill.noi_den ILIKE :noiDen', { noiDen })
-        .orWhere('waybill.receiver_address ILIKE :noiDen', { noiDen })
-        .orWhere('waybill.receiver_info ILIKE :noiDen', { noiDen })
-        .orWhere('waybill.note ILIKE :noiDenNote', { noiDenNote: `%tinh_den=${noiDenRaw}%` })));
+      const hubCode = noiDenRaw.toUpperCase();
+      if (/^[A-Z]{2,8}$/.test(hubCode)) {
+        qb.andWhere('UPPER(dest_hub.code) = :hubCode', { hubCode });
+      } else {
+        const noiDen = `%${noiDenRaw}%`;
+        qb.andWhere(new Brackets((builder) => builder
+          .where('waybill.noi_den ILIKE :noiDen', { noiDen })
+          .orWhere('waybill.receiver_address ILIKE :noiDen', { noiDen })
+          .orWhere('waybill.receiver_info ILIKE :noiDen', { noiDen })
+          .orWhere('waybill.note ILIKE :noiDenNote', { noiDenNote: `%tinh_den=${noiDenRaw}%` })));
+      }
     }
 
     if (query.billing_unit?.trim()) {
@@ -1457,7 +1460,6 @@ export class WaybillsService {
     waybill: WaybillRecord,
     split: WaybillSplitEntity | null,
     remainingPackages?: number,
-    customerDestinationProvince?: string | null,
   ) {
     const totalPackages = this.resolveTotalPackages(waybill);
     const totalFreight = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0);
@@ -1473,7 +1475,6 @@ export class WaybillsService {
 
     return {
       ...waybill,
-      customer_destination_province: customerDestinationProvince ?? null,
       mat_hang: this.resolveGoodsContent(waybill) || null,
       split_id: split?.id ?? null,
       trip_id: split?.trip_id ?? null,
@@ -1493,35 +1494,6 @@ export class WaybillsService {
       allocated_freight: split ? Math.round(totalFreight * ratio) : totalFreight,
       allocated_cod: split ? Math.round(totalCod * ratio) : totalCod,
     };
-  }
-
-  private resolveWaybillMaKh(waybill: Pick<WaybillRecord, 'ma_kh' | 'note'>): string {
-    return (waybill.ma_kh?.trim() || parseNoteField(waybill.note, 'ma_kh')).toUpperCase();
-  }
-
-  private async loadCustomerDestinationMap(waybills: WaybillEntity[]): Promise<Map<string, string>> {
-    const codes = [...new Set(waybills.map((waybill) => this.resolveWaybillMaKh(waybill as WaybillRecord)).filter(Boolean))];
-    if (!codes.length) return new Map();
-
-    const rows = await this.customersRepository
-      .createQueryBuilder('customer')
-      .select(['customer.code', 'customer.destination_province'])
-      .where('customer.deleted_at IS NULL')
-      .andWhere('UPPER(TRIM(customer.code)) IN (:...codes)', { codes })
-      .getMany();
-
-    return rows.reduce<Map<string, string>>((map, row) => {
-      const code = row.code?.trim().toUpperCase();
-      const province = row.destination_province?.trim();
-      if (code && province) map.set(code, province);
-      return map;
-    }, new Map());
-  }
-
-  private resolveCustomerDestinationProvince(waybill: WaybillRecord, customerDestinationMap: Map<string, string>): string | null {
-    const code = this.resolveWaybillMaKh(waybill);
-    if (!code) return null;
-    return customerDestinationMap.get(code) ?? null;
   }
 
   private sanitize(waybill: WaybillRecord, currentUser: UserEntity): WaybillRecord {

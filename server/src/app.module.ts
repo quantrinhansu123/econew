@@ -62,6 +62,7 @@ const getPositiveInteger = (value: string | undefined, fallback: number) => {
         const poolMax = getPositiveInteger(configService.get<string>('DB_POOL_MAX'), 1);
         const connectionTimeoutMillis = getPositiveInteger(configService.get<string>('DB_CONNECTION_TIMEOUT_MS'), 10_000);
         const idleTimeoutMillis = getPositiveInteger(configService.get<string>('DB_IDLE_TIMEOUT_MS'), 5_000);
+        const isProduction = configService.get<string>('NODE_ENV') === 'production';
 
         return {
           type: 'postgres',
@@ -69,10 +70,10 @@ const getPositiveInteger = (value: string | undefined, fallback: number) => {
           ssl: { rejectUnauthorized: false },
           extra: {
             max: poolMax,
-            min: 0,
+            min: isProduction ? Math.min(2, poolMax) : 0,
             connectionTimeoutMillis,
             idleTimeoutMillis,
-            allowExitOnIdle: true,
+            allowExitOnIdle: !isProduction,
           },
           autoLoadEntities: true,
           synchronize: false,

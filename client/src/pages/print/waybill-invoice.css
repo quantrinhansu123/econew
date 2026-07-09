@@ -6,7 +6,7 @@
 
 @page a5-landscape {
   size: A5 landscape;
-  margin: 2mm;
+  margin: 0;
 }
 
 @page standard-bill {
@@ -20,16 +20,16 @@
 }
 
 .waybill-invoice {
-  --fs-xs: 6.6pt;
-  --fs-sm: 7pt;
-  --fs-base: 7.5pt;
-  --fs-md: 8pt;
-  --fs-lg: 8.5pt;
-  --fs-xl: 9.5pt;
-  --fs-2xl: 11pt;
-  --fs-3xl: 12pt;
-  --fs-title: 13pt;
-  --fs-money: 16pt;
+  --fs-xs: 13.2pt;
+  --fs-sm: 14pt;
+  --fs-base: 15pt;
+  --fs-md: 16pt;
+  --fs-lg: 17pt;
+  --fs-xl: 19pt;
+  --fs-2xl: 22pt;
+  --fs-3xl: 24pt;
+  --fs-title: 26pt;
+  --fs-money: 32pt;
 }
 
 .waybill-invoice-wrap {
@@ -41,10 +41,16 @@
   align-items: center;
 }
 
+.waybill-invoice-wrap:not(.waybill-invoice-wrap--standard):not(.waybill-invoice-wrap--a4-2up) {
+  min-height: 100vh;
+  padding: 8px;
+  align-items: center;
+}
+
 .waybill-invoice-wrap:not(.waybill-invoice-wrap--standard):not(.waybill-invoice-wrap--a4-2up) .waybill-invoice.eco-a5-template {
-  width: 210mm;
+  width: var(--eco-a5-width, 210mm);
   max-width: 100%;
-  height: 148mm;
+  height: var(--eco-a5-height, 148mm);
   page: a5-landscape;
 }
 
@@ -444,8 +450,18 @@
 
 @media print {
   @page {
-    size: A4 portrait;
+    size: A5 landscape;
     margin: 0;
+  }
+
+  @page standard-bill {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  @page a4-two-up {
+    size: A4 portrait;
+    margin: 2mm;
   }
 
   html,
@@ -478,11 +494,12 @@
     max-height: 148mm !important;
     min-height: 148mm !important;
     box-shadow: none !important;
-    margin: 0 auto !important;
+    margin: 0 !important;
     break-inside: avoid;
     page-break-inside: avoid;
     page-break-after: avoid;
     overflow: hidden !important;
+    page: a5-landscape;
   }
 
   .waybill-invoice:not(.eco-a5-template) {
@@ -594,24 +611,39 @@
   }
 }
 
-/* ================= A5 reference-like table layout ================= */
+/* ================= A5 — bố cục lưới cân đối ================= */
+/* Trục dọc chung của phiếu: 105mm (nửa phiếu) và 157.5mm (nửa panel phải)
+   được dùng xuyên suốt hàng mã, hàng người gửi/nhận, khối chính và footer
+   để mọi đường kẻ dọc thẳng hàng từ trên xuống dưới. */
 .eco-a5-template {
-  --fs-xs: 6.4pt;
-  --fs-sm: 6.8pt;
-  --fs-base: 7.2pt;
-  --fs-md: 7.8pt;
-  --fs-lg: 8.6pt;
-  --fs-title: 12.5pt;
-  --fs-money: 18pt;
+  --eco-a5-scale: 0.8;
+  --eco-ink: #111;
+  --eco-line: 1px solid var(--eco-ink);
+  --eco-line-strong: 1.5px solid var(--eco-ink);
+  --fs-xs: calc(6.4pt * var(--eco-a5-scale));
+  --fs-sm: calc(10.5pt * var(--eco-a5-scale));
+  --fs-base: calc(13pt * var(--eco-a5-scale));
+  --fs-md: calc(15pt * var(--eco-a5-scale));
+  --fs-lg: calc(14pt * var(--eco-a5-scale));
+  --fs-title: calc(12.5pt * var(--eco-a5-scale));
+  --fs-subtitle: calc(20pt * var(--eco-a5-scale));
+  --fs-code: calc(22pt * var(--eco-a5-scale));
+  --fs-row: calc(13.5pt * var(--eco-a5-scale));
+  --fs-body: calc(13.5pt * var(--eco-a5-scale));
+  --fs-phone: calc(16pt * var(--eco-a5-scale));
+  --fs-money: calc(24pt * var(--eco-a5-scale));
+  --fs-stat: calc(18pt * var(--eco-a5-scale));
+  --fs-note: calc(11.6pt * var(--eco-a5-scale));
   --eco-a5-split: 105mm;
   --eco-a5-width: 210mm;
+  --eco-a5-height: 148mm;
   width: var(--eco-a5-width);
-  height: 148mm;
+  height: var(--eco-a5-height);
   display: flex;
   flex-direction: column;
-  border: 1.2px solid #222;
+  border: var(--eco-line-strong);
   font-size: var(--fs-base);
-  line-height: 1.12;
+  line-height: 1.2;
   overflow: hidden;
 }
 
@@ -619,11 +651,17 @@
   margin: 0;
 }
 
+.eco-a5-row {
+  border-bottom: var(--eco-line-strong);
+}
+
+/* ---------- Header ---------- */
+
 .eco-a5-header {
   display: grid;
-  grid-template-columns: 38mm 1fr 55mm;
-  min-height: 26mm;
-  border-bottom: 1.2px solid #222;
+  grid-template-columns: 40mm 1fr 58mm;
+  min-height: 24mm;
+  border-bottom: var(--eco-line-strong);
 }
 
 .eco-a5-brand,
@@ -635,16 +673,17 @@
   justify-content: center;
   text-align: center;
   padding: 1mm 1.5mm;
+  min-width: 0;
 }
 
 .eco-a5-brand,
 .eco-a5-title {
-  border-right: 1.2px solid #222;
+  border-right: var(--eco-line-strong);
 }
 
 .eco-a5-template .eco-logo {
-  width: 18mm;
-  height: 12mm;
+  width: 17mm;
+  height: 11mm;
   margin: 0 0 0.2mm;
   object-fit: contain;
 }
@@ -657,14 +696,17 @@
 }
 
 .eco-a5-template .eco-phone {
-  margin-top: 0.3mm;
-  width: 100%;
-  max-width: 35mm;
-  font-size: 6.2pt;
+  margin-top: auto;
+  font-size: var(--fs-phone);
   font-weight: 900;
-  line-height: 1.05;
-  white-space: nowrap;
-  letter-spacing: -0.08mm;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.eco-a5-template .eco-phone-label {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: 700;
 }
 
 .eco-a5-title h1 {
@@ -676,7 +718,7 @@
 
 .eco-a5-title h2 {
   margin: 0;
-  font-size: 10pt;
+  font-size: var(--fs-subtitle);
   font-weight: 900;
   line-height: 1.1;
 }
@@ -685,75 +727,114 @@
   width: 51mm;
   height: 10mm;
   object-fit: fill;
-  margin-bottom: 1mm;
+  margin-bottom: 0.8mm;
 }
 
 .eco-a5-template .eco-code {
-  font-size: 12pt;
+  font-size: var(--fs-code);
   font-weight: 900;
   line-height: 1;
-  margin-bottom: 1mm;
+  margin-bottom: 0.8mm;
+  white-space: nowrap;
 }
 
-.eco-a5-row {
-  border-bottom: 1.2px solid #222;
-}
-
-.eco-a5-meta-row {
+.eco-code-meta {
+  width: 100%;
+  max-width: 52mm;
+  margin: 0 auto;
   display: grid;
-  grid-template-columns: 43mm 59mm 1fr;
-  min-height: 5.5mm;
-  font-size: 7.8pt;
-  line-height: 1.14;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 1.5mm;
+  text-align: left;
+  font-size: var(--fs-sm);
+  line-height: 1.2;
 }
 
-.eco-a5-meta-row .eco-mini-line {
-  border-right: 1.2px solid #222;
-  padding: 0.8mm 1.2mm;
-}
-
-.eco-a5-meta-row .eco-mini-line:last-child {
-  border-right: none;
-}
+/* ---------- Người gửi / người nhận (băng hàng chia đôi theo mẫu phiếu) ---------- */
+/* Mỗi băng là 1 hàng chung cho cả 2 cột nên nội dung 2 bên luôn thẳng hàng */
 
 .eco-a5-people-row {
   display: grid;
   grid-template-columns: var(--eco-a5-split) 1fr;
-  min-height: 23mm;
-  font-size: 8pt;
-  line-height: 1.15;
+  grid-template-rows: auto minmax(9mm, auto) auto auto;
+  align-content: space-between;
+  min-height: 31mm;
+  font-size: var(--fs-body);
+  line-height: 1.25;
 }
 
-.eco-a5-cell {
-  padding: 0.8mm 1.2mm;
-  border-right: 1.2px solid #222;
+.eco-band {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.4mm;
+  min-width: 0;
+  padding: 0.8mm 1.5mm;
 }
 
-.eco-a5-cell:last-child {
+.eco-band:nth-child(odd) {
+  border-right: var(--eco-line-strong);
+}
+
+.eco-band:nth-child(-n+6) {
+  border-bottom: var(--eco-line);
+}
+
+.eco-band--codes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  font-size: var(--fs-row);
+}
+
+.eco-band--codes .eco-mini-line {
+  grid-template-columns: max-content 1fr;
+  align-items: center;
+  min-width: 0;
+  padding: 0.8mm 1.5mm;
+  border-right: var(--eco-line);
+}
+
+.eco-band--codes .eco-mini-line:last-child {
   border-right: none;
-}
-
-.eco-a5-receiver-cell {
-  position: relative;
-  z-index: 1;
-  min-height: 28.5mm;
-  margin-top: -5.5mm;
-  margin-left: -1.2px;
-  background: #fff;
-  border-left: 1.2px solid #222;
 }
 
 .eco-mini-line {
   display: grid;
-  grid-template-columns: 23mm 1fr;
-  align-items: start;
-  min-height: 3.8mm;
+  grid-template-columns: 28mm 1fr;
+  column-gap: 1mm;
+  align-items: baseline;
+  min-width: 0;
+  min-height: 4.2mm;
+}
+
+.eco-mini-label {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Dải nhãn nền xám như mẫu phiếu tham khảo */
+.eco-a5-template .eco-mini-label,
+.eco-a5-template .eco-a5-goods-code b,
+.eco-a5-template .eco-extra-label,
+.eco-a5-template .eco-footer-text b {
+  background: #ececec;
+  padding: 0.2mm 0.8mm;
+}
+
+.eco-mini-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.eco-mini-value--strong {
+  font-weight: 700;
 }
 
 .eco-a5-people-row .eco-mini-line--address {
-  min-height: 7.6mm;
-  max-height: 7.6mm;
-  overflow: hidden;
+  align-items: start;
 }
 
 .eco-a5-people-row .eco-mini-line--address .eco-mini-value {
@@ -763,25 +844,24 @@
   -webkit-line-clamp: 2;
 }
 
-.eco-a5-people-row .eco-mini-line--receiver-address {
-  min-height: 11.4mm;
-  max-height: 11.4mm;
-}
-
-.eco-a5-people-row .eco-mini-line--receiver-address .eco-mini-value {
-  -webkit-line-clamp: 3;
-}
-
-.eco-mini-label,
-.eco-mini-value--strong {
-  font-weight: 900;
-}
-
 .eco-two-col-line {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 2mm;
+  grid-template-columns: 45mm 1fr;
+  column-gap: 1.5mm;
+  min-width: 0;
 }
+
+/* Dòng đôi: nhãn ôm sát nội dung để giá trị có đủ chỗ, không gãy dòng */
+.eco-two-col-line .eco-mini-line {
+  grid-template-columns: max-content 1fr;
+}
+
+/* Dòng nơi đến bên nhận: Quận/Huyện chứa tên nơi đến dài, Tỉnh/TP chỉ chứa mã bưu cục */
+.eco-two-col-line--dest {
+  grid-template-columns: 1fr 30mm;
+}
+
+/* ---------- Khối chính: hàng hoá / cước phí ---------- */
 
 .eco-a5-main-row {
   display: grid;
@@ -792,26 +872,34 @@
 
 .eco-a5-left-panel {
   display: grid;
-  grid-template-rows: 5.5mm 12mm 1fr;
-  border-right: 1.2px solid #222;
+  grid-template-rows: auto auto 1fr;
+  min-width: 0;
+  border-right: var(--eco-line-strong);
 }
 
 .eco-a5-goods-code {
-  padding: 1mm 1.2mm;
-  border-bottom: 1.2px solid #222;
+  padding: 1mm 1.5mm;
+  border-bottom: var(--eco-line);
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .eco-stats-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  border-bottom: 1.2px solid #222;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: var(--eco-line);
 }
 
 .eco-stat-cell {
+  display: flex;
+  flex-direction: column;
+  min-height: 11mm;
+  min-width: 0;
+  padding: 0 0 1mm;
   text-align: center;
-  padding: 1mm;
-  border-right: 1.2px solid #222;
+  border-right: var(--eco-line);
   font-size: var(--fs-sm);
 }
 
@@ -819,24 +907,29 @@
   border-right: none;
 }
 
+.eco-stat-cell > div {
+  background: #ececec;
+  padding: 0.6mm 0.5mm;
+  border-bottom: var(--eco-line);
+}
+
 .eco-stat-cell strong {
-  display: block;
-  margin-top: 0.8mm;
-  font-size: var(--fs-base);
+  margin: auto 0;
+  font-size: var(--fs-stat);
+  line-height: 1;
 }
 
 .eco-note-grid {
   display: grid;
-  grid-template-columns: 1fr 1.08fr;
-  min-height: 100%;
+  grid-template-columns: 1fr 1fr;
 }
 
 .eco-note-cell {
   position: relative;
-  padding: 1.5mm;
-  padding-bottom: 10mm;
+  min-width: 0;
+  padding: 0 0 10mm;
   text-align: center;
-  border-right: 1.2px solid #222;
+  border-right: var(--eco-line);
 }
 
 .eco-note-cell:last-child {
@@ -845,112 +938,155 @@
 
 .eco-note-cell b {
   display: block;
-  margin-bottom: 1.5mm;
+  margin-bottom: 1mm;
+  padding: 0.7mm 0.5mm;
+  background: #ececec;
+  border-bottom: var(--eco-line);
 }
+
+.eco-note-cell p {
+  padding: 0 1.5mm;
+}
+
+.eco-note-cell p {
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Panel phải: thanh toán / cước / chữ ký ---------- */
 
 .eco-a5-right-panel {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 12mm 11mm 8mm 1fr;
-}
-
-.eco-payment-method-box,
-.eco-charge-box,
-.eco-extra-info-box,
-.eco-sign-box {
-  padding: 1mm 1.2mm;
-  border-right: 1.2px solid #222;
-  border-bottom: 1.2px solid #222;
+  grid-template-rows: 12mm 8mm 8mm 1fr;
+  min-width: 0;
 }
 
 .eco-payment-method-box {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
   text-align: center;
+  border-right: var(--eco-line);
+  border-bottom: var(--eco-line);
+  font-size: var(--fs-sm);
+}
+
+.eco-payment-method-box > div {
+  background: #ececec;
+  padding: 0.6mm 0.5mm;
 }
 
 .eco-payment-method-box strong {
-  display: block;
-  margin-top: 1.5mm;
+  margin: auto 0;
+  padding: 0.5mm 1mm;
   font-size: var(--fs-md);
+  line-height: 1.15;
 }
 
 .eco-charge-box {
-  grid-row: span 3;
-  border-right: none;
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 1.2mm 1.5mm;
+  border-bottom: var(--eco-line);
 }
 
-.eco-charge-box p {
-  margin-bottom: 1mm;
+.eco-charge-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1mm;
+  margin-bottom: 0.8mm;
 }
 
 .eco-extra-info-box {
   grid-column: 1;
+  display: flex;
+  align-items: center;
+  padding: 0.8mm 1.5mm;
+  border-right: var(--eco-line);
+  border-bottom: var(--eco-line);
+}
+
+.eco-extra-info-box p {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1mm;
+  width: 100%;
+}
+
+.eco-sign-box {
+  padding: 0;
+  text-align: center;
+}
+
+.eco-sign-box b {
+  display: block;
+  padding: 0.7mm 0.5mm;
+  background: #ececec;
+}
+
+.eco-sign-box p {
+  margin-top: 0.6mm;
+  padding: 0 1mm;
+  font-size: var(--fs-sm);
+  font-style: italic;
 }
 
 .eco-sign-sender {
   grid-column: 1;
-  text-align: center;
-  border-bottom: none;
+  grid-row: 4;
+  border-right: var(--eco-line);
 }
 
 .eco-sign-receiver {
   grid-column: 2;
-  text-align: center;
-  border-right: none;
-  border-bottom: none;
-}
-
-.eco-sign-box p {
-  margin-top: 1mm;
-  font-size: var(--fs-sm);
+  grid-row: 4;
 }
 
 .eco-a5-template .eco-total {
-  margin-top: 2mm;
-  padding-top: 1mm;
+  margin-top: auto;
+  padding: 1mm 0 0.5mm;
   background: #fff;
-  border-top: none;
+  border-top: var(--eco-line);
   text-align: center;
 }
 
 .eco-a5-template .eco-total-label {
-  font-weight: 900;
+  margin-bottom: 0.6mm;
+  padding: 0.4mm;
+  background: #ececec;
+  font-weight: 700;
   font-size: var(--fs-sm);
 }
 
 .eco-a5-template .eco-total strong {
-  margin-top: 1mm;
+  margin-top: 0;
   font-size: var(--fs-money);
   line-height: 1;
 }
 
+/* ---------- Footer ---------- */
+
 .eco-a5-footer {
   display: grid;
   grid-template-columns: var(--eco-a5-split) calc((var(--eco-a5-width) - var(--eco-a5-split)) / 2) 1fr;
-  min-height: 21mm;
-  border-top: 1.2px solid #222;
-}
-
-.eco-footer-service,
-.eco-footer-staff {
-  border-right: 1.2px solid #222;
-  padding: 1mm 1.2mm;
-}
-
-.eco-footer-staff:last-child {
-  border-right: none;
+  min-height: 19mm;
 }
 
 .eco-footer-service {
   display: grid;
-  grid-template-columns: 1fr 18mm;
+  grid-template-columns: 1fr 17mm;
   gap: 1.5mm;
-}
-
-.eco-a5-template .eco-qr {
-  width: 16mm;
-  height: 16mm;
-  border: 1px solid #222;
-  align-self: center;
+  min-width: 0;
+  padding: 1.2mm 1.5mm;
+  border-right: var(--eco-line-strong);
 }
 
 .eco-footer-text p {
@@ -958,19 +1094,39 @@
 }
 
 .eco-footer-text i {
-  font-size: 5.8pt;
-  line-height: 1;
+  font-size: var(--fs-note);
+  line-height: 1.15;
+}
+
+.eco-a5-template .eco-qr {
+  width: 16mm;
+  height: 16mm;
+  border: 1px solid var(--eco-ink);
+  align-self: center;
+  justify-self: center;
 }
 
 .eco-footer-staff {
   position: relative;
+  padding: 0;
   text-align: center;
+  border-right: var(--eco-line);
+}
+
+.eco-footer-staff:last-child {
+  border-right: none;
+}
+
+.eco-footer-staff b {
+  display: block;
+  padding: 0.8mm 0.5mm;
+  background: #ececec;
 }
 
 .eco-footer-staff label {
   position: absolute;
-  left: 1mm;
-  bottom: 1mm;
+  left: 1.5mm;
+  bottom: 1.5mm;
   display: flex;
   align-items: center;
   gap: 1mm;
@@ -979,9 +1135,9 @@
 }
 
 .eco-footer-staff label span {
-  width: 3.5mm;
-  height: 3.5mm;
-  border: 1px solid #222;
+  width: 3.2mm;
+  height: 3.2mm;
+  border: var(--eco-line);
   display: inline-block;
 }
 

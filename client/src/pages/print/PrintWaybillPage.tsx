@@ -27,7 +27,7 @@ const printFormatLabel: Record<PrintFormat, string> = {
 };
 
 const printFormatHint: Record<PrintFormat, string> = {
-  a5: 'Khổ phiếu A5 ngang (210×148mm). In A4 dọc: phiếu nằm nửa trên, nửa dưới để trống. Tắt header/footer trình duyệt.',
+  a5: 'Khổ A5 ngang (210×148mm). Khi in: chọn A5 ngang, tắt header/footer trình duyệt.',
   standard: 'Khi in: chọn khổ A4 dọc, tắt header/footer trình duyệt.',
   'a4-2up': 'Khi in: chọn khổ A4 dọc — 1 trang in 2 phiếu A5 (liên gửi + liên nhận).',
 };

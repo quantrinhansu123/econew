@@ -13,6 +13,7 @@ interface Props {
   filterDate: string;
   onFilterDateChange: (value: string) => void;
   onBulkPrint: (billIds: string[]) => void;
+  onPrintBill?: (bill: BillListItem) => void;
 }
 
 const formatMoney = (value: number) => (value ? value.toLocaleString('vi-VN') : '');
@@ -41,6 +42,7 @@ export default function BillListSidebar({
   filterDate,
   onFilterDateChange,
   onBulkPrint,
+  onPrintBill,
 }: Props) {
   const [collapsedDates, setCollapsedDates] = useState<Record<string, boolean>>({});
   const [checkedIds, setCheckedIds] = useState<Record<string, boolean>>({});
@@ -94,10 +96,10 @@ export default function BillListSidebar({
     onBulkPrint(ids);
   };
 
-  const columnCount = onDelete ? 7 : 6;
+  const columnCount = 7 + (onDelete ? 1 : 0);
 
   return (
-    <aside className="flex w-[660px] shrink-0 flex-col border-l border-slate-300 bg-slate-50/90">
+    <aside className="flex w-[700px] shrink-0 flex-col border-l border-slate-300 bg-slate-50/90">
       <div className="border-b border-slate-300 bg-gradient-to-b from-slate-100 to-slate-200 px-2 py-1.5">
         <div className="text-center text-[12px] font-black text-slate-800">Danh sách theo ngày</div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -132,7 +134,7 @@ export default function BillListSidebar({
         </div>
       </div>
       <div className="flex-1 overflow-auto custom-scrollbar">
-        <table className="w-full min-w-[660px] border-collapse text-[11px]">
+        <table className="w-full min-w-[700px] border-collapse text-[11px]">
           <thead className="sticky top-0 z-10 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-600">
             <tr>
               <th className="w-8 border-b border-r border-slate-300 px-1 py-1.5 text-center font-black">
@@ -149,6 +151,7 @@ export default function BillListSidebar({
               <th className="w-16 border-b border-r border-slate-300 px-2 py-1.5 text-left font-black">Nơi đến</th>
               <th className="w-[190px] border-b border-r border-slate-300 px-2 py-1.5 text-left font-black">Khách gửi / Mã KH</th>
               <th className="w-24 border-b border-r border-slate-300 px-2 py-1.5 text-right font-black">Phải thu</th>
+              <th className="w-8 border-b border-r border-slate-300 px-1 py-1.5 text-center font-black" title="In bill">In</th>
               {onDelete && <th className="w-7 border-b border-slate-300" />}
             </tr>
           </thead>
@@ -221,6 +224,23 @@ export default function BillListSidebar({
                       </td>
                       <td className="border-b border-r border-slate-300 px-2 py-1.5 text-right font-black tabular-nums">
                         {formatMoney(bill.collectOnDelivery)}
+                      </td>
+                      <td className="border-b border-r border-slate-300 p-0">
+                        <button
+                          type="button"
+                          title={`In ${bill.waybill_code}`}
+                          disabled={!onPrintBill}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onPrintBill?.(bill);
+                          }}
+                          className={clsx(
+                            'flex h-full min-h-7 w-8 shrink-0 items-center justify-center transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                            active ? 'text-white hover:bg-blue-600' : 'text-primary hover:bg-blue-50',
+                          )}
+                        >
+                          <Printer size={13} />
+                        </button>
                       </td>
                       {onDelete && (
                         <td className="border-b border-slate-300 p-0">
