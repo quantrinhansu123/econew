@@ -34,6 +34,14 @@ const fmt = (value?: string | number | null) => (value == null || value === '' ?
 
 const DISPATCH_COMPLETION_DAYS = 3;
 
+function normalizeNgayBoc(value: string) {
+  const raw = value.trim();
+  if (!raw) return '';
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}`;
+  return raw;
+}
+
 function parseDispatchDayMonth(value: string) {
   const match = value.trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
   if (!match) return null;
@@ -112,7 +120,7 @@ function mapItemToDispatchRow(item: LoadPlanningBoardItem, showPricing: boolean)
     nguoiNhanDiaChi: fmt(item.dia_chi),
     diaChiNhan: fmt(item.dia_chi),
     tinhTrangGiaoHang: splitLoadStatusLabel(item.load_status),
-    ngayHoanThanh: addDaysToDispatchDate(fmt(item.ngay_boc), DISPATCH_COMPLETION_DAYS),
+    ngayHoanThanh: addDaysToDispatchDate(normalizeNgayBoc(fmt(item.ngay_boc)), DISPATCH_COMPLETION_DAYS),
     keHoach: '',
     tangHaThuKhach: formatDispatchMoney(cod),
     cuoc: showPricing ? formatDispatchMoney(freight) : '',
@@ -250,7 +258,7 @@ export function mapStackOntoTruckToPrintPayload(
       nguoiNhanDiaChi: String(waybill?.receiver_address || '').trim(),
       diaChiNhan: String(waybill?.receiver_address || '').trim(),
       tinhTrangGiaoHang: '',
-      ngayHoanThanh: addDaysToDispatchDate(ngayBoc, DISPATCH_COMPLETION_DAYS),
+      ngayHoanThanh: addDaysToDispatchDate(normalizeNgayBoc(ngayBoc), DISPATCH_COMPLETION_DAYS),
       keHoach: row.delivery_instruction || 'Kho HCM',
       tangHaThuKhach: formatDispatchMoney(allocateByPackages(codTotal, pkg, totalPkg)),
       cuoc: showPricing ? formatDispatchMoney(allocateByPackages(freightTotal, pkg, totalPkg)) : '',

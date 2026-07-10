@@ -1,6 +1,116 @@
 import type { WaybillInventoryItem } from './types';
 import { resolveOrderStatusGroup, orderStatusGroupConfig } from './orderStatusUtils';
 
+const VN_TIMEZONE = 'Asia/Ho_Chi_Minh';
+
+/** Format ngày in/Excel/màn hình — tránh lệch ngày do timezone khi chuỗi ISO có giờ UTC. */
+export function formatInventoryDate(value?: string | null, options?: { short?: boolean }): string {
+  if (!value) return '';
+  const raw = String(value).trim();
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const [, year, month, day] = iso;
+    return options?.short ? `${day}/${month}` : `${day}/${month}/${year}`;
+  }
+  const dm = raw.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (dm) {
+    const day = dm[1].padStart(2, '0');
+    const month = dm[2].padStart(2, '0');
+    if (options?.short) return `${day}/${month}`;
+    const year = dm[3]
+      ? (dm[3].length === 2 ? `20${dm[3]}` : dm[3])
+      : String(new Date().getFullYear());
+    return `${day}/${month}/${year}`;
+  }
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    ...(options?.short ? {} : { year: 'numeric' }),
+    timeZone: VN_TIMEZONE,
+  }).format(date);
+}
+
+/** Ngày hoàn thành dự kiến = ngày bốc + 3 ngày (theo mẫu bảng kê). */
+export function resolveCompletionDate(waybill: WaybillInventoryItem): string {
+  const anchor = resolveLoadedAt(waybill);
+  if (!anchor) return '';
+  const iso = String(anchor).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    const date = new Date(year, month - 1, day);
+    date.setDate(date.getDate() + 3);
+    return formatInventoryDate(
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
+      { short: true },
+    );
+  }
+  const dm = String(anchor).match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (dm) {
+    let year = dm[3] ? Number(dm[3].length === 2 ? `20${dm[3]}` : dm[3]) : new Date().getFullYear();
+    const date = new Date(year, Number(dm[2]) - 1, Number(dm[1]));
+    date.setDate(date.getDate() + 3);
+    return formatInventoryDate(
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
+      { short: true },
+    );
+  }
+  const date = new Date(anchor);
+  if (Number.isNaN(date.getTime())) return '';
+  date.setDate(date.getDate() + 3);
+  return formatInventoryDate(date.toISOString(), { short: true });
+}
+
+/** Tỷ lệ % chiều rộng cột khi in / xuất Excel danh sách tồn. */
+export const INVENTORY_PRINT_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>> = {
+  stt: 3.5,
+  stack_position: 3.5,
+  order_code: 7,
+  customer_name: 8,
+  waybill_code: 8,
+  bill_info: 9,
+  cong_sg: 8,
+  service_type: 4,
+  trip_label: 6,
+  loaded_at: 5,
+  received_at: 5,
+  noi_den: 4,
+  order_status: 5.5,
+  billing_unit: 3.5,
+  billing_qty_detail: 7.5,
+  unit_price: 5.5,
+  surcharge: 5,
+  transit_fee: 5,
+  total_amount: 5.5,
+  thu_ho_khach: 5.5,
+  payment_method: 5.5,
+  customer_payment_status: 5.5,
+  customer_payment_note: 6,
+  route: 5,
+  ma_kh: 5,
+  receiver_address: 17,
+  receiver_phone: 6.5,
+  package_count: 4,
+  weight: 4.5,
+  volume: 4.5,
+  cod_amount: 5,
+  priority: 4,
+  sender_info: 8,
+  receiver_info: 8,
+  current_hub: 6,
+  dest_hub: 6,
+  payment_type: 4,
+};
+
+export function getInventoryPrintColumnWidth(colId: InventoryColumnId, columnCount: number): number {
+  const mapped = INVENTORY_PRINT_COLUMN_WIDTHS[colId];
+  if (mapped) return mapped;
+  return Math.max(3, 100 / Math.max(columnCount, 1));
+}
+
 export type InventoryColumnId =
   | 'stt'
   | 'cong_sg'
@@ -81,7 +191,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'package_count', label: 'Kiện còn / đơn', defaultVisible: true, align: 'right' },
   { id: 'weight', label: 'Trọng lượng (kg)', defaultVisible: true, align: 'right' },
   { id: 'volume', label: 'Thể tích (m³)', defaultVisible: true, align: 'right' },
-  { id: 'freight', label: 'Cước phí', defaultVisible: true, managerOnly: true, align: 'right' },
+  { id: 'freight', label: 'Cước phí', defaultVisible: false, managerOnly: true, align: 'right' },
   { id: 'sender_info', label: 'Người gửi', defaultVisible: false },
   { id: 'receiver_info', label: 'Người nhận', defaultVisible: false },
   { id: 'current_hub', label: 'Hub hiện tại', defaultVisible: false },
@@ -187,6 +297,7 @@ export function resolveVisibleColumnViews(
       const base = INVENTORY_COLUMNS.find((col) => col.id === id);
       if (!base) return null;
       if (base.managerOnly && !canViewPricing && variant !== 'all-orders') return null;
+      if (variant === 'split-pending' && base.id === 'freight') return null;
       if (variant !== 'all-orders') return base;
       const headerClass =
         id === 'total_amount'
@@ -259,10 +370,12 @@ export function saveVisibleColumnIds(ids: InventoryColumnId[]) {
   localStorage.setItem(INVENTORY_COLUMN_STORAGE_KEY, JSON.stringify(ids));
 }
 
-/** Cột in A4 — cùng thứ tự & bộ cột như bảng màn hình (trừ Thao tác). */
+/** Cột in A4 — cùng thứ tự & bộ cột như bảng màn hình (trừ Thao tác, Cước phí). */
 export function resolvePrintColumnIds(visibleColumnIds: InventoryColumnId[]): InventoryColumnId[] {
   const visible = new Set(visibleColumnIds);
-  return INVENTORY_COLUMNS.filter((col) => col.id !== 'actions' && visible.has(col.id)).map((col) => col.id);
+  return INVENTORY_COLUMNS.filter(
+    (col) => col.id !== 'actions' && col.id !== 'freight' && visible.has(col.id),
+  ).map((col) => col.id);
 }
 
 const parseNote = (note: string | null | undefined, key: string) => {

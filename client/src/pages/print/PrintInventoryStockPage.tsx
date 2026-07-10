@@ -10,7 +10,7 @@ export default function PrintInventoryStockPage() {
   const [data, setData] = useState(() => loadInventoryPrintPayload());
 
   useEffect(() => {
-    document.title = 'Bảng kê phát hàng ECO';
+    document.title = 'Danh sách tồn kho ECO';
     const payload = loadInventoryPrintPayload();
     if (payload?.rows?.length) setData(payload);
   }, []);
@@ -56,7 +56,7 @@ export default function PrintInventoryStockPage() {
           className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-bold text-white"
         >
           <Printer size={16} />
-          In bảng kê (A4)
+          In danh sách tồn (A4)
         </button>
       </div>
       <InventoryStockListTemplate data={data} />

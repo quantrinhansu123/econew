@@ -2,7 +2,11 @@ import type { InventoryColumnId } from '../warehouse/inventory/inventoryColumns'
 import {
   INVENTORY_COLUMNS,
   computeGrandTotals,
+  formatInventoryDate,
   loadVisibleColumnIds,
+  resolveBillingQtyDetail,
+  resolveCompletionDate,
+  resolveCongSg,
   resolveFreight,
   resolveCustomerName,
   resolveServiceType,
@@ -17,6 +21,8 @@ import {
   resolveReceiverAddress,
   resolveReceiverPhone,
   resolvePrintColumnIds,
+  resolveOrderStatusBadge,
+  resolveSurcharge,
   resolveVolumeM3,
   resolveWeightKg,
 } from '../warehouse/inventory/inventoryColumns';
@@ -43,39 +49,59 @@ export interface InventoryPrintPayload {
   };
 }
 
-const formatDate = (value?: string | null) => {
-  if (!value) return '';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('vi-VN');
-};
-
 const formatMoney = (n: number) => (n ? n.toLocaleString('vi-VN') : '');
 
 const formatHub = (hub?: { code?: string | null; name?: string | null } | null) =>
   hub ? [hub.code?.toUpperCase(), hub.name].filter(Boolean).join(' · ') : '';
 
-function cellValue(waybill: WaybillInventoryItem, colId: InventoryColumnId, showPricing: boolean): string {
+const packageLabel = (waybill: WaybillInventoryItem) => {
+  const packages = Number(waybill.trip_package_count ?? waybill.remaining_packages ?? waybill.package_count ?? 0);
+  const totalPackages = Number(waybill.order_total_packages ?? waybill.package_count ?? packages);
+  if (!packages && !totalPackages) return '';
+  return totalPackages > packages && packages > 0 ? `${packages}/${totalPackages}` : String(packages || totalPackages);
+};
+
+export function inventoryPrintCellValue(
+  waybill: WaybillInventoryItem,
+  colId: InventoryColumnId,
+  showPricing: boolean,
+  rowIndex?: number,
+): string {
   switch (colId) {
+    case 'stt':
+      return rowIndex != null ? String(rowIndex) : '';
     case 'stack_position':
-      return '';
+      return waybill.loading_position ? String(waybill.loading_position) : '';
+    case 'order_code':
+      return waybill.order_code || '';
     case 'waybill_code':
       return waybill.waybill_code || waybill.code || String(waybill.id);
     case 'customer_name':
       return resolveCustomerName(waybill);
     case 'bill_info':
       return waybill.noi_dung || waybill.mat_hang || '';
+    case 'cong_sg':
+      return resolveCongSg(waybill);
     case 'service_type':
       return resolveServiceType(waybill);
+    case 'trip_label':
+      return waybill.trip_label || waybill.license_plate || '';
     case 'loaded_at':
-      return formatDate(resolveLoadedAt(waybill));
+      return formatInventoryDate(resolveLoadedAt(waybill));
     case 'received_at':
-      return formatDate(waybill.received_at || waybill.created_at);
+      return formatInventoryDate(waybill.received_at || waybill.created_at);
     case 'noi_den':
       return resolveNoiDen(waybill);
+    case 'order_status':
+      return resolveOrderStatusBadge(waybill).label;
     case 'billing_unit':
       return resolveBillingUnit(waybill);
+    case 'billing_qty_detail':
+      return resolveBillingQtyDetail(waybill);
     case 'unit_price':
       return formatMoney(resolveUnitPrice(waybill));
+    case 'surcharge':
+      return showPricing ? formatMoney(resolveSurcharge(waybill)) : '';
     case 'transit_fee':
       return formatMoney(resolveTransitFee(waybill));
     case 'total_amount':
@@ -105,7 +131,7 @@ function cellValue(waybill: WaybillInventoryItem, colId: InventoryColumnId, show
       return phone === '—' ? '' : phone;
     }
     case 'package_count':
-      return String(Math.max(1, Number(waybill.package_count || waybill.declared_package_count || 0)));
+      return packageLabel(waybill);
     case 'weight':
       return resolveWeightKg(waybill) ? String(Math.round(resolveWeightKg(waybill) * 10) / 10) : '';
     case 'volume':
@@ -129,6 +155,11 @@ function cellValue(waybill: WaybillInventoryItem, colId: InventoryColumnId, show
     default:
       return '';
   }
+}
+
+/** Giá trị cột ngày hoàn thành dự kiến (in/Excel). */
+export function inventoryPrintCompletionDate(waybill: WaybillInventoryItem): string {
+  return resolveCompletionDate(waybill);
 }
 
 export function buildInventoryQueryForPrint(filters: InventoryFilters) {
@@ -169,15 +200,15 @@ export function mapWaybillsToPrintRows(
     label: INVENTORY_COLUMNS.find((c) => c.id === id)?.label ?? id,
   }));
 
-  const rows = waybills.map((waybill) => {
+  const rows = waybills.map((waybill, index) => {
     const row: Record<string, string> = {};
     printColumnIds.forEach((colId) => {
-      row[colId] = cellValue(waybill, colId, showPricing);
+      row[colId] = inventoryPrintCellValue(waybill, colId, showPricing, index + 1);
     });
     return row;
   });
 
-  const totalsRaw = computeGrandTotals(waybills, showPricing);
+  const totalsRaw = computeGrandTotals(waybills, false);
 
   return {
     printedAt: new Date().toLocaleString('vi-VN'),
@@ -189,7 +220,7 @@ export function mapWaybillsToPrintRows(
       package_count: String(totalsRaw.package_count),
       weight_kg: totalsRaw.weight_kg ? totalsRaw.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) : '0',
       volume_m3: totalsRaw.volume_m3 ? totalsRaw.volume_m3.toFixed(2) : '0',
-      freight: showPricing ? formatMoney(totalsRaw.freight) : '',
+      freight: '',
     },
   };
 }

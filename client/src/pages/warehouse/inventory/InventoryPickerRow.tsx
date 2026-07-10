@@ -3,6 +3,7 @@ import { clsx } from 'clsx';
 import type { InventoryColumnDef, InventoryColumnId } from './inventoryColumns';
 import {
   getStorageAgeRowClass,
+  formatInventoryDate,
   resolveFreight,
   resolveCustomerName,
   resolveServiceType,
@@ -24,7 +25,7 @@ import type { WaybillInventoryItem } from './types';
 const displayCode = (waybill: WaybillInventoryItem) => waybill.waybill_code || waybill.code || `#${waybill.id}`;
 const displayValue = (value: unknown, suffix = '') =>
   value === null || value === undefined || value === '' ? '—' : `${value}${suffix}`;
-const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString('vi-VN') : '—');
+const formatDate = (value?: string | null) => (value ? formatInventoryDate(value) : '—');
 const formatHub = (
   hub?: { id?: string | number; code?: string | null; name?: string | null } | null,
   fallback?: string | number | null,

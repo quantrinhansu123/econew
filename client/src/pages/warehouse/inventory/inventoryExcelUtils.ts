@@ -1,106 +1,83 @@
 import { utils, writeFile } from 'xlsx';
+import type { InventoryColumnId } from './inventoryColumns';
 import {
-  resolveFreight,
-  resolveCustomerName,
-  resolveServiceType,
-  resolveBillingUnit,
-  resolveUnitPrice,
-  resolveTransitFee,
-  resolvePaymentMethod,
-  resolveLoadedAt,
-  resolveMaKh,
-  resolveNoiDen,
-  resolveReceiverAddress,
-  resolveReceiverPhone,
-  resolveVolumeM3,
-  resolveWeightKg,
-  resolveSurcharge,
-  resolveTotalAmount,
-  resolveBillingQtyDetail,
-  resolveOrderStatusBadge,
-  resolveCongSg,
+  INVENTORY_COLUMNS,
+  computeGrandTotals,
+  getInventoryPrintColumnWidth,
+  resolvePrintColumnIds,
 } from './inventoryColumns';
-import type { BadgeConfig, WaybillInventoryItem } from './types';
-
-const cell = (value?: string | number | null) => (value == null || value === '' ? '' : value);
-const dateCell = (value?: string | null) => (value ? new Date(value).toLocaleDateString('vi-VN') : '');
-const numberCell = (value: number) => (Number.isFinite(value) && value !== 0 ? value : '');
-
-function packageLabel(waybill: WaybillInventoryItem) {
-  const packages = Number(waybill.trip_package_count ?? waybill.remaining_packages ?? waybill.package_count ?? 0);
-  const totalPackages = Number(waybill.order_total_packages ?? waybill.package_count ?? packages);
-  if (!packages && !totalPackages) return '';
-  return totalPackages > packages && packages > 0 ? `${packages}/${totalPackages}` : String(packages || totalPackages);
-}
+import type { WaybillInventoryItem } from './types';
+import { inventoryPrintCellValue } from '../../print/inventoryPrintUtils';
 
 export function buildInventoryExcelRows(
   waybills: WaybillInventoryItem[],
+  visibleColumnIds: InventoryColumnId[],
   showPricing: boolean,
-  statusConfig: Record<string, BadgeConfig>,
-  priorityConfig: Record<string, BadgeConfig>,
-): Record<string, string | number>[] {
-  return waybills.map((waybill, index) => {
-    const status = String(waybill.current_state || waybill.status || '');
-    const priority = String(waybill.priority || '');
-    const row: Record<string, string | number> = {
-      STT: index + 1,
-      'Mã đơn hàng': cell(waybill.order_code),
-      'Tên khách': resolveCustomerName(waybill),
-      'Mã vận đơn': cell(waybill.waybill_code || waybill.code),
-      'Bill/Nội dung': resolveCongSg(waybill),
-      'Dịch vụ': resolveServiceType(waybill),
-      'Phân xe': cell(waybill.trip_label || waybill.license_plate || 'Chưa phân xe'),
-      'Ngày bốc hàng': dateCell(resolveLoadedAt(waybill)),
-      'Ngày nhận đơn': dateCell(waybill.received_at || waybill.created_at || null),
-      'Trạng thái': resolveOrderStatusBadge(waybill).label,
-      'Nơi đến': resolveNoiDen(waybill),
-      'Địa chỉ nhận': resolveReceiverAddress(waybill),
-      ĐVT: resolveBillingUnit(waybill),
-      'Kg / khối': resolveBillingQtyDetail(waybill),
-      'Đơn giá': numberCell(resolveUnitPrice(waybill)),
-      'Phụ phí': numberCell(resolveSurcharge(waybill)),
-      'Trung chuyển': numberCell(resolveTransitFee(waybill)),
-      'Tuyến': cell(waybill.route_code || waybill.delivery_route),
-      'Mã KH': resolveMaKh(waybill),
-      'Người gửi': cell(waybill.sender_info),
-      'Người nhận': cell(waybill.receiver_info),
-      'Địa chỉ đến': resolveReceiverAddress(waybill),
-      'SĐT người nhận': resolveReceiverPhone(waybill),
-      'Số kiện': packageLabel(waybill),
-      'Trọng lượng (kg)': numberCell(resolveWeightKg(waybill)),
-      'Thể tích (m³)': numberCell(resolveVolumeM3(waybill)),
-      'Thanh toán': cell(waybill.payment_type),
-      'Hình thức TT': resolvePaymentMethod(waybill),
-      'Tình trạng TT': waybill.customer_payment_status === 'PAID' ? 'Đã TT' : waybill.customer_payment_status === 'SENT_STATEMENT' ? 'Đã gửi bảng kê' : '',
-      'Ghi chú TT': cell(waybill.customer_payment_note),
-      COD: numberCell(Number(waybill.allocated_cod ?? waybill.cod_amount ?? 0)),
-      'Ưu tiên': priorityConfig[priority]?.label || priority,
-      'Hub hiện tại': cell(waybill.current_hub?.name || waybill.current_hub?.code),
-      'Hub đến': cell(waybill.dest_hub?.name || waybill.dest_hub?.code),
-      'Ghi chú': cell(waybill.split_note || waybill.note || waybill.notes),
-    };
-    if (showPricing) {
-      const cuocPhi = Number(waybill.allocated_freight ?? resolveFreight(waybill)) || 0;
-      row['Cước phí'] = numberCell(cuocPhi);
-      row['Thành tiền'] = numberCell(resolveTotalAmount(waybill));
-    }
-    return row;
+  filterSummary: string,
+): string[][] {
+  const printColumnIds = resolvePrintColumnIds(visibleColumnIds);
+  const headers = printColumnIds.map((id) => INVENTORY_COLUMNS.find((col) => col.id === id)?.label ?? id);
+  const dataRows = waybills.map((waybill, index) =>
+    printColumnIds.map((colId) => inventoryPrintCellValue(waybill, colId, showPricing, index + 1)),
+  );
+
+  const totals = computeGrandTotals(waybills, false);
+  const totalLabelCol =
+    printColumnIds.find((id) => id === 'order_code')
+    ?? printColumnIds.find((id) => id === 'waybill_code')
+    ?? printColumnIds[0];
+  const totalRow = printColumnIds.map((id) => {
+    if (id === totalLabelCol) return 'Tổng cộng';
+    if (id === 'package_count') return String(totals.package_count);
+    if (id === 'weight') return totals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 });
+    if (id === 'volume') return totals.volume_m3.toFixed(2);
+    return '';
   });
+
+  const printedAt = new Date().toLocaleString('vi-VN');
+  const meta = filterSummary ? `In lúc: ${printedAt} · ${filterSummary}` : `In lúc: ${printedAt}`;
+
+  return [
+    ['DANH SÁCH TỒN KHO ECO'],
+    [meta],
+    [],
+    headers,
+    ...dataRows,
+    [],
+    totalRow,
+    [],
+    [`Tổng kiện: ${totals.package_count} · Tổng cân: ${totals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg · Tổng khối: ${totals.volume_m3.toFixed(2)} m³`],
+  ];
 }
 
 export function downloadInventoryExcel(
   waybills: WaybillInventoryItem[],
+  visibleColumnIds: InventoryColumnId[],
   showPricing: boolean,
-  statusConfig: Record<string, BadgeConfig>,
-  priorityConfig: Record<string, BadgeConfig>,
+  filterSummary: string,
   fileBaseName: string,
 ) {
-  const rows = buildInventoryExcelRows(waybills, showPricing, statusConfig, priorityConfig);
-  if (!rows.length) return false;
+  const printColumnIds = resolvePrintColumnIds(visibleColumnIds);
+  if (!waybills.length || !printColumnIds.length) return false;
 
-  const worksheet = utils.json_to_sheet(rows);
+  const rows = buildInventoryExcelRows(waybills, visibleColumnIds, showPricing, filterSummary);
+  const worksheet = utils.aoa_to_sheet(rows);
+  const colCount = printColumnIds.length;
+
+  worksheet['!cols'] = printColumnIds.map((id) => ({
+    wch: Math.max(6, Math.round(getInventoryPrintColumnWidth(id, colCount) * 0.22)),
+  }));
+
+  if (colCount > 1) {
+    worksheet['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+      { s: { r: rows.length - 1, c: 0 }, e: { r: rows.length - 1, c: colCount - 1 } },
+    ];
+  }
+
   const workbook = utils.book_new();
-  utils.book_append_sheet(workbook, worksheet, 'Danh sach don');
+  utils.book_append_sheet(workbook, worksheet, 'Danh sach ton');
 
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
   writeFile(workbook, `${fileBaseName}-${stamp}.xlsx`);

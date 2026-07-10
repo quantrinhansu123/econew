@@ -72,9 +72,18 @@ export const parseReceiverAddress = (info?: string | null, address?: string | nu
 
 export const formatDispatchShortDate = (value?: string | null) => {
   if (!value) return '';
-  const date = new Date(value);
+  const raw = String(value).trim();
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}`;
+  const dm = raw.match(/^(\d{1,2})\/(\d{1,2})/);
+  if (dm) return `${dm[1].padStart(2, '0')}/${dm[2].padStart(2, '0')}`;
+  const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return blank(value);
-  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit' }).format(date);
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  }).format(date);
 };
 
 export function formatReceiverAddressWithPhone(link: DispatchLink) {

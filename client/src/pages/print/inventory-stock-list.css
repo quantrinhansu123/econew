@@ -10,12 +10,15 @@
     background: #fff !important;
     font-family: 'Times New Roman', Times, serif;
   }
-  .inventory-stock-table--dispatch {
-    font-size: 6.8pt;
+  .inventory-stock-table--dispatch,
+  .inventory-stock-table--inventory {
+    font-size: 7pt;
     font-family: 'Times New Roman', Times, serif !important;
   }
   .inventory-stock-table--dispatch th,
-  .inventory-stock-table--dispatch td {
+  .inventory-stock-table--dispatch td,
+  .inventory-stock-table--inventory th,
+  .inventory-stock-table--inventory td {
     padding: 2px 2px;
     font-family: 'Times New Roman', Times, serif !important;
   }
@@ -121,6 +124,57 @@
   font-family: 'Times New Roman', Times, serif;
   font-size: 7.4pt;
   line-height: 1.18;
+}
+
+.inventory-stock-table--inventory {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 7.8pt;
+  line-height: 1.2;
+}
+
+.inventory-stock-table--inventory th,
+.inventory-stock-table--inventory td {
+  max-width: 0;
+  font-size: 7.6pt;
+}
+
+.inventory-stock-table--inventory thead th {
+  font-size: 7.2pt;
+  line-height: 1.15;
+  padding: 3px 2px;
+}
+
+.inventory-stock-table--inventory tbody td {
+  padding: 3px 3px;
+  vertical-align: top;
+}
+
+.inventory-stock-table--inventory tbody td.col-inv-receiver_address,
+.inventory-stock-table--inventory tbody td.col-inv-bill_info,
+.inventory-stock-table--inventory tbody td.col-inv-customer_name,
+.inventory-stock-table--inventory tbody td.col-inv-trip_label {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.inventory-stock-table--inventory tbody td.col-inv-loaded_at,
+.inventory-stock-table--inventory tbody td.col-inv-received_at,
+.inventory-stock-table--inventory tbody td.col-inv-package_count,
+.inventory-stock-table--inventory tbody td.col-inv-weight,
+.inventory-stock-table--inventory tbody td.col-inv-volume,
+.inventory-stock-table--inventory tbody td.col-inv-numeric {
+  white-space: nowrap;
+}
+
+.inventory-stock-footer {
+  margin: 6px 2px 0;
+  font-size: 8pt;
+  font-weight: 700;
+  color: #111;
+  text-align: right;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .inventory-stock-table--dispatch th,

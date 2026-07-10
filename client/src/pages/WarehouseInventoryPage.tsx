@@ -23,6 +23,7 @@ import { downloadInventoryExcel } from './warehouse/inventory/inventoryExcelUtil
 import {
   canCollectCashPayment,
   computeGrandTotals,
+  formatInventoryDate,
   getStorageAgeRowClass,
   loadVisibleColumnIds,
   loadAllOrdersVisibleColumnIds,
@@ -118,7 +119,7 @@ const hasManagerAccess = (roleMask: number) => (roleMask & (MANAGER | DIRECTOR))
 const canEditWaybill = (roleMask: number) => (roleMask & (WAREHOUSE | MANAGER | DIRECTOR)) !== 0;
 const canMutateInventory = (roleMask: number) => (roleMask & (DISPATCHER | MANAGER | DIRECTOR)) !== 0;
 const normalizeList = (response: InventoryListResponse | WaybillInventoryItem[]) => Array.isArray(response) ? response : response.data || response.items || response.waybills || [];
-const formatDate = (value?: string | null) => value ? new Date(value).toLocaleDateString('vi-VN') : '—';
+const formatDate = (value?: string | null) => (value ? formatInventoryDate(value) : '—');
 const displayCode = (waybill: WaybillInventoryItem) => waybill.waybill_code || waybill.code || `#${waybill.id}`;
 const displayValue = (value: unknown, suffix = '') => value === null || value === undefined || value === '' ? '—' : `${value}${suffix}`;
 const normalizeStatus = (waybill: WaybillInventoryItem) => String(waybill.current_state || waybill.status || '').toUpperCase();
@@ -412,7 +413,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     }
     const payload = mapWaybillsToPrintRows(
       waybills,
-      canViewPage,
+      canViewPricing,
       visibleColumns.map((col) => col.id),
     );
     const pageNote =
@@ -434,9 +435,9 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     try {
       const exported = downloadInventoryExcel(
         waybills,
+        visibleColumns.map((col) => col.id),
         canViewPricing,
-        statusConfig,
-        priorityConfig,
+        summarizeFilters(filters),
         isAllOrders ? 'danh-sach-don' : 'danh-sach-ton-kho',
       );
       if (!exported) setActionError('Không có dữ liệu để tải Excel.');
@@ -496,11 +497,30 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
           </div>
         </div>
       ) : (
+        <>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <FilterSummaryCard
+            label="Tổng kiện (trang hiện tại)"
+            value={isLoading ? '…' : `${grandTotals.package_count.toLocaleString('vi-VN')} kiện`}
+            tone="blue"
+          />
+          <FilterSummaryCard
+            label="Tổng cân (trang hiện tại)"
+            value={isLoading ? '…' : `${grandTotals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg`}
+            tone="emerald"
+          />
+          <FilterSummaryCard
+            label="Tổng khối (trang hiện tại)"
+            value={isLoading ? '…' : `${grandTotals.volume_m3.toFixed(2)} m³`}
+            tone="amber"
+          />
+        </div>
         <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-[13px] text-amber-900">
           <span className="font-bold">Chỉ hiển thị đơn tồn</span>
           {' — '}
           Các dòng đã phân đủ kiện lên xe sẽ không xuất hiện trong danh sách này.
         </div>
+        </>
       )}
 
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
@@ -736,7 +756,6 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                         {col.id === 'package_count' ? grandTotals.package_count : ''}
                         {col.id === 'weight' ? `${grandTotals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg` : ''}
                         {col.id === 'volume' ? `${grandTotals.volume_m3.toFixed(2)} m³` : ''}
-                        {col.id === 'freight' && canViewPricing ? `${grandTotals.freight.toLocaleString('vi-VN')} đ` : ''}
                       </td>
                     ))}
                   </tr>
