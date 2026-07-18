@@ -242,7 +242,7 @@ export default function WarehouseCustomerList({
             <table className="w-full min-w-[1360px] border-collapse text-left text-[13px]">
               <thead className="sticky top-0 z-10 bg-slate-100 text-[11px] font-extrabold uppercase tracking-wide text-slate-600">
                 <tr>
-                  {['Mã KH', 'Tên KH', 'Người nhận', 'Tên tắt', 'Tỉnh đến', 'Địa chỉ nhận', 'ĐC kho HCM', 'ĐT nhận', 'CK %', 'Giao nhận', 'TT', 'Số đơn', 'Thao tác'].map((h) => (
+                  {['Mã KH', 'Tên KH', 'Người nhận', 'Tên tắt', 'Tỉnh đến', 'Địa chỉ gửi', 'ĐC kho HCM', 'ĐT nhận', 'CK %', 'Giao nhận', 'TT', 'Số đơn', 'Thao tác'].map((h) => (
                     <th key={h} className="border-b border-border px-3 py-3">
                       {h}
                     </th>

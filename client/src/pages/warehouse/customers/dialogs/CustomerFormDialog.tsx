@@ -110,6 +110,14 @@ export default function CustomerFormDialog({
                   className={inputClass}
                 />
               </Field>
+              <Field label="Địa chỉ gửi" className="sm:col-span-2">
+                <input
+                  value={form.address}
+                  onChange={(e) => onChange('address', e.target.value)}
+                  className={inputClass}
+                  placeholder="Địa chỉ lấy/gửi hàng của khách hàng"
+                />
+              </Field>
             </div>
           </section>
 
@@ -164,9 +172,6 @@ export default function CustomerFormDialog({
           <section className="rounded-2xl border border-border bg-white p-4 shadow-sm">
             <p className="mb-3 text-[12px] font-extrabold uppercase tracking-wide text-muted-foreground">Khác</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Địa chỉ">
-                <input value={form.address} onChange={(e) => onChange('address', e.target.value)} className={inputClass} />
-              </Field>
               <Field label="Khu vực">
                 <input value={form.region} onChange={(e) => onChange('region', e.target.value)} className={inputClass} />
               </Field>

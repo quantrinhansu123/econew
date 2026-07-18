@@ -414,7 +414,7 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
               <Row label="Di động" value={customer.mobile} />
               <Row label="Số ĐT" value={customer.phone_landline} />
               <Row label="Email" value={customer.email} />
-              <Row label="Địa chỉ" value={customer.address} />
+              <Row label="Địa chỉ gửi" value={customer.address} />
               <Row label="Đ/chỉ LH" value={customer.contact_address} />
               <Row label="Khu vực" value={customer.region} />
               <Row label="NV quản lý" value={customer.manager_name} />

@@ -68,17 +68,14 @@ export function customerPhone(customer: CustomerRecord) {
   return str(customer.mobile) || str(customer.phone_landline) || str(customer.phone_hcm) || str(customer.phone_dng);
 }
 
+/** Địa chỉ gửi lấy riêng từ cột address, không dùng địa chỉ kho nhận. */
 export function customerSenderAddress(customer: CustomerRecord) {
-  return str(customer.contact_address) || str(customer.address) || str(customer.address_hcm) || str(customer.address_dng);
+  return str(customer.address);
 }
 
-/** Địa chỉ nhận — ưu tiên cột address trên danh sách KH */
+/** Địa chỉ nhận chung chỉ gồm dữ liệu kho nhận, không dùng địa chỉ gửi. */
 export function customerReceiverAddress(customer: CustomerRecord) {
-  return str(customer.address) || str(customer.contact_address) || str(customer.address_hcm);
-}
-
-function customerReceiverName(customer: CustomerRecord) {
-  return str(customer.receiver_hcm) || str(customer.receiver_dng) || str(customer.contact_person);
+  return str(customer.address_hcm) || str(customer.address_dng);
 }
 
 function customerReceiverPhone(customer: CustomerRecord) {
@@ -129,14 +126,13 @@ export function applyReceiverByDestination(
   noiDen: string,
   huyen = '',
 ): Partial<NewOrderFormState> {
-  const fallbackName = customerReceiverName(customer);
-  const fallbackAddress = customerReceiverAddress(customer);
+  const fallbackName = str(customer.contact_person);
   const fallbackPhone = customerReceiverPhone(customer);
 
   if (isHcmProvince(noiDen, huyen)) {
     return {
       nguoiNhan: str(customer.receiver_hcm) || fallbackName,
-      diaChiNhan: str(customer.address_hcm) || fallbackAddress,
+      diaChiNhan: str(customer.address_hcm),
       dienThoaiNhan: str(customer.phone_hcm) || fallbackPhone,
     };
   }
@@ -144,14 +140,14 @@ export function applyReceiverByDestination(
   if (isDngProvince(noiDen, huyen)) {
     return {
       nguoiNhan: str(customer.receiver_dng) || fallbackName,
-      diaChiNhan: str(customer.address_dng) || fallbackAddress,
+      diaChiNhan: str(customer.address_dng),
       dienThoaiNhan: str(customer.phone_dng) || fallbackPhone,
     };
   }
 
   return {
     nguoiNhan: fallbackName,
-    diaChiNhan: fallbackAddress,
+    diaChiNhan: '',
     dienThoaiNhan: fallbackPhone,
   };
 }
@@ -167,7 +163,7 @@ export function customerToOrderPatch(customer: CustomerRecord, hubs: HubSummary[
   const patch: Partial<NewOrderFormState> = {
     maKh: customer.code,
     nguoiGui: str(customer.name) || str(customer.short_name),
-    diaChiGui: customerSenderAddress(customer) || undefined,
+    diaChiGui: customerSenderAddress(customer),
     dienThoaiKh: phoneKh || undefined,
     huyen,
     nvgn: str(customer.delivery_handler) || undefined,
@@ -200,5 +196,5 @@ export function customerToOrderPatch(customer: CustomerRecord, hubs: HubSummary[
   const receiverPatch = applyReceiverByDestination(customer, noiDen || 'HCM', huyen);
   Object.assign(patch, receiverPatch);
 
-  return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined && v !== '')) as Partial<NewOrderFormState>;
+  return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as Partial<NewOrderFormState>;
 }
