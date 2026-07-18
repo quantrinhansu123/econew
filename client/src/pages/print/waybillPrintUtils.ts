@@ -35,6 +35,41 @@ export interface WaybillPrintData {
   showPricing: boolean;
 }
 
+const waitForImage = (image: HTMLImageElement) => {
+  if (image.complete) {
+    return typeof image.decode === 'function'
+      ? image.decode().catch(() => undefined)
+      : Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    image.addEventListener('load', () => resolve(), { once: true });
+    image.addEventListener('error', () => resolve(), { once: true });
+  });
+};
+
+/**
+ * Đợi logo, barcode và QR sẵn sàng để tránh mở hộp thoại in khi ảnh còn trống.
+ * Timeout giữ thao tác in không bị kẹt nếu dịch vụ ảnh bên ngoài không phản hồi.
+ */
+export async function printWaybillWhenReady() {
+  const images = Array.from(
+    document.querySelectorAll<HTMLImageElement>('.waybill-invoice img'),
+  );
+  const assetsReady = Promise.all(images.map(waitForImage));
+  const timeout = new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 3_000);
+  });
+
+  await Promise.race([assetsReady, timeout]);
+  await new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
+  window.print();
+}
+
 function parseContact(info?: string | null) {
   const parts = (info || '').split('|').map((p) => p.trim());
   if (parts.length >= 3) {

@@ -526,7 +526,7 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
                               <button
                                 type="button"
                                 title="In bill"
-                                onClick={() => window.open(`/print/waybill/${order.id}`, '_blank')}
+                                onClick={() => window.open(`/print/waybill/${order.id}?print=1`, '_blank', 'noopener')}
                                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border hover:bg-muted"
                               >
                                 <Printer size={14} />

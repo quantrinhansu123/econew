@@ -37,7 +37,6 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
       <header className="eco-a5-header">
         <div className="eco-a5-brand">
           <img src={WAYBILL_PRINT_LOGO_SRC} alt="" className="eco-logo" />
-          <div className="eco-company-small">Express &amp; Exacting</div>
           <div className="eco-phone">
             <span className="eco-phone-label">Hotline</span>
             0946 936 999<br />0969 444 816
@@ -108,12 +107,12 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           </div>
           <div className="eco-note-grid">
             <div className="eco-note-cell">
-              <b>Ghi chú</b>
+              <span className="eco-note-heading">Ghi chú</span>
               <p>{value(data.ghiChu)}</p>
               {data.codStamp && <div className="eco-cod-stamp">THU COD</div>}
             </div>
-            <div className="eco-note-cell">
-              <b>Nội dung hàng hoá</b>
+            <div className="eco-note-cell eco-note-cell--contents">
+              <span className="eco-note-heading">Nội dung hàng hoá</span>
               <p>{value(data.noiDungHang)}</p>
             </div>
           </div>

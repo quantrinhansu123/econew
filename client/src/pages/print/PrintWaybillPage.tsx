@@ -7,29 +7,27 @@ import type { CustomerListItem, CustomerListResponse } from '../warehouse/custom
 import type { WaybillDetail } from '../warehouse/orders/types';
 import WaybillInvoiceTemplate from './WaybillInvoiceTemplate';
 import { customerAddress, customerPhone } from '../warehouse/customers/customerOrderPatch';
-import { buildWaybillPrintData } from './waybillPrintUtils';
+import { buildWaybillPrintData, printWaybillWhenReady } from './waybillPrintUtils';
 import './waybill-invoice.css';
 
 const MANAGER_ROLES = 32 | 64;
 
-type PrintFormat = 'a5' | 'standard' | 'a4-2up';
+type PrintFormat = 'a5' | 'a4';
 
 const resolvePrintFormat = (value: string | null): PrintFormat => {
-  if (value === 'standard') return 'standard';
-  if (value === 'a4-2up') return 'a4-2up';
+  // Giữ tương thích với các URL in cũ nhưng không nhân đôi phiếu trên A4.
+  if (value === 'a4' || value === 'standard' || value === 'a4-2up') return 'a4';
   return 'a5';
 };
 
 const printFormatLabel: Record<PrintFormat, string> = {
   a5: 'A5 ngang (1 phiếu)',
-  standard: 'Bill thường (A4 dọc)',
-  'a4-2up': 'A4 ghép 2 phiếu A5',
+  a4: 'A4 dọc (1 phiếu)',
 };
 
 const printFormatHint: Record<PrintFormat, string> = {
-  a5: 'Khổ A5 ngang (210×148mm). Khi in: chọn A5 ngang, tắt header/footer trình duyệt.',
-  standard: 'Khi in: chọn khổ A4 dọc, tắt header/footer trình duyệt.',
-  'a4-2up': 'Khi in: chọn khổ A4 dọc — 1 trang in 2 phiếu A5 (liên gửi + liên nhận).',
+  a5: 'Tự căn khổ A5 ngang (210×148mm), mỗi trang một phiếu.',
+  a4: 'Tự căn khổ A4 dọc, phiếu nằm ở nửa trên và nửa dưới để trắng.',
 };
 
 export default function PrintWaybillPage() {
@@ -40,6 +38,9 @@ export default function PrintWaybillPage() {
   const autoPrint = searchParams.get('print') === '1';
   const printFormat = resolvePrintFormat(searchParams.get('format'));
   const pricingParam = searchParams.get('pricing');
+  const pageSizeRule = printFormat === 'a4'
+    ? '@media print { @page { size: A4 portrait; margin: 3mm; } }'
+    : '@media print { @page { size: A5 landscape; margin: 3mm; } }';
 
   const setPrintFormat = useCallback((format: PrintFormat) => {
     const next = new URLSearchParams(searchParams);
@@ -64,42 +65,48 @@ export default function PrintWaybillPage() {
   useEffect(() => {
     if (!id) return;
     let mounted = true;
-    setLoading(true);
-    apiRequest<WaybillDetail>(`/waybills/${id}`)
-      .then(async (data) => {
-        if (!mounted) return;
-        setWaybill(data);
-        const note = data.note || data.notes || '';
-        const maKhMatch = note.match(/ma_kh=([^|]+)/);
-        const maKh = maKhMatch?.[1]?.trim();
-        if (maKh) {
-          try {
-            const res = await apiRequest<CustomerListResponse>(
-              `/customers?keyword=${encodeURIComponent(maKh)}&limit=5`,
-            );
-            const items = Array.isArray(res) ? res : res.items || [];
-            const match = items.find((c) => c.code.toUpperCase() === maKh.toUpperCase());
-            if (mounted && match) setCustomer(match);
-          } catch {
-            /* optional */
+    const loadTimer = window.setTimeout(() => {
+      setLoading(true);
+      apiRequest<WaybillDetail>(`/waybills/${id}`)
+        .then(async (data) => {
+          if (!mounted) return;
+          setWaybill(data);
+          const note = data.note || data.notes || '';
+          const maKhMatch = note.match(/ma_kh=([^|]+)/);
+          const maKh = maKhMatch?.[1]?.trim();
+          if (maKh) {
+            try {
+              const res = await apiRequest<CustomerListResponse>(
+                `/customers?keyword=${encodeURIComponent(maKh)}&limit=5`,
+              );
+              const items = Array.isArray(res) ? res : res.items || [];
+              const match = items.find((c) => c.code.toUpperCase() === maKh.toUpperCase());
+              if (mounted && match) setCustomer(match);
+            } catch {
+              /* optional */
+            }
           }
-        }
-      })
-      .catch((err: unknown) => {
-        if (!mounted) return;
-        setError(err instanceof ApiError ? err.message : 'Không tải được vận đơn.');
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
+        })
+        .catch((err: unknown) => {
+          if (!mounted) return;
+          setError(err instanceof ApiError ? err.message : 'Không tải được vận đơn.');
+        })
+        .finally(() => {
+          if (mounted) setLoading(false);
+        });
+    }, 0);
+
     return () => {
       mounted = false;
+      window.clearTimeout(loadTimer);
     };
   }, [id]);
 
   useEffect(() => {
     if (!autoPrint || loading || error || !waybill) return;
-    const timer = window.setTimeout(() => window.print(), 400);
+    const timer = window.setTimeout(() => {
+      void printWaybillWhenReady();
+    }, 100);
     return () => window.clearTimeout(timer);
   }, [autoPrint, loading, error, waybill]);
 
@@ -115,23 +122,15 @@ export default function PrintWaybillPage() {
       tenKhGui: customer.name,
       diaChiGui: address || base.diaChiGui,
       sdtGui: phone || base.sdtGui,
-      sdtNhan: phone || base.sdtNhan,
-      tenKhNhan: customer.name || base.tenKhNhan,
-      diaChiNhan: address || base.diaChiNhan,
-      tinhGui: customer.destination_province || customer.region || base.tinhGui,
       dichVu: customer.price_table?.toUpperCase().includes('BỘ') ? 'ĐƯỜNG BỘ' : base.dichVu,
     };
   }, [waybill, customer, showPricing]);
 
-  const wrapClassName =
-    printFormat === 'standard'
-      ? 'waybill-invoice-wrap waybill-invoice-wrap--standard'
-      : printFormat === 'a4-2up'
-        ? 'waybill-invoice-wrap waybill-invoice-wrap--a4-2up'
-        : 'waybill-invoice-wrap';
+  const wrapClassName = `waybill-invoice-wrap waybill-invoice-wrap--${printFormat}`;
 
   return (
     <div className={wrapClassName}>
+      <style>{pageSizeRule}</style>
       <div className="print-toolbar mb-4 flex w-full max-w-[210mm] flex-wrap items-center gap-2">
         <button
           type="button"
@@ -142,7 +141,7 @@ export default function PrintWaybillPage() {
           Quay lại
         </button>
         <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-white p-1">
-          {(['a5', 'a4-2up', 'standard'] as PrintFormat[]).map((format) => (
+          {(['a5', 'a4'] as PrintFormat[]).map((format) => (
             <button
               key={format}
               type="button"
@@ -159,7 +158,7 @@ export default function PrintWaybillPage() {
         </div>
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => void printWaybillWhenReady()}
           disabled={!printData}
           className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-bold text-white disabled:opacity-50"
         >
@@ -189,14 +188,10 @@ export default function PrintWaybillPage() {
         </div>
       )}
 
-      {printData && printFormat === 'a4-2up' ? (
-        <div className="waybill-a4-sheet">
-          <WaybillInvoiceTemplate data={printData} />
-          <div className="waybill-a4-cut-line" aria-hidden="true" />
+      {printData ? (
+        <div className={`waybill-paper-preview waybill-paper-preview--${printFormat}`}>
           <WaybillInvoiceTemplate data={printData} />
         </div>
-      ) : printData ? (
-        <WaybillInvoiceTemplate data={printData} />
       ) : null}
     </div>
   );

@@ -1,650 +1,73 @@
-/* Phiếu vận chuyển ECO — A5 ngang; in A4 dọc thì chỉ chiếm nửa trang trên (148mm) */
+/* Phiếu vận chuyển ECO:
+   - A5: một phiếu trên A5 ngang.
+   - A4: cùng một phiếu ở nửa trên, nửa dưới để trắng.
+   Vùng an toàn 3mm giúp máy in phổ thông không cắt mất viền. */
 @page {
-  size: A4 portrait;
-  margin: 0;
-}
-
-@page a5-landscape {
   size: A5 landscape;
-  margin: 0;
-}
-
-@page standard-bill {
-  size: A4 portrait;
-  margin: 8mm;
-}
-
-@page a4-two-up {
-  size: A4 portrait;
-  margin: 2mm;
-}
-
-.waybill-invoice {
-  --fs-xs: 13.2pt;
-  --fs-sm: 14pt;
-  --fs-base: 15pt;
-  --fs-md: 16pt;
-  --fs-lg: 17pt;
-  --fs-xl: 19pt;
-  --fs-2xl: 22pt;
-  --fs-3xl: 24pt;
-  --fs-title: 26pt;
-  --fs-money: 32pt;
+  margin: 3mm;
 }
 
 .waybill-invoice-wrap {
   min-height: 100vh;
-  background: #ececec;
   padding: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  background: #ececec;
 }
 
-.waybill-invoice-wrap:not(.waybill-invoice-wrap--standard):not(.waybill-invoice-wrap--a4-2up) {
-  min-height: 100vh;
-  padding: 8px;
-  align-items: center;
+.waybill-paper-preview {
+  box-sizing: border-box;
+  width: 210mm;
+  padding: 3mm;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 10%);
 }
 
-.waybill-invoice-wrap:not(.waybill-invoice-wrap--standard):not(.waybill-invoice-wrap--a4-2up) .waybill-invoice.eco-a5-template {
-  width: var(--eco-a5-width, 210mm);
-  max-width: 100%;
-  height: var(--eco-a5-height, 148mm);
-  page: a5-landscape;
+.waybill-paper-preview--a5 {
+  height: 148mm;
+}
+
+.waybill-paper-preview--a4 {
+  height: 297mm;
 }
 
 .waybill-invoice {
-  margin: 0 auto;
-  background: #fff;
-  border: 1.5px solid #222;
-  box-shadow: 0 8px 24px rgb(15 23 42 / 10%);
-  font-family: 'Times New Roman', Times, serif;
-  font-size: var(--fs-base);
-  line-height: 1.18;
-  color: #111;
-  box-sizing: border-box;
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-}
-
-/* ================= HEADER ================= */
-
-.eco-header {
-  display: grid;
-  grid-template-columns: 32mm 1fr 56mm;
-  border-bottom: 1.5px solid #222;
-  min-height: 28mm;
-}
-
-.eco-header-left {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 1.2mm 2mm;
-  border-right: 1.5px solid #222;
-  text-align: center;
-}
-
-.eco-logo {
-  display: block;
-  width: 20mm;
-  height: 14mm;
-  object-fit: contain;
-  margin: 0 auto 0.2mm;
-}
-
-.eco-company-small {
-  font-size: var(--fs-xs);
-  color: #d91f26;
-  margin-bottom: 0.2mm;
-  line-height: 1.15;
-}
-
-.eco-phone {
-  margin-top: 0;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  color: #222;
-  line-height: 1.2;
-  letter-spacing: 0.2px;
-}
-
-.eco-header-center {
-  text-align: center;
-  padding: 2mm 2mm;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.eco-header-center h1 {
-  margin: 0 0 0.8mm;
-  font-size: var(--fs-title);
-  font-weight: 900;
-  line-height: 1.1;
-}
-
-.eco-header-center h2 {
-  margin: 0;
-  font-size: var(--fs-lg);
-  font-weight: bold;
-  line-height: 1.2;
-}
-
-.eco-header-right {
-  padding: 1.6mm 2mm;
-  border-left: 1.5px solid #222;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.eco-barcode-img {
-  display: block;
-  width: 100%;
-  max-width: 52mm;
-  height: 10mm;
-  margin: 0 auto 0.8mm;
-  object-fit: contain;
-}
-
-.eco-code {
-  font-size: var(--fs-2xl);
-  font-weight: bold;
-  letter-spacing: 0.4px;
-  line-height: 1.1;
-}
-
-.eco-ma-bc-nhan {
-  margin-top: 0.4mm;
-  font-size: var(--fs-sm);
-  font-weight: bold;
-  line-height: 1.2;
-}
-
-.eco-ma-kh-nhan {
-  margin-top: 0.4mm;
-  font-size: var(--fs-sm);
-}
-
-/* ================= INFO ================= */
-
-.eco-info {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-bottom: 1.5px solid #222;
-}
-
-.eco-box {
-  padding: 1.2mm 2mm;
-  border-right: 1.5px solid #222;
-}
-
-.eco-box:last-child {
-  border-right: none;
-}
-
-.eco-box-title {
-  font-weight: bold;
-  margin-bottom: 0.6mm;
-  font-size: var(--fs-lg);
-  line-height: 1.2;
-}
-
-.eco-line {
-  display: grid;
-  grid-template-columns: 24mm 1fr;
-  margin-bottom: 0.35mm;
-  font-size: var(--fs-sm);
-  line-height: 1.25;
-}
-
-.eco-label {
-  font-weight: bold;
-}
-
-/* ================= PRODUCT ================= */
-
-.eco-product {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  border-bottom: 1.5px solid #222;
-}
-
-.eco-product-box {
-  padding: 1.2mm 2mm;
-  border-right: 1.5px solid #222;
-  font-size: var(--fs-base);
-}
-
-.eco-product-box:last-child {
-  border-right: none;
-}
-
-.eco-product-box > b,
-.eco-pay-box > b,
-.eco-footer-box > b {
-  font-size: var(--fs-md);
-  font-weight: 700;
-}
-
-.eco-product-gap {
-  margin: 0.6mm 0;
-}
-
-.eco-product-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  padding: 0;
-}
-
-.eco-product-stats > div {
-  min-height: 12mm;
-  padding: 1.2mm 1.5mm;
-  text-align: center;
-  border-right: 1.5px solid #222;
-}
-
-.eco-product-stats > div:last-child {
-  border-right: none;
-}
-
-.eco-product-stats b,
-.eco-product-stats strong {
-  display: block;
-}
-
-.eco-product-box strong {
-  font-size: var(--fs-md);
-  font-weight: 700;
-}
-
-.eco-metric {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 1mm;
-  margin-left: 1.5mm;
-  vertical-align: baseline;
-}
-
-.eco-metric-value {
-  font-size: var(--fs-3xl);
-  font-weight: bold;
-  line-height: 1;
-}
-
-.eco-metric-unit {
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  line-height: 1;
-  color: #333;
-}
-
-/* ================= PAYMENT ================= */
-
-.eco-payment {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  border-bottom: 1.5px solid #222;
-}
-
-.eco-pay-box {
-  position: relative;
-  padding: 1.2mm 2mm;
-  border-right: 1.5px solid #222;
-  font-size: var(--fs-base);
-  line-height: 1.3;
-}
-
-.eco-pay-box:last-child {
-  border-right: none;
-}
-
-.eco-total {
-  background: #fff;
-  text-align: center;
-  padding: 0.8mm 1mm 1.2mm;
-  margin-top: 0.8mm;
-  border-top: 1.5px solid #222;
-}
-
-.eco-total-label {
-  display: block;
-  font-size: var(--fs-sm);
-  font-weight: bold;
-  margin-bottom: 0.8mm;
-  line-height: 1.2;
-}
-
-.eco-total strong {
-  display: block;
-  font-size: var(--fs-money);
-  font-weight: bold;
-  line-height: 1;
-}
-
-.eco-cod-stamp {
-  position: absolute;
-  left: 8px;
-  top: 28px;
-  transform: rotate(-8deg);
-  border: 1.5px solid #d91f26;
-  color: #d91f26;
-  opacity: 0.6;
-  padding: 1px 8px;
-  font-size: var(--fs-xl);
-  font-weight: 900;
-  letter-spacing: 0.8px;
-}
-
-/* ================= FOOTER ================= */
-
-.eco-footer {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-}
-
-.eco-footer-box {
-  padding: 1.2mm 2mm;
-  border-right: 1.5px solid #222;
-  font-size: var(--fs-base);
-  line-height: 1.25;
-}
-
-.eco-footer-box:last-child {
-  border-right: none;
-}
-
-.eco-footer-service {
-  text-align: left;
-}
-
-.eco-footer-service-row {
-  display: flex;
-  align-items: center;
-  gap: 2.5mm;
-  height: 100%;
-}
-
-.eco-footer-text p {
-  margin: 0 0 1mm;
-  font-size: var(--fs-sm);
-}
-
-.eco-footer-text p:last-child {
-  margin-bottom: 0;
-}
-
-.eco-qr {
-  width: 13mm;
-  height: 13mm;
-  border: 1px solid #222;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.eco-qr img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.eco-footer-box:not(.eco-footer-service) {
-  text-align: center;
-}
-
-.eco-sign {
-  margin-top: 11mm;
-  font-size: var(--fs-sm);
-  font-style: italic;
-}
-
-/* Bill thường — A4 dọc */
-.waybill-invoice-wrap--standard .waybill-invoice {
-  --fs-xs: 8pt;
-  --fs-sm: 8.5pt;
-  --fs-base: 9pt;
-  --fs-md: 9.5pt;
-  --fs-lg: 10pt;
-  --fs-xl: 11pt;
-  --fs-2xl: 12pt;
-  --fs-3xl: 14pt;
-  --fs-title: 16pt;
-  --fs-money: 18pt;
-  width: 190mm;
-  max-width: 190mm;
-  page: standard-bill;
-}
-
-/* A4 dọc — ghép 2 phiếu A5 ngang trên 1 trang */
-.waybill-invoice-wrap--a4-2up .waybill-a4-sheet {
-  width: 210mm;
-  max-width: 100%;
-  margin: 0 auto;
-  background: #fff;
-  box-shadow: 0 8px 24px rgb(15 23 42 / 10%);
-  page: a4-two-up;
-}
-
-.waybill-invoice-wrap--a4-2up .waybill-a4-sheet .waybill-invoice {
-  width: 210mm;
-  max-width: 100%;
-  height: 148mm;
-  margin: 0 auto;
-  box-shadow: none;
-}
-
-.waybill-a4-cut-line {
-  height: 0;
-  margin: 2.5mm 6mm;
-  border-top: 1px dashed #bbb;
-}
-
-/* ================= PRINT — giữ y nguyên giao diện xem ================= */
-
-@media print {
-  @page {
-    size: A5 landscape;
-    margin: 0;
-  }
-
-  @page standard-bill {
-    size: A4 portrait;
-    margin: 8mm;
-  }
-
-  @page a4-two-up {
-    size: A4 portrait;
-    margin: 2mm;
-  }
-
-  html,
-  body {
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #fff !important;
-    width: auto !important;
-    height: auto !important;
-    overflow: visible !important;
-  }
-
-  .print-toolbar,
-  .waybill-invoice-wrap > *:not(.waybill-invoice):not(.waybill-a4-sheet) {
-    display: none !important;
-  }
-
-  .waybill-invoice-wrap {
-    min-height: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: #fff !important;
-    display: block !important;
-  }
-
-  .waybill-invoice-wrap:not(.waybill-invoice-wrap--standard):not(.waybill-invoice-wrap--a4-2up) .waybill-invoice.eco-a5-template {
-    width: 210mm !important;
-    max-width: 210mm !important;
-    height: 148mm !important;
-    max-height: 148mm !important;
-    min-height: 148mm !important;
-    box-shadow: none !important;
-    margin: 0 !important;
-    break-inside: avoid;
-    page-break-inside: avoid;
-    page-break-after: avoid;
-    overflow: hidden !important;
-    page: a5-landscape;
-  }
-
-  .waybill-invoice:not(.eco-a5-template) {
-    width: 204mm !important;
-    max-width: 204mm !important;
-    min-height: 0 !important;
-    height: auto !important;
-    box-shadow: none !important;
-    margin: 0 auto !important;
-    break-inside: avoid;
-    page-break-inside: avoid;
-    page-break-after: avoid;
-  }
-
-  .waybill-invoice-wrap--standard .waybill-invoice {
-    width: 190mm !important;
-    max-width: 190mm !important;
-    page: standard-bill;
-  }
-
-  .waybill-invoice-wrap--a4-2up {
-    min-height: 0 !important;
-    padding: 0 !important;
-    background: #fff !important;
-  }
-
-  .waybill-invoice-wrap--a4-2up .waybill-a4-sheet {
-    display: block !important;
-    width: 206mm !important;
-    max-width: 206mm !important;
-    margin: 0 auto !important;
-    box-shadow: none !important;
-    background: #fff !important;
-    page: a4-two-up;
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .waybill-invoice-wrap--a4-2up .waybill-a4-sheet .waybill-invoice {
-    width: 210mm !important;
-    max-width: 210mm !important;
-    height: 148mm !important;
-    margin: 0 auto !important;
-    break-inside: avoid;
-    page-break-inside: avoid;
-    page-break-after: avoid;
-  }
-
-  .waybill-invoice-wrap--a4-2up .waybill-a4-cut-line {
-    display: block !important;
-    margin: 1mm 0 !important;
-    border-top: 1px dashed #ccc !important;
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .waybill-invoice,
-  .waybill-invoice * {
-    font-family: 'Times New Roman', Times, serif !important;
-  }
-
-  .eco-header,
-  .eco-info,
-  .eco-product,
-  .eco-payment,
-  .eco-footer {
-    display: grid !important;
-    min-height: 0 !important;
-    break-inside: auto;
-    page-break-inside: auto;
-  }
-
-  .eco-header {
-    min-height: 0 !important;
-  }
-
-  .eco-box,
-  .eco-product-box,
-  .eco-pay-box,
-  .eco-footer-box {
-    min-height: 0 !important;
-  }
-
-  .eco-footer {
-    min-height: 0 !important;
-  }
-
-  .eco-footer-service-row {
-    display: flex !important;
-  }
-
-  .eco-line {
-    display: grid !important;
-    margin-bottom: 0.5mm !important;
-  }
-
-  .eco-sign {
-    margin-top: 6mm !important;
-  }
-
-  .eco-a5-template .eco-cod-stamp {
-    top: auto !important;
-    bottom: 2.5mm !important;
-  }
-
-  .eco-total {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-}
-
-/* ================= A5 — bố cục lưới cân đối ================= */
-/* Trục dọc chung của phiếu: 105mm (nửa phiếu) và 157.5mm (nửa panel phải)
-   được dùng xuyên suốt hàng mã, hàng người gửi/nhận, khối chính và footer
-   để mọi đường kẻ dọc thẳng hàng từ trên xuống dưới. */
-.eco-a5-template {
-  --eco-a5-scale: 0.8;
+  --eco-a5-scale: 0.78;
   --eco-ink: #111;
   --eco-line: 1px solid var(--eco-ink);
   --eco-line-strong: 1.5px solid var(--eco-ink);
+  --eco-a5-width: 204mm;
+  --eco-a5-height: 142mm;
+  --eco-a5-split: 102mm;
   --fs-xs: calc(6.4pt * var(--eco-a5-scale));
   --fs-sm: calc(10.5pt * var(--eco-a5-scale));
   --fs-base: calc(13pt * var(--eco-a5-scale));
   --fs-md: calc(15pt * var(--eco-a5-scale));
-  --fs-lg: calc(14pt * var(--eco-a5-scale));
   --fs-title: calc(12.5pt * var(--eco-a5-scale));
   --fs-subtitle: calc(20pt * var(--eco-a5-scale));
   --fs-code: calc(22pt * var(--eco-a5-scale));
   --fs-row: calc(13.5pt * var(--eco-a5-scale));
   --fs-body: calc(13.5pt * var(--eco-a5-scale));
-  --fs-phone: calc(16pt * var(--eco-a5-scale));
+  --fs-phone: calc(15pt * var(--eco-a5-scale));
   --fs-money: calc(24pt * var(--eco-a5-scale));
   --fs-stat: calc(18pt * var(--eco-a5-scale));
   --fs-note: calc(11.6pt * var(--eco-a5-scale));
-  --eco-a5-split: 105mm;
-  --eco-a5-width: 210mm;
-  --eco-a5-height: 148mm;
+  box-sizing: border-box;
   width: var(--eco-a5-width);
   height: var(--eco-a5-height);
+  margin: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   border: var(--eco-line-strong);
+  background: #fff;
+  color: var(--eco-ink);
+  font-family: 'Times New Roman', Times, serif;
   font-size: var(--fs-base);
   line-height: 1.2;
-  overflow: hidden;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 
 .eco-a5-template p {
@@ -655,25 +78,24 @@
   border-bottom: var(--eco-line-strong);
 }
 
-/* ---------- Header ---------- */
-
+/* Header */
 .eco-a5-header {
+  min-height: 25mm;
   display: grid;
-  grid-template-columns: 40mm 1fr 58mm;
-  min-height: 24mm;
+  grid-template-columns: 40mm 1fr 57mm;
   border-bottom: var(--eco-line-strong);
 }
 
 .eco-a5-brand,
 .eco-a5-title,
 .eco-a5-barcode {
+  min-width: 0;
+  padding: 1mm 1.5mm;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 1mm 1.5mm;
-  min-width: 0;
 }
 
 .eco-a5-brand,
@@ -682,29 +104,24 @@
 }
 
 .eco-a5-template .eco-logo {
-  width: 17mm;
-  height: 11mm;
-  margin: 0 0 0.2mm;
+  width: 23mm;
+  height: 13.5mm;
+  margin: 0;
+  display: block;
   object-fit: contain;
 }
 
-.eco-a5-template .eco-company-small {
-  color: #d91f26;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  line-height: 1;
-}
-
 .eco-a5-template .eco-phone {
-  margin-top: auto;
+  margin-top: 0.8mm;
   font-size: var(--fs-phone);
   font-weight: 900;
-  line-height: 1.15;
+  line-height: 1.08;
   text-align: center;
 }
 
 .eco-a5-template .eco-phone-label {
   display: block;
+  margin-bottom: 0.2mm;
   font-size: var(--fs-sm);
   font-weight: 700;
 }
@@ -724,52 +141,51 @@
 }
 
 .eco-a5-template .eco-barcode-img {
-  width: 51mm;
+  width: 50mm;
   height: 10mm;
-  object-fit: fill;
   margin-bottom: 0.8mm;
+  display: block;
+  object-fit: fill;
 }
 
 .eco-a5-template .eco-code {
+  margin-bottom: 0.8mm;
   font-size: var(--fs-code);
   font-weight: 900;
   line-height: 1;
-  margin-bottom: 0.8mm;
   white-space: nowrap;
 }
 
 .eco-code-meta {
   width: 100%;
-  max-width: 52mm;
+  max-width: 51mm;
   margin: 0 auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
   column-gap: 1.5mm;
-  text-align: left;
   font-size: var(--fs-sm);
   line-height: 1.2;
+  text-align: left;
 }
 
-/* ---------- Người gửi / người nhận (băng hàng chia đôi theo mẫu phiếu) ---------- */
-/* Mỗi băng là 1 hàng chung cho cả 2 cột nên nội dung 2 bên luôn thẳng hàng */
-
+/* Người gửi / người nhận */
 .eco-a5-people-row {
+  min-height: 31mm;
   display: grid;
   grid-template-columns: var(--eco-a5-split) 1fr;
   grid-template-rows: auto minmax(9mm, auto) auto auto;
   align-content: space-between;
-  min-height: 31mm;
   font-size: var(--fs-body);
   line-height: 1.25;
 }
 
 .eco-band {
+  min-width: 0;
+  padding: 0.8mm 1.5mm;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 0.4mm;
-  min-width: 0;
-  padding: 0.8mm 1.5mm;
 }
 
 .eco-band:nth-child(odd) {
@@ -781,19 +197,19 @@
 }
 
 .eco-band--codes {
+  padding: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
   align-items: stretch;
   gap: 0;
-  padding: 0;
   font-size: var(--fs-row);
 }
 
 .eco-band--codes .eco-mini-line {
-  grid-template-columns: max-content 1fr;
-  align-items: center;
   min-width: 0;
   padding: 0.8mm 1.5mm;
+  grid-template-columns: max-content 1fr;
+  align-items: center;
   border-right: var(--eco-line);
 }
 
@@ -802,26 +218,17 @@
 }
 
 .eco-mini-line {
+  min-width: 0;
+  min-height: 4.2mm;
   display: grid;
   grid-template-columns: 28mm 1fr;
   column-gap: 1mm;
   align-items: baseline;
-  min-width: 0;
-  min-height: 4.2mm;
 }
 
 .eco-mini-label {
   font-weight: 700;
   white-space: nowrap;
-}
-
-/* Dải nhãn nền xám như mẫu phiếu tham khảo */
-.eco-a5-template .eco-mini-label,
-.eco-a5-template .eco-a5-goods-code b,
-.eco-a5-template .eco-extra-label,
-.eco-a5-template .eco-footer-text b {
-  background: #ececec;
-  padding: 0.2mm 0.8mm;
 }
 
 .eco-mini-value {
@@ -845,45 +252,42 @@
 }
 
 .eco-two-col-line {
-  display: grid;
-  grid-template-columns: 45mm 1fr;
-  column-gap: 1.5mm;
   min-width: 0;
+  display: grid;
+  grid-template-columns: 44mm 1fr;
+  column-gap: 1.5mm;
 }
 
-/* Dòng đôi: nhãn ôm sát nội dung để giá trị có đủ chỗ, không gãy dòng */
 .eco-two-col-line .eco-mini-line {
   grid-template-columns: max-content 1fr;
 }
 
-/* Dòng nơi đến bên nhận: Quận/Huyện chứa tên nơi đến dài, Tỉnh/TP chỉ chứa mã bưu cục */
 .eco-two-col-line--dest {
-  grid-template-columns: 1fr 30mm;
+  grid-template-columns: 1fr 29mm;
 }
 
-/* ---------- Khối chính: hàng hoá / cước phí ---------- */
-
+/* Hàng hoá / thanh toán */
 .eco-a5-main-row {
+  min-height: 51mm;
+  flex: 1;
   display: grid;
   grid-template-columns: var(--eco-a5-split) 1fr;
-  flex: 1;
-  min-height: 52mm;
 }
 
 .eco-a5-left-panel {
+  min-width: 0;
   display: grid;
   grid-template-rows: auto auto 1fr;
-  min-width: 0;
   border-right: var(--eco-line-strong);
 }
 
 .eco-a5-goods-code {
   padding: 1mm 1.5mm;
+  overflow: hidden;
   border-bottom: var(--eco-line);
   font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .eco-stats-grid {
@@ -893,14 +297,14 @@
 }
 
 .eco-stat-cell {
+  min-width: 0;
+  min-height: 11mm;
+  padding: 0 0 1mm;
   display: flex;
   flex-direction: column;
-  min-height: 11mm;
-  min-width: 0;
-  padding: 0 0 1mm;
-  text-align: center;
   border-right: var(--eco-line);
   font-size: var(--fs-sm);
+  text-align: center;
 }
 
 .eco-stat-cell:last-child {
@@ -908,7 +312,6 @@
 }
 
 .eco-stat-cell > div {
-  background: #ececec;
   padding: 0.6mm 0.5mm;
   border-bottom: var(--eco-line);
 }
@@ -928,97 +331,103 @@
   position: relative;
   min-width: 0;
   padding: 0 0 10mm;
-  text-align: center;
   border-right: var(--eco-line);
+  text-align: center;
 }
 
 .eco-note-cell:last-child {
   border-right: none;
 }
 
-.eco-note-cell b {
-  display: block;
+.eco-note-heading {
   margin-bottom: 1mm;
   padding: 0.7mm 0.5mm;
-  background: #ececec;
+  display: block;
   border-bottom: var(--eco-line);
+  font-size: calc(15pt * var(--eco-a5-scale));
+  font-weight: 400;
+  line-height: 1.1;
 }
 
 .eco-note-cell p {
   padding: 0 1.5mm;
-}
-
-.eco-note-cell p {
   overflow-wrap: anywhere;
 }
 
-/* ---------- Panel phải: thanh toán / cước / chữ ký ---------- */
+.eco-note-cell--contents p {
+  font-size: calc(16pt * var(--eco-a5-scale));
+  font-weight: 400;
+  line-height: 1.2;
+}
 
 .eco-a5-right-panel {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 12mm 8mm 8mm 1fr;
   min-width: 0;
+  display: grid;
+  grid-template-columns: 56mm 1fr;
+  grid-template-rows: 12mm 8mm 8mm 1fr;
 }
 
 .eco-payment-method-box {
+  min-width: 0;
+  padding: 0;
   grid-column: 1;
   grid-row: 1;
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  padding: 0;
-  text-align: center;
   border-right: var(--eco-line);
   border-bottom: var(--eco-line);
   font-size: var(--fs-sm);
+  text-align: center;
 }
 
 .eco-payment-method-box > div {
-  background: #ececec;
   padding: 0.6mm 0.5mm;
 }
 
 .eco-payment-method-box strong {
   margin: auto 0;
-  padding: 0.5mm 1mm;
-  font-size: var(--fs-md);
+  padding: 0.5mm;
+  overflow: hidden;
+  font-size: calc(14pt * var(--eco-a5-scale));
   line-height: 1.15;
+  letter-spacing: -0.05mm;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .eco-charge-box {
+  min-width: 0;
+  padding: 1.2mm 1.5mm;
   grid-column: 2;
   grid-row: 1 / span 3;
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  padding: 1.2mm 1.5mm;
   border-bottom: var(--eco-line);
 }
 
 .eco-charge-line {
+  margin-bottom: 0.8mm;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 1mm;
-  margin-bottom: 0.8mm;
 }
 
 .eco-extra-info-box {
+  padding: 0.8mm 1.5mm;
   grid-column: 1;
   display: flex;
   align-items: center;
-  padding: 0.8mm 1.5mm;
   border-right: var(--eco-line);
   border-bottom: var(--eco-line);
 }
 
 .eco-extra-info-box p {
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 1mm;
-  width: 100%;
 }
 
 .eco-sign-box {
@@ -1027,9 +436,8 @@
 }
 
 .eco-sign-box b {
-  display: block;
   padding: 0.7mm 0.5mm;
-  background: #ececec;
+  display: block;
 }
 
 .eco-sign-box p {
@@ -1053,7 +461,6 @@
 .eco-a5-template .eco-total {
   margin-top: auto;
   padding: 1mm 0 0.5mm;
-  background: #fff;
   border-top: var(--eco-line);
   text-align: center;
 }
@@ -1061,9 +468,8 @@
 .eco-a5-template .eco-total-label {
   margin-bottom: 0.6mm;
   padding: 0.4mm;
-  background: #ececec;
-  font-weight: 700;
   font-size: var(--fs-sm);
+  font-weight: 700;
 }
 
 .eco-a5-template .eco-total strong {
@@ -1072,20 +478,36 @@
   line-height: 1;
 }
 
-/* ---------- Footer ---------- */
+.eco-cod-stamp {
+  position: absolute;
+  left: 3mm;
+  bottom: 2.5mm;
+  padding: 1px 8px;
+  transform: rotate(-8deg);
+  border: 1.5px solid #d91f26;
+  color: #d91f26;
+  font-size: calc(19pt * var(--eco-a5-scale));
+  font-weight: 900;
+  letter-spacing: 0.8px;
+  opacity: 0.65;
+}
 
+/* Footer */
 .eco-a5-footer {
+  min-height: 18mm;
   display: grid;
-  grid-template-columns: var(--eco-a5-split) calc((var(--eco-a5-width) - var(--eco-a5-split)) / 2) 1fr;
-  min-height: 19mm;
+  grid-template-columns:
+    var(--eco-a5-split)
+    calc((var(--eco-a5-width) - var(--eco-a5-split)) / 2)
+    1fr;
 }
 
 .eco-footer-service {
+  min-width: 0;
+  padding: 1.2mm 1.5mm;
   display: grid;
   grid-template-columns: 1fr 17mm;
   gap: 1.5mm;
-  min-width: 0;
-  padding: 1.2mm 1.5mm;
   border-right: var(--eco-line-strong);
 }
 
@@ -1101,16 +523,24 @@
 .eco-a5-template .eco-qr {
   width: 16mm;
   height: 16mm;
-  border: 1px solid var(--eco-ink);
   align-self: center;
   justify-self: center;
+  overflow: hidden;
+  border: 1px solid var(--eco-ink);
+}
+
+.eco-a5-template .eco-qr img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
 }
 
 .eco-footer-staff {
   position: relative;
   padding: 0;
-  text-align: center;
   border-right: var(--eco-line);
+  text-align: center;
 }
 
 .eco-footer-staff:last-child {
@@ -1118,9 +548,8 @@
 }
 
 .eco-footer-staff b {
-  display: block;
   padding: 0.8mm 0.5mm;
-  background: #ececec;
+  display: block;
 }
 
 .eco-footer-staff label {
@@ -1137,15 +566,8 @@
 .eco-footer-staff label span {
   width: 3.2mm;
   height: 3.2mm;
-  border: var(--eco-line);
   display: inline-block;
-}
-
-.eco-a5-template .eco-cod-stamp {
-  left: 3mm;
-  top: auto;
-  bottom: 2.5mm;
-  transform: rotate(-8deg);
+  border: var(--eco-line);
 }
 
 .waybill-bulk-print-stack {
@@ -1155,6 +577,55 @@
 }
 
 @media print {
+  html,
+  body {
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .print-toolbar,
+  .waybill-invoice-wrap > style {
+    display: none !important;
+  }
+
+  .waybill-invoice-wrap {
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    background: #fff !important;
+  }
+
+  .waybill-paper-preview {
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+
+  .waybill-invoice {
+    width: 204mm !important;
+    max-width: 204mm !important;
+    height: 142mm !important;
+    min-height: 142mm !important;
+    max-height: 142mm !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .waybill-bulk-print-stack {
+    display: block !important;
+  }
+
   .waybill-bulk-print-item {
     break-after: page;
     page-break-after: always;

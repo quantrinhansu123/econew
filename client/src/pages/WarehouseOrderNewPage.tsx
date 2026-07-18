@@ -503,8 +503,8 @@ export default function WarehouseOrderNewPage() {
             onDelete={handleDelete}
             onDeleteBill={(bill) => void handleDeleteBill(bill)}
             onPreviewA5={() => openPrintBill()}
-            onPrintA5={() => openPrintBill()}
-            onPrintRegular={() => openPrintBill({ print: '1', format: 'standard' })}
+            onPrintA5={() => openPrintBill({ print: '1' })}
+            onPrintRegular={() => openPrintBill({ print: '1', format: 'a4' })}
             printableBillId={printableBillId}
             showPricingOnPrint={showPricingOnPrint}
             onShowPricingOnPrintChange={setShowPricingOnPrint}
@@ -527,7 +527,7 @@ export default function WarehouseOrderNewPage() {
         paymentConfig={paymentConfig}
         onClose={closeSuccess}
         onCreateAnother={handleCreateAnother}
-        onPrint={() => createdId && navigate(`/print/waybill/${createdId}`)}
+        onPrint={() => createdId && navigate(`/print/waybill/${createdId}?print=1`)}
       />
 
       <OrderBulkImportDialog

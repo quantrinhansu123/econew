@@ -5,7 +5,7 @@ import { ApiError, apiRequest } from '../../lib/api';
 import { getStoredAuthUser } from '../../lib/authUser';
 import type { WaybillDetail } from '../warehouse/orders/types';
 import WaybillInvoiceTemplate from './WaybillInvoiceTemplate';
-import { buildWaybillPrintData } from './waybillPrintUtils';
+import { buildWaybillPrintData, printWaybillWhenReady } from './waybillPrintUtils';
 import './waybill-invoice.css';
 
 const MANAGER_ROLES = 32 | 64;
@@ -27,41 +27,43 @@ export default function PrintWaybillsBulkPage() {
   }, [pricingParam]);
 
   const [waybills, setWaybills] = useState<WaybillDetail[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(ids.length > 0);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!ids.length) {
-      setWaybills([]);
-      setError('Chưa chọn vận đơn để in.');
-      setLoading(false);
-      return;
-    }
+    if (!ids.length) return;
 
     let mounted = true;
-    setLoading(true);
-    setError('');
+    const loadTimer = window.setTimeout(() => {
+      setLoading(true);
+      setError('');
 
-    void Promise.all(ids.map((id) => apiRequest<WaybillDetail>(`/waybills/${id}`)))
-      .then((items) => {
-        if (!mounted) return;
-        setWaybills(items);
-      })
-      .catch((err: unknown) => {
-        if (!mounted) return;
-        setWaybills([]);
-        setError(err instanceof ApiError ? err.message : 'Không tải được danh sách vận đơn.');
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
+      void Promise.all(ids.map((id) => apiRequest<WaybillDetail>(`/waybills/${id}`)))
+        .then((items) => {
+          if (!mounted) return;
+          setWaybills(items);
+        })
+        .catch((err: unknown) => {
+          if (!mounted) return;
+          setWaybills([]);
+          setError(err instanceof ApiError ? err.message : 'Không tải được danh sách vận đơn.');
+        })
+        .finally(() => {
+          if (mounted) setLoading(false);
+        });
+    }, 0);
 
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      window.clearTimeout(loadTimer);
+    };
   }, [ids]);
 
   useEffect(() => {
     if (!autoPrint || loading || error || !waybills.length) return;
-    const timer = window.setTimeout(() => window.print(), 500);
+    const timer = window.setTimeout(() => {
+      void printWaybillWhenReady();
+    }, 100);
     return () => window.clearTimeout(timer);
   }, [autoPrint, loading, error, waybills.length]);
 
@@ -69,13 +71,14 @@ export default function PrintWaybillsBulkPage() {
     () => waybills.map((waybill) => buildWaybillPrintData(waybill, showPricing)),
     [waybills, showPricing],
   );
+  const displayError = ids.length ? error : 'Chưa chọn vận đơn để in.';
 
   return (
     <div className="waybill-invoice-wrap">
       <div className="print-toolbar mb-4 flex w-full max-w-[210mm] flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => void printWaybillWhenReady()}
           disabled={!printItems.length}
           className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-bold text-white disabled:opacity-50"
         >
@@ -94,10 +97,10 @@ export default function PrintWaybillsBulkPage() {
         </div>
       )}
 
-      {error && (
+      {displayError && (
         <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] font-bold text-red-700">
           <AlertTriangle size={18} />
-          {error}
+          {displayError}
         </div>
       )}
 
