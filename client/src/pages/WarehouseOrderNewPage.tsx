@@ -25,6 +25,8 @@ import type { BadgeConfig, CreatedWaybill, HubSummary, PaymentType, UserSummary,
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const CREATE_ROLES = 1 | 32 | 64;
+const INITIAL_BILL_LIST_LIMIT = 20;
+const EXPANDED_BILL_LIST_LIMIT = 100;
 type NextWaybillCodeResponse = { waybill_code?: string; code?: string };
 
 const statusConfig: Record<string, BadgeConfig> = {
@@ -75,6 +77,8 @@ export default function WarehouseOrderNewPage() {
   const editWaybillId = searchParams.get('edit')?.trim() || '';
   const loadedEditIdRef = useRef('');
   const skipNewFormInitRef = useRef(Boolean(editWaybillId));
+  const billRequestIdRef = useRef(0);
+  const billListLimitRef = useRef(INITIAL_BILL_LIST_LIMIT);
   const [user] = useState<UserSummary | null>(() => getStoredUser());
   const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [bills, setBills] = useState<BillListItem[]>([]);
@@ -91,6 +95,8 @@ export default function WarehouseOrderNewPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [billFilterDate, setBillFilterDate] = useState('');
+  const [isBillListLoading, setIsBillListLoading] = useState(false);
+  const [hasMoreBills, setHasMoreBills] = useState(false);
 
   const canCreate = hasCreateRole(user?.role_mask ?? 0);
   const loginName = getLoginDisplayName(user as Parameters<typeof getLoginDisplayName>[0]);
@@ -104,25 +110,44 @@ export default function WarehouseOrderNewPage() {
     return Number(String(v).replace(/[^\d.-]/g, '')) || 0;
   }, [form.chieuDai, form.chieuRong, form.chieuCao]);
 
-  const loadBills = useCallback(async (dateFilter = billFilterDate) => {
+  const loadBills = useCallback(async (dateFilter = '', limit = INITIAL_BILL_LIST_LIMIT) => {
+    const requestId = ++billRequestIdRef.current;
+    const requestLimit = dateFilter ? EXPANDED_BILL_LIST_LIMIT : limit;
+    billListLimitRef.current = requestLimit;
+    setIsBillListLoading(true);
     try {
-      const query = new URLSearchParams({ limit: '100', page: '1' });
+      const query = new URLSearchParams({ limit: String(requestLimit), page: '1' });
       if (dateFilter) {
         query.set('from_date', dateFilter);
         query.set('to_date', `${dateFilter}T23:59:59.999`);
       }
-      const response = await apiRequest<WaybillDetail[] | { items?: WaybillDetail[]; data?: WaybillDetail[] }>(
+      const response = await apiRequest<
+        WaybillDetail[] | {
+          items?: WaybillDetail[];
+          data?: WaybillDetail[];
+          meta?: { total?: number };
+        }
+      >(
         `/waybills?${query.toString()}`,
       );
       const list = extractList(response);
       const billItems = list.map(waybillToBillItem);
-      setBills(billItems);
+      if (requestId === billRequestIdRef.current) {
+        const total = Array.isArray(response) ? billItems.length : Number(response.meta?.total ?? billItems.length);
+        setBills(billItems);
+        setHasMoreBills(!dateFilter && requestLimit < total);
+      }
       return billItems;
     } catch {
-      setBills([]);
+      if (requestId === billRequestIdRef.current) {
+        setBills([]);
+        setHasMoreBills(false);
+      }
       return [];
+    } finally {
+      if (requestId === billRequestIdRef.current) setIsBillListLoading(false);
     }
-  }, [billFilterDate]);
+  }, []);
 
   const loadNextWaybillCode = useCallback(async (originHubId?: string) => {
     try {
@@ -138,11 +163,12 @@ export default function WarehouseOrderNewPage() {
     const load = async () => {
       setIsLoading(true);
       setHubError('');
+      const hubsPromise = apiRequest<HubSummary[] | { data?: HubSummary[]; hubs?: HubSummary[] }>('/hubs/active');
+      const billsPromise = loadBills('', INITIAL_BILL_LIST_LIMIT);
       try {
-        const response = await apiRequest<HubSummary[] | { data?: HubSummary[]; hubs?: HubSummary[] }>('/hubs/active');
+        const response = await hubsPromise;
         const activeHubs = extractList(response).filter(normalizeActive);
         setHubs(activeHubs);
-        const billItems = await loadBills();
 
         const pendingEditId =
           searchParams.get('edit')?.trim()
@@ -156,11 +182,12 @@ export default function WarehouseOrderNewPage() {
         const defaultOrigin = user?.hub_id ? String(user.hub_id) : String(activeHubs[0]?.id || '');
         const defaultDest = String(activeHubs.find((h) => h.code?.toUpperCase() === 'HCM')?.id || activeHubs[1]?.id || '');
         const nextCode = await loadNextWaybillCode(defaultOrigin);
+        const fallbackBills = nextCode ? [] : await billsPromise;
         const defaultOriginCode = getHubCode(activeHubs, defaultOrigin);
         setForm(() =>
           applyPricingToForm({
             ...emptyOrderForm(),
-            soBill: nextCode || nextEcoBillCodeFromCodes(billItems.map((item) => item.waybill_code), defaultOriginCode),
+            soBill: nextCode || nextEcoBillCodeFromCodes(fallbackBills.map((item) => item.waybill_code), defaultOriginCode),
             originHubId: defaultOrigin,
             destHubId: defaultDest,
             noiDen: 'HCM',
@@ -345,7 +372,7 @@ export default function WarehouseOrderNewPage() {
       const body = buildCreatePayload(form, volumetricWeight);
       if (selectedBillId) {
         await apiRequest(`/waybills/${selectedBillId}`, { method: 'PATCH', body });
-        await loadBills();
+        await loadBills(billFilterDate, billListLimitRef.current);
         setActionError('');
       } else {
         const response = await apiRequest<CreatedWaybill>('/waybills', { method: 'POST', body });
@@ -359,7 +386,7 @@ export default function WarehouseOrderNewPage() {
           soBill: response.waybill_code || response.code || prev.soBill,
         }));
         setIsSuccessOpen(true);
-        await loadBills();
+        await loadBills(billFilterDate, billListLimitRef.current);
         if (response.id) setSelectedBillId(String(response.id));
       }
     } catch (error) {
@@ -377,7 +404,7 @@ export default function WarehouseOrderNewPage() {
     try {
       await apiRequest(`/waybills/${bill.id}`, { method: 'DELETE' });
       if (selectedBillId === bill.id) void handleNew();
-      await loadBills();
+      await loadBills(billFilterDate, billListLimitRef.current);
     } catch (error) {
       setActionError(error instanceof ApiError ? error.message : 'Không thể xóa vận đơn.');
     } finally {
@@ -421,7 +448,11 @@ export default function WarehouseOrderNewPage() {
 
   const handleBillFilterDateChange = (value: string) => {
     setBillFilterDate(value);
-    void loadBills(value);
+    void loadBills(value, value ? EXPANDED_BILL_LIST_LIMIT : INITIAL_BILL_LIST_LIMIT);
+  };
+
+  const handleLoadMoreBills = () => {
+    void loadBills(billFilterDate, EXPANDED_BILL_LIST_LIMIT);
   };
 
   const closeSuccess = () => {
@@ -510,6 +541,9 @@ export default function WarehouseOrderNewPage() {
             onShowPricingOnPrintChange={setShowPricingOnPrint}
             billFilterDate={billFilterDate}
             onBillFilterDateChange={handleBillFilterDateChange}
+            isBillListLoading={isBillListLoading}
+            hasMoreBills={hasMoreBills}
+            onLoadMoreBills={handleLoadMoreBills}
             onBulkPrintBills={handleBulkPrintBills}
             onPrintBill={handlePrintBill}
             canManage={canCreate}
@@ -536,7 +570,7 @@ export default function WarehouseOrderNewPage() {
         hubs={hubs}
         existingWaybillCodes={bills.map((bill) => bill.waybill_code)}
         defaultNvgn={loginName !== 'bạn' ? loginName : 'ADMIN'}
-        onImported={async () => { await loadBills(); }}
+        onImported={async () => { await loadBills(billFilterDate, billListLimitRef.current); }}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronDown, ChevronRight, Printer, Trash2, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronRight, Loader2, Printer, Trash2, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Fragment, useMemo, useState } from 'react';
 import type { BillListItem } from '../orderFormTypes';
@@ -12,6 +12,9 @@ interface Props {
   isDeleting?: boolean;
   filterDate: string;
   onFilterDateChange: (value: string) => void;
+  isLoading?: boolean;
+  canLoadMore?: boolean;
+  onLoadMore?: () => void;
   onBulkPrint: (billIds: string[]) => void;
   onPrintBill?: (bill: BillListItem) => void;
 }
@@ -41,6 +44,9 @@ export default function BillListSidebar({
   isDeleting = false,
   filterDate,
   onFilterDateChange,
+  isLoading = false,
+  canLoadMore = false,
+  onLoadMore,
   onBulkPrint,
   onPrintBill,
 }: Props) {
@@ -269,7 +275,26 @@ export default function BillListSidebar({
             {filteredBills.length === 0 && (
               <tr>
                 <td colSpan={columnCount} className="px-3 py-8 text-center text-[12px] font-semibold text-slate-500">
-                  {filterDate ? 'Không có đơn trong ngày đã chọn.' : 'Chưa có đơn hàng.'}
+                  {isLoading
+                    ? <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Đang tải danh sách…</span>
+                    : filterDate
+                      ? 'Không có đơn trong ngày đã chọn.'
+                      : 'Chưa có đơn hàng.'}
+                </td>
+              </tr>
+            )}
+            {canLoadMore && !filterDate && (
+              <tr>
+                <td colSpan={columnCount} className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-center">
+                  <button
+                    type="button"
+                    onClick={onLoadMore}
+                    disabled={isLoading || !onLoadMore}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-[11px] font-extrabold text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {isLoading && <Loader2 size={12} className="animate-spin" />}
+                    Tải thêm đơn
+                  </button>
                 </td>
               </tr>
             )}

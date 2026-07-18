@@ -345,28 +345,63 @@ export class WaybillsService {
     const needsSplits = Boolean(vendorId) || onlyIncompleteSplit || query.list_scope !== 'all_orders';
     const includeFreightTotal = isManager(currentUser.role_mask);
 
-    const [freightRow, totalWaybills, waybills] = await Promise.all([
-      includeFreightTotal
-        ? qb.clone()
-          .select('COALESCE(SUM(COALESCE(waybill.freight_amount, waybill.cost_amount, 0)), 0)', 'total_freight')
-          .getRawOne<{ total_freight: string }>()
-        : Promise.resolve(null),
-      qb.clone().getCount(),
+    const loadSummary = async () => {
+      if (vendorId) {
+        const [freightRow, totalWaybills] = await Promise.all([
+          includeFreightTotal
+            ? qb.clone()
+              .select('COALESCE(SUM(COALESCE(waybill.freight_amount, waybill.cost_amount, 0)), 0)', 'total_freight')
+              .getRawOne<{ total_freight: string }>()
+            : Promise.resolve(null),
+          qb.clone().getCount(),
+        ]);
+        return {
+          totalWaybills,
+          totalFreight: includeFreightTotal ? Number(freightRow?.total_freight) || 0 : undefined,
+        };
+      }
+
+      const summaryQb = qb.clone()
+        .select('COUNT(DISTINCT waybill.id)', 'total_waybills');
+      if (includeFreightTotal) {
+        summaryQb.addSelect(
+          'COALESCE(SUM(COALESCE(waybill.freight_amount, waybill.cost_amount, 0)), 0)',
+          'total_freight',
+        );
+      }
+      const summary = await summaryQb.getRawOne<{ total_waybills: string; total_freight?: string }>();
+      return {
+        totalWaybills: Number(summary?.total_waybills) || 0,
+        totalFreight: includeFreightTotal ? Number(summary?.total_freight) || 0 : undefined,
+      };
+    };
+
+    const [summary, waybills] = await Promise.all([
+      loadSummary(),
       qb.clone()
         .orderBy('waybill.created_at', 'DESC')
         .skip((page - 1) * limit)
         .take(limit)
         .getMany(),
     ]);
-    const totalFreight = includeFreightTotal ? Number(freightRow?.total_freight) || 0 : undefined;
+    const { totalWaybills, totalFreight } = summary;
 
     const waybillIds = waybills.map((waybill) => waybill.id);
     const splits = needsSplits && waybillIds.length
-      ? await this.splitsRepository.find({
-        where: { waybill_id: In(waybillIds) },
-        relations: ['trip', 'trip.truck', 'truck'],
-        order: { loading_position: 'ASC', id: 'ASC' },
-      })
+      ? onlyIncompleteSplit && !vendorId
+        ? await this.splitsRepository.find({
+          select: {
+            id: true,
+            waybill_id: true,
+            package_count: true,
+          },
+          where: { waybill_id: In(waybillIds) },
+        })
+        : await this.splitsRepository.find({
+          where: { waybill_id: In(waybillIds) },
+          relations: ['trip', 'trip.truck', 'truck'],
+          order: { loading_position: 'ASC', id: 'ASC' },
+        })
       : [];
 
     const splitsByWaybill = splits.reduce<Map<string, WaybillSplitEntity[]>>((map, row) => {

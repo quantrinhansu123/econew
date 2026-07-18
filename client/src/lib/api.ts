@@ -41,8 +41,12 @@ export const API_BASE_URL = resolveApiBaseUrl();
 const ACCESS_TOKEN_KEY = 'eco_access_token';
 const REFRESH_TOKEN_KEY = 'eco_refresh_token';
 const USER_PROFILE_KEY = 'eco_user_profile';
+const ACTIVE_HUBS_PATH = '/hubs/active';
+const ACTIVE_HUBS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 let refreshPromise: Promise<RefreshResult> | null = null;
+const responseCache = new Map<string, { expiresAt: number; payload: unknown }>();
+const pendingCachedRequests = new Map<string, Promise<unknown>>();
 
 const redirectToLogin = () => {
   if (typeof window === 'undefined') return;
@@ -89,6 +93,8 @@ export const clearAuthSession = () => {
     storage.removeItem(REFRESH_TOKEN_KEY);
     storage.removeItem(USER_PROFILE_KEY);
   });
+  responseCache.clear();
+  pendingCachedRequests.clear();
   dispatchAuthCleared();
 };
 
@@ -137,7 +143,23 @@ function enrichPlainTextApiError(status: number, text: string): string | null {
   return trimmed;
 }
 
-export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+const normalizeRequestPath = (path: string) => (path.startsWith('/') ? path : `/${path}`);
+
+const getCacheTtl = (requestPath: string, options: RequestOptions) => {
+  const method = String(options.method || 'GET').toUpperCase();
+  if (method !== 'GET') return 0;
+  return requestPath === ACTIVE_HUBS_PATH ? ACTIVE_HUBS_CACHE_TTL_MS : 0;
+};
+
+const invalidateRelatedCache = (requestPath: string, options: RequestOptions) => {
+  const method = String(options.method || 'GET').toUpperCase();
+  if (method !== 'GET' && requestPath.startsWith('/hubs')) {
+    responseCache.delete(ACTIVE_HUBS_PATH);
+    pendingCachedRequests.delete(ACTIVE_HUBS_PATH);
+  }
+};
+
+async function performApiRequest<T>(requestPath: string, options: RequestOptions): Promise<T> {
   const { body, headers, token, ...requestOptions } = options;
   const buildRequest = (accessToken: string | null) => ({
     ...requestOptions,
@@ -149,8 +171,6 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-
-  const requestPath = path.startsWith('/') ? path : `/${path}`;
 
   let response: Response;
   try {
@@ -184,7 +204,45 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     throw new ApiError(response.status, getErrorMessage(payload, fallback), payload);
   }
 
+  invalidateRelatedCache(requestPath, options);
   return payload as T;
+}
+
+export function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const requestPath = normalizeRequestPath(path);
+  const cacheTtl = getCacheTtl(requestPath, options);
+  if (!cacheTtl) return performApiRequest<T>(requestPath, options);
+
+  const cached = responseCache.get(requestPath);
+  if (cached && cached.expiresAt > Date.now()) {
+    return Promise.resolve(cached.payload as T);
+  }
+  if (cached) responseCache.delete(requestPath);
+
+  if (!options.signal) {
+    const pending = pendingCachedRequests.get(requestPath);
+    if (pending) return pending as Promise<T>;
+  }
+
+  const request = performApiRequest<T>(requestPath, options).then((payload) => {
+    responseCache.set(requestPath, {
+      expiresAt: Date.now() + cacheTtl,
+      payload,
+    });
+    return payload;
+  });
+
+  if (!options.signal) {
+    pendingCachedRequests.set(requestPath, request);
+    const clearPending = () => {
+      if (pendingCachedRequests.get(requestPath) === request) {
+        pendingCachedRequests.delete(requestPath);
+      }
+    };
+    void request.then(clearPending, clearPending);
+  }
+
+  return request;
 }
 
 /** Làm mới access token (dùng khi focus tab / interval). Không xóa phiên khi server tạm ngắt. */

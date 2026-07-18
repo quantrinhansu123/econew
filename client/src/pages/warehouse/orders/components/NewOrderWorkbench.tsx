@@ -36,6 +36,9 @@ interface Props {
   onShowPricingOnPrintChange: (value: boolean) => void;
   billFilterDate: string;
   onBillFilterDateChange: (value: string) => void;
+  isBillListLoading: boolean;
+  hasMoreBills: boolean;
+  onLoadMoreBills: () => void;
   onBulkPrintBills: (billIds: string[]) => void;
   onPrintBill: (bill: BillListItem) => void;
   canManage: boolean;
@@ -65,6 +68,9 @@ export default function NewOrderWorkbench({
   onShowPricingOnPrintChange,
   billFilterDate,
   onBillFilterDateChange,
+  isBillListLoading,
+  hasMoreBills,
+  onLoadMoreBills,
   onBulkPrintBills,
   onPrintBill,
   canManage,
@@ -348,6 +354,9 @@ export default function NewOrderWorkbench({
           isDeleting={isSubmitting}
           filterDate={billFilterDate}
           onFilterDateChange={onBillFilterDateChange}
+          isLoading={isBillListLoading}
+          canLoadMore={hasMoreBills}
+          onLoadMore={onLoadMoreBills}
           onBulkPrint={onBulkPrintBills}
           onPrintBill={onPrintBill}
         />

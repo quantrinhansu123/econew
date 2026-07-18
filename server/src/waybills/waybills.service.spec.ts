@@ -35,8 +35,12 @@ const createQueryBuilder = () => {
     skip: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
+    addSelect: jest.fn().mockReturnThis(),
+    clone: jest.fn().mockImplementation(() => qb),
     setParameters: jest.fn().mockReturnThis(),
     getRawOne: jest.fn().mockResolvedValue({ maxSeq: '0' }),
+    getMany: jest.fn().mockResolvedValue([makeWaybill()]),
+    getCount: jest.fn().mockResolvedValue(1),
     getManyAndCount: jest.fn().mockResolvedValue([[makeWaybill()], 1]),
   };
   return qb;
@@ -46,6 +50,7 @@ describe('WaybillsService', () => {
   let service: WaybillsService;
   let waybillsRepository: any;
   let hubsRepository: any;
+  let splitsRepository: any;
 
   beforeEach(() => {
     waybillsRepository = {
@@ -58,6 +63,12 @@ describe('WaybillsService', () => {
     hubsRepository = {
       findOne: jest.fn(async ({ where }: any) => ({ id: where.id, code: where.id === '2' ? 'HCM' : 'HAN', is_active: true })),
     };
+    splitsRepository = {
+      find: jest.fn().mockResolvedValue([]),
+      delete: jest.fn(),
+      save: jest.fn(),
+      create: jest.fn(),
+    };
     const ordersService = {
       createFromWaybillEntry: jest.fn().mockResolvedValue({ id: 'o1', order_code: 'DH20260101-001' }),
     };
@@ -65,7 +76,7 @@ describe('WaybillsService', () => {
     service = new WaybillsService(
       waybillsRepository,
       hubsRepository,
-      { find: jest.fn(), delete: jest.fn(), save: jest.fn(), create: jest.fn() } as any,
+      splitsRepository,
       { findOne: jest.fn() } as any,
       { findOne: jest.fn() } as any,
       { find: jest.fn(), save: jest.fn(), create: jest.fn() } as any,
@@ -127,6 +138,30 @@ describe('WaybillsService', () => {
     waybillsRepository.createQueryBuilder.mockReturnValue(qb);
     await service.findAll({}, warehouse);
     expect(qb.andWhere).toHaveBeenCalled();
+  });
+
+  it('inventory combines summary queries and loads only split allocation fields for pending rows', async () => {
+    const qb = createQueryBuilder();
+    qb.getRawOne.mockResolvedValue({ total_waybills: '1', total_freight: '120000' });
+    qb.getMany.mockResolvedValue([makeWaybill({ package_count: 3, freight_amount: 120000 })]);
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+    splitsRepository.find.mockResolvedValue([{ id: 's1', waybill_id: '1', package_count: 1 }]);
+
+    const result = await service.getInventoryTripLines(
+      { page: 1, limit: 10, only_incomplete_split: '1' },
+      manager,
+    );
+
+    expect(qb.addSelect).toHaveBeenCalledWith(
+      'COALESCE(SUM(COALESCE(waybill.freight_amount, waybill.cost_amount, 0)), 0)',
+      'total_freight',
+    );
+    expect(splitsRepository.find).toHaveBeenCalledWith({
+      select: { id: true, waybill_id: true, package_count: true },
+      where: expect.any(Object),
+    });
+    expect(result.meta).toMatchObject({ total_waybills: 1, total_freight: 120000 });
+    expect(result.items[0]).toMatchObject({ remaining_packages: 2, trip_package_count: 2 });
   });
 
   it('receive transitions RECEIVED to IN_WAREHOUSE', async () => {
