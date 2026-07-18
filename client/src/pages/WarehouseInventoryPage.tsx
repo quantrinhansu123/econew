@@ -1387,10 +1387,12 @@ function DateGroup({ draftFilters, setDraftFilters, openGroups, setOpenGroups }:
 function Badge({ config, fallback }: { config?: BadgeConfig; fallback: ReactNode }) { return <span className={clsx('inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-black whitespace-nowrap', config?.className || 'bg-muted text-muted-foreground border-border')}>{config?.label || fallback}</span>; }
 function MobileInfo({ label, value }: { label: string; value: ReactNode }) { return <div className="min-w-0"><span className="text-muted-foreground">{label}: </span><span className="font-bold text-foreground break-words">{value}</span></div>; }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label><span className="mb-2 block text-[12px] font-bold text-foreground">{label}</span>{children}</label>; }
-function FilterSummaryCard({ label, value, tone }: { label: string; value: string; tone: 'blue' | 'emerald' }) {
+function FilterSummaryCard({ label, value, tone }: { label: string; value: string; tone: 'blue' | 'emerald' | 'amber' }) {
   const toneClass = tone === 'emerald'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-    : 'border-blue-200 bg-blue-50 text-blue-800';
+    : tone === 'amber'
+      ? 'border-amber-200 bg-amber-50 text-amber-800'
+      : 'border-blue-200 bg-blue-50 text-blue-800';
   return (
     <div className={clsx('rounded-2xl border p-4 shadow-sm', toneClass)}>
       <p className="text-[11px] font-bold uppercase tracking-wide opacity-80">{label}</p>
