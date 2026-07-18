@@ -4,6 +4,8 @@ export type DispatchPrintColumnId =
   | 'viTriHang'
   | 'ngayBoc'
   | 'maTinh'
+  | 'quanHuyen'
+  | 'phuongXa'
   | 'tenCtv'
   | 'dv'
   | 'matHang'
@@ -42,6 +44,8 @@ export const DISPATCH_PRINT_COLUMN_DEFS: DispatchPrintColumnDef[] = [
   { id: 'viTriHang', label: 'Vị trí hàng', header: 'Vị trí hàng', cssClass: 'col-location', align: 'center', defaultVisible: true, required: true },
   { id: 'ngayBoc', label: 'Ngày bốc', header: 'Ngày bốc', cssClass: 'col-date', align: 'center', defaultVisible: true },
   { id: 'maTinh', label: 'Mã Tỉnh', header: 'Mã Tỉnh', cssClass: 'col-province', align: 'center', defaultVisible: true },
+  { id: 'quanHuyen', label: 'Quận/Huyện', header: 'Quận/Huyện', cssClass: 'col-district', defaultVisible: false },
+  { id: 'phuongXa', label: 'Phường/Xã', header: 'Phường/Xã', cssClass: 'col-ward', defaultVisible: false },
   { id: 'tenCtv', label: 'Tên CTY', header: 'Tên CTY', cssClass: 'col-company', defaultVisible: true },
   { id: 'dv', label: 'DV', header: 'DV', cssClass: 'col-service', align: 'center', defaultVisible: true },
   { id: 'matHang', label: 'Mặt Hàng', header: 'Mặt Hàng', cssClass: 'col-item', defaultVisible: true },
@@ -65,7 +69,7 @@ export const DISPATCH_PRINT_COLUMN_DEFS: DispatchPrintColumnDef[] = [
   { id: 'qd', label: 'QĐ', header: 'QĐ', cssClass: 'col-qd', align: 'center', defaultVisible: false },
 ];
 
-export const DISPATCH_PRINT_COLUMN_STORAGE_KEY = 'eco_dispatch_print_visible_columns_v5';
+export const DISPATCH_PRINT_COLUMN_STORAGE_KEY = 'eco_dispatch_print_visible_columns_v6';
 
 const defMap = new Map(DISPATCH_PRINT_COLUMN_DEFS.map((def) => [def.id, def]));
 const DISPATCH_NOTE_COLUMNS = new Set<DispatchPrintColumnId>(['ghiChu', 'ghiChu1', 'ghiChu2']);

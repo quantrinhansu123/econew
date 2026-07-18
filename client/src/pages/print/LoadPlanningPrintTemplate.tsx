@@ -34,6 +34,10 @@ function renderDispatchCell(id: DispatchPrintColumnId, row: DispatchPrintRow): R
       return <td className={`${def.cssClass} col-center`}>{row.ngayBoc}</td>;
     case 'maTinh':
       return <td className={`${def.cssClass} col-center`}>{row.maTinh}</td>;
+    case 'quanHuyen':
+      return <td className={def.cssClass}>{row.quanHuyen}</td>;
+    case 'phuongXa':
+      return <td className={def.cssClass}>{row.phuongXa}</td>;
     case 'tenCtv':
       return (
         <td className={def.cssClass}>

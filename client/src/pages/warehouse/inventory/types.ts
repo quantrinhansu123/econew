@@ -34,6 +34,8 @@ export interface WaybillInventoryItem {
     receiver_name?: string | null;
     receiver_phone?: string | null;
     receiver_address?: string | null;
+    receiver_district?: string | null;
+    receiver_ward?: string | null;
     package_count?: number | string | null;
     weight?: number | string | null;
     freight_amount?: number | string | null;
@@ -64,6 +66,8 @@ export interface WaybillInventoryItem {
   height?: number | string | null;
   sender_phone?: string | null;
   receiver_address?: string | null;
+  receiver_district?: string | null;
+  receiver_ward?: string | null;
   receiver_phone?: string | null;
   package_count?: number | string | null;
   declared_package_count?: number | string | null;
@@ -176,6 +180,8 @@ export interface AllocationBoardItem {
   so_luong?: number | null;
   loai?: string | null;
   dia_chi?: string | null;
+  quan_huyen?: string | null;
+  phuong_xa?: string | null;
   xe_phat?: string | null;
   noi_den?: string | null;
   weight?: number | null;

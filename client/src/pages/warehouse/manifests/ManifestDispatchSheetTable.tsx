@@ -8,6 +8,8 @@ import {
   computeDispatchTotals,
   formatReceiverAddressWithPhone,
   getDispatchCellValue,
+  resolveReceiverDistrict,
+  resolveReceiverWard,
   type DispatchFieldKey,
   type DispatchLink,
 } from './manifestDispatchDefaults';
@@ -144,6 +146,14 @@ export default function ManifestDispatchSheetTable({
     if (columnId === 'diaChiNhan') {
       const value = getDispatchCellValue(rows, link, waybillId, 'dia_chi') || formatReceiverAddressWithPhone(link);
       return renderAddressCell(value);
+    }
+
+    if (columnId === 'quanHuyen') {
+      return <div className="min-h-[50px] px-1.5 py-2 text-left text-[12px] font-bold">{resolveReceiverDistrict(link.waybill) || '—'}</div>;
+    }
+
+    if (columnId === 'phuongXa') {
+      return <div className="min-h-[50px] px-1.5 py-2 text-left text-[12px] font-semibold">{resolveReceiverWard(link.waybill) || '—'}</div>;
     }
 
     if (columnId === 'cuoc') {

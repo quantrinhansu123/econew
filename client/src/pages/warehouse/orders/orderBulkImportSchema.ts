@@ -9,6 +9,8 @@ export type OrderBulkFieldKey =
   | 'dienThoaiNhan'
   | 'diaChiNhan'
   | 'huyen'
+  | 'quanHuyen'
+  | 'phuongXa'
   | 'soBill'
   | 'soKien'
   | 'dichVu'
@@ -45,7 +47,9 @@ export const ORDER_BULK_COLUMNS: OrderBulkColumn[] = [
   { key: 'nguoiNhan', label: 'Người nhận', required: true, sample: 'Nguyễn Văn A' },
   { key: 'dienThoaiNhan', label: 'ĐT người nhận', required: false, sample: '0888727897' },
   { key: 'diaChiNhan', label: 'Địa chỉ nhận', required: true, sample: '215 Nguyễn Trãi, Q.1, TP.HCM' },
-  { key: 'huyen', label: 'Huyện', required: false, sample: 'HỒ CHÍ MINH' },
+  { key: 'huyen', label: 'Tỉnh/Thành', required: false, sample: 'HỒ CHÍ MINH' },
+  { key: 'quanHuyen', label: 'Quận/Huyện', required: false, sample: 'Quận 1' },
+  { key: 'phuongXa', label: 'Phường/Xã', required: false, sample: 'Phường Nguyễn Cư Trinh' },
   { key: 'soBill', label: 'Số bill', required: true, sample: 'ECO-HAN-1001' },
   { key: 'soKien', label: 'Số kiện', required: false, sample: '1' },
   { key: 'dichVu', label: 'Dịch vụ', required: false, sample: 'Tiêu chuẩn 72h' },

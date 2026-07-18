@@ -2,6 +2,7 @@ import type { HubSummary, PaymentType, WaybillDetail } from './types';
 import { emptyOrderForm } from './orderFormData';
 import type { BillListItem, NewOrderFormState } from './orderFormTypes';
 import { extractProvinceFromAddress } from '../../../lib/vietnamProvince';
+import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
 
 const parseNumber = (value: string) => Number(String(value).replace(/[^\d.-]/g, ''));
 
@@ -174,6 +175,8 @@ const NOTE_METADATA_KEYS = new Set([
   'thanh_toan',
   'tinh_den',
   'huyen',
+  'quan_huyen',
+  'phuong_xa',
 ]);
 
 function stripNoteMetadata(note: string) {
@@ -233,6 +236,8 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
   const unitPrice = resolveUnitPrice(waybill, billingUnit);
   const note = waybill.note || waybill.notes || '';
   const [length, width, height] = parseDimensions(waybill, note);
+  const receiverAddress = waybill.receiver_address?.trim() || receiver.address || waybill.receiver_info || '';
+  const addressParts = extractVietnamAddressParts(receiverAddress);
   const volumeM3 = Number(
     (waybill as { the_tich_m3?: number }).the_tich_m3
     ?? parseNoteField(note, 'the_tich_m3')
@@ -247,7 +252,7 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     dienThoaiKh: waybill.sender_phone?.trim() || sender.phone || '',
     dienThoaiNhan: waybill.receiver_phone?.trim() || receiver.phone || '',
     nguoiNhan: waybill.receiver_name?.trim() || receiver.name || waybill.receiver_info || '',
-    diaChiNhan: waybill.receiver_address?.trim() || receiver.address || waybill.receiver_info || '',
+    diaChiNhan: receiverAddress,
     noiDen: destCode || 'HCM',
     originHubId: originId,
     destHubId: destId,
@@ -257,6 +262,14 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
       || parseNoteField(note, 'huyen')
       || waybill.dest_hub?.name
       || '',
+    quanHuyen:
+      (waybill as { receiver_district?: string }).receiver_district?.trim()
+      || parseNoteField(note, 'quan_huyen')
+      || addressParts.district,
+    phuongXa:
+      (waybill as { receiver_ward?: string }).receiver_ward?.trim()
+      || parseNoteField(note, 'phuong_xa')
+      || addressParts.ward,
     soBill: waybill.waybill_code || waybill.code || '',
     loaiBp: parseNoteField(note, 'loai_bp') || 'CPN',
     dichVu: parseNoteField(note, 'dich_vu') || 'Tiêu chuẩn 72h',
@@ -445,6 +458,8 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
       `thanh_toan=${thanhToan}`,
       receiverProvince && `tinh_den=${receiverProvince}`,
       form.huyen.trim() && `huyen=${form.huyen.trim()}`,
+      form.quanHuyen.trim() && `quan_huyen=${form.quanHuyen.trim()}`,
+      form.phuongXa.trim() && `phuong_xa=${form.phuongXa.trim()}`,
       `dimensions_cm=${length}x${width}x${height}`,
       `volumetric_weight=${volumetricWeight}`,
       `the_tich_m3=${volumeM3}`,

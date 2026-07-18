@@ -1,5 +1,6 @@
 import type { WaybillInventoryItem } from './types';
 import { resolveOrderStatusGroup, orderStatusGroupConfig } from './orderStatusUtils';
+import { resolveVietnamDistrict, resolveVietnamWard } from '../../../lib/vietnamAddressParts';
 
 const VN_TIMEZONE = 'Asia/Ho_Chi_Minh';
 
@@ -92,6 +93,8 @@ export const INVENTORY_PRINT_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, nu
   route: 5,
   ma_kh: 5,
   receiver_address: 17,
+  receiver_district: 8,
+  receiver_ward: 8,
   receiver_phone: 6.5,
   package_count: 4,
   weight: 4.5,
@@ -138,6 +141,8 @@ export type InventoryColumnId =
   | 'route'
   | 'ma_kh'
   | 'receiver_address'
+  | 'receiver_district'
+  | 'receiver_ward'
   | 'receiver_phone'
   | 'package_count'
   | 'weight'
@@ -187,6 +192,8 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'route', label: 'Tuyến', defaultVisible: true },
   { id: 'ma_kh', label: 'Mã KH', defaultVisible: true },
   { id: 'receiver_address', label: 'Địa chỉ nhận', defaultVisible: true },
+  { id: 'receiver_district', label: 'Quận/Huyện', defaultVisible: true },
+  { id: 'receiver_ward', label: 'Phường/Xã', defaultVisible: true },
   { id: 'receiver_phone', label: 'SĐT người nhận', defaultVisible: true },
   { id: 'package_count', label: 'Kiện còn / đơn', defaultVisible: true, align: 'right' },
   { id: 'weight', label: 'Trọng lượng (kg)', defaultVisible: true, align: 'right' },
@@ -202,7 +209,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'actions', label: 'Thao tác', defaultVisible: true },
 ];
 
-export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v6';
+export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v7';
 
 /** Không dùng trên danh sách đơn — thay bằng Bill + Cộng SG riêng */
 export const ALL_ORDERS_DISALLOWED_COLUMN_IDS: InventoryColumnId[] = [
@@ -264,6 +271,8 @@ const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   service_type: 'Dịch vụ',
   noi_den: 'Nơi đến',
   receiver_address: 'Địa chỉ nhận',
+  receiver_district: 'Quận/Huyện',
+  receiver_ward: 'Phường/Xã',
   order_status: 'Trạng thái',
   billing_qty_detail: 'Kg / khối',
   surcharge: 'Phụ phí',
@@ -468,6 +477,26 @@ export function resolveReceiverAddress(waybill: WaybillInventoryItem): string {
     return parts[2] || parts[parts.length - 1] || '';
   }
   return info.trim();
+}
+
+export function resolveReceiverDistrict(waybill: WaybillInventoryItem): string {
+  const address = resolveReceiverAddress(waybill);
+  const explicit =
+    waybill.receiver_district?.trim()
+    || waybill.order?.receiver_district?.trim()
+    || parseNote(waybill.note || waybill.notes, 'quan_huyen')
+    || parseNote(waybill.order?.note, 'quan_huyen');
+  return resolveVietnamDistrict(explicit, address);
+}
+
+export function resolveReceiverWard(waybill: WaybillInventoryItem): string {
+  const address = resolveReceiverAddress(waybill);
+  const explicit =
+    waybill.receiver_ward?.trim()
+    || waybill.order?.receiver_ward?.trim()
+    || parseNote(waybill.note || waybill.notes, 'phuong_xa')
+    || parseNote(waybill.order?.note, 'phuong_xa');
+  return resolveVietnamWard(explicit, address);
 }
 
 export function resolveSurcharge(waybill: WaybillInventoryItem): number {

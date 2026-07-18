@@ -17,6 +17,7 @@ import {
   type OrderBulkFieldKey,
 } from './orderBulkImportSchema';
 import { formatEcoBillCode, maxEcoBillSequence, nextEcoBillCodeFromCodes } from './waybillCodeUtils';
+import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
 
 export type OrderBulkRow = Record<OrderBulkFieldKey, string>;
 
@@ -40,6 +41,8 @@ const headerToKey = (() => {
     map.set(normalizeHeader(column.label), column.key);
     map.set(normalizeHeader(orderBulkHeaderLabel(column)), column.key);
   }
+  // Tương thích mẫu nhập cũ trước khi tách riêng tỉnh, quận và phường.
+  map.set(normalizeHeader('Huyện'), 'huyen');
   return map;
 })();
 
@@ -153,6 +156,7 @@ export function bulkRowToOrderForm(
   const destHubId = resolveHubId(hubs, values.bcDen);
   const destHub = hubs.find((hub) => String(hub.id) === destHubId);
   const destCode = destHub?.code?.trim().toUpperCase() || values.bcDen.trim().toUpperCase();
+  const addressParts = extractVietnamAddressParts(values.diaChiNhan);
 
   const base: NewOrderFormState = {
     ...emptyOrderForm(),
@@ -168,6 +172,8 @@ export function bulkRowToOrderForm(
     dienThoaiNhan: values.dienThoaiNhan ? normalizeVnPhone(values.dienThoaiNhan) : '',
     diaChiNhan: values.diaChiNhan,
     huyen: values.huyen || destHub?.name || defaults.huyen || '',
+    quanHuyen: values.quanHuyen || addressParts.district || defaults.quanHuyen || '',
+    phuongXa: values.phuongXa || addressParts.ward || defaults.phuongXa || '',
     soBill: values.soBill.trim().toUpperCase(),
     soKien: values.soKien || defaults.soKien || '1',
     dichVu: values.dichVu || defaults.dichVu || 'Tiêu chuẩn 72h',

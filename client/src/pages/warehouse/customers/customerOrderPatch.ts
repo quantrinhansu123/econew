@@ -2,6 +2,7 @@ import type { CustomerRecord } from './customerFormTypes';
 import type { NewOrderFormState } from '../orders/orderFormTypes';
 import { hubIdFromCode } from '../orders/orderFormUtils';
 import type { HubSummary } from '../orders/types';
+import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
 
 const str = (v: string | null | undefined) => (v ?? '').trim();
 
@@ -130,18 +131,26 @@ export function applyReceiverByDestination(
   const fallbackPhone = customerReceiverPhone(customer);
 
   if (isHcmProvince(noiDen, huyen)) {
+    const receiverAddress = str(customer.address_hcm);
+    const addressParts = extractVietnamAddressParts(receiverAddress);
     return {
       nguoiNhan: str(customer.receiver_hcm) || fallbackName,
-      diaChiNhan: str(customer.address_hcm),
+      diaChiNhan: receiverAddress,
       dienThoaiNhan: str(customer.phone_hcm) || fallbackPhone,
+      quanHuyen: addressParts.district,
+      phuongXa: addressParts.ward,
     };
   }
 
   if (isDngProvince(noiDen, huyen)) {
+    const receiverAddress = str(customer.address_dng);
+    const addressParts = extractVietnamAddressParts(receiverAddress);
     return {
       nguoiNhan: str(customer.receiver_dng) || fallbackName,
-      diaChiNhan: str(customer.address_dng),
+      diaChiNhan: receiverAddress,
       dienThoaiNhan: str(customer.phone_dng) || fallbackPhone,
+      quanHuyen: addressParts.district,
+      phuongXa: addressParts.ward,
     };
   }
 
@@ -149,6 +158,8 @@ export function applyReceiverByDestination(
     nguoiNhan: fallbackName,
     diaChiNhan: '',
     dienThoaiNhan: fallbackPhone,
+    quanHuyen: '',
+    phuongXa: '',
   };
 }
 

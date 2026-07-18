@@ -7,6 +7,7 @@ import { ManifestStatus } from '../manifests/dto/manifest.enums';
 import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
 import { ManifestEntity } from '../manifests/manifest.entity';
 import { clampPaginationLimit } from '../common/pagination';
+import { extractVietnamAddressParts } from '../common/vietnam-address';
 import { Roles, hasRole, isManager } from '../common/roles';
 import { UserEntity } from '../users/user.entity';
 import { WaybillEntity } from './waybill.entity';
@@ -1063,6 +1064,9 @@ export class WaybillsService {
     const unitRaw = String(wbExtra.don_gia_don_vi ?? '').toLowerCase();
     const loai = unitRaw.includes('pallet') ? 'pallet' : 'kiện';
     const address = waybill.receiver_address?.trim() || this.parseContactAddress(waybill.receiver_info);
+    const addressParts = extractVietnamAddressParts(address);
+    const receiverDistrict = parseNoteField(waybill.note, 'quan_huyen') || addressParts.district;
+    const receiverWard = parseNoteField(waybill.note, 'phuong_xa') || addressParts.ward;
     const truck = split.truck ?? split.trip?.truck ?? null;
     const truckLabel = String(split.carrier_label ?? wbExtra.xe_phat ?? truck?.nha_xe ?? truck?.ten_lai_xe ?? '').trim();
     const totalPackages = Math.max(1, Number(waybill.package_count ?? 1));
@@ -1088,6 +1092,8 @@ export class WaybillsService {
       so_luong: quantity,
       loai,
       dia_chi: address,
+      quan_huyen: receiverDistrict || null,
+      phuong_xa: receiverWard || null,
       noi_den: waybill.noi_den,
       weight: waybill.weight,
       the_tich_m3: waybill.the_tich_m3,

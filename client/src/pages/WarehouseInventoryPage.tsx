@@ -41,7 +41,9 @@ import {
   resolveMaKh,
   resolveNoiDen,
   resolveReceiverAddress,
+  resolveReceiverDistrict,
   resolveReceiverPhone,
+  resolveReceiverWard,
   resolveVolumeM3,
   resolveWeightKg,
   resolveSurcharge,
@@ -1044,6 +1046,10 @@ function InventoryRow({
             <span className="line-clamp-2 block max-w-[220px]">{resolveReceiverAddress(waybill)}</span>
           </td>
         );
+      case 'receiver_district':
+        return <td className={clsx(cellClass, 'font-semibold')}>{resolveReceiverDistrict(waybill) || '—'}</td>;
+      case 'receiver_ward':
+        return <td className={cellClass}>{resolveReceiverWard(waybill) || '—'}</td>;
       case 'order_status': {
         const badge = resolveOrderStatusBadge(waybill);
         return (
@@ -1259,6 +1265,8 @@ function InventoryCard({ waybill, canUpdate, canEdit, canDelete, openActionMenuI
       <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-3 text-[12px]">
         <MobileInfo label="Người gửi" value={waybill.sender_info || '—'} />
         <MobileInfo label="Người nhận" value={waybill.receiver_info || '—'} />
+        <MobileInfo label="Quận/Huyện" value={resolveReceiverDistrict(waybill) || '—'} />
+        <MobileInfo label="Phường/Xã" value={resolveReceiverWard(waybill) || '—'} />
         <MobileInfo label="Tuyến" value={
           <WaybillRouteControl
             waybillId={waybill.id}

@@ -8,9 +8,12 @@ import DispatchPrintColumnDropdown from './print/DispatchPrintColumnDropdown';
 import type { DispatchPrintColumnId } from './print/dispatchPrintColumns';
 import {
   loadVisibleDispatchColumnIds,
+  resolveVisibleDispatchColumnIds,
   saveVisibleDispatchColumnIds,
 } from './print/dispatchPrintColumns';
 import {
+  resolveReceiverDistrict,
+  resolveReceiverWard,
   type DispatchFieldKey,
   type DispatchLink,
 } from './warehouse/manifests/manifestDispatchDefaults';
@@ -73,7 +76,9 @@ function normalizeLinks(manifest: LoadPlanningManifest | null): RowLink[] {
 }
 
 function isArrived(manifest: LoadPlanningManifest) {
-  return ['COMPLETED', 'ARRIVED', 'AT_DEST_HUB', 'Xe đã đến'].includes(String(manifest.trip?.status || manifest.status || ''));
+  return ['COMPLETED', 'ARRIVED', 'AT_DEST_HUB', 'Xe đã đến'].includes(
+    String(manifest.trip?.status || manifest.trips?.[0]?.status || manifest.status || ''),
+  );
 }
 
 export default function WarehouseManifestDetailPage() {
@@ -119,12 +124,34 @@ export default function WarehouseManifestDetailPage() {
     setIsDialogOpen(true);
   }
 
-  const links = useMemo(() => normalizeLinks(manifest).sort((a, b) => Number(a.loading_position ?? 9999) - Number(b.loading_position ?? 9999)), [manifest]);
+  const links = useMemo(() => normalizeLinks(manifest).sort((a, b) => {
+    if (manifest && isArrived(manifest)) {
+      const districtCompare = resolveReceiverDistrict(a.waybill)
+        .localeCompare(resolveReceiverDistrict(b.waybill), 'vi', { numeric: true });
+      if (districtCompare !== 0) return districtCompare;
+      const wardCompare = resolveReceiverWard(a.waybill)
+        .localeCompare(resolveReceiverWard(b.waybill), 'vi', { numeric: true });
+      if (wardCompare !== 0) return wardCompare;
+    }
+    return Number(a.loading_position ?? 9999) - Number(b.loading_position ?? 9999);
+  }), [manifest]);
   const filteredLinks = useMemo(() => {
     const search = keyword.trim().toLowerCase();
     if (!search) return links;
-    return links.filter((link) => [link.waybill?.waybill_code, link.waybill?.sender_info, link.waybill?.receiver_info].some((value) => String(value || '').toLowerCase().includes(search)));
+    return links.filter((link) => [
+      link.waybill?.waybill_code,
+      link.waybill?.sender_info,
+      link.waybill?.receiver_info,
+      resolveReceiverDistrict(link.waybill),
+      resolveReceiverWard(link.waybill),
+    ].some((value) => String(value || '').toLowerCase().includes(search)));
   }, [links, keyword]);
+  const effectiveVisibleColumnIds = useMemo(
+    () => manifest && isArrived(manifest)
+      ? resolveVisibleDispatchColumnIds([...visibleColumnIds, 'quanHuyen', 'phuongXa'], showPricing)
+      : visibleColumnIds,
+    [manifest, showPricing, visibleColumnIds],
+  );
 
   function updateCell(waybillId: string, key: DispatchFieldKey, value: string) {
     setRows((prev) => ({ ...prev, [waybillId]: { ...(prev[waybillId] ?? {}), [key]: value } }));
@@ -201,7 +228,7 @@ export default function WarehouseManifestDetailPage() {
           rows={rows}
           keyword={keyword}
           isSaving={isSaving}
-          visibleColumnIds={visibleColumnIds}
+          visibleColumnIds={effectiveVisibleColumnIds}
           showPricing={showPricing}
           onKeywordChange={setKeyword}
           onCellChange={updateCell}

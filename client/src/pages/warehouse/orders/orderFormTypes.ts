@@ -22,6 +22,8 @@ export interface NewOrderFormState {
   originHubId: string;
   destHubId: string;
   huyen: string;
+  quanHuyen: string;
+  phuongXa: string;
   nguoiNhan: string;
   diaChiNhan: string;
   soBill: string;

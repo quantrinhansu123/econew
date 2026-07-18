@@ -114,6 +114,8 @@ const NOTE_METADATA_KEYS = new Set([
   'thanh_toan',
   'tinh_den',
   'huyen',
+  'quan_huyen',
+  'phuong_xa',
 ]);
 
 function stripNoteMetadata(note: string) {

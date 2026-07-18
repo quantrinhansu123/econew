@@ -311,6 +311,8 @@
 /* Cột bảng kê phát hàng — tỷ lệ cân đối theo mẫu Excel */
 .inventory-stock-table .col-date { width: 4.2%; }
 .inventory-stock-table .col-province { width: 4.2%; }
+.inventory-stock-table .col-district { width: 5%; }
+.inventory-stock-table .col-ward { width: 5%; }
 .inventory-stock-table .col-company { width: 5.5%; }
 .inventory-stock-table .col-service { width: 2.8%; }
 .inventory-stock-table .col-item { width: 7.5%; }

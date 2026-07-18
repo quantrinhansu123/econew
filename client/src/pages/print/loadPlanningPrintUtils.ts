@@ -1,11 +1,13 @@
 import type { StackOntoTruckFormRow, StackOntoTruckSharedFields } from '../warehouse/inventory/stackOntoTruckUtils';
 import type { WaybillInventoryItem } from '../warehouse/inventory/types';
+import { resolveReceiverDistrict, resolveReceiverWard } from '../warehouse/inventory/inventoryColumns';
 import type { LoadPlanningBoardFilters, LoadPlanningBoardItem, LoadPlanningBoardResponse, LoadPlanningTruckGroup } from '../warehouse/load-planning/types';
 import { splitLoadStatusLabel } from '../warehouse/splits/splitLoadStatus';
 import type { DispatchPrintColumnId } from './dispatchPrintColumns';
 import { loadVisibleDispatchColumnIds } from './dispatchPrintColumns';
 import type { DispatchPrintRow, DispatchPrintTotals } from './dispatchPrintFormat';
 import { formatDispatchMoney } from './dispatchPrintFormat';
+import { resolveVietnamDistrict, resolveVietnamWard } from '../../lib/vietnamAddressParts';
 
 export const LOAD_PLANNING_PRINT_STORAGE_KEY = 'eco_load_planning_print_v2';
 
@@ -106,6 +108,8 @@ function mapItemToDispatchRow(item: LoadPlanningBoardItem, showPricing: boolean)
     viTriHang: fmt(item.vi_tri_hang ?? item.loading_position),
     ngayBoc: fmt(item.ngay_boc),
     maTinh: fmt(item.ma_tinh || item.noi_den),
+    quanHuyen: resolveVietnamDistrict(item.quan_huyen, item.dia_chi),
+    phuongXa: resolveVietnamWard(item.phuong_xa, item.dia_chi),
     tenCtv: fmt(item.ten_cty),
     dv: fmt(item.dv || 'TC'),
     matHang: fmt(item.mat_hang || item.waybill_code),
@@ -247,6 +251,8 @@ export function mapStackOntoTruckToPrintPayload(
       viTriHang: row.loading_position || String(index + 1),
       ngayBoc,
       maTinh: String(waybill?.noi_den || waybill?.dest_hub?.code || '').trim(),
+      quanHuyen: waybill ? resolveReceiverDistrict(waybill) : '',
+      phuongXa: waybill ? resolveReceiverWard(waybill) : '',
       tenCtv: String((waybill as { ten_cty?: string | null })?.ten_cty || waybill?.ma_kh || parseContactName(waybill?.sender_info)).trim(),
       dv: 'TC',
       matHang: resolveWaybillGoods(waybill),

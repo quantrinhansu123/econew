@@ -6,6 +6,8 @@ import {
   resolveDispatchDefault,
   resolveGoodsContent,
   resolveMaTinh,
+  resolveReceiverDistrict,
+  resolveReceiverWard,
   type DispatchLink,
 } from '../warehouse/manifests/manifestDispatchDefaults';
 import type { DispatchPrintRow } from './dispatchPrintFormat';
@@ -60,6 +62,8 @@ function mapLinkToRow(link: ManifestLink, index: number, showPricing: boolean): 
     viTriHang: fmt(link.loading_position ?? index + 1),
     ngayBoc: fieldOrDefault(link, 'ngay_boc', fields) || formatDispatchShortDate(link.loaded_at ?? null),
     maTinh: fieldOrDefault(link, 'ma_tinh', fields) || resolveMaTinh(waybill),
+    quanHuyen: resolveReceiverDistrict(waybill),
+    phuongXa: resolveReceiverWard(waybill),
     tenCtv: fieldOrDefault(link, 'ten_cty', fields) || parseSenderName(waybill?.sender_info),
     dv: fieldOrDefault(link, 'dv', fields) || 'TC',
     matHang: fieldOrDefault(link, 'mat_hang', fields) || resolveGoodsContent(waybill) || fmt(waybill?.waybill_code),

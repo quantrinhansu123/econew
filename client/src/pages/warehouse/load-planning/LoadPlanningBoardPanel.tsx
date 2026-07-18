@@ -691,6 +691,7 @@ function ArrivalTruckDetailDialog({
             onStatusUpdated={onStatusUpdated}
             showHeader={false}
             bulkStatusMode
+            sortByDistrict
           />
         </div>
       </div>

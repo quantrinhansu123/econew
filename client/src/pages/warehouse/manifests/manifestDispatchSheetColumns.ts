@@ -19,6 +19,8 @@ const meta: Partial<Record<DispatchSheetColumnId, DispatchSheetColumnMeta>> = {
   viTriHang: { id: 'viTriHang', readOnly: true, minWidth: '56px' },
   ngayBoc: { id: 'ngayBoc', fieldKey: 'ngay_boc', minWidth: '76px' },
   maTinh: { id: 'maTinh', fieldKey: 'ma_tinh', readOnly: true, minWidth: '86px' },
+  quanHuyen: { id: 'quanHuyen', readOnly: true, minWidth: '110px' },
+  phuongXa: { id: 'phuongXa', readOnly: true, minWidth: '110px' },
   tenCtv: { id: 'tenCtv', fieldKey: 'ten_cty', minWidth: '120px' },
   dv: { id: 'dv', fieldKey: 'dv', minWidth: '58px' },
   matHang: { id: 'matHang', fieldKey: 'mat_hang', readOnly: true, minWidth: '180px' },
@@ -50,6 +52,8 @@ export function getDispatchSheetColumnMeta(id: DispatchSheetColumnId): DispatchS
 export const DISPATCH_SHEET_PRINT_WIDTHS: Partial<Record<DispatchSheetColumnId, string>> = {
   ngayBoc: '5%',
   maTinh: '5%',
+  quanHuyen: '7%',
+  phuongXa: '7%',
   tenCtv: '7%',
   dv: '3%',
   matHang: '9%',

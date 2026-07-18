@@ -2,6 +2,7 @@ import { clsx } from 'clsx';
 import { Truck } from 'lucide-react';
 import SplitLoadStatusControl from '../splits/SplitLoadStatusControl';
 import type { LoadPlanningBoardItem, LoadPlanningTruckGroup } from './types';
+import { resolveVietnamDistrict, resolveVietnamWard } from '../../../lib/vietnamAddressParts';
 
 interface Props {
   truck: LoadPlanningTruckGroup;
@@ -10,6 +11,8 @@ interface Props {
   showHeader?: boolean;
   /** Một nút trạng thái ở header dialog — ẩn cột trạng thái từng dòng. */
   bulkStatusMode?: boolean;
+  /** Danh sách xe đến HCM ưu tiên gom đơn cùng quận/huyện để phân tuyến. */
+  sortByDistrict?: boolean;
 }
 
 const formatNumber = (value?: number | string | null, suffix = '') =>
@@ -28,8 +31,23 @@ export default function LoadPlanningTruckBoard({
   onStatusUpdated,
   showHeader = true,
   bulkStatusMode = false,
+  sortByDistrict = false,
 }: Props) {
   const truckLabel = [truck.license_plate, truck.nha_xe ? `xe ${truck.nha_xe}` : null].filter(Boolean).join(' · ');
+  const items = sortByDistrict
+    ? [...(truck.items ?? [])].sort((left, right) => {
+        const leftDistrict = resolveVietnamDistrict(left.quan_huyen, left.dia_chi);
+        const rightDistrict = resolveVietnamDistrict(right.quan_huyen, right.dia_chi);
+        if (!leftDistrict && rightDistrict) return 1;
+        if (leftDistrict && !rightDistrict) return -1;
+        const districtCompare = leftDistrict.localeCompare(rightDistrict, 'vi', { numeric: true });
+        if (districtCompare !== 0) return districtCompare;
+        const wardCompare = resolveVietnamWard(left.phuong_xa, left.dia_chi)
+          .localeCompare(resolveVietnamWard(right.phuong_xa, right.dia_chi), 'vi', { numeric: true });
+        if (wardCompare !== 0) return wardCompare;
+        return Number(left.loading_position ?? 9999) - Number(right.loading_position ?? 9999);
+      })
+    : (truck.items ?? []);
 
   return (
     <section className="overflow-hidden rounded-xl border border-border shadow-sm">
@@ -54,7 +72,7 @@ export default function LoadPlanningTruckBoard({
       )}
 
       <div className="overflow-x-auto overflow-y-visible">
-        <table className="w-full min-w-[900px] table-fixed border-collapse text-[12px]">
+        <table className="w-full min-w-[1120px] table-fixed border-collapse text-[12px]">
           <thead>
             <tr className="border-b border-border bg-white text-[11px] font-bold uppercase tracking-wide text-slate-700">
               <th className="w-[4%] border-r border-border bg-yellow-300 px-2 py-2 text-center">Vị trí</th>
@@ -64,6 +82,8 @@ export default function LoadPlanningTruckBoard({
               <th className="w-[5%] border-r border-border px-2 py-2 text-center">Ngày bốc</th>
               <th className="w-[5%] border-r border-border px-2 py-2 text-center">Ngày tới</th>
               <th className="w-[5%] border-r border-border px-2 py-2 text-center">Mã Tỉnh</th>
+              <th className="w-[8%] border-r border-border px-2 py-2">Quận/Huyện</th>
+              <th className="w-[8%] border-r border-border px-2 py-2">Phường/Xã</th>
               <th className="w-[10%] border-r border-border px-2 py-2">Tên CTY</th>
               <th className="w-[3%] border-r border-border px-2 py-2 text-center">DV</th>
               <th className="w-[14%] border-r border-border px-2 py-2">Mặt Hàng</th>
@@ -77,7 +97,7 @@ export default function LoadPlanningTruckBoard({
             </tr>
           </thead>
           <tbody>
-            {(truck.items ?? []).map((item) => (
+            {items.map((item) => (
               <DispatchRow
                 key={String(item.split_id ?? item.waybill_id)}
                 item={item}
@@ -124,6 +144,12 @@ function DispatchRow({
       <td className="border-r border-border px-2 py-2 text-center font-medium">{item.ngay_boc || '—'}</td>
       <td className="border-r border-border px-2 py-2 text-center font-bold text-emerald-800">{item.ngay_toi || '—'}</td>
       <td className="border-r border-border px-2 py-2 text-center font-bold">{item.ma_tinh || item.noi_den || '—'}</td>
+      <td className="border-r border-border px-2 py-2 font-bold break-words">
+        {resolveVietnamDistrict(item.quan_huyen, item.dia_chi) || '—'}
+      </td>
+      <td className="border-r border-border px-2 py-2 break-words">
+        {resolveVietnamWard(item.phuong_xa, item.dia_chi) || '—'}
+      </td>
       <td className="border-r border-border px-2 py-2 text-center font-bold break-words">{item.ten_cty || '—'}</td>
       <td className="border-r border-border px-2 py-2 text-center font-bold">{item.dv || 'TC'}</td>
       <td className="border-r border-border px-2 py-2 break-words">

@@ -19,7 +19,9 @@ import {
   resolveNoiDen,
   resolveRoute,
   resolveReceiverAddress,
+  resolveReceiverDistrict,
   resolveReceiverPhone,
+  resolveReceiverWard,
   resolvePrintColumnIds,
   resolveOrderStatusBadge,
   resolveSurcharge,
@@ -126,6 +128,10 @@ export function inventoryPrintCellValue(
       return resolveMaKh(waybill);
     case 'receiver_address':
       return resolveReceiverAddress(waybill);
+    case 'receiver_district':
+      return resolveReceiverDistrict(waybill);
+    case 'receiver_ward':
+      return resolveReceiverWard(waybill);
     case 'receiver_phone': {
       const phone = resolveReceiverPhone(waybill);
       return phone === '—' ? '' : phone;

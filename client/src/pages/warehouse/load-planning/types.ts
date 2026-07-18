@@ -110,6 +110,8 @@ export interface LoadPlanningBoardItem {
   so_luong?: number | null;
   loai?: string | null;
   dia_chi?: string | null;
+  quan_huyen?: string | null;
+  phuong_xa?: string | null;
   xe_phat?: string | null;
   noi_den?: string | null;
   weight?: number | null;

@@ -171,8 +171,14 @@ export default function NewOrderWorkbench({
                     ))}
                   </CompactSelect>
                 </CompactField>
-                <CompactField label="Huyện" className="col-span-6 sm:col-span-4 xl:col-span-2">
+                <CompactField label="Tỉnh/Thành" className="col-span-6 sm:col-span-4 xl:col-span-2">
                   <CompactInput value={form.huyen} onChange={(e) => setField('huyen', e.target.value)} />
+                </CompactField>
+                <CompactField label="Quận/Huyện" className="col-span-6 sm:col-span-4 xl:col-span-2">
+                  <CompactInput value={form.quanHuyen} onChange={(e) => setField('quanHuyen', e.target.value)} />
+                </CompactField>
+                <CompactField label="Phường/Xã" className="col-span-6 sm:col-span-4 xl:col-span-2">
+                  <CompactInput value={form.phuongXa} onChange={(e) => setField('phuongXa', e.target.value)} />
                 </CompactField>
               </div>
 

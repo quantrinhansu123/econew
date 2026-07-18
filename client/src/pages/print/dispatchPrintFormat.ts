@@ -4,6 +4,8 @@ export interface DispatchPrintRow {
   viTriHang: string;
   ngayBoc: string;
   maTinh: string;
+  quanHuyen: string;
+  phuongXa: string;
   tenCtv: string;
   dv: string;
   matHang: string;
@@ -62,6 +64,8 @@ export function buildEmptyDispatchRow(position: number): DispatchPrintRow {
     viTriHang: String(position),
     ngayBoc: '',
     maTinh: '',
+    quanHuyen: '',
+    phuongXa: '',
     tenCtv: '',
     dv: '',
     matHang: '',

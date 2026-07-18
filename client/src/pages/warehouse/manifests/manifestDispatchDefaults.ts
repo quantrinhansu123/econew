@@ -1,4 +1,5 @@
 import type { ManifestDispatchFields } from './types';
+import { resolveVietnamDistrict, resolveVietnamWard } from '../../../lib/vietnamAddressParts';
 
 export type DispatchLink = {
   waybill_id?: string | number | null;
@@ -12,6 +13,8 @@ export type DispatchLink = {
     receiver_info?: string | null;
     receiver_phone?: string | null;
     receiver_address?: string | null;
+    receiver_district?: string | null;
+    receiver_ward?: string | null;
     noi_den?: string | null;
     noi_dung?: string | null;
     note?: string | null;
@@ -102,6 +105,27 @@ export function resolveGoodsContent(waybill: DispatchLink['waybill']) {
 
 export function resolveMaTinh(waybill: DispatchLink['waybill']) {
   return blank(waybill?.noi_den) || blank(waybill?.dest_hub?.code) || blank(waybill?.dest_hub?.name);
+}
+
+const parseNoteField = (note: string | null | undefined, key: string) => {
+  const match = String(note || '').match(new RegExp(`${key}=([^|]+)`, 'i'));
+  return match?.[1]?.trim() || '';
+};
+
+export function resolveReceiverDistrict(waybill: DispatchLink['waybill']) {
+  const address = parseReceiverAddress(waybill?.receiver_info, waybill?.receiver_address);
+  return resolveVietnamDistrict(
+    waybill?.receiver_district || parseNoteField(waybill?.note, 'quan_huyen'),
+    address,
+  );
+}
+
+export function resolveReceiverWard(waybill: DispatchLink['waybill']) {
+  const address = parseReceiverAddress(waybill?.receiver_info, waybill?.receiver_address);
+  return resolveVietnamWard(
+    waybill?.receiver_ward || parseNoteField(waybill?.note, 'phuong_xa'),
+    address,
+  );
 }
 
 export function resolveDispatchDefault(link: DispatchLink, key: DispatchFieldKey): string {
