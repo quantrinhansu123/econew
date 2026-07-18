@@ -10,8 +10,8 @@
     "start:prod": "node dist/main.js",
     "typeorm": "node -r ts-node/register ./node_modules/typeorm/cli.js -d src/data-source.ts",
     "migration:generate": "pnpm typeorm migration:generate src/migrations/InitialSchema",
-    "migration:run": "npm run typeorm -- migration:run",
-    "migration:revert": "npm run typeorm -- migration:revert",
+    "migration:run": "pnpm typeorm migration:run",
+    "migration:revert": "pnpm typeorm migration:revert",
     "admin:create": "ts-node src/scripts/create-admin.ts",
     "test": "jest"
   },
