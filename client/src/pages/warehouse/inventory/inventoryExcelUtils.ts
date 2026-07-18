@@ -35,6 +35,7 @@ import {
   resolveTotalAmount,
   resolveTransitFee,
   resolveUnitPrice,
+  resolveUserNote,
   resolveVolumeM3,
   resolveWeightKg,
 } from './inventoryColumns';
@@ -217,7 +218,7 @@ const detailColumns: Array<{
     numFmt: '#,##0.0',
     value: (waybill) => finiteNumber(waybill.volumetric_weight),
   },
-  { label: 'Ghi chú', width: 42, value: (waybill) => waybill.note || waybill.notes || '' },
+  { label: 'Ghi chú', width: 42, value: resolveUserNote },
 ];
 
 function finiteNumber(value: unknown): number | string {

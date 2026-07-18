@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import { CalendarClock, MapPin, Package, Route, Scale, User, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { BadgeConfig, WaybillInventoryDetail } from '../types';
+import { resolveUserNote } from '../inventoryColumns';
 
 interface Props {
   isOpen: boolean;
@@ -72,7 +73,7 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
               <Section title="Kích thước & ghi chú" icon={Scale}>
                 <Info label="Dài × Rộng × Cao" value={`${displayValue(waybill.length)} × ${displayValue(waybill.width)} × ${displayValue(waybill.height)}`} />
                 <Info label="Khối lượng quy đổi" value={displayValue(waybill.volumetric_weight, ' kg')} />
-                <Info label="Ghi chú" value={waybill.note || waybill.notes || '—'} className="sm:col-span-2" />
+                <Info label="Ghi chú" value={resolveUserNote(waybill) || '—'} className="sm:col-span-2" />
               </Section>
             </div>
           )}

@@ -50,7 +50,7 @@ export function resolveCompletionDate(waybill: WaybillInventoryItem): string {
   }
   const dm = String(anchor).match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
   if (dm) {
-    let year = dm[3] ? Number(dm[3].length === 2 ? `20${dm[3]}` : dm[3]) : new Date().getFullYear();
+    const year = dm[3] ? Number(dm[3].length === 2 ? `20${dm[3]}` : dm[3]) : new Date().getFullYear();
     const date = new Date(year, Number(dm[2]) - 1, Number(dm[1]));
     date.setDate(date.getDate() + 3);
     return formatInventoryDate(
@@ -324,7 +324,8 @@ export function loadAllOrdersVisibleColumnIds(): InventoryColumnId[] {
   return getAllOrdersFixedColumnIds();
 }
 
-export function saveAllOrdersVisibleColumnIds(_ids: InventoryColumnId[]) {
+export function saveAllOrdersVisibleColumnIds(ids: InventoryColumnId[]) {
+  void ids;
   /* Danh sách đơn: cột cố định theo mockup, không lưu tùy chỉnh */
 }
 
@@ -386,6 +387,18 @@ const parseNote = (note: string | null | undefined, key: string) => {
   const m = (note || '').match(new RegExp(`${key}=([^|]+)`));
   return m?.[1]?.trim() || '';
 };
+
+/**
+ * Trường note đang lưu chung ghi chú người dùng và metadata nội bộ dạng key=value.
+ * Chỉ phần văn bản tự do mới được phép hiển thị ở cột "Ghi chú".
+ */
+export function resolveUserNote(waybill: Pick<WaybillInventoryItem, 'note' | 'notes'>): string {
+  return String(waybill.note || waybill.notes || '')
+    .split('|')
+    .map((part) => part.trim())
+    .filter((part) => part && !/^[a-z][a-z0-9_]*\s*=/i.test(part))
+    .join(' | ');
+}
 
 export function resolveMaKh(waybill: WaybillInventoryItem): string {
   return (waybill as { ma_kh?: string }).ma_kh?.trim() || parseNote(waybill.note || waybill.notes, 'ma_kh') || '—';
