@@ -372,10 +372,14 @@ export function saveVisibleColumnIds(ids: InventoryColumnId[]) {
 
 /** Cột in A4 — cùng thứ tự & bộ cột như bảng màn hình (trừ Thao tác, Cước phí). */
 export function resolvePrintColumnIds(visibleColumnIds: InventoryColumnId[]): InventoryColumnId[] {
-  const visible = new Set(visibleColumnIds);
-  return INVENTORY_COLUMNS.filter(
-    (col) => col.id !== 'actions' && col.id !== 'freight' && visible.has(col.id),
-  ).map((col) => col.id);
+  const printable = new Set(
+    INVENTORY_COLUMNS
+      .filter((col) => col.id !== 'actions' && col.id !== 'freight')
+      .map((col) => col.id),
+  );
+  return visibleColumnIds.filter(
+    (id, index) => printable.has(id) && visibleColumnIds.indexOf(id) === index,
+  );
 }
 
 const parseNote = (note: string | null | undefined, key: string) => {

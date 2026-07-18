@@ -143,6 +143,57 @@ const sortAllOrders = (items: WaybillInventoryItem[]) =>
     return displayCode(a).localeCompare(displayCode(b), 'vi');
   });
 
+const EXCEL_EXPORT_PAGE_SIZE = 100;
+
+async function loadAllInventoryRowsForExcel(
+  filters: InventoryFilters,
+  variant: InventoryPageVariant,
+): Promise<WaybillInventoryItem[]> {
+  const requestPage = (page: number) =>
+    apiRequest<InventoryListResponse | WaybillInventoryItem[]>(
+      `/waybills/inventory/trip-lines?${buildQuery(
+        { ...filters, page, limit: EXCEL_EXPORT_PAGE_SIZE },
+        variant,
+      )}`,
+    );
+
+  const firstResponse = await requestPage(1);
+  const firstItems = normalizeList(firstResponse);
+  if (Array.isArray(firstResponse)) {
+    return variant === 'all-orders'
+      ? sortAllOrders(firstItems)
+      : firstItems.filter(isIncompleteSplitRow);
+  }
+
+  const totalWaybills =
+    firstResponse.meta?.total_waybills
+    ?? firstResponse.meta?.total
+    ?? firstItems.length;
+  const totalPages = Math.max(1, Math.ceil(totalWaybills / EXCEL_EXPORT_PAGE_SIZE));
+  const allItems = [...firstItems];
+
+  for (let page = 2; page <= totalPages; page += 4) {
+    const pageNumbers = Array.from(
+      { length: Math.min(4, totalPages - page + 1) },
+      (_, index) => page + index,
+    );
+    const responses = await Promise.all(pageNumbers.map(requestPage));
+    responses.forEach((response) => allItems.push(...normalizeList(response)));
+  }
+
+  const seen = new Set<string>();
+  const uniqueItems = allItems.filter((waybill) => {
+    const key = `${waybill.id}:${waybill.split_id ?? 'base'}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return variant === 'all-orders'
+    ? sortAllOrders(uniqueItems)
+    : uniqueItems.filter(isIncompleteSplitRow);
+}
+
 export default function WarehouseInventoryPage({ variant = 'split-pending' }: { variant?: InventoryPageVariant }) {
   const isAllOrders = variant === 'all-orders';
   const navigate = useNavigate();
@@ -425,7 +476,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     window.open('/print/inventory-stock', '_blank');
   }
 
-  function handleDownloadExcel() {
+  async function handleDownloadExcel() {
     setActionError('');
     if (!waybills.length) {
       setActionError(isAllOrders ? 'Không có đơn trên danh sách để tải Excel.' : 'Không có đơn tồn kho trên danh sách để tải Excel.');
@@ -433,14 +484,22 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     }
     setIsExporting(true);
     try {
+      const exportRows = await loadAllInventoryRowsForExcel(filters, variant);
       const exported = downloadInventoryExcel(
-        waybills,
+        exportRows,
         visibleColumns.map((col) => col.id),
         canViewPricing,
         summarizeFilters(filters),
         isAllOrders ? 'danh-sach-don' : 'danh-sach-ton-kho',
+        variant,
       );
       if (!exported) setActionError('Không có dữ liệu để tải Excel.');
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : 'Không thể tải đầy đủ dữ liệu để tạo file Excel.',
+      );
     } finally {
       setIsExporting(false);
     }
@@ -626,11 +685,11 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               type="button"
               title="Tải xuống Excel"
               disabled={isLoading || isExporting || waybills.length === 0}
-              onClick={handleDownloadExcel}
+              onClick={() => void handleDownloadExcel()}
               className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-50 px-3 text-[13px] font-extrabold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
             >
               {isExporting ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
-              <span className="hidden sm:inline">Tải Excel</span>
+              <span className="hidden sm:inline">{isExporting ? 'Đang tạo Excel' : 'Tải Excel'}</span>
             </button>
             <button title="Làm mới" onClick={() => void loadInventory()} className="hidden h-10 w-10 rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted md:flex items-center justify-center"><RefreshCcw size={16} /></button>
           </div>

@@ -42,6 +42,10 @@ export interface WaybillInventoryItem {
   cost_amount?: number | string | null;
   freight_amount?: number | string | null;
   volumetric_weight?: number | string | null;
+  length?: number | string | null;
+  width?: number | string | null;
+  height?: number | string | null;
+  sender_phone?: string | null;
   receiver_address?: string | null;
   receiver_phone?: string | null;
   package_count?: number | string | null;
@@ -83,13 +87,6 @@ export interface WaybillInventoryItem {
 }
 
 export interface WaybillInventoryDetail extends WaybillInventoryItem {
-  receiver_address?: string | null;
-  sender_phone?: string | null;
-  receiver_phone?: string | null;
-  length?: number | string | null;
-  width?: number | string | null;
-  height?: number | string | null;
-  volumetric_weight?: number | string | null;
   manifest_id?: string | number | null;
   trip_id?: string | number | null;
 }
