@@ -35,6 +35,8 @@ import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
 import { assertSplitLoadStatusTransition, WaybillSplitLoadStatus } from './dto/waybill-split-load-status.enum';
 import { OrdersService } from '../orders/orders.service';
 import { VendorsService } from '../vendors/vendors.service';
+import { normalizeWaybillPhotos } from '../common/waybill-photos';
+import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
 
 type WaybillRecord = WaybillEntity & Record<string, any>;
 
@@ -113,7 +115,7 @@ export class WaybillsService {
       origin_hub_id: dto.origin_hub_id,
       dest_hub_id: dto.dest_hub_id,
       last_mile_driver_id: null,
-      delivery_photo_url: null,
+      delivery_photo_url: normalizeWaybillPhotos(dto.delivery_photo_url),
       delivery_time: null,
     } as any) as unknown as WaybillRecord;
 
@@ -172,6 +174,14 @@ export class WaybillsService {
   async update(id: string, dto: UpdateWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
     const patch: UpdateWaybillDto = { ...dto };
+    if (patch.delivery_photo_url !== undefined) {
+      const normalizedPhotos = normalizeWaybillPhotos(patch.delivery_photo_url);
+      if (normalizedPhotos) patch.delivery_photo_url = normalizedPhotos;
+      else {
+        waybill.delivery_photo_url = null;
+        delete patch.delivery_photo_url;
+      }
+    }
 
     if (this.isLogisticsLocked(waybill)) {
       delete patch.origin_hub_id;
@@ -222,7 +232,7 @@ export class WaybillsService {
     const receiveHubId = currentUser.hub_id ?? waybill.origin_hub_id;
     await this.assertHubAccess(receiveHubId, currentUser);
     this.setStatus(waybill, WaybillStatus.IN_WAREHOUSE);
-    Object.assign(waybill, { current_hub_id: receiveHubId, delivery_photo_url: dto.delivery_photo_url, received_at: new Date(), received_by: currentUser.id, updated_by: currentUser.id });
+    Object.assign(waybill, { current_hub_id: receiveHubId, delivery_photo_url: normalizeWaybillPhotos(dto.delivery_photo_url), received_at: new Date(), received_by: currentUser.id, updated_by: currentUser.id });
     return this.saveWithAudit(waybill, currentUser, 'RECEIVE');
   }
 
@@ -233,10 +243,17 @@ export class WaybillsService {
     if (dto.status === WaybillStatus.DELIVERED && !dto.delivery_photo_url && !waybill.delivery_photo_url) throw new BadRequestException('Delivery photo is required');
     this.setStatus(waybill, dto.status);
     Object.assign(waybill, { updated_by: currentUser.id, note: dto.note ?? waybill.note });
-    if (dto.delivery_photo_url) waybill.delivery_photo_url = dto.delivery_photo_url;
+    if (dto.delivery_photo_url) waybill.delivery_photo_url = normalizeWaybillPhotos(dto.delivery_photo_url);
     if (dto.status === WaybillStatus.DELIVERED) Object.assign(waybill, { delivered_at: new Date(), delivery_time: new Date() });
     if (dto.status === WaybillStatus.RETURNED) waybill.returned_at = new Date();
     return this.saveWithAudit(waybill, currentUser, 'STATUS_CHANGE');
+  }
+
+  async updatePhotos(id: string, dto: UpdateWaybillPhotosDto, currentUser: UserEntity): Promise<WaybillRecord> {
+    const waybill = await this.findEditable(id, currentUser);
+    waybill.delivery_photo_url = normalizeWaybillPhotos(dto.delivery_photo_url);
+    waybill.updated_by = currentUser.id;
+    return this.sanitize(await this.waybillsRepository.save(waybill), currentUser);
   }
 
   async assignPriority(id: string, dto: AssignWaybillPriorityDto, currentUser: UserEntity): Promise<WaybillRecord> {

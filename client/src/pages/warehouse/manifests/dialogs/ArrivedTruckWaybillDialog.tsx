@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Camera, Check, Loader2, Package, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../../../../lib/api';
+import { ImagePreviewModal } from '../../../../components/ImagePreviewModal';
+import { uploadWaybillImage } from '../../../../lib/uploadImage';
 import type { LoadPlanningManifest, ManifestWaybill } from '../types';
 import {
   HUB_DELIVERY_STATUS_OPTIONS,
@@ -63,6 +65,8 @@ export default function ArrivedTruckWaybillDialog({
   const waybills = useMemo(() => extractWaybills(manifest), [manifest]);
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const getRow = (waybill: ManifestWaybill): RowState => {
@@ -79,22 +83,24 @@ export default function ArrivedTruckWaybillDialog({
     });
   };
 
-  const readPhoto = (waybillId: string | number, file: File | null) => {
+  const readPhoto = async (waybillId: string | number, file: File | null) => {
     if (!file) return;
     const key = String(waybillId);
     const row = getRow(waybills.find((item) => String(item.id) === key)!);
-    if (row.photos.length >= 3) {
-      setError('Tối đa 3 ảnh cho mỗi vận đơn.');
+    if (row.photos.length >= 4) {
+      setError('Tối đa 4 ảnh cho mỗi vận đơn.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      if (!result) return;
-      patchRow(key, { photos: [...row.photos, result].slice(0, 3) });
-      setError('');
-    };
-    reader.readAsDataURL(file);
+    setUploadingId(key);
+    setError('');
+    try {
+      const url = await uploadWaybillImage(file);
+      patchRow(key, { photos: [...row.photos, url].slice(0, 4) });
+    } catch (uploadError) {
+      setError(uploadError instanceof ApiError ? uploadError.message : 'Không upload được ảnh bill.');
+    } finally {
+      setUploadingId(null);
+    }
   };
 
   const saveWaybill = async (waybill: ManifestWaybill) => {
@@ -126,6 +132,13 @@ export default function ArrivedTruckWaybillDialog({
         },
       });
 
+      await apiRequest(`/waybills/${waybill.id}/photos`, {
+        method: 'PATCH',
+        body: {
+          delivery_photo_url: joinDeliveryPhotos(row.photos),
+        },
+      });
+
       const currentState = String(waybill.current_state || 'AT_DEST_HUB');
       const targetState = option.waybillStatus;
       if (currentState !== targetState) {
@@ -133,15 +146,6 @@ export default function ArrivedTruckWaybillDialog({
           method: 'PATCH',
           body: {
             status: targetState,
-            delivery_photo_url: row.photos.length ? joinDeliveryPhotos(row.photos) : undefined,
-          },
-        });
-      } else if (row.photos.length) {
-        await apiRequest(`/waybills/${waybill.id}/status`, {
-          method: 'PATCH',
-          body: {
-            status: targetState,
-            delivery_photo_url: joinDeliveryPhotos(row.photos),
           },
         });
       }
@@ -206,7 +210,7 @@ export default function ArrivedTruckWaybillDialog({
                       <th className="px-3 py-2">Mã bill</th>
                       <th className="px-3 py-2">Dự kiến đến</th>
                       <th className="px-3 py-2">Trạng thái giao</th>
-                      <th className="px-3 py-2">Ảnh giao (≤3)</th>
+                      <th className="px-3 py-2">Ảnh bill / báo phát (≤4)</th>
                       <th className="px-3 py-2 text-right">Thao tác</th>
                     </tr>
                   </thead>
@@ -214,6 +218,7 @@ export default function ArrivedTruckWaybillDialog({
                     {waybills.map((waybill, index) => {
                       const row = getRow(waybill);
                       const isSaving = savingId === String(waybill.id);
+                      const isUploading = uploadingId === String(waybill.id);
                       return (
                         <tr key={waybill.id} className="border-t border-slate-100 align-top odd:bg-white even:bg-slate-50/70">
                           <td className="px-3 py-3 font-black text-amber-800">{waybill.loading_position ?? index + 1}</td>
@@ -223,7 +228,7 @@ export default function ArrivedTruckWaybillDialog({
                           </td>
                           <td className="px-3 py-3">
                             <select
-                              disabled={!canManage || isSaving}
+                              disabled={!canManage || isSaving || isUploading}
                               value={row.status}
                               onChange={(event) => patchRow(waybill.id, { status: event.target.value as HubDeliveryStatusValue })}
                               className="h-9 w-full min-w-[170px] rounded-lg border border-border bg-white px-2 text-[12px] font-bold outline-none focus:ring-2 focus:ring-primary/20"
@@ -238,18 +243,35 @@ export default function ArrivedTruckWaybillDialog({
                           <td className="px-3 py-3">
                             <div className="flex flex-wrap items-center gap-1.5">
                               {row.photos.map((photo, photoIndex) => (
-                                <img key={photoIndex} src={photo} alt="" className="h-10 w-10 rounded-lg border border-slate-200 object-cover" />
+                                <span key={photo} className="group relative h-10 w-10">
+                                  <button type="button" onClick={() => setPreviewUrl(photo)} className="h-10 w-10">
+                                    <img src={photo} alt={`Ảnh bill ${photoIndex + 1}`} className="h-10 w-10 rounded-lg border border-slate-200 object-cover" />
+                                  </button>
+                                  {canManage && !isUploading && (
+                                    <button
+                                      type="button"
+                                      aria-label={`Xóa ảnh ${photoIndex + 1}`}
+                                      onClick={() => patchRow(waybill.id, { photos: row.photos.filter((item) => item !== photo) })}
+                                      className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white"
+                                    >
+                                      <X size={10} />
+                                    </button>
+                                  )}
+                                </span>
                               ))}
-                              {canManage && row.photos.length < 3 && (
+                              {canManage && row.photos.length < 4 && (
                                 <label className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100">
-                                  <Camera size={14} />
+                                  {isUploading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
                                   <input
                                     type="file"
                                     accept="image/*"
                                     capture="environment"
                                     className="hidden"
-                                    disabled={isSaving}
-                                    onChange={(event) => readPhoto(waybill.id, event.target.files?.[0] ?? null)}
+                                    disabled={isSaving || isUploading}
+                                    onChange={(event) => {
+                                      void readPhoto(waybill.id, event.target.files?.[0] ?? null);
+                                      event.target.value = '';
+                                    }}
                                   />
                                 </label>
                               )}
@@ -258,7 +280,7 @@ export default function ArrivedTruckWaybillDialog({
                           <td className="px-3 py-3 text-right">
                             <button
                               type="button"
-                              disabled={!canManage || isSaving}
+                              disabled={!canManage || isSaving || isUploading}
                               onClick={() => void saveWaybill(waybill)}
                               className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary px-3 text-[11px] font-black text-white disabled:opacity-50"
                             >
@@ -276,6 +298,11 @@ export default function ArrivedTruckWaybillDialog({
             </div>
           )}
         </main>
+        <ImagePreviewModal
+          imageUrl={previewUrl}
+          title="Ảnh bill / báo phát"
+          onClose={() => setPreviewUrl(null)}
+        />
       </div>
     </div>
   );

@@ -83,7 +83,7 @@ export class WaybillEntity {
   @Column({ type: 'bigint', nullable: true })
   last_mile_driver_id: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ type: 'text', nullable: true })
   delivery_photo_url: string | null;
 
   @Column({ type: 'timestamp', nullable: true })

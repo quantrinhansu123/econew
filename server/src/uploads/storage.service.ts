@@ -73,7 +73,7 @@ export class StorageService {
     this.bucketReady = true;
   }
 
-  async uploadPaymentProof(file: Express.Multer.File): Promise<string> {
+  private async uploadImage(file: Express.Multer.File, folder: string): Promise<string> {
     if (!file?.buffer?.length) throw new BadRequestException('Thiếu file ảnh.');
     if (file.size > MAX_BYTES) throw new BadRequestException('Ảnh tối đa 5 MB.');
     if (!ALLOWED_MIME.has(file.mimetype)) {
@@ -83,7 +83,7 @@ export class StorageService {
     await this.ensureBucket();
 
     const ext = MIME_EXT[file.mimetype] ?? 'jpg';
-    const objectPath = `vendor-payments/${Date.now()}-${randomBytes(8).toString('hex')}.${ext}`;
+    const objectPath = `${folder}/${Date.now()}-${randomBytes(8).toString('hex')}.${ext}`;
     const uploadUrl = `${this.supabaseUrl}/storage/v1/object/${this.bucket}/${objectPath}`;
 
     const uploadResponse = await fetch(uploadUrl, {
@@ -102,5 +102,13 @@ export class StorageService {
     }
 
     return `${this.supabaseUrl}/storage/v1/object/public/${this.bucket}/${objectPath}`;
+  }
+
+  uploadPaymentProof(file: Express.Multer.File): Promise<string> {
+    return this.uploadImage(file, 'vendor-payments');
+  }
+
+  uploadWaybillImage(file: Express.Multer.File): Promise<string> {
+    return this.uploadImage(file, 'waybills');
   }
 }

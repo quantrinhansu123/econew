@@ -19,7 +19,7 @@ const getErrorMessage = (payload: unknown, fallback: string) => {
   return fallback;
 };
 
-export async function uploadPaymentProof(file: File): Promise<string> {
+async function uploadImage(file: File, endpoint: string): Promise<string> {
   if (!file.type.startsWith('image/')) {
     throw new ApiError(400, 'Chỉ chấp nhận file ảnh.', null);
   }
@@ -33,7 +33,7 @@ export async function uploadPaymentProof(file: File): Promise<string> {
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/uploads/payment-proofs`, {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -57,4 +57,12 @@ export async function uploadPaymentProof(file: File): Promise<string> {
     throw new ApiError(502, 'Server không trả về URL ảnh.', payload);
   }
   return url.trim();
+}
+
+export function uploadPaymentProof(file: File): Promise<string> {
+  return uploadImage(file, '/uploads/payment-proofs');
+}
+
+export function uploadWaybillImage(file: File): Promise<string> {
+  return uploadImage(file, '/uploads/waybill-images');
 }

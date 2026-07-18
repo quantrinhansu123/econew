@@ -29,6 +29,7 @@ import {
   resolveWeightKg,
 } from '../warehouse/inventory/inventoryColumns';
 import type { InventoryFilters, WaybillInventoryItem } from '../warehouse/inventory/types';
+import { parseWaybillImages } from '../../lib/waybillImages';
 
 export const INVENTORY_PRINT_STORAGE_KEY = 'eco_inventory_print_v1';
 
@@ -128,6 +129,8 @@ export function inventoryPrintCellValue(
       return resolveMaKh(waybill);
     case 'receiver_address':
       return resolveReceiverAddress(waybill);
+    case 'bill_images':
+      return parseWaybillImages(waybill.delivery_photo_url).join('\n');
     case 'receiver_district':
       return resolveReceiverDistrict(waybill);
     case 'receiver_ward':

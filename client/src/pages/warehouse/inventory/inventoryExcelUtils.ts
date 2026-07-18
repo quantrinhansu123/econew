@@ -43,6 +43,7 @@ import {
 } from './inventoryColumns';
 import type { WaybillInventoryItem } from './types';
 import { inventoryPrintCellValue } from '../../print/inventoryPrintUtils';
+import { parseWaybillImages } from '../../../lib/waybillImages';
 
 type ExcelValue = string | number;
 
@@ -117,6 +118,7 @@ const EXCEL_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>> = {
   route: 16,
   ma_kh: 16,
   receiver_address: 42,
+  bill_images: 38,
   receiver_district: 22,
   receiver_ward: 22,
   receiver_phone: 18,
@@ -232,6 +234,7 @@ const detailColumns: Array<{
   { label: 'Dịch vụ GTGT', width: 20, value: (waybill) => noteField(waybill, 'dich_vu_gia_tang') },
   { label: 'Nội dung', width: 30, value: (waybill) => resolveCongSg(waybill).replace(/^—$/, '') },
   { label: 'Ghi chú', width: 36, value: billUserNote },
+  { label: 'Ảnh bill / hàng hóa', width: 42, value: billImageUrls },
   { label: 'Phương thức', width: 22, value: (waybill) => resolvePaymentMethod(waybill) },
   { label: 'Đơn giá', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: (waybill) => resolveUnitPrice(waybill) },
   { label: 'Cước chính', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: billFreight },
@@ -368,6 +371,10 @@ function billUserNote(waybill: WaybillInventoryItem): string {
   return resolveUserNote({ note: sourceNote(waybill), notes: null });
 }
 
+function billImageUrls(waybill: WaybillInventoryItem): string {
+  return parseWaybillImages(waybill.delivery_photo_url).join('\n');
+}
+
 function billBillingQtyDetail(waybill: WaybillInventoryItem): string {
   const kg = Number(billWeight(waybill) || 0);
   const volumetricKg = Number(billVolumetricWeight(waybill) || 0);
@@ -406,6 +413,8 @@ function inventoryExcelCellValue(
       return resolveNoiDen(waybill);
     case 'receiver_address':
       return resolveReceiverAddress(waybill);
+    case 'bill_images':
+      return billImageUrls(waybill);
     case 'receiver_phone':
       return resolveReceiverPhone(waybill).replace(/^—$/, '');
     case 'order_status':

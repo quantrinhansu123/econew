@@ -18,6 +18,7 @@ import {
 } from './orderBulkImportSchema';
 import { formatEcoBillCode, maxEcoBillSequence, nextEcoBillCodeFromCodes } from './waybillCodeUtils';
 import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
+import { isPublicImageUrl } from '../../../lib/waybillImages';
 
 export type OrderBulkRow = Record<OrderBulkFieldKey, string>;
 
@@ -144,6 +145,10 @@ export function validateOrderBulkRow(values: OrderBulkRow, hubs: HubSummary[]): 
     errors.push('Cần Số cân (kg), hoặc Dài/Rộng/Cao (cm), hoặc Số khối (m³).');
   }
 
+  [values.anh1, values.anh2, values.anh3, values.anh4].filter(Boolean).forEach((url, index) => {
+    if (!isPublicImageUrl(url)) errors.push(`URL ảnh ${index + 1} không hợp lệ.`);
+  });
+
   return errors;
 }
 
@@ -188,6 +193,7 @@ export function bulkRowToOrderForm(
     nvgn: values.nvgn || defaults.nvgn || 'ADMIN',
     noiDung: values.noiDung,
     ghiChu: values.ghiChu,
+    billImages: [values.anh1, values.anh2, values.anh3, values.anh4].filter(Boolean),
     phuongThuc: values.phuongThuc || defaults.phuongThuc || 'Công nợ tháng',
     donGia: values.donGia || '0',
     cod: values.cod || '0',

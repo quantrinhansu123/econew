@@ -151,11 +151,11 @@ export function arrivedColumnTitle(hub: HubViewCode): string {
 
 export function parseDeliveryPhotos(url?: string | null): string[] {
   if (!url?.trim()) return [];
-  return url.split(/[|,\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 3);
+  return url.split(/[|\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 4);
 }
 
 export function joinDeliveryPhotos(urls: string[]): string {
-  return urls.filter(Boolean).slice(0, 3).join('|');
+  return urls.filter(Boolean).slice(0, 4).join('|');
 }
 
 export function hubDeliveryLabelFromWaybill(waybill: { current_state?: string | null; dispatch_fields?: Record<string, string | number | null | undefined> | null }): string {

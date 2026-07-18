@@ -28,7 +28,11 @@ export type OrderBulkFieldKey =
   | 'phuongThuc'
   | 'donGia'
   | 'cod'
-  | 'giamGia';
+  | 'giamGia'
+  | 'anh1'
+  | 'anh2'
+  | 'anh3'
+  | 'anh4';
 
 export interface OrderBulkColumn {
   key: OrderBulkFieldKey;
@@ -68,6 +72,10 @@ export const ORDER_BULK_COLUMNS: OrderBulkColumn[] = [
   { key: 'donGia', label: 'Đơn giá', required: false, sample: '5000' },
   { key: 'cod', label: 'COD', required: false, sample: '0' },
   { key: 'giamGia', label: 'Phụ phí (công)', required: false, sample: '0' },
+  { key: 'anh1', label: 'URL ảnh 1', required: false, sample: '' },
+  { key: 'anh2', label: 'URL ảnh 2', required: false, sample: '' },
+  { key: 'anh3', label: 'URL ảnh 3', required: false, sample: '' },
+  { key: 'anh4', label: 'URL ảnh 4', required: false, sample: '' },
 ];
 
 export const ORDER_BULK_INSTRUCTIONS = [
@@ -76,6 +84,7 @@ export const ORDER_BULK_INSTRUCTIONS = [
   'Số bill*: nếu để trống hệ thống tự sinh theo BC gửi khi nhập loạt.',
   'Cần có ít nhất một trong: Số cân (kg), bộ Dài/Rộng/Cao (cm), hoặc Số khối (m³).',
   'ĐT người nhận: nếu có thì phải đúng định dạng SĐT Việt Nam.',
+  'Ảnh bill/hàng hóa: nhập tối đa 4 URL ảnh công khai vào các cột URL ảnh 1–4.',
   'Xóa dòng mẫu trước khi nhập dữ liệu thật.',
 ];
 

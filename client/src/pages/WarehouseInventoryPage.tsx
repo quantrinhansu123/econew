@@ -57,6 +57,7 @@ import {
 import { buildInventoryTripLinesQuery, isIncompleteSplitRow } from './warehouse/inventory/inventoryTripLines';
 import { ORDER_STATUS_GROUP_OPTIONS } from './warehouse/inventory/orderStatusUtils';
 import type { BadgeConfig, FilterOption, HubSummary, InventoryFilters, InventoryListResponse, WaybillInventoryDetail, WaybillInventoryItem } from './warehouse/inventory/types';
+import { parseWaybillImages } from '../lib/waybillImages';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const WAREHOUSE = 1;
@@ -1046,6 +1047,26 @@ function InventoryRow({
             <span className="line-clamp-2 block max-w-[220px]">{resolveReceiverAddress(waybill)}</span>
           </td>
         );
+      case 'bill_images': {
+        const images = parseWaybillImages(waybill.delivery_photo_url);
+        return (
+          <td className={clsx(cellClass, 'min-w-[92px]')}>
+            {images.length ? (
+              <div className="flex items-center gap-1" title={`${images.length} ảnh bill / hàng hóa`}>
+                {images.slice(0, 3).map((url, index) => (
+                  <img
+                    key={url}
+                    src={url}
+                    alt={`Ảnh bill ${index + 1}`}
+                    className="h-8 w-8 rounded-md border border-slate-200 object-cover"
+                  />
+                ))}
+                {images.length > 3 && <span className="text-[11px] font-black text-primary">+{images.length - 3}</span>}
+              </div>
+            ) : '—'}
+          </td>
+        );
+      }
       case 'receiver_district':
         return <td className={clsx(cellClass, 'font-semibold')}>{resolveReceiverDistrict(waybill) || '—'}</td>;
       case 'receiver_ward':

@@ -140,6 +140,24 @@ describe('WaybillsService', () => {
     expect(qb.andWhere).toHaveBeenCalled();
   });
 
+  it('create stores up to four normalized bill images', async () => {
+    waybillsRepository.findOne.mockResolvedValue(null);
+    const result = await service.create({
+      waybill_code: 'ECO-HAN-109603',
+      sender_name: 'A',
+      sender_phone: '1',
+      sender_address: 'HN',
+      receiver_name: 'B',
+      receiver_phone: '2',
+      receiver_address: 'HCM',
+      origin_hub_id: '1',
+      dest_hub_id: '2',
+      weight: 3,
+      delivery_photo_url: ' https://example.com/1.jpg | https://example.com/2.jpg ',
+    }, manager);
+    expect(result.delivery_photo_url).toBe('https://example.com/1.jpg|https://example.com/2.jpg');
+  });
+
   it('inventory combines summary queries and loads only split allocation fields for pending rows', async () => {
     const qb = createQueryBuilder();
     qb.getRawOne.mockResolvedValue({ total_waybills: '1', total_freight: '120000' });
@@ -186,6 +204,21 @@ describe('WaybillsService', () => {
   it('updateStatus blocks skipped transition', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
     await expect(service.updateStatus('1', { status: WaybillStatus.IN_TRANSIT }, warehouse)).rejects.toThrow(BadRequestException);
+  });
+
+  it('updatePhotos works without changing logistics status', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      status: WaybillStatus.IN_TRANSIT,
+      current_state: WaybillStatus.IN_TRANSIT,
+      manifest_id: 'm1',
+    }));
+    const result = await service.updatePhotos('1', {
+      delivery_photo_url: 'https://example.com/1.jpg|https://example.com/2.jpg',
+    }, warehouse);
+    expect(result).toMatchObject({
+      status: WaybillStatus.IN_TRANSIT,
+      delivery_photo_url: 'https://example.com/1.jpg|https://example.com/2.jpg',
+    });
   });
 
   it('assignPriority blocks URGENT without reason', async () => {

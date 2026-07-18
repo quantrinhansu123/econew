@@ -105,6 +105,7 @@ export interface WaybillInventoryItem {
   allocated_cod?: number | null;
   customer_payment_status?: CustomerPaymentStatus;
   customer_payment_note?: string | null;
+  delivery_photo_url?: string | null;
 }
 
 export interface WaybillInventoryDetail extends WaybillInventoryItem {

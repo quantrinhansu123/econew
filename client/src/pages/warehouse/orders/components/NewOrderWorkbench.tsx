@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { clsx } from 'clsx';
 import { calcOrderPricing } from '../orderFormUtils';
 import {
@@ -13,6 +13,7 @@ import type { CustomerRecord } from '../../customers/customerFormTypes';
 import { CompactField, CompactInput, CompactSelect, FormSection } from './CompactField';
 import BillListSidebar from './BillListSidebar';
 import CustomerMaKhCombobox from './CustomerMaKhCombobox';
+import WaybillImagePicker from './WaybillImagePicker';
 
 interface Props {
   form: NewOrderFormState;
@@ -77,10 +78,12 @@ export default function NewOrderWorkbench({
   isSubmitting,
   error,
 }: Props) {
+  const [isImageUploading, setIsImageUploading] = useState(false);
   const pricing = useMemo(
     () => calcOrderPricing(form),
-    [form.donGia, form.cod, form.giamGia],
+    [form],
   );
+  const isBusy = isSubmitting || isImageUploading;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#e8eef5]">
@@ -266,6 +269,12 @@ export default function NewOrderWorkbench({
                 <CompactField label="Ghi chú" className="col-span-12 sm:col-span-6 xl:col-span-6">
                   <CompactInput value={form.ghiChu} onChange={(e) => setField('ghiChu', e.target.value)} />
                 </CompactField>
+                <WaybillImagePicker
+                  value={form.billImages}
+                  onChange={(urls) => setField('billImages', urls)}
+                  onUploadingChange={setIsImageUploading}
+                  disabled={!canManage || isBusy}
+                />
               </div>
 
               <GroupTitle>Thanh toán</GroupTitle>
@@ -327,9 +336,9 @@ export default function NewOrderWorkbench({
           </FormSection>
 
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2 border-t border-slate-300 pt-3">
-            <ActionButton label="Nhập" onClick={onSave} disabled={!canManage || isSubmitting} primary />
-            <ActionButton label="Mới" onClick={onNew} disabled={isSubmitting} />
-            <ActionButton label="Xóa" onClick={onDelete} disabled={!canManage || !selectedBillId || isSubmitting} danger />
+            <ActionButton label={isImageUploading ? 'Đang tải ảnh' : 'Nhập'} onClick={onSave} disabled={!canManage || isBusy} primary />
+            <ActionButton label="Mới" onClick={onNew} disabled={isBusy} />
+            <ActionButton label="Xóa" onClick={onDelete} disabled={!canManage || !selectedBillId || isBusy} danger />
             <ActionButton label="Xem A5" onClick={onPreviewA5} disabled={!printableBillId} />
             <ActionButton label="In A5" onClick={onPrintA5} disabled={!printableBillId} />
             <ActionButton label="In thường" onClick={onPrintRegular} disabled={!printableBillId} />

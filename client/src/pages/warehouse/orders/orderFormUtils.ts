@@ -3,6 +3,7 @@ import { emptyOrderForm } from './orderFormData';
 import type { BillListItem, NewOrderFormState } from './orderFormTypes';
 import { extractProvinceFromAddress } from '../../../lib/vietnamProvince';
 import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
+import { joinWaybillImages, parseWaybillImages } from '../../../lib/waybillImages';
 
 const parseNumber = (value: string) => Number(String(value).replace(/[^\d.-]/g, ''));
 
@@ -293,6 +294,7 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     phuongThuc: phuongThucFromWaybill(waybill),
     noiDung: parseNoteField(note, 'content'),
     ghiChu: stripNoteMetadata(note),
+    billImages: parseWaybillImages(waybill.delivery_photo_url),
     xeLay: String((waybill as { xe_lay?: string }).xe_lay ?? ''),
     buuTaLay: parseNoteField(note, 'buu_ta_lay'),
     xePhat: String((waybill as { xe_phat?: string }).xe_phat ?? ''),
@@ -430,6 +432,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     cc_amount: paymentType === 'CC' ? thanhToan : 0,
     xe_lay: form.xeLay.trim() || undefined,
     xe_phat: form.xePhat.trim() || undefined,
+    delivery_photo_url: joinWaybillImages(form.billImages) || undefined,
     noi_dung: form.noiDung.trim() || undefined,
     note: [
       form.maKh && `ma_kh=${form.maKh}`,

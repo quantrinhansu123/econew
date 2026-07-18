@@ -54,6 +54,7 @@ export const emptyOrderForm = (): NewOrderFormState => ({
   soKhoang: '',
   noiDung: '',
   ghiChu: '',
+  billImages: [],
   xeLay: '',
   buuTaLay: '',
   xePhat: '',

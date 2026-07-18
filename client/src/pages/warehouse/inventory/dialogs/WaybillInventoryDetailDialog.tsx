@@ -1,8 +1,11 @@
 import { createPortal } from 'react-dom';
-import { CalendarClock, MapPin, Package, Route, Scale, User, X } from 'lucide-react';
+import { useState } from 'react';
+import { CalendarClock, Images, MapPin, Package, Route, Scale, User, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { BadgeConfig, WaybillInventoryDetail } from '../types';
 import { resolveUserNote } from '../inventoryColumns';
+import { parseWaybillImages } from '../../../../lib/waybillImages';
+import { ImagePreviewModal } from '../../../../components/ImagePreviewModal';
 
 interface Props {
   isOpen: boolean;
@@ -22,12 +25,14 @@ const formatDate = (value?: string | null) => value ? new Date(value).toLocaleSt
 const formatHub = (hub: WaybillInventoryDetail['current_hub'], fallback?: string | number | null) => hub ? [hub.code?.toUpperCase(), hub.name].filter(Boolean).join(' · ') || `Hub #${hub.id}` : fallback ? `Hub #${fallback}` : '—';
 
 export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoading, waybill, statusConfig, paymentConfig, priorityConfig, onClose }: Props) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   if (!isOpen && !isClosing) return null;
 
   const status = normalizeStatus(waybill);
   const statusBadge = statusConfig[status] || { label: status || '—', className: 'bg-muted text-muted-foreground border-border' };
   const paymentBadge = paymentConfig[String(waybill?.payment_type || '')] || { label: waybill?.payment_type || '—', className: 'bg-muted text-muted-foreground border-border' };
   const priorityBadge = priorityConfig[String(waybill?.priority || 'NORMAL').toUpperCase()] || priorityConfig.NORMAL;
+  const billImages = parseWaybillImages(waybill?.delivery_photo_url);
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -75,6 +80,30 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
                 <Info label="Khối lượng quy đổi" value={displayValue(waybill.volumetric_weight, ' kg')} />
                 <Info label="Ghi chú" value={resolveUserNote(waybill) || '—'} className="sm:col-span-2" />
               </Section>
+
+              <Section title={`Ảnh bill / hàng hóa (${billImages.length}/4)`} icon={Images}>
+                <div className="sm:col-span-2">
+                  {billImages.length ? (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {billImages.map((url, index) => (
+                        <button
+                          key={url}
+                          type="button"
+                          onClick={() => setPreviewUrl(url)}
+                          className="overflow-hidden rounded-xl border border-border bg-slate-50 text-left shadow-sm hover:border-primary"
+                        >
+                          <img src={url} alt={`Ảnh bill ${index + 1}`} className="aspect-[4/3] w-full object-cover" />
+                          <span className="block px-2 py-1.5 text-[11px] font-bold text-slate-600">Ảnh {index + 1}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-border bg-muted/5 p-4 text-center text-[12px] font-bold text-muted-foreground">
+                      Vận đơn chưa có ảnh bill hoặc ảnh hàng hóa.
+                    </div>
+                  )}
+                </div>
+              </Section>
             </div>
           )}
         </div>
@@ -82,6 +111,11 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
         <div className="border-t border-border bg-card p-5">
           <button onClick={onClose} className="w-full rounded-xl bg-primary px-5 py-3 text-[13px] font-bold text-white shadow-sm shadow-primary/20">Đóng</button>
         </div>
+        <ImagePreviewModal
+          imageUrl={previewUrl}
+          title={`Ảnh bill ${displayCode(waybill)}`}
+          onClose={() => setPreviewUrl(null)}
+        />
       </div>
     </div>,
     document.body,

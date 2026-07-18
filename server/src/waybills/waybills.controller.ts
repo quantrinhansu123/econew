@@ -23,6 +23,7 @@ import { SaveWaybillSplitsDto } from './dto/save-waybill-splits.dto';
 import { QueryLoadPlanningBoardDto } from './dto/query-load-planning-board.dto';
 import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
 import { WaybillsService } from './waybills.service';
+import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
 
 @ApiTags('Waybills')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -166,6 +167,13 @@ export class WaybillsController {
   @ApiOperation({ summary: 'Update waybill bill data (logistics fields locked after manifest/trip)' })
   update(@Param('id') id: string, @Body() dto: UpdateWaybillDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.update(id, dto, currentUser);
+  }
+
+  @Patch(':id/photos')
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Replace up to 4 bill/goods photos without changing logistics state' })
+  updatePhotos(@Param('id') id: string, @Body() dto: UpdateWaybillPhotosDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.updatePhotos(id, dto, currentUser);
   }
 
   @Put(':id/receive')

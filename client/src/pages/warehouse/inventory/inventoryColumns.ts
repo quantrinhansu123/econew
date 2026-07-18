@@ -93,6 +93,7 @@ export const INVENTORY_PRINT_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, nu
   route: 5,
   ma_kh: 5,
   receiver_address: 17,
+  bill_images: 8,
   receiver_district: 8,
   receiver_ward: 8,
   receiver_phone: 6.5,
@@ -141,6 +142,7 @@ export type InventoryColumnId =
   | 'route'
   | 'ma_kh'
   | 'receiver_address'
+  | 'bill_images'
   | 'receiver_district'
   | 'receiver_ward'
   | 'receiver_phone'
@@ -192,6 +194,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'route', label: 'Tuyến', defaultVisible: true },
   { id: 'ma_kh', label: 'Mã KH', defaultVisible: true },
   { id: 'receiver_address', label: 'Địa chỉ nhận', defaultVisible: true },
+  { id: 'bill_images', label: 'Ảnh bill', defaultVisible: true },
   { id: 'receiver_district', label: 'Quận/Huyện', defaultVisible: true },
   { id: 'receiver_ward', label: 'Phường/Xã', defaultVisible: true },
   { id: 'receiver_phone', label: 'SĐT người nhận', defaultVisible: true },
@@ -230,6 +233,7 @@ export const ALL_ORDERS_SENDER_COLUMN_IDS: InventoryColumnId[] = [
   'service_type',
   'noi_den',
   'receiver_address',
+  'bill_images',
   'order_status',
   'package_count',
   'billing_unit',
@@ -271,6 +275,7 @@ const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   service_type: 'Dịch vụ',
   noi_den: 'Nơi đến',
   receiver_address: 'Địa chỉ nhận',
+  bill_images: 'Ảnh bill',
   receiver_district: 'Quận/Huyện',
   receiver_ward: 'Phường/Xã',
   order_status: 'Trạng thái',
