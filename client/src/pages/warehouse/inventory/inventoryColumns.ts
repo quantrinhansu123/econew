@@ -521,6 +521,8 @@ export function resolveVolumeM3(waybill: WaybillInventoryItem): number {
   const direct = Number((waybill as { the_tich_m3?: number | string }).the_tich_m3 ?? 0);
   if (direct > 0) return direct;
   const note = waybill.note || waybill.notes || '';
+  const noteM3 = Number(parseNote(note, 'the_tich_m3'));
+  if (noteM3 > 0) return noteM3;
   const fromNote = Number(parseNote(note, 'volumetric_weight'));
   if (fromNote > 0 && fromNote < 500) return fromNote / 500;
   const vol = Number(waybill.volumetric_weight ?? 0);

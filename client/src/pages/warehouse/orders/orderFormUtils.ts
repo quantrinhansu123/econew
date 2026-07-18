@@ -152,6 +152,21 @@ const NOTE_METADATA_KEYS = new Set([
   'phuong_thuc',
   'billing_unit',
   'unit_price',
+  'gio',
+  'giao_hang',
+  'ngay_gui',
+  'nvgn',
+  'dich_vu_gia_tang',
+  'so_khoang',
+  'buu_ta_lay',
+  'buu_ta_phat',
+  'dvdb',
+  'cuoc_chinh',
+  'tong_cuoc',
+  'thue_suat',
+  'vat',
+  'co_vat',
+  'trang_thai',
   'dimensions_cm',
   'volumetric_weight',
   'the_tich_m3',
@@ -189,6 +204,25 @@ const formatBillDate = (value?: string | null) => {
   return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
 };
 
+const formatDateInput = (value?: string | null) => {
+  if (!value) return '';
+  const raw = String(value).trim();
+  const iso = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const parseDimensions = (waybill: WaybillDetail, note: string) => {
+  const stored = [waybill.length, waybill.width, waybill.height].map((value) => Number(value ?? 0));
+  if (stored.some((value) => value > 0)) return stored;
+  const fromNote = parseNoteField(note, 'dimensions_cm')
+    .split('x')
+    .map((value) => Number(value.trim()));
+  return fromNote.length === 3 && fromNote.every(Number.isFinite) ? fromNote : [0, 0, 0];
+};
+
 function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): NewOrderFormState {
   const destId = waybill.dest_hub_id ? String(waybill.dest_hub_id) : '';
   const originId = waybill.origin_hub_id ? String(waybill.origin_hub_id) : '';
@@ -198,6 +232,12 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
   const billingUnit = resolveBillingUnit(waybill);
   const unitPrice = resolveUnitPrice(waybill, billingUnit);
   const note = waybill.note || waybill.notes || '';
+  const [length, width, height] = parseDimensions(waybill, note);
+  const volumeM3 = Number(
+    (waybill as { the_tich_m3?: number }).the_tich_m3
+    ?? parseNoteField(note, 'the_tich_m3')
+    ?? 0,
+  );
 
   return {
     ...emptyOrderForm(),
@@ -218,12 +258,22 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
       || waybill.dest_hub?.name
       || '',
     soBill: waybill.waybill_code || waybill.code || '',
+    loaiBp: parseNoteField(note, 'loai_bp') || 'CPN',
+    dichVu: parseNoteField(note, 'dich_vu') || 'Tiêu chuẩn 72h',
+    gio: parseNoteField(note, 'gio') || '16h',
+    giaoHang: parseNoteField(note, 'giao_hang') || 'Văn phòng',
     klKg: String(waybill.weight ?? ''),
     soKien: String(waybill.package_count ?? 1),
     klQuyDoi: String(waybill.volumetric_weight ?? waybill.weight ?? ''),
-    m3: String((waybill as { the_tich_m3?: number }).the_tich_m3 ?? ''),
+    m3: volumeM3 > 0 ? String(volumeM3) : '',
+    chieuDai: String(length || 0),
+    chieuRong: String(width || 0),
+    chieuCao: String(height || 0),
     donGia: unitPrice ? formatDonGia(String(unitPrice)) : '',
     donGiaDonVi: billingUnit,
+    dichVuGiaTang: parseNoteField(note, 'dich_vu_gia_tang') || 'Tiêu chuẩn',
+    soKhoang: parseNoteField(note, 'so_khoang'),
+    nvgn: parseNoteField(note, 'nvgn') || 'ADMIN',
     dvdb: formatDisplayNumber((waybill as { dvdb?: number }).dvdb, 0) || '0',
     cod: formatDonGia(String(waybill.cod_amount ?? '0')),
     giamGia: formatDonGia(String(parseNoteField(note, 'phu_phi') || parseNoteField(note, 'giamGia') || '0')),
@@ -231,7 +281,15 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     noiDung: parseNoteField(note, 'content'),
     ghiChu: stripNoteMetadata(note),
     xeLay: String((waybill as { xe_lay?: string }).xe_lay ?? ''),
+    buuTaLay: parseNoteField(note, 'buu_ta_lay'),
     xePhat: String((waybill as { xe_phat?: string }).xe_phat ?? ''),
+    buuTaPhat: parseNoteField(note, 'buu_ta_phat'),
+    ngayDi:
+      formatDateInput(parseNoteField(note, 'ngay_gui'))
+      || formatDateInput(waybill.created_at || waybill.received_at),
+    thueSuat: parseNoteField(note, 'thue_suat') || '0%',
+    vat: formatDonGia(parseNoteField(note, 'vat')) || '0',
+    coVat: parseNoteField(note, 'co_vat') === '1',
     trangThai: String(waybill.current_state || waybill.status || 'RECEIVED'),
   };
 }
@@ -331,6 +389,9 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
   const thanhToan = Math.max(0, parseMoneyAmount(form.thanhToan) || freight - surcharge);
   const weight = parseNumber(form.klKg);
   const volumeM3 = parseNumber(form.m3);
+  const length = Math.max(0, parseNumber(form.chieuDai));
+  const width = Math.max(0, parseNumber(form.chieuRong));
+  const height = Math.max(0, parseNumber(form.chieuCao));
   const receiverProvince = form.huyen.trim() || extractProvinceFromAddress(form.diaChiNhan.trim());
 
   return {
@@ -345,6 +406,9 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     origin_hub_id: form.originHubId,
     dest_hub_id: form.destHubId,
     weight: weight || parseNumber(form.klQuyDoi) || 1,
+    length,
+    width,
+    height,
     volumetric_weight: volumetricWeight,
     the_tich_m3: volumeM3,
     package_count: Math.max(1, parseInt(form.soKien, 10) || 1),
@@ -362,11 +426,26 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
       form.phuongThuc && `phuong_thuc=${form.phuongThuc}`,
       form.donGiaDonVi && `billing_unit=${form.donGiaDonVi}`,
       `unit_price=${parseMoneyAmount(form.donGia)}`,
+      form.gio && `gio=${form.gio}`,
+      form.giaoHang && `giao_hang=${form.giaoHang}`,
+      form.ngayDi && `ngay_gui=${form.ngayDi}`,
+      form.nvgn && `nvgn=${form.nvgn}`,
+      form.dichVuGiaTang && `dich_vu_gia_tang=${form.dichVuGiaTang}`,
+      form.soKhoang && `so_khoang=${form.soKhoang}`,
+      form.buuTaLay && `buu_ta_lay=${form.buuTaLay}`,
+      form.buuTaPhat && `buu_ta_phat=${form.buuTaPhat}`,
+      form.dvdb && `dvdb=${parseMoneyAmount(form.dvdb)}`,
+      `cuoc_chinh=${freight}`,
+      `tong_cuoc=${parseMoneyAmount(form.tongCuoc) || freight}`,
+      form.thueSuat && `thue_suat=${form.thueSuat}`,
+      `vat=${parseMoneyAmount(form.vat)}`,
+      `co_vat=${form.coVat ? 1 : 0}`,
+      form.trangThai && `trang_thai=${form.trangThai}`,
       `phu_phi=${surcharge}`,
       `thanh_toan=${thanhToan}`,
       receiverProvince && `tinh_den=${receiverProvince}`,
       form.huyen.trim() && `huyen=${form.huyen.trim()}`,
-      `dimensions_cm=${form.chieuDai}x${form.chieuRong}x${form.chieuCao}`,
+      `dimensions_cm=${length}x${width}x${height}`,
       `volumetric_weight=${volumetricWeight}`,
       `the_tich_m3=${volumeM3}`,
       form.ghiChu,

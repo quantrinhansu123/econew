@@ -175,50 +175,64 @@ const detailColumns: Array<{
   value: (waybill: WaybillInventoryItem, index: number) => ExcelValue;
 }> = [
   { label: 'STT', width: 7, align: 'center', value: (_waybill, index) => index + 1 },
-  { label: 'Mã đơn hàng', width: 18, value: (waybill) => waybill.order_code || '' },
-  { label: 'Mã vận đơn', width: 21, value: (waybill) => displayCode(waybill) },
-  { label: 'Trạng thái', width: 18, value: (waybill) => resolveOrderStatusBadge(waybill).label },
-  { label: 'Hình thức thanh toán', width: 20, value: (waybill) => String(waybill.payment_type || '') },
-  { label: 'Ưu tiên', width: 14, value: (waybill) => priorityLabel(waybill.priority) },
-  { label: 'COD', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: (waybill) => finiteNumber(waybill.cod_amount) },
-  { label: 'Người gửi', width: 34, value: (waybill) => waybill.sender_info || '' },
-  { label: 'SĐT người gửi', width: 18, value: (waybill) => waybill.sender_phone || contactPart(waybill.sender_info, 1) },
-  { label: 'Người nhận', width: 34, value: (waybill) => waybill.receiver_info || '' },
-  { label: 'SĐT người nhận', width: 18, value: (waybill) => resolveReceiverPhone(waybill).replace(/^—$/, '') },
-  { label: 'Địa chỉ nhận', width: 42, value: (waybill) => resolveReceiverAddress(waybill) },
+  { label: 'Mã KH', width: 16, value: (waybill) => resolveMaKh(waybill).replace(/^—$/, '') },
+  { label: 'Mã bill', width: 20, value: displayCode },
+  { label: 'BC gửi', width: 18, value: (waybill) => hubCode(waybill.origin_hub, waybill.origin_hub_id) },
+  { label: 'BC đến', width: 18, value: (waybill) => hubCode(waybill.dest_hub, waybill.dest_hub_id) },
+  { label: 'Điện thoại KH', width: 18, value: billSenderPhone },
+  { label: 'Người gửi', width: 28, value: billSenderName },
+  { label: 'Địa chỉ gửi', width: 42, value: billSenderAddress },
+  { label: 'Người nhận', width: 28, value: billReceiverName },
+  { label: 'ĐT người nhận', width: 18, value: billReceiverPhone },
+  { label: 'Địa chỉ nhận', width: 42, value: billReceiverAddress },
+  { label: 'Nơi đến', width: 18, value: billDestination },
+  { label: 'Quận/Huyện', width: 22, value: (waybill) => noteField(waybill, 'huyen') },
   {
     label: 'Số kiện',
     width: 12,
     align: 'right',
     numFmt: '#,##0',
-    value: (waybill) => finiteNumber(waybill.package_count ?? waybill.declared_package_count),
+    value: billPackageCount,
   },
+  { label: 'Loại BP', width: 14, value: (waybill) => noteField(waybill, 'loai_bp') },
+  { label: 'Dịch vụ', width: 18, value: (waybill) => noteField(waybill, 'dich_vu') },
+  { label: 'Giao hàng', width: 18, value: (waybill) => noteField(waybill, 'giao_hang') },
+  { label: 'Ngày gửi', width: 16, value: billSentDate },
+  { label: 'ĐVT', width: 13, value: (waybill) => resolveBillingUnit(waybill) },
   {
-    label: 'Cân nặng (kg)',
+    label: 'Số cân (kg)',
     width: 16,
     align: 'right',
-    numFmt: '#,##0.0',
-    value: (waybill) => resolveWeightKg(waybill),
+    numFmt: '#,##0.###',
+    value: billWeight,
   },
-  { label: 'Hub hiện tại', width: 25, value: (waybill) => formatHub(waybill.current_hub || waybill.origin_hub, waybill.current_hub_id || waybill.origin_hub_id) },
-  { label: 'Hub đến', width: 25, value: (waybill) => formatHub(waybill.dest_hub, waybill.dest_hub_id) },
-  { label: 'Tuyến giao', width: 18, value: (waybill) => resolveRoute(waybill).replace(/^—$/, '') },
   {
-    label: 'Ngày nhận kho',
-    width: 21,
-    value: (waybill) => formatInventoryDateTime(waybill.received_at || waybill.created_at),
-  },
-  { label: 'Dài', width: 11, align: 'right', numFmt: '#,##0.00', value: (waybill) => finiteNumber(waybill.length) },
-  { label: 'Rộng', width: 11, align: 'right', numFmt: '#,##0.00', value: (waybill) => finiteNumber(waybill.width) },
-  { label: 'Cao', width: 11, align: 'right', numFmt: '#,##0.00', value: (waybill) => finiteNumber(waybill.height) },
-  {
-    label: 'Khối lượng quy đổi (kg)',
-    width: 23,
+    label: 'KL quy đổi (kg)',
+    width: 18,
     align: 'right',
-    numFmt: '#,##0.0',
-    value: (waybill) => finiteNumber(waybill.volumetric_weight),
+    numFmt: '#,##0.###',
+    value: billVolumetricWeight,
   },
-  { label: 'Ghi chú', width: 42, value: resolveUserNote },
+  {
+    label: 'Số khối (m³)',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.###',
+    value: billVolumeM3,
+  },
+  { label: 'Dài (cm)', width: 12, align: 'right', numFmt: '#,##0.##', value: (waybill) => billDimensions(waybill)[0] },
+  { label: 'Rộng (cm)', width: 12, align: 'right', numFmt: '#,##0.##', value: (waybill) => billDimensions(waybill)[1] },
+  { label: 'Cao (cm)', width: 12, align: 'right', numFmt: '#,##0.##', value: (waybill) => billDimensions(waybill)[2] },
+  { label: 'NVGN', width: 18, value: (waybill) => noteField(waybill, 'nvgn') },
+  { label: 'Dịch vụ GTGT', width: 20, value: (waybill) => noteField(waybill, 'dich_vu_gia_tang') },
+  { label: 'Nội dung', width: 30, value: (waybill) => resolveCongSg(waybill).replace(/^—$/, '') },
+  { label: 'Ghi chú', width: 36, value: billUserNote },
+  { label: 'Phương thức', width: 22, value: (waybill) => resolvePaymentMethod(waybill) },
+  { label: 'Đơn giá', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: (waybill) => resolveUnitPrice(waybill) },
+  { label: 'Cước chính', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: billFreight },
+  { label: 'Phụ phí', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: (waybill) => resolveSurcharge(waybill) },
+  { label: 'Thành tiền', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: (waybill) => resolveTotalAmount(waybill) },
+  { label: 'COD', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: billCod },
 ];
 
 function finiteNumber(value: unknown): number | string {
@@ -228,45 +242,137 @@ function finiteNumber(value: unknown): number | string {
 }
 
 function displayCode(waybill: WaybillInventoryItem): string {
-  return waybill.waybill_code || waybill.code || String(waybill.id);
+  return String(waybill.waybill_code || waybill.code || waybill.id).replace(/[-\s]+/g, '');
 }
 
 function contactPart(value: string | null | undefined, index: number): string {
   return String(value || '').split('|')[index]?.trim() || '';
 }
 
-function priorityLabel(value?: string | null): string {
-  switch (String(value || 'NORMAL').toUpperCase()) {
-    case 'HIGH':
-    case 'URGENT':
-      return 'Cao';
-    case 'LOW':
-      return 'Thấp';
-    default:
-      return 'Tiêu chuẩn';
-  }
+function sourceNote(waybill: WaybillInventoryItem): string {
+  return String(waybill.note || waybill.notes || waybill.order?.note || '');
 }
 
-function formatHub(
+function noteField(waybill: WaybillInventoryItem, key: string): string {
+  const match = sourceNote(waybill).match(new RegExp(`${key}=([^|]+)`, 'i'));
+  return match?.[1]?.trim() || '';
+}
+
+function hubCode(
   hub?: { id?: string | number; code?: string | null; name?: string | null } | null,
   fallback?: string | number | null,
 ): string {
-  if (hub) return [hub.code?.toUpperCase(), hub.name].filter(Boolean).join(' · ') || `Hub #${hub.id}`;
-  return fallback ? `Hub #${fallback}` : '';
+  return hub?.code?.trim().toUpperCase() || (fallback ? `#${fallback}` : '');
 }
 
-function formatInventoryDateTime(value?: string | null): string {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return formatInventoryDate(value);
-  return new Intl.DateTimeFormat('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Asia/Ho_Chi_Minh',
-  }).format(date);
+function billSenderName(waybill: WaybillInventoryItem): string {
+  return waybill.sender_name?.trim()
+    || waybill.order?.sender_name?.trim()
+    || contactPart(waybill.sender_info, 0);
+}
+
+function billSenderPhone(waybill: WaybillInventoryItem): string {
+  return waybill.sender_phone?.trim()
+    || waybill.order?.sender_phone?.trim()
+    || contactPart(waybill.sender_info, 1);
+}
+
+function billSenderAddress(waybill: WaybillInventoryItem): string {
+  return waybill.sender_address?.trim()
+    || waybill.order?.sender_address?.trim()
+    || contactPart(waybill.sender_info, 2);
+}
+
+function billReceiverName(waybill: WaybillInventoryItem): string {
+  return waybill.receiver_name?.trim()
+    || waybill.order?.receiver_name?.trim()
+    || contactPart(waybill.receiver_info, 0);
+}
+
+function billReceiverPhone(waybill: WaybillInventoryItem): string {
+  return waybill.receiver_phone?.trim()
+    || waybill.order?.receiver_phone?.trim()
+    || contactPart(waybill.receiver_info, 1);
+}
+
+function billReceiverAddress(waybill: WaybillInventoryItem): string {
+  return waybill.receiver_address?.trim()
+    || waybill.order?.receiver_address?.trim()
+    || contactPart(waybill.receiver_info, 2);
+}
+
+function billDestination(waybill: WaybillInventoryItem): string {
+  return waybill.noi_den?.trim()
+    || noteField(waybill, 'tinh_den')
+    || waybill.dest_hub?.code?.trim().toUpperCase()
+    || '';
+}
+
+function billPackageCount(waybill: WaybillInventoryItem): number | string {
+  return finiteNumber(
+    waybill.package_count
+    ?? waybill.declared_package_count
+    ?? waybill.order?.package_count,
+  );
+}
+
+function billWeight(waybill: WaybillInventoryItem): number | string {
+  return finiteNumber(waybill.weight ?? waybill.order?.weight);
+}
+
+function billVolumetricWeight(waybill: WaybillInventoryItem): number | string {
+  return finiteNumber(waybill.volumetric_weight ?? noteField(waybill, 'volumetric_weight'));
+}
+
+function billVolumeM3(waybill: WaybillInventoryItem): number | string {
+  return finiteNumber(waybill.the_tich_m3 ?? noteField(waybill, 'the_tich_m3'));
+}
+
+function billDimensions(waybill: WaybillInventoryItem): [number | string, number | string, number | string] {
+  const stored = [waybill.length, waybill.width, waybill.height].map(finiteNumber);
+  if (stored.some((value) => Number(value) > 0)) {
+    return stored as [number | string, number | string, number | string];
+  }
+  const parsed = noteField(waybill, 'dimensions_cm')
+    .split('x')
+    .map((value) => finiteNumber(value.trim()));
+  return parsed.length === 3
+    ? parsed as [number | string, number | string, number | string]
+    : ['', '', ''];
+}
+
+function billSentDate(waybill: WaybillInventoryItem): string {
+  const entered = noteField(waybill, 'ngay_gui');
+  return formatInventoryDate(entered || waybill.created_at || waybill.received_at);
+}
+
+function billFreight(waybill: WaybillInventoryItem): number | string {
+  return finiteNumber(
+    waybill.freight_amount
+    ?? waybill.cost_amount
+    ?? waybill.order?.freight_amount
+    ?? noteField(waybill, 'cuoc_chinh'),
+  );
+}
+
+function billCod(waybill: WaybillInventoryItem): number | string {
+  return finiteNumber(waybill.cod_amount ?? waybill.order?.cod_amount);
+}
+
+function billUserNote(waybill: WaybillInventoryItem): string {
+  return resolveUserNote({ note: sourceNote(waybill), notes: null });
+}
+
+function billBillingQtyDetail(waybill: WaybillInventoryItem): string {
+  const kg = Number(billWeight(waybill) || 0);
+  const volumetricKg = Number(billVolumetricWeight(waybill) || 0);
+  const m3 = Number(billVolumeM3(waybill) || 0);
+  const unit = resolveBillingUnit(waybill);
+  const parts: string[] = [];
+  if (kg > 0) parts.push(`${kg.toLocaleString('vi-VN', { maximumFractionDigits: 3 })} kg`);
+  if (volumetricKg > 0) parts.push(`${volumetricKg.toLocaleString('vi-VN', { maximumFractionDigits: 3 })} kg quy đổi`);
+  if (m3 > 0) parts.push(`${m3.toLocaleString('vi-VN', { maximumFractionDigits: 3 })} m³`);
+  return parts.length ? `${parts.join(' · ')} (${unit})` : '';
 }
 
 function inventoryExcelCellValue(
@@ -280,7 +386,9 @@ function inventoryExcelCellValue(
     case 'stt':
       return rowIndex;
     case 'received_at':
-      return formatInventoryDate(waybill.received_at || waybill.created_at);
+      return variant === 'all-orders'
+        ? billSentDate(waybill)
+        : formatInventoryDate(waybill.received_at || waybill.created_at);
     case 'cong_sg':
       return resolveCongSg(waybill);
     case 'customer_name':
@@ -304,7 +412,9 @@ function inventoryExcelCellValue(
     case 'billing_unit':
       return resolveBillingUnit(waybill);
     case 'billing_qty_detail':
-      return resolveBillingQtyDetail(waybill);
+      return variant === 'all-orders'
+        ? billBillingQtyDetail(waybill)
+        : resolveBillingQtyDetail(waybill);
     case 'unit_price':
       return finiteNumber(resolveUnitPrice(waybill));
     case 'surcharge':
@@ -324,7 +434,9 @@ function inventoryExcelCellValue(
     case 'payment_method':
       return resolvePaymentMethod(waybill);
     case 'customer_payment_note':
-      return waybill.customer_payment_note || '';
+      return variant === 'all-orders'
+        ? billUserNote(waybill)
+        : waybill.customer_payment_note || '';
     case 'route':
       return resolveRoute(waybill).replace(/^—$/, '');
     case 'ma_kh':
@@ -332,9 +444,13 @@ function inventoryExcelCellValue(
     case 'loaded_at':
       return formatInventoryDate(resolveLoadedAt(waybill));
     case 'weight':
-      return resolveWeightKg(waybill) || '';
+      return variant === 'all-orders'
+        ? billWeight(waybill)
+        : resolveWeightKg(waybill) || '';
     case 'volume':
-      return resolveVolumeM3(waybill) || '';
+      return variant === 'all-orders'
+        ? billVolumeM3(waybill)
+        : resolveVolumeM3(waybill) || '';
     case 'freight':
       return showPricing ? resolveFreight(waybill) : '';
     case 'cod_amount':
@@ -354,8 +470,11 @@ function makeTotalRow(
   waybills: WaybillInventoryItem[],
   printColumnIds: InventoryColumnId[],
   showPricing: boolean,
+  variant: InventoryExcelVariant,
 ): ExcelValue[] {
-  const totals = computeGrandTotals(waybills, false);
+  const totals = variant === 'all-orders'
+    ? computeBillTotals(waybills)
+    : computeGrandTotals(waybills, false);
   const totalLabelCol =
     printColumnIds.find((id) => id === 'waybill_code')
     ?? printColumnIds.find((id) => id === 'order_code')
@@ -379,6 +498,18 @@ function makeTotalRow(
     if (id === 'thu_ho_khach') return collect;
     return '';
   });
+}
+
+function computeBillTotals(waybills: WaybillInventoryItem[]) {
+  return waybills.reduce(
+    (total, waybill) => ({
+      package_count: total.package_count + Number(billPackageCount(waybill) || 0),
+      weight_kg: total.weight_kg + Number(billWeight(waybill) || 0),
+      volume_m3: total.volume_m3 + Number(billVolumeM3(waybill) || 0),
+      freight: 0,
+    }),
+    { package_count: 0, weight_kg: 0, volume_m3: 0, freight: 0 },
+  );
 }
 
 function allOrdersHeaderRows(printColumnIds: InventoryColumnId[]): {
@@ -437,7 +568,9 @@ export function buildInventoryExcelRows(
   const printedAt = new Date().toLocaleString('vi-VN');
   const meta = filterSummary ? `Xuất lúc: ${printedAt} · ${filterSummary}` : `Xuất lúc: ${printedAt}`;
   const headerRows = variant === 'all-orders' ? allOrdersHeaderRows(printColumnIds).rows : [headers];
-  const totals = computeGrandTotals(waybills, false);
+  const totals = variant === 'all-orders'
+    ? computeBillTotals(waybills)
+    : computeGrandTotals(waybills, false);
 
   return [
     [variant === 'all-orders' ? 'DANH SÁCH ĐƠN HÀNG ECO' : 'DANH SÁCH TỒN KHO ECO'],
@@ -445,7 +578,7 @@ export function buildInventoryExcelRows(
     [],
     ...headerRows,
     ...dataRows,
-    makeTotalRow(waybills, printColumnIds, showPricing),
+    makeTotalRow(waybills, printColumnIds, showPricing, variant),
     [`Tổng đơn: ${waybills.length.toLocaleString('vi-VN')} · Tổng kiện: ${totals.package_count.toLocaleString('vi-VN')} · Tổng cân: ${totals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg · Tổng khối: ${totals.volume_m3.toFixed(2)} m³`],
   ];
 }
