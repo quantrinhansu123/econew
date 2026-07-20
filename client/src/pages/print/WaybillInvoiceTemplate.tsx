@@ -31,6 +31,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
   const displayWaybillCode = data.waybillCode.replace(/[\s-]+/g, '');
   const barcodeUrl = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(displayWaybillCode)}&scale=2&height=10&includetext=false`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(displayWaybillCode)}`;
+  const hasPricing = data.showPricing;
 
   return (
     <section className="waybill-invoice eco-a5-template">
@@ -124,9 +125,9 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
             <strong>{value(data.hinhThucThanhToan)}</strong>
           </div>
           <div className="eco-charge-box">
-            <div className="eco-charge-line"><span>Cước chính:</span><b>{' '}</b></div>
-            <div className="eco-charge-line"><span>Dịch vụ cộng thêm:</span><b>{' '}</b></div>
-            <div className="eco-charge-line"><span>Tổng cước:</span><b>{' '}</b></div>
+            <div className="eco-charge-line"><span>Cước chính:</span><b>{hasPricing ? value(data.cuocChinh) : ' '}</b></div>
+            <div className="eco-charge-line"><span>Dịch vụ cộng thêm:</span><b>{hasPricing ? value(data.dichVuCongThem) : ' '}</b></div>
+            <div className="eco-charge-line"><span>Tổng cước:</span><b>{hasPricing ? value(data.tongCuoc) : ' '}</b></div>
             <div className="eco-total">
               <span className="eco-total-label">Tổng phải thu khi phát thư</span>
               <strong>{value(data.tongPhaiThuPhat)}</strong>
