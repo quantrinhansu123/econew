@@ -19,7 +19,22 @@ export interface StackOntoTruckSharedFields {
   driver_phone: string;
 }
 
-export const DELIVERY_INSTRUCTION_OPTIONS = ['Kho HCM', 'Lái xe giao tận nơi', 'Về chành'] as const;
+export const DELIVERY_INSTRUCTION_OPTIONS = ['Lái xe giao tận nơi', 'Về chành'] as const;
+
+const cleanHubPart = (value?: string | null) => String(value || '').trim();
+
+export function resolveDestinationHubLabel(waybill?: WaybillInventoryItem | null): string {
+  const code = cleanHubPart(waybill?.dest_hub?.code);
+  const name = cleanHubPart(waybill?.dest_hub?.name);
+  if (code && name && code.toLocaleLowerCase('vi') !== name.toLocaleLowerCase('vi')) {
+    return `${code} · ${name}`;
+  }
+  return code || name || (waybill?.dest_hub_id ? `#${waybill.dest_hub_id}` : 'HUB đến');
+}
+
+export function buildDestinationInstruction(waybill?: WaybillInventoryItem | null): string {
+  return `Kho ${resolveDestinationHubLabel(waybill)}`;
+}
 
 export function computeExpectedArrivalDate(base?: string | null): Date {
   const date = base ? new Date(base) : new Date();
@@ -43,7 +58,7 @@ export function buildStackFormRows(waybills: WaybillInventoryItem[]): StackOntoT
       max_package_count: Math.max(1, Number(waybill.remaining_packages ?? waybill.package_count ?? 1)),
       loading_position: waybill.loading_position ? String(waybill.loading_position) : '',
       expected_arrival_label: formatExpectedArrivalLabel(orderDate),
-      delivery_instruction: 'Kho HCM',
+      delivery_instruction: buildDestinationInstruction(waybill),
     };
   });
 }

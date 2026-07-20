@@ -1,10 +1,10 @@
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
-import { AlertTriangle, ExternalLink, Loader2, Truck, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertTriangle, Building2, ExternalLink, Loader2, Printer, Truck, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../../../../lib/api';
-import type { AllocationBoardItem, AllocationBoardResponse, AllocationBoardTrip, WaybillInventoryItem } from '../types';
+import type { AllocationBoardItem, AllocationBoardResponse, AllocationBoardTrip, HubSummary, WaybillInventoryItem } from '../types';
 
 interface Props {
   isOpen: boolean;
@@ -21,6 +21,41 @@ const tripStatusLabel: Record<string, string> = {
   IN_TRANSIT: 'Đang chạy',
   ARRIVED: 'Đã đến',
 };
+
+const hubLabel = (hub?: HubSummary | null, fallbackId?: string | number | null) => {
+  const code = String(hub?.code || '').trim();
+  const name = String(hub?.name || '').trim();
+  if (code && name && code.toLocaleLowerCase('vi') !== name.toLocaleLowerCase('vi')) {
+    return `${code} · ${name}`;
+  }
+  return code || name || (fallbackId ? `#${fallbackId}` : 'Chưa xác định');
+};
+
+const hubCode = (hub?: HubSummary | null, fallbackId?: string | number | null) =>
+  String(hub?.code || hub?.name || (fallbackId ? `#${fallbackId}` : '')).trim();
+
+function groupTripsByDestination(trips: AllocationBoardTrip[]) {
+  const groups = new Map<string, { key: string; hub: HubSummary | null; fallbackId: string | number | null; trips: AllocationBoardTrip[] }>();
+  for (const trip of trips) {
+    const fallbackId = trip.end_hub_id ?? null;
+    const canonicalId = trip.end_hub?.id ?? fallbackId;
+    const code = String(trip.end_hub?.code || '').trim().toLocaleLowerCase('vi');
+    const name = String(trip.end_hub?.name || '').trim().toLocaleLowerCase('vi');
+    const key = canonicalId != null && canonicalId !== ''
+      ? `id:${canonicalId}`
+      : code
+        ? `code:${code}`
+        : name
+          ? `name:${name}`
+          : 'unknown';
+    const existing = groups.get(key);
+    if (existing) existing.trips.push(trip);
+    else groups.set(key, { key, hub: trip.end_hub ?? null, fallbackId, trips: [trip] });
+  }
+  return [...groups.values()].sort((left, right) =>
+    hubLabel(left.hub, left.fallbackId).localeCompare(hubLabel(right.hub, right.fallbackId), 'vi'),
+  );
+}
 
 export default function SplitOrderDialog({ isOpen, isClosing, waybill, onClose }: Props) {
   const navigate = useNavigate();
@@ -56,6 +91,8 @@ export default function SplitOrderDialog({ isOpen, isClosing, waybill, onClose }
     };
   }, [isOpen, waybill?.id, waybill?.dest_hub_id, waybill?.current_hub_id, waybill?.origin_hub_id]);
 
+  const destinationGroups = useMemo(() => groupTripsByDestination(data?.trips ?? []), [data?.trips]);
+
   if (!isOpen && !isClosing) return null;
 
   const placement = data?.waybill_placement;
@@ -76,7 +113,7 @@ export default function SplitOrderDialog({ isOpen, isClosing, waybill, onClose }
           <div>
             <h2 className="text-[17px] font-black uppercase tracking-wide text-foreground">Bảng kê phát hàng ECO</h2>
             <p className="mt-1 text-[12px] font-medium text-muted-foreground">
-              {waybill ? `Chia đơn · ${displayCode(waybill)}` : 'Theo vị trí hàng trên xe — xe nào đi vị trí nào'}
+              {waybill ? `Chia đơn · ${displayCode(waybill)}` : 'Tách riêng từng bảng kê theo HUB đến'}
             </p>
           </div>
           <button onClick={onClose} className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
@@ -117,16 +154,19 @@ export default function SplitOrderDialog({ isOpen, isClosing, waybill, onClose }
                 </div>
               )}
 
-              {!data?.trips?.length ? (
+              {!destinationGroups.length ? (
                 <div className="rounded-2xl border border-dashed border-border bg-muted/10 px-6 py-12 text-center text-[13px] font-medium text-muted-foreground">
                   Chưa có chuyến xe có bảng kê phù hợp hub đích.
                 </div>
               ) : (
-                data.trips.map((trip) => (
-                  <DispatchTripTable
-                    key={String(trip.trip_id)}
-                    trip={trip}
+                destinationGroups.map((group) => (
+                  <DestinationHubSection
+                    key={group.key}
+                    hub={group.hub}
+                    fallbackId={group.fallbackId}
+                    trips={group.trips}
                     onOpenSequence={(tripId) => navigate(`/trips/${tripId}/loading-sequence`)}
+                    onPrintManifest={(manifestId) => window.open(`/print/manifest/${encodeURIComponent(String(manifestId))}`, '_blank', 'noopener')}
                   />
                 ))
               )}
@@ -139,12 +179,58 @@ export default function SplitOrderDialog({ isOpen, isClosing, waybill, onClose }
   );
 }
 
+function DestinationHubSection({
+  hub,
+  fallbackId,
+  trips,
+  onOpenSequence,
+  onPrintManifest,
+}: {
+  hub: HubSummary | null;
+  fallbackId: string | number | null;
+  trips: AllocationBoardTrip[];
+  onOpenSequence: (tripId: string | number) => void;
+  onPrintManifest: (manifestId: string | number) => void;
+}) {
+  const rowCount = trips.reduce((total, trip) => total + trip.items.length, 0);
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-primary/25 bg-blue-50/30 shadow-sm">
+      <header className="flex flex-wrap items-center gap-3 border-b border-primary/15 bg-blue-50 px-4 py-3">
+        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
+          <Building2 size={17} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-primary">HUB đến</p>
+          <h3 className="truncate text-[15px] font-black text-slate-950">{hubLabel(hub, fallbackId)}</h3>
+        </div>
+        <div className="rounded-lg border border-primary/15 bg-white px-3 py-1.5 text-right">
+          <p className="text-[12px] font-black text-slate-900">{trips.length} bảng kê</p>
+          <p className="text-[10px] font-bold text-muted-foreground">{rowCount} dòng hàng</p>
+        </div>
+      </header>
+      <div className="space-y-3 p-3">
+        {trips.map((trip) => (
+          <DispatchTripTable
+            key={String(trip.trip_id)}
+            trip={trip}
+            onOpenSequence={onOpenSequence}
+            onPrintManifest={onPrintManifest}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function DispatchTripTable({
   trip,
   onOpenSequence,
+  onPrintManifest,
 }: {
   trip: AllocationBoardTrip;
   onOpenSequence: (tripId: string | number) => void;
+  onPrintManifest: (manifestId: string | number) => void;
 }) {
   const canEditSequence = trip.status === 'IN_TRANSIT' || trip.status === 'ARRIVED' || trip.status === 'COMPLETED';
   const truckLabel = [trip.license_plate, trip.nha_xe ? `xe ${trip.nha_xe}` : null].filter(Boolean).join(' · ');
@@ -161,7 +247,22 @@ function DispatchTripTable({
             {tripStatusLabel[String(trip.status || '')] || trip.status}
             {trip.manifest_code ? ` · ${trip.manifest_code}` : ''}
           </p>
+          <p className="mt-0.5 text-[10px] font-bold text-slate-600">
+            HUB đi: {hubLabel(trip.start_hub, trip.start_hub_id)}
+            {' → '}
+            HUB đến: {hubLabel(trip.end_hub, trip.end_hub_id)}
+          </p>
         </div>
+        {trip.manifest_id != null && trip.manifest_id !== '' && (
+          <button
+            type="button"
+            onClick={() => onPrintManifest(trip.manifest_id!)}
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100"
+          >
+            <Printer size={13} />
+            In bảng kê
+          </button>
+        )}
         {canEditSequence && (
           <button
             type="button"
@@ -192,7 +293,11 @@ function DispatchTripTable({
           </thead>
           <tbody>
             {trip.items.map((item) => (
-              <DispatchRow key={String(item.waybill_id)} item={item} />
+              <DispatchRow
+                key={String(item.waybill_id)}
+                item={item}
+                destinationCode={hubCode(trip.end_hub, trip.end_hub_id)}
+              />
             ))}
           </tbody>
         </table>
@@ -201,7 +306,7 @@ function DispatchTripTable({
   );
 }
 
-function DispatchRow({ item }: { item: AllocationBoardItem }) {
+function DispatchRow({ item, destinationCode }: { item: AllocationBoardItem; destinationCode: string }) {
   const noteInRed = item.mat_hang_note && item.mat_hang !== item.mat_hang_note;
 
   return (
@@ -210,7 +315,9 @@ function DispatchRow({ item }: { item: AllocationBoardItem }) {
         {item.vi_tri_hang ?? item.loading_position ?? '—'}
       </td>
       <td className="border-r border-border px-2 py-2 text-center font-medium">{item.ngay_boc || '—'}</td>
-      <td className="border-r border-border px-2 py-2 text-center font-bold">{item.ma_tinh || item.noi_den || '—'}</td>
+      <td className="border-r border-border px-2 py-2 text-center font-bold">
+        {destinationCode || hubCode(item.dest_hub, item.dest_hub_id) || item.ma_tinh || item.noi_den || '—'}
+      </td>
       <td className="border-r border-border px-2 py-2 font-bold">{item.ten_cty || '—'}</td>
       <td className="border-r border-border px-2 py-2 text-center font-bold">{item.dv || 'TC'}</td>
       <td className="border-r border-border px-2 py-2">

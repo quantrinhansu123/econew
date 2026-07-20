@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, IsNull, Not, Repository, SelectQueryBuilder } from 'typeorm';
+import { Brackets, DataSource, In, IsNull, Not, Repository, SelectQueryBuilder } from 'typeorm';
 import { HubEntity } from '../hubs/hub.entity';
 import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
@@ -34,6 +34,7 @@ import { QueryLoadPlanningBoardDto } from './dto/query-load-planning-board.dto';
 import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
 import { assertSplitLoadStatusTransition, WaybillSplitLoadStatus } from './dto/waybill-split-load-status.enum';
 import { OrdersService } from '../orders/orders.service';
+import { OrderEntity } from '../orders/order.entity';
 import { VendorsService } from '../vendors/vendors.service';
 import { normalizeWaybillPhotos } from '../common/waybill-photos';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
@@ -87,6 +88,7 @@ export class WaybillsService {
     @InjectRepository(ManifestEntity) private readonly manifestsRepository: Repository<ManifestEntity>,
     @InjectRepository(ManifestWaybillEntity) private readonly manifestWaybillsRepository: Repository<ManifestWaybillEntity>,
     @InjectRepository(WaybillCashVoucherEntity) private readonly cashVouchersRepository: Repository<WaybillCashVoucherEntity>,
+    private readonly dataSource: DataSource,
     private readonly ordersService: OrdersService,
     private readonly vendorsService: VendorsService,
   ) {}
@@ -174,6 +176,11 @@ export class WaybillsService {
   async update(id: string, dto: UpdateWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
     const patch: UpdateWaybillDto = { ...dto };
+    const requestedOriginHubId = patch.origin_hub_id !== undefined ? String(patch.origin_hub_id) : null;
+    const requestedDestHubId = patch.dest_hub_id !== undefined ? String(patch.dest_hub_id) : null;
+    const originChanged = requestedOriginHubId !== null && requestedOriginHubId !== String(waybill.origin_hub_id);
+    const destChanged = requestedDestHubId !== null && requestedDestHubId !== String(waybill.dest_hub_id);
+
     if (patch.delivery_photo_url !== undefined) {
       const normalizedPhotos = normalizeWaybillPhotos(patch.delivery_photo_url);
       if (normalizedPhotos) patch.delivery_photo_url = normalizedPhotos;
@@ -183,14 +190,24 @@ export class WaybillsService {
       }
     }
 
-    if (this.isLogisticsLocked(waybill)) {
-      delete patch.origin_hub_id;
-      delete patch.dest_hub_id;
+    let originHub: HubEntity | null = null;
+    let destHub: HubEntity | null = null;
+    if (requestedOriginHubId !== null) {
+      originHub = await this.getActiveHub(requestedOriginHubId);
+      if (originChanged) {
+        await this.assertHubAccess(requestedOriginHubId, currentUser);
+        await this.assertOriginChangeIsUnallocated(id);
+      }
+      patch.origin_hub_id = requestedOriginHubId;
+    }
+    if (requestedDestHubId !== null) {
+      destHub = await this.getActiveHub(requestedDestHubId);
+      patch.dest_hub_id = requestedDestHubId;
     }
 
     if (patch.waybill_code !== undefined) {
-      const originHubCode = patch.origin_hub_id
-        ? (await this.getActiveHub(String(patch.origin_hub_id))).code
+      const originHubCode = originHub
+        ? originHub.code
         : waybill.origin_hub?.code
           ?? (await this.getActiveHub(String(waybill.origin_hub_id))).code;
       const normalized = this.normalizeWaybillCode(patch.waybill_code, originHubCode);
@@ -202,6 +219,8 @@ export class WaybillsService {
     }
 
     Object.assign(waybill, patch, { updated_by: currentUser.id });
+    if (originHub) waybill.origin_hub = originHub;
+    if (destHub) waybill.dest_hub = destHub;
     if (patch.freight_amount !== undefined) waybill.cost_amount = String(patch.freight_amount);
     if (patch.note !== undefined || patch.cc_amount !== undefined || patch.cod_amount !== undefined) {
       waybill.payment_type = this.resolvePaymentType({ ...waybill, ...patch } as CreateWaybillDto);
@@ -226,7 +245,21 @@ export class WaybillsService {
         || waybill.noi_den;
     }
 
-    return this.sanitize(await this.waybillsRepository.save(waybill), currentUser);
+    const saved = destChanged && requestedDestHubId
+      ? await this.rerouteDestinationBeforeDeparture(
+          id,
+          requestedDestHubId,
+          currentUser,
+          waybill,
+          originChanged,
+        )
+      : await this.waybillsRepository.save(waybill);
+    if (!destChanged && originChanged && saved.order_id) {
+      await this.ordersService.syncRoutingFromWaybill(String(saved.order_id), {
+        origin_hub_id: String(saved.origin_hub_id),
+      });
+    }
+    return this.sanitize(saved, currentUser);
   }
 
   async receive(id: string, dto: ReceiveWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
@@ -699,7 +732,13 @@ export class WaybillsService {
 
   async bulkStackOntoTruck(dto: BulkStackOntoTruckDto, currentUser: UserEntity) {
     const saved: Array<Record<string, unknown>> = [];
-    const manifestWaybills: Array<{ waybill: WaybillRecord; loading_position: number | null }> = [];
+    const stackedRows: Array<{
+      waybill: WaybillRecord;
+      loading_position: number | null;
+      split_id: string;
+      expected_arrival_at: Date | null;
+      truck_id: string;
+    }> = [];
 
     for (const line of dto.items) {
       const waybill = await this.waybillsRepository.findOne({
@@ -777,30 +816,68 @@ export class WaybillsService {
         vendor_cost: vendorDebtAmount,
         allocated_freight: isManager(currentUser.role_mask) ? Math.round(totalFreight * ratio) : undefined,
       });
-      manifestWaybills.push({ waybill, loading_position: split.loading_position });
+      stackedRows.push({
+        waybill,
+        loading_position: split.loading_position,
+        split_id: String(split.id),
+        expected_arrival_at: split.expected_arrival_at,
+        truck_id: String(line.truck_id),
+      });
     }
 
-    const manifest = manifestWaybills.length ? await this.createClosedManifestForStack(manifestWaybills, currentUser) : null;
-    let tripId: string | null = null;
+    const routeGroups = [...stackedRows.reduce((groups, row) => {
+      const key = [
+        String(row.truck_id),
+        String(row.waybill.origin_hub_id),
+        String(row.waybill.dest_hub_id),
+      ].join(':');
+      const group = groups.get(key) ?? [];
+      group.push(row);
+      groups.set(key, group);
+      return groups;
+    }, new Map<string, typeof stackedRows>()).values()];
+    const manifestResults: Array<{
+      id: string;
+      manifest_code: string;
+      origin_hub_id: string;
+      dest_hub_id: string;
+      trip_id: string | null;
+      waybill_count: number;
+    }> = [];
+    const stackDepartureTime = new Date();
 
-    if (manifest && dto.items[0]?.truck_id) {
+    for (const group of routeGroups) {
+      const manifest = await this.createClosedManifestForStack(group, currentUser);
+      if (!manifest) throw new ConflictException('Không thể tạo bảng kê cho nhóm HUB đến');
+      let tripId: string | null = null;
       const trip = await this.createInTransitTripForStack(
         manifest,
-        String(dto.items[0].truck_id),
-        saved.map((row) => ({
-          split_id: String(row.split_id),
-          expected_arrival_at: row.expected_arrival_at as Date | string | null | undefined,
+        group[0].truck_id,
+        group.map((row) => ({
+          split_id: row.split_id,
+          expected_arrival_at: row.expected_arrival_at,
         })),
-        manifestWaybills,
+        group,
+        stackDepartureTime,
       );
       tripId = trip.id;
+      manifestResults.push({
+        id: String(manifest.id),
+        manifest_code: manifest.manifest_code,
+        origin_hub_id: String(manifest.origin_hub_id),
+        dest_hub_id: String(manifest.dest_hub_id),
+        trip_id: tripId,
+        waybill_count: group.length,
+      });
     }
 
+    const firstManifest = manifestResults[0] ?? null;
     return {
       saved_count: saved.length,
-      manifest_id: manifest?.id ?? null,
-      manifest_code: manifest?.manifest_code ?? null,
-      trip_id: tripId,
+      manifest_id: firstManifest?.id ?? null,
+      manifest_code: firstManifest?.manifest_code ?? null,
+      trip_id: firstManifest?.trip_id ?? null,
+      manifests: manifestResults,
       items: saved,
     };
   }
@@ -865,6 +942,7 @@ export class WaybillsService {
     truckId: string,
     splitRows: Array<{ split_id: string | number; expected_arrival_at?: Date | string | null }>,
     _waybillRows: Array<{ waybill: WaybillRecord }>,
+    departureTime = new Date(),
   ): Promise<TripEntity> {
     const expectedTimes = splitRows
       .map((row) => (row.expected_arrival_at ? new Date(row.expected_arrival_at) : null))
@@ -889,7 +967,7 @@ export class WaybillsService {
       manifest_id: String(manifest.id),
       start_hub_id: String(manifest.origin_hub_id),
       end_hub_id: String(manifest.dest_hub_id),
-      departure_time: new Date(),
+      departure_time: departureTime,
       arrival_time: expectedArrival,
       expected_arrival_time: expectedArrival,
       status: TripStatus.PLANNED,
@@ -945,10 +1023,12 @@ export class WaybillsService {
     return savedManifest;
   }
 
-  private async generateInventoryManifestCode() {
+  private async generateInventoryManifestCode(
+    repository: Repository<ManifestEntity> = this.manifestsRepository,
+  ) {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const code = `BK-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const exists = await this.manifestsRepository.exist({ where: { manifest_code: code } });
+      const exists = await repository.exist({ where: { manifest_code: code } });
       if (!exists) return code;
     }
     return `BK-${Date.now()}`;
@@ -1301,10 +1381,226 @@ export class WaybillsService {
     return waybill;
   }
 
-  private isLogisticsLocked(waybill: WaybillRecord): boolean {
-    return !MUTABLE_STATUSES.includes(this.getStatus(waybill))
-      || Boolean(waybill.manifest_id)
-      || Boolean(waybill.trip_id);
+  private async assertOriginChangeIsUnallocated(waybillId: string): Promise<void> {
+    const [manifestLink, split] = await Promise.all([
+      this.manifestWaybillsRepository.findOne({ where: { waybill_id: waybillId } }),
+      this.splitsRepository.findOne({ where: { waybill_id: waybillId } }),
+    ]);
+    if (manifestLink || split) {
+      throw new ConflictException('Không thể đổi bưu cục gửi sau khi vận đơn đã được xếp xe hoặc vào bảng kê');
+    }
+  }
+
+  private async rerouteDestinationBeforeDeparture(
+    waybillId: string,
+    nextDestHubId: string,
+    currentUser: UserEntity,
+    finalWaybill: WaybillRecord,
+    syncOriginHub: boolean,
+  ): Promise<WaybillRecord> {
+    return this.dataSource.transaction(async (manager) => {
+      const waybillRepo = manager.getRepository(WaybillEntity);
+      const orderRepo = manager.getRepository(OrderEntity);
+      const hubRepo = manager.getRepository(HubEntity);
+      const manifestRepo = manager.getRepository(ManifestEntity);
+      const manifestLinkRepo = manager.getRepository(ManifestWaybillEntity);
+      const splitRepo = manager.getRepository(WaybillSplitEntity);
+      const tripRepo = manager.getRepository(TripEntity);
+
+      const waybill = await waybillRepo.findOne({
+        where: { id: waybillId, deleted_at: IsNull() } as any,
+        lock: { mode: 'pessimistic_write' },
+      }) as WaybillRecord | null;
+      if (!waybill) throw new NotFoundException('Waybill not found');
+
+      const nextDestHub = await hubRepo.findOne({
+        where: { id: nextDestHubId, is_active: true, deleted_at: IsNull() },
+      });
+      if (!nextDestHub) throw new BadRequestException('Hub is missing or inactive');
+      const persistWaybillAndOrder = async () => {
+        Object.assign(waybill, finalWaybill, {
+          dest_hub_id: String(nextDestHub.id),
+          dest_hub: nextDestHub,
+          updated_by: currentUser.id,
+        });
+        const saved = await waybillRepo.save(waybill) as WaybillRecord;
+        if (saved.order_id) {
+          await orderRepo.update(
+            { id: String(saved.order_id) },
+            {
+              dest_hub_id: String(nextDestHub.id),
+              ...(syncOriginHub ? { origin_hub_id: String(saved.origin_hub_id) } : {}),
+            },
+          );
+        }
+        return saved;
+      };
+      if (String(waybill.dest_hub_id) === String(nextDestHubId)) {
+        return persistWaybillAndOrder();
+      }
+
+      const links = await manifestLinkRepo.find({
+        where: { waybill_id: waybillId },
+        relations: ['manifest', 'manifest.trips'],
+      });
+      if (links.length > 1) {
+        throw new ConflictException('Vận đơn đang thuộc nhiều bảng kê; cần xử lý dữ liệu trùng trước khi đổi HUB đến');
+      }
+
+      const splits = await splitRepo.find({
+        where: { waybill_id: waybillId },
+        relations: ['trip'],
+      });
+      const movableLoadStatuses = new Set<WaybillSplitLoadStatus>([
+        WaybillSplitLoadStatus.WAITING_LOAD,
+        WaybillSplitLoadStatus.LOADED,
+      ]);
+      if (splits.some((split) => !movableLoadStatuses.has(split.load_status ?? WaybillSplitLoadStatus.WAITING_LOAD))) {
+        throw new ConflictException('Xe đã khởi hành; không thể đổi HUB đến của vận đơn');
+      }
+
+      const relatedTripIds = new Set<string>();
+      links[0]?.manifest?.trips?.forEach((trip) => relatedTripIds.add(String(trip.id)));
+      splits.forEach((split) => {
+        if (split.trip_id) relatedTripIds.add(String(split.trip_id));
+      });
+      if (relatedTripIds.size > 1) {
+        throw new ConflictException('Vận đơn đang được phân trên nhiều chuyến; không thể tự động đổi HUB đến');
+      }
+
+      let sourceTrip: TripEntity | null = null;
+      const sourceTripId = [...relatedTripIds][0];
+      if (sourceTripId) {
+        sourceTrip = await tripRepo.findOne({
+          where: { id: sourceTripId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!sourceTrip || sourceTrip.status !== TripStatus.PLANNED) {
+          throw new ConflictException('Xe đã khởi hành; không thể đổi HUB đến của vận đơn');
+        }
+      }
+
+      const sourceLink = links[0] ?? null;
+      let sourceManifest = sourceLink?.manifest ?? null;
+      if (sourceManifest) {
+        const lockedManifest = await manifestRepo.findOne({
+          where: { id: String(sourceManifest.id) },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!lockedManifest) throw new ConflictException('Không tìm thấy bảng kê hiện tại của vận đơn');
+        sourceManifest = lockedManifest;
+        if (![ManifestStatus.DRAFT, ManifestStatus.CLOSED, ManifestStatus.ASSIGNED_TO_TRIP].includes(sourceManifest.status as ManifestStatus)) {
+          throw new ConflictException('Bảng kê đã khởi hành hoặc đã khóa; không thể đổi HUB đến');
+        }
+      } else if (sourceTrip) {
+        throw new ConflictException('Chuyến xe thiếu liên kết bảng kê; không thể tự động đổi HUB đến');
+      } else if (!MUTABLE_STATUSES.includes(this.getStatus(waybill))) {
+        throw new ConflictException('Vận đơn đã khóa logistics; không thể đổi HUB đến');
+      }
+
+      if (sourceManifest && sourceLink) {
+        const sourceManifestLinks = await manifestLinkRepo.find({
+          where: { manifest_id: String(sourceManifest.id) },
+        });
+
+        if (sourceManifestLinks.length <= 1) {
+          sourceManifest.dest_hub_id = String(nextDestHub.id);
+          await manifestRepo.save(sourceManifest);
+          if (sourceTrip) {
+            sourceTrip.end_hub_id = String(nextDestHub.id);
+            await tripRepo.save(sourceTrip);
+          }
+          sourceLink.dispatch_fields = {
+            ...(sourceLink.dispatch_fields ?? {}),
+            ma_tinh: nextDestHub.code || nextDestHub.name || String(nextDestHub.id),
+          };
+          await manifestLinkRepo.save(sourceLink);
+        } else {
+          let targetTrip: TripEntity | null = null;
+          let targetManifest: ManifestEntity | null = null;
+
+          if (sourceTrip) {
+            const candidates = await tripRepo.find({
+              where: {
+                truck_id: sourceTrip.truck_id,
+                start_hub_id: sourceTrip.start_hub_id,
+                end_hub_id: String(nextDestHub.id),
+                status: TripStatus.PLANNED,
+              } as any,
+              relations: ['manifest'],
+            });
+            const sourceDeparture = new Date(sourceTrip.departure_time).getTime();
+            const matchingCandidates = candidates.filter((candidate) => (
+              new Date(candidate.departure_time).getTime() === sourceDeparture
+              && candidate.manifest
+              && String(candidate.manifest.origin_hub_id) === String(sourceManifest!.origin_hub_id)
+              && String(candidate.manifest.dest_hub_id) === String(nextDestHub.id)
+            ));
+            if (matchingCandidates.length > 1) {
+              throw new ConflictException('Có nhiều bảng kê đích phù hợp; không thể tự động tách HUB');
+            }
+            targetTrip = matchingCandidates[0] ?? null;
+            targetManifest = targetTrip?.manifest ?? null;
+          }
+
+          if (!targetManifest) {
+            targetManifest = manifestRepo.create({
+              manifest_code: await this.generateInventoryManifestCode(manifestRepo),
+              seal_code: `AUTO-REROUTE-${Date.now()}`,
+              origin_hub_id: String(sourceManifest.origin_hub_id),
+              dest_hub_id: String(nextDestHub.id),
+              status: sourceTrip ? ManifestStatus.CLOSED : sourceManifest.status,
+            });
+            targetManifest = await manifestRepo.save(targetManifest);
+          }
+
+          if (sourceTrip && !targetTrip) {
+            targetTrip = tripRepo.create({
+              truck_id: sourceTrip.truck_id,
+              manifest_id: String(targetManifest.id),
+              start_hub_id: String(sourceTrip.start_hub_id),
+              end_hub_id: String(nextDestHub.id),
+              departure_time: sourceTrip.departure_time,
+              arrival_time: sourceTrip.arrival_time,
+              expected_arrival_time: sourceTrip.expected_arrival_time,
+              driver_name: sourceTrip.driver_name,
+              driver_phone: sourceTrip.driver_phone,
+              status: TripStatus.PLANNED,
+            });
+            targetTrip = await tripRepo.save(targetTrip);
+          }
+
+          const movedLink = manifestLinkRepo.create({
+            manifest_id: String(targetManifest.id),
+            waybill_id: waybillId,
+            loading_position: sourceLink.loading_position,
+            loaded_at: sourceLink.loaded_at,
+            dispatch_fields: {
+              ...(sourceLink.dispatch_fields ?? {}),
+              ma_tinh: nextDestHub.code || nextDestHub.name || String(nextDestHub.id),
+            },
+          });
+          await manifestLinkRepo.delete({
+            manifest_id: String(sourceManifest.id),
+            waybill_id: waybillId,
+          });
+          await manifestLinkRepo.save(movedLink);
+
+          if (sourceTrip && targetTrip) {
+            const splitsToMove = splits.filter((split) => String(split.trip_id ?? '') === String(sourceTrip!.id));
+            splitsToMove.forEach((split) => {
+              if (split.truck_id && targetTrip!.truck_id && String(split.truck_id) !== String(targetTrip!.truck_id)) {
+                throw new ConflictException('Xe của kiện hàng không khớp chuyến đích');
+              }
+              split.trip_id = String(targetTrip!.id);
+            });
+            if (splitsToMove.length) await splitRepo.save(splitsToMove);
+          }
+        }
+      }
+
+      return persistWaybillAndOrder();
+    });
   }
 
   private async findMutable(id: string, currentUser: UserEntity): Promise<WaybillRecord> {

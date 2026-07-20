@@ -79,6 +79,17 @@ export class OrdersService {
     return order;
   }
 
+  async syncRoutingFromWaybill(
+    id: string,
+    route: { origin_hub_id?: string; dest_hub_id?: string },
+  ): Promise<void> {
+    const patch: Partial<Pick<OrderEntity, 'origin_hub_id' | 'dest_hub_id'>> = {};
+    if (route.origin_hub_id !== undefined) patch.origin_hub_id = String(route.origin_hub_id);
+    if (route.dest_hub_id !== undefined) patch.dest_hub_id = String(route.dest_hub_id);
+    if (!Object.keys(patch).length) return;
+    await this.ordersRepository.update({ id }, patch);
+  }
+
   private async generateUniqueCode(): Promise<string> {
     const today = new Date();
     const year = today.getFullYear();

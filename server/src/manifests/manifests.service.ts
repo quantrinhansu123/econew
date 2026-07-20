@@ -97,13 +97,25 @@ export class ManifestsService {
     this.assertRole(currentUser, [Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR]);
     const manifest = await this.findOne(id, currentUser);
     this.assertDraft(manifest);
-    if (dto.dest_hub_id) await this.assertActiveHub(dto.dest_hub_id);
+    let destHub: HubEntity | null = null;
+    if (dto.dest_hub_id) {
+      destHub = await this.assertActiveHub(dto.dest_hub_id);
+      const destinationChanged = String(dto.dest_hub_id) !== String(manifest.dest_hub_id);
+      const hasMismatchedWaybill = destinationChanged && (manifest.manifest_waybills ?? []).some(
+        (link: ManifestWaybillEntity & Record<string, any>) =>
+          link.waybill && String(link.waybill.dest_hub_id) !== String(dto.dest_hub_id),
+      );
+      if (hasMismatchedWaybill) {
+        throw new ConflictException('Không thể đổi HUB đến vì bảng kê đã có vận đơn của HUB khác');
+      }
+    }
     Object.assign(manifest, {
       dest_hub_id: dto.dest_hub_id ?? manifest.dest_hub_id,
       seal_code: dto.seal_code ?? manifest.seal_code,
       note: dto.note ?? manifest.note,
       updated_by: currentUser.id,
     });
+    if (destHub) manifest.dest_hub = destHub;
     return await this.manifestsRepository.save(manifest) as ManifestRecord;
   }
 
@@ -198,7 +210,7 @@ export class ManifestsService {
     const newIds = [...new Set(lines.map((line) => line.waybill_id))];
     const waybills = await this.waybillsRepository.find({
       where: { id: In(newIds), deleted_at: IsNull() } as any,
-      relations: ['order'],
+      relations: ['order', 'dest_hub'],
     }) as WaybillRecord[];
     if (waybills.length !== newIds.length) throw new NotFoundException('One or more waybills not found');
 
@@ -345,7 +357,12 @@ export class ManifestsService {
     const trip = await this.tripsRepository.findOne({ where: { id: dto.trip_id } as any }) as TripRecord | null;
     if (!trip) throw new NotFoundException('Trip not found');
     if (LOCKED_TRIP_STATUSES.includes(trip.status)) throw new BadRequestException('Trip is completed or cancelled');
-    if (trip.start_hub_id !== manifest.origin_hub_id) throw new BadRequestException('Trip origin hub must match manifest origin hub');
+    if (String(trip.start_hub_id) !== String(manifest.origin_hub_id)) {
+      throw new BadRequestException('Trip origin hub must match manifest origin hub');
+    }
+    if (String(trip.end_hub_id) !== String(manifest.dest_hub_id)) {
+      throw new BadRequestException('Trip destination hub must match manifest destination hub');
+    }
     trip.manifest_id = id;
     await this.tripsRepository.save(trip as TripEntity);
     Object.assign(manifest, { trip_id: dto.trip_id, status: ManifestStatus.ASSIGNED_TO_TRIP, assigned_trip_at: new Date(), updated_by: currentUser.id });
@@ -390,7 +407,7 @@ export class ManifestsService {
     const phone = waybill.receiver_phone?.trim() || this.parseContactPhone(waybill.receiver_info);
     const diaChi = phone ? (address ? `${address} · SĐT: ${phone}` : `SĐT: ${phone}`) : address;
     return this.sanitizeDispatchFields({
-      ma_tinh: waybill.noi_den,
+      ma_tinh: waybill.dest_hub?.code || waybill.dest_hub?.name || waybill.noi_den,
       ten_cty: this.parseContactName(waybill.sender_info),
       dv: 'TC',
       mat_hang: waybill.noi_dung || '',
@@ -609,9 +626,10 @@ export class ManifestsService {
     }
   }
 
-  private async assertActiveHub(hubId: string) {
+  private async assertActiveHub(hubId: string): Promise<HubEntity> {
     const hub = await this.hubsRepository.findOne({ where: { id: hubId, is_active: true, deleted_at: IsNull() } });
     if (!hub) throw new BadRequestException('Hub is missing or inactive');
+    return hub;
   }
 
   private assertDraft(manifest: ManifestRecord) {
@@ -724,6 +742,11 @@ export class ManifestsService {
     }
     if (waybill.manifest_id && String(waybill.manifest_id) !== String(manifest.id)) {
       throw new ConflictException('Waybill already belongs to another manifest');
+    }
+    if (String(waybill.dest_hub_id) !== String(manifest.dest_hub_id)) {
+      throw new BadRequestException(
+        `Vận đơn ${waybill.waybill_code} có HUB đến khác với HUB đến của bảng kê`,
+      );
     }
   }
 

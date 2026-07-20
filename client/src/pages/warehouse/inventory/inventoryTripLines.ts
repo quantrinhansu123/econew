@@ -28,7 +28,11 @@ export function buildInventoryTripLinesQuery(
     | 'receivedTo'
     | 'ma_kh'
   >,
-  options?: { onlyIncompleteSplit?: boolean; listScope?: 'all_orders' },
+  options?: {
+    onlyIncompleteSplit?: boolean;
+    listScope?: 'all_orders';
+    destHubId?: string | number | null;
+  },
 ) {
   const params = new URLSearchParams({
     page: String(filters.page),
@@ -42,6 +46,8 @@ export function buildInventoryTripLinesQuery(
   if (options?.listScope === 'all_orders') {
     params.set('list_scope', 'all_orders');
   }
+  const destHubId = String(options?.destHubId ?? '').trim();
+  if (destHubId) params.set('dest_hub_id', destHubId);
   if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
   if (filters.ma_kh?.trim()) params.set('ma_kh', filters.ma_kh.trim());
   const statusFromGroups = expandOrderStatusGroups(filters.orderStatusGroups);
@@ -58,13 +64,22 @@ export function buildInventoryTripLinesQuery(
 
 export function filterManifestAddableInventoryRows<T extends WaybillInventoryItem>(
   items: T[],
-  options: { manifestId: string; existingWaybillIds?: Set<string> },
+  options: {
+    manifestId: string;
+    manifestDestHubId?: string | number | null;
+    existingWaybillIds?: Set<string>;
+  },
 ) {
   const existingIds = options.existingWaybillIds ?? new Set<string>();
+  const manifestDestHubId = String(options.manifestDestHubId ?? '').trim();
   const seen = new Set<string>();
   return items.filter((waybill) => {
     const id = String(waybill.id);
     if (!id || seen.has(id)) return false;
+    if (manifestDestHubId) {
+      const waybillDestHubId = String(waybill.dest_hub_id ?? waybill.dest_hub?.id ?? '').trim();
+      if (waybillDestHubId !== manifestDestHubId) return false;
+    }
     if (waybill.manifest_id && String(waybill.manifest_id) !== options.manifestId) return false;
     if (existingIds.has(id)) {
       const remaining = Number(waybill.remaining_packages ?? 0);
