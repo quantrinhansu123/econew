@@ -19,6 +19,22 @@ export interface StackOntoTruckSharedFields {
   driver_phone: string;
 }
 
+export interface StackOntoTruckPayloadItem {
+  waybill_id: string;
+  truck_id: string;
+  loading_position?: number;
+  package_count: number;
+  note: string;
+}
+
+export interface StackOntoTruckPayload {
+  vendor_id?: string;
+  vendor_cost?: number;
+  driver_name?: string;
+  driver_phone?: string;
+  items: StackOntoTruckPayloadItem[];
+}
+
 export const DELIVERY_INSTRUCTION_OPTIONS = ['Lái xe giao tận nơi', 'Về chành'] as const;
 
 const cleanHubPart = (value?: string | null) => String(value || '').trim();
@@ -36,7 +52,7 @@ export function buildDestinationInstruction(waybill?: WaybillInventoryItem | nul
   return `Kho ${resolveDestinationHubLabel(waybill)}`;
 }
 
-export function computeExpectedArrivalDate(base?: string | null): Date {
+export function computeExpectedArrivalDate(base?: string | Date | null): Date {
   const date = base ? new Date(base) : new Date();
   if (Number.isNaN(date.getTime())) return new Date(Date.now() + 3 * 86400000);
   const next = new Date(date.getTime());
@@ -44,20 +60,23 @@ export function computeExpectedArrivalDate(base?: string | null): Date {
   return next;
 }
 
-export function formatExpectedArrivalLabel(base?: string | null): string {
-  return computeExpectedArrivalDate(base).toLocaleDateString('vi-VN');
+export function formatExpectedArrivalLabel(base?: string | Date | null): string {
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(computeExpectedArrivalDate(base));
 }
 
-export function buildStackFormRows(waybills: WaybillInventoryItem[]): StackOntoTruckFormRow[] {
+export function buildStackFormRows(waybills: WaybillInventoryItem[], loadingDate: Date = new Date()): StackOntoTruckFormRow[] {
   return waybills.map((waybill) => {
-    const orderDate = waybill.created_at || waybill.received_at;
     return {
       waybill_id: String(waybill.id),
       waybill_code: waybill.waybill_code || waybill.code || `#${waybill.id}`,
       package_count: String(Math.max(1, Number(waybill.remaining_packages ?? waybill.package_count ?? 1))),
       max_package_count: Math.max(1, Number(waybill.remaining_packages ?? waybill.package_count ?? 1)),
       loading_position: waybill.loading_position ? String(waybill.loading_position) : '',
-      expected_arrival_label: formatExpectedArrivalLabel(orderDate),
+      expected_arrival_label: formatExpectedArrivalLabel(loadingDate),
       delivery_instruction: buildDestinationInstruction(waybill),
     };
   });
@@ -72,6 +91,34 @@ export function buildInitialSharedFields(waybills: WaybillInventoryItem[]): Stac
     vendor_cost: '',
     driver_name: '',
     driver_phone: '',
+  };
+}
+
+export function buildStackOntoTruckPayload(
+  rows: StackOntoTruckFormRow[],
+  shared: StackOntoTruckSharedFields,
+  parsedVendorCost?: number,
+): StackOntoTruckPayload {
+  const vendorId = shared.vendor_id.trim();
+  const driverName = shared.driver_name.trim();
+  const driverPhone = shared.driver_phone.trim();
+  const hasVendorCost = shared.vendor_cost.trim() !== ''
+    && parsedVendorCost != null
+    && Number.isFinite(parsedVendorCost)
+    && parsedVendorCost >= 0;
+
+  return {
+    ...(vendorId ? { vendor_id: vendorId } : {}),
+    ...(hasVendorCost ? { vendor_cost: parsedVendorCost } : {}),
+    ...(driverName ? { driver_name: driverName } : {}),
+    ...(driverPhone ? { driver_phone: driverPhone } : {}),
+    items: rows.map((row) => ({
+      waybill_id: row.waybill_id,
+      truck_id: shared.truck_id,
+      ...(row.loading_position ? { loading_position: Number(row.loading_position) } : {}),
+      package_count: Number(row.package_count),
+      note: row.delivery_instruction,
+    })),
   };
 }
 

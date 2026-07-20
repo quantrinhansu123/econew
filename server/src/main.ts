@@ -4,17 +4,12 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { corsOriginDelegate } from './cors.config';
+import { buildHealthResponse } from './health-response';
 
 function registerHealthRoute(app: NestExpressApplication) {
-  const payload = () => ({
-    ok: true,
-    service: 'eco-transport-api',
-    prefix: '/api/v1',
-    timestamp: new Date().toISOString(),
-  });
   const express = app.getHttpAdapter().getInstance();
   express.get('/api/v1/health', (_req: unknown, res: { status: (code: number) => { json: (body: unknown) => void } }) => {
-    res.status(200).json(payload());
+    res.status(200).json(buildHealthResponse());
   });
 }
 

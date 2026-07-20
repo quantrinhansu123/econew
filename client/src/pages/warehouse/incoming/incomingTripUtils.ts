@@ -1,6 +1,6 @@
 import type { IncomingHub, IncomingManifest, IncomingTrip } from './types';
 import { formatMoney, normalizeMoney } from '../../../lib/formatMoney';
-import { isArrivedTripStatus } from '../manifests/manifestHubUtils';
+import { isActiveTripStatus, isArrivedTripStatus } from '../manifests/manifestHubUtils';
 
 export type OriginLane = 'HAN' | 'HCM';
 
@@ -10,14 +10,20 @@ export const FINANCE_ROLES = 16 | 32 | 64;
 
 export const tripStatusLabel: Record<string, string> = {
   PLANNED: 'Đã lên kế hoạch',
+  ASSIGNED: 'Đã gán chuyến',
+  ASSIGNED_TO_TRIP: 'Đã xếp lên xe',
   IN_TRANSIT: 'Đang chạy',
+  DEPARTED: 'Đã khởi hành',
   ARRIVED: 'Đã đến',
   COMPLETED: 'Hoàn tất',
 };
 
 export const tripStatusTone: Record<string, string> = {
   PLANNED: 'border-slate-200 bg-slate-50 text-slate-700',
+  ASSIGNED: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+  ASSIGNED_TO_TRIP: 'border-indigo-200 bg-indigo-50 text-indigo-700',
   IN_TRANSIT: 'border-amber-200 bg-amber-50 text-amber-800',
+  DEPARTED: 'border-amber-200 bg-amber-50 text-amber-800',
   ARRIVED: 'border-emerald-200 bg-emerald-50 text-emerald-800',
   COMPLETED: 'border-blue-200 bg-blue-50 text-blue-800',
 };
@@ -233,7 +239,7 @@ export interface IncomingStatusOption {
   label: string;
 }
 
-const STATUS_FILTER_ORDER = ['IN_TRANSIT', 'ARRIVED', 'COMPLETED', 'PLANNED'] as const;
+const STATUS_FILTER_ORDER = ['PLANNED', 'ASSIGNED', 'ASSIGNED_TO_TRIP', 'IN_TRANSIT', 'DEPARTED', 'ARRIVED', 'COMPLETED'] as const;
 
 export const collectStatusOptions = (trips: IncomingTrip[]): IncomingStatusOption[] => {
   const statuses = new Set<string>();
@@ -300,7 +306,7 @@ export const filterTripsByPaymentStatuses = (
   ));
 };
 
-export const isExpectedArrivingTrip = (trip: IncomingTrip) => normalizeTripStatus(trip.status) === 'IN_TRANSIT';
+export const isExpectedArrivingTrip = (trip: IncomingTrip) => isActiveTripStatus(trip.status);
 
 export const getTotalCollect = (trip: IncomingTrip) => normalizeNumber(trip.total_collect);
 

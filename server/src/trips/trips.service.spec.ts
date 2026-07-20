@@ -213,6 +213,28 @@ describe('TripsService', () => {
     });
   });
 
+  describe('getExpectedArrivals', () => {
+    it('includes PLANNED trips and ranks them after active arrivals but before completed trips', async () => {
+      const qb = new MockQb();
+      qb.getMany.mockResolvedValue([
+        { id: 'completed', status: TripStatus.COMPLETED, manifest_id: null, departure_time: new Date('2026-07-20T01:00:00Z') },
+        { id: 'planned', status: TripStatus.PLANNED, manifest_id: null, departure_time: new Date('2026-07-20T04:00:00Z') },
+        { id: 'transit', status: TripStatus.IN_TRANSIT, manifest_id: null, departure_time: new Date('2026-07-20T03:00:00Z') },
+        { id: 'arrived', status: TripStatus.ARRIVED, manifest_id: null, departure_time: new Date('2026-07-20T02:00:00Z') },
+      ]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.getExpectedArrivals({ end_hub_id: 2 }, manager);
+
+      expect(qb.where).toHaveBeenCalledWith('trip.status IN (:...statuses)', {
+        statuses: [TripStatus.PLANNED, TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED],
+      });
+      expect(result.data.map((trip) => trip.id)).toEqual(['arrived', 'transit', 'planned', 'completed']);
+      expect(result.data).toContainEqual(expect.objectContaining({ id: 'planned', status: TripStatus.PLANNED }));
+      expect(result.total).toBe(4);
+    });
+  });
+
   const mockFindOne = (trip: any) => jest.spyOn(service, 'findOne').mockResolvedValue(trip);
 
   describe('startTrip', () => {
@@ -314,6 +336,30 @@ describe('TripsService', () => {
       mockFindOne({ manifest_id: '10', fuel_cost: '10', other_costs: '5' });
       manifestWaybills.find.mockResolvedValue([{ waybill: { cost_amount: '100' } }, { waybill: { cost_amount: '50' } }]);
       await expect(service.getTripProfit('1', manager)).resolves.toEqual({ revenue: 150, total_cost: 15, profit: 135, waybill_count: 2 });
+    });
+
+    it('tính cước NCC từ trip_cost đúng một lần cho chuyến vừa xếp hàng', async () => {
+      mockFindOne({ manifest_id: '10', fuel_cost: '10', trip_cost: '100', other_costs: null });
+      manifestWaybills.find.mockResolvedValue([{ waybill: { cost_amount: '200' } }]);
+
+      await expect(service.getTripProfit('1', manager)).resolves.toEqual({
+        revenue: 200,
+        total_cost: 110,
+        profit: 90,
+        waybill_count: 1,
+      });
+    });
+
+    it('không tính đôi cước NCC cũ từng lưu ở cả trip_cost và other_costs', async () => {
+      mockFindOne({ manifest_id: '10', fuel_cost: '10', trip_cost: '100', other_costs: '100' });
+      manifestWaybills.find.mockResolvedValue([{ waybill: { cost_amount: '200' } }]);
+
+      await expect(service.getTripProfit('1', manager)).resolves.toEqual({
+        revenue: 200,
+        total_cost: 110,
+        profit: 90,
+        waybill_count: 1,
+      });
     });
 
     it('DRIVER gọi → ForbiddenException', async () => {

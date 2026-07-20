@@ -18,6 +18,7 @@ import {
   DELIVERY_INSTRUCTION_OPTIONS,
   buildInitialSharedFields,
   buildStackFormRows,
+  buildStackOntoTruckPayload,
   resolveDestinationHubLabel,
   type StackOntoTruckFormRow,
   type StackOntoTruckSharedFields,
@@ -270,16 +271,7 @@ export default function StackOntoTruckDialog({
     }
 
     const vendorCost = shared.vendor_cost.trim() ? parseMoneyAmount(shared.vendor_cost) : undefined;
-    const payload = {
-      items: rows.map((row, index) => ({
-        waybill_id: row.waybill_id,
-        truck_id: shared.truck_id,
-        loading_position: row.loading_position ? Number(row.loading_position) : undefined,
-        package_count: Number(row.package_count),
-        note: row.delivery_instruction,
-        ...(vendorCost != null && vendorCost > 0 && index === 0 ? { vendor_cost: vendorCost } : {}),
-      })),
-    };
+    const payload = buildStackOntoTruckPayload(rows, shared, vendorCost);
 
     setIsSaving(true);
     try {
@@ -398,10 +390,15 @@ export default function StackOntoTruckDialog({
                     <label className="mb-1 block text-[12px] font-bold uppercase tracking-wide text-slate-700">SĐT tài xế</label>
                     <input value={shared.driver_phone} onChange={(e) => setShared((prev) => ({ ...prev, driver_phone: e.target.value }))} placeholder="Không bắt buộc" className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-[14px] font-bold outline-none focus:border-primary" />
                   </div>
-                  <div className="col-span-12 md:col-span-3">
-                    <label className="mb-1 block text-[12px] font-bold uppercase tracking-wide text-slate-700">Cước NCC</label>
-                    <input value={shared.vendor_cost} onChange={(e) => setShared((prev) => ({ ...prev, vendor_cost: formatDonGia(e.target.value) }))} placeholder="Nhập sau..." className="h-11 w-full rounded-lg border border-amber-300 bg-amber-50/40 px-3 text-right text-[15px] font-bold outline-none focus:border-primary" />
-                  </div>
+                  {canViewPricing && (
+                    <div className="col-span-12 md:col-span-3">
+                      <label className="mb-1 block text-[12px] font-bold uppercase tracking-wide text-slate-700">Cước NCC</label>
+                      <p className="mb-1 text-[11px] font-medium leading-tight text-muted-foreground">
+                        Tổng cước; nhiều HUB sẽ được phân bổ theo số kiện.
+                      </p>
+                      <input inputMode="numeric" value={shared.vendor_cost} onChange={(e) => setShared((prev) => ({ ...prev, vendor_cost: formatDonGia(e.target.value) }))} placeholder="Nhập sau..." className="h-11 w-full rounded-lg border border-amber-300 bg-amber-50/40 px-3 text-right text-[15px] font-bold outline-none focus:border-primary" />
+                    </div>
+                  )}
                 </div>
               </div>
 
