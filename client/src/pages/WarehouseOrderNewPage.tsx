@@ -91,7 +91,6 @@ export default function WarehouseOrderNewPage() {
   const [createdWaybill, setCreatedWaybill] = useState<CreatedWaybill | null>(null);
   const [isSuccessOpen, setIsSuccessOpen] = useState(false);
   const [isSuccessClosing, setIsSuccessClosing] = useState(false);
-  const [showPricingOnPrint, setShowPricingOnPrint] = useState(true);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [billFilterDate, setBillFilterDate] = useState('');
@@ -428,7 +427,7 @@ export default function WarehouseOrderNewPage() {
   const openPrintBill = (params: Record<string, string> = {}, billId?: string | null) => {
     const id = billId ?? printableBillId;
     if (!id) return;
-    const query = new URLSearchParams({ ...params, pricing: showPricingOnPrint ? 'show' : 'hide' }).toString();
+    const query = new URLSearchParams(params).toString();
     window.open(`/print/waybill/${id}${query ? `?${query}` : ''}`, '_blank', 'noopener');
   };
 
@@ -441,7 +440,6 @@ export default function WarehouseOrderNewPage() {
     const query = new URLSearchParams({
       ids: billIds.join(','),
       print: '1',
-      pricing: showPricingOnPrint ? 'show' : 'hide',
     }).toString();
     window.open(`/print/waybills?${query}`, '_blank', 'noopener');
   };
@@ -537,8 +535,6 @@ export default function WarehouseOrderNewPage() {
             onPrintA5={() => openPrintBill({ print: '1' })}
             onPrintRegular={() => openPrintBill({ print: '1', format: 'a4' })}
             printableBillId={printableBillId}
-            showPricingOnPrint={showPricingOnPrint}
-            onShowPricingOnPrintChange={setShowPricingOnPrint}
             billFilterDate={billFilterDate}
             onBillFilterDateChange={handleBillFilterDateChange}
             isBillListLoading={isBillListLoading}

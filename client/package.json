@@ -2,6 +2,7 @@
   "name": "f-solution-app",
   "private": true,
   "version": "0.0.0",
+  "packageManager": "pnpm@11.0.9",
   "type": "module",
   "scripts": {
     "dev": "vite",

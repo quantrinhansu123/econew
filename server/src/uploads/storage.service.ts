@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 
 const MAX_BYTES = 5 * 1024 * 1024;
+const STORAGE_TIMEOUT_MS = 12_000;
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 const MIME_EXT: Record<string, string> = {
@@ -15,7 +16,7 @@ const MIME_EXT: Record<string, string> = {
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
-  private bucketReady = false;
+  private bucketReadyPromise: Promise<void> | null = null;
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -25,9 +26,15 @@ export class StorageService {
     return url.replace(/\/$/, '');
   }
 
-  private get serviceKey(): string {
-    const key = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')?.trim();
-    if (!key) throw new InternalServerErrorException('SUPABASE_SERVICE_ROLE_KEY chưa được cấu hình trên server.');
+  private get serverKey(): string {
+    const key =
+      this.configService.get<string>('SUPABASE_SECRET_KEY')?.trim()
+      || this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')?.trim();
+    if (!key) {
+      throw new InternalServerErrorException(
+        'SUPABASE_SECRET_KEY hoặc SUPABASE_SERVICE_ROLE_KEY chưa được cấu hình trên server.',
+      );
+    }
     return key;
   }
 
@@ -36,41 +43,94 @@ export class StorageService {
   }
 
   private authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    const key = this.serverKey;
+    const isLegacyJwt = key.split('.').length === 3;
     return {
-      Authorization: `Bearer ${this.serviceKey}`,
-      apikey: this.serviceKey,
+      apikey: key,
+      ...(isLegacyJwt ? { Authorization: `Bearer ${key}` } : {}),
       ...extra,
     };
   }
 
-  private async ensureBucket(): Promise<void> {
-    if (this.bucketReady) return;
+  private async storageFetch(
+    url: string,
+    init: RequestInit,
+    operation: string,
+  ): Promise<Response> {
+    const timeoutController = new AbortController();
+    const timeout = setTimeout(() => timeoutController.abort(), STORAGE_TIMEOUT_MS);
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: init.signal ?? timeoutController.signal,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Supabase Storage ${operation} network error: ${detail}`);
+      throw new InternalServerErrorException('Không kết nối được Supabase Storage.');
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
 
-    const listResponse = await fetch(`${this.supabaseUrl}/storage/v1/bucket`, {
-      headers: this.authHeaders(),
-    });
+  private throwStorageResponseError(
+    operation: string,
+    status: number,
+    detail: string,
+  ): never {
+    this.logger.error(`Supabase Storage ${operation} failed: ${status} ${detail}`);
+    if (status === 401 || status === 403) {
+      throw new InternalServerErrorException(
+        'Khóa Supabase Storage trên server không hợp lệ hoặc không đủ quyền.',
+      );
+    }
+    throw new InternalServerErrorException('Không kết nối được Supabase Storage.');
+  }
+
+  private async initializeBucket(): Promise<void> {
+    const listResponse = await this.storageFetch(
+      `${this.supabaseUrl}/storage/v1/bucket`,
+      { headers: this.authHeaders() },
+      'list buckets',
+    );
     if (!listResponse.ok) {
       const detail = await listResponse.text();
-      this.logger.error(`Supabase list buckets failed: ${listResponse.status} ${detail}`);
-      throw new InternalServerErrorException('Không kết nối được Supabase Storage.');
+      this.throwStorageResponseError('list buckets', listResponse.status, detail);
     }
 
     const buckets = (await listResponse.json()) as Array<{ name?: string; id?: string }>;
     const exists = buckets.some((item) => item.name === this.bucket || item.id === this.bucket);
     if (!exists) {
-      const createResponse = await fetch(`${this.supabaseUrl}/storage/v1/bucket`, {
-        method: 'POST',
-        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ id: this.bucket, name: this.bucket, public: true }),
-      });
+      const createResponse = await this.storageFetch(
+        `${this.supabaseUrl}/storage/v1/bucket`,
+        {
+          method: 'POST',
+          headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ id: this.bucket, name: this.bucket, public: true }),
+        },
+        'create bucket',
+      );
       if (!createResponse.ok) {
         const detail = await createResponse.text();
-        this.logger.error(`Supabase create bucket failed: ${createResponse.status} ${detail}`);
-        throw new InternalServerErrorException(`Không tạo được bucket "${this.bucket}" trên Supabase.`);
+        const isCreateConflict =
+          createResponse.status === 409
+          || /\b(already exists|conflict|duplicate)\b/i.test(detail);
+        if (isCreateConflict) {
+          this.logger.warn(`Supabase Storage bucket "${this.bucket}" đã được tạo đồng thời.`);
+        } else {
+          this.logger.error(`Supabase Storage create bucket failed: ${createResponse.status} ${detail}`);
+          throw new InternalServerErrorException(`Không tạo được bucket "${this.bucket}" trên Supabase.`);
+        }
       }
     }
+  }
 
-    this.bucketReady = true;
+  private ensureBucket(): Promise<void> {
+    this.bucketReadyPromise ??= this.initializeBucket().catch((error: unknown) => {
+      this.bucketReadyPromise = null;
+      throw error;
+    });
+    return this.bucketReadyPromise;
   }
 
   private async uploadImage(file: Express.Multer.File, folder: string): Promise<string> {
@@ -86,18 +146,27 @@ export class StorageService {
     const objectPath = `${folder}/${Date.now()}-${randomBytes(8).toString('hex')}.${ext}`;
     const uploadUrl = `${this.supabaseUrl}/storage/v1/object/${this.bucket}/${objectPath}`;
 
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: this.authHeaders({
-        'Content-Type': file.mimetype,
-        'x-upsert': 'true',
-      }),
-      body: new Uint8Array(file.buffer),
-    });
+    const uploadResponse = await this.storageFetch(
+      uploadUrl,
+      {
+        method: 'POST',
+        headers: this.authHeaders({
+          'Content-Type': file.mimetype,
+          'x-upsert': 'true',
+        }),
+        body: new Uint8Array(file.buffer),
+      },
+      'upload object',
+    );
 
     if (!uploadResponse.ok) {
       const detail = await uploadResponse.text();
-      this.logger.error(`Supabase upload failed: ${uploadResponse.status} ${detail}`);
+      this.logger.error(`Supabase Storage upload object failed: ${uploadResponse.status} ${detail}`);
+      if (uploadResponse.status === 401 || uploadResponse.status === 403) {
+        throw new InternalServerErrorException(
+          'Khóa Supabase Storage trên server không hợp lệ hoặc không đủ quyền.',
+        );
+      }
       throw new InternalServerErrorException('Không upload được ảnh lên cloud.');
     }
 

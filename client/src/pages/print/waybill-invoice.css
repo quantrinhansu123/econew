@@ -1,10 +1,11 @@
 /* Phiếu vận chuyển ECO:
    - A5: một phiếu trên A5 ngang.
    - A4: cùng một phiếu ở nửa trên, nửa dưới để trắng.
-   Vùng an toàn 3mm giúp máy in phổ thông không cắt mất viền. */
+   @page không chừa lề để trình duyệt không tách chân phiếu sang trang 2.
+   Phiếu tự chừa vùng an toàn tối thiểu 5mm bên trong khổ giấy. */
 @page {
   size: A5 landscape;
-  margin: 3mm;
+  margin: 0;
 }
 
 .waybill-invoice-wrap {
@@ -19,7 +20,7 @@
 .waybill-paper-preview {
   box-sizing: border-box;
   width: 210mm;
-  padding: 3mm;
+  padding: 5mm;
   background: #fff;
   box-shadow: 0 8px 24px rgb(15 23 42 / 10%);
 }
@@ -33,19 +34,19 @@
 }
 
 .waybill-invoice {
-  --eco-a5-scale: 0.78;
+  --eco-a5-scale: 0.64;
   --eco-ink: #111;
-  --eco-line: 1px solid var(--eco-ink);
-  --eco-line-strong: 1.5px solid var(--eco-ink);
-  --eco-a5-width: 204mm;
-  --eco-a5-height: 142mm;
-  --eco-a5-split: 102mm;
+  --eco-line: 0.7px solid var(--eco-ink);
+  --eco-line-strong: 1px solid var(--eco-ink);
+  --eco-a5-width: 200mm;
+  --eco-a5-height: 136mm;
+  --eco-a5-split: 100mm;
   --fs-xs: calc(6.4pt * var(--eco-a5-scale));
   --fs-sm: calc(10.5pt * var(--eco-a5-scale));
   --fs-base: calc(13pt * var(--eco-a5-scale));
   --fs-md: calc(15pt * var(--eco-a5-scale));
   --fs-title: calc(12.5pt * var(--eco-a5-scale));
-  --fs-subtitle: calc(20pt * var(--eco-a5-scale));
+  --fs-subtitle: calc(22pt * var(--eco-a5-scale));
   --fs-code: calc(22pt * var(--eco-a5-scale));
   --fs-row: calc(13.5pt * var(--eco-a5-scale));
   --fs-body: calc(13.5pt * var(--eco-a5-scale));
@@ -72,6 +73,11 @@
 
 .eco-a5-template p {
   margin: 0;
+}
+
+.eco-a5-template b,
+.eco-a5-template strong {
+  font-weight: 600;
 }
 
 .eco-a5-row {
@@ -109,29 +115,30 @@
 .eco-a5-template .eco-phone {
   margin-top: 0.8mm;
   font-size: var(--fs-phone);
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.08;
   text-align: center;
+  white-space: nowrap;
 }
 
 .eco-a5-template .eco-phone-label {
   display: block;
   margin-bottom: 0.2mm;
   font-size: var(--fs-sm);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .eco-a5-title h1 {
   margin: 0 0 1mm;
   font-size: var(--fs-title);
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1;
 }
 
 .eco-a5-title h2 {
   margin: 0;
   font-size: var(--fs-subtitle);
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.1;
 }
 
@@ -146,9 +153,10 @@
 .eco-a5-template .eco-code {
   margin-bottom: 0.8mm;
   font-size: var(--fs-code);
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .eco-code-meta {
@@ -222,7 +230,7 @@
 }
 
 .eco-mini-label {
-  font-weight: 700;
+  font-weight: 400;
   white-space: nowrap;
 }
 
@@ -232,7 +240,11 @@
 }
 
 .eco-mini-value--strong {
-  font-weight: 700;
+  font-weight: 600;
+}
+
+.eco-mini-value {
+  font-variant-numeric: tabular-nums;
 }
 
 .eco-a5-people-row .eco-mini-line--address {
@@ -280,9 +292,12 @@
   padding: 1mm 1.5mm;
   overflow: hidden;
   border-bottom: var(--eco-line);
-  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.eco-a5-goods-code b {
+  font-weight: 400;
 }
 
 .eco-stats-grid {
@@ -484,7 +499,7 @@
   border: 1.5px solid #d91f26;
   color: #d91f26;
   font-size: calc(19pt * var(--eco-a5-scale));
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.8px;
   opacity: 0.65;
 }
@@ -547,6 +562,7 @@
 .eco-footer-staff b {
   padding: 0.8mm 0.5mm;
   display: block;
+  font-weight: 400;
 }
 
 .eco-footer-staff label {
@@ -598,20 +614,29 @@
   }
 
   .waybill-paper-preview {
-    width: auto !important;
-    height: auto !important;
+    box-sizing: border-box !important;
+    width: 210mm !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 5mm !important;
+    overflow: hidden !important;
     box-shadow: none !important;
     background: #fff !important;
   }
 
+  .waybill-paper-preview--a5 {
+    height: 148mm !important;
+  }
+
+  .waybill-paper-preview--a4 {
+    height: 297mm !important;
+  }
+
   .waybill-invoice {
-    width: 204mm !important;
-    max-width: 204mm !important;
-    height: 142mm !important;
-    min-height: 142mm !important;
-    max-height: 142mm !important;
+    width: 200mm !important;
+    max-width: 200mm !important;
+    height: 136mm !important;
+    min-height: 136mm !important;
+    max-height: 136mm !important;
     margin: 0 !important;
     overflow: hidden !important;
     box-shadow: none !important;

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { WaybillsService } from './waybills.service';
 import { Roles } from '../common/roles';
 import { WaybillPriority, WaybillStatus } from './dto/waybill.enums';
@@ -30,15 +30,18 @@ const createQueryBuilder = () => {
   const qb: any = {
     where: jest.fn().mockReturnThis(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
+    innerJoinAndSelect: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
+    groupBy: jest.fn().mockReturnThis(),
     clone: jest.fn().mockImplementation(() => qb),
     setParameters: jest.fn().mockReturnThis(),
     getRawOne: jest.fn().mockResolvedValue({ maxSeq: '0' }),
+    getRawMany: jest.fn().mockResolvedValue([]),
     getMany: jest.fn().mockResolvedValue([makeWaybill()]),
     getCount: jest.fn().mockResolvedValue(1),
     getManyAndCount: jest.fn().mockResolvedValue([[makeWaybill()], 1]),
@@ -46,11 +49,25 @@ const createQueryBuilder = () => {
   return qb;
 };
 
+const evaluateFirstBrackets = (qb: ReturnType<typeof createQueryBuilder>) => {
+  const brackets = qb.andWhere.mock.calls
+    .map(([condition]: [any]) => condition)
+    .find((condition: any) => typeof condition?.whereFactory === 'function');
+  expect(brackets).toBeDefined();
+  const inner = {
+    where: jest.fn().mockReturnThis(),
+    orWhere: jest.fn().mockReturnThis(),
+  };
+  brackets.whereFactory(inner);
+  return inner;
+};
+
 describe('WaybillsService', () => {
   let service: WaybillsService;
   let waybillsRepository: any;
   let hubsRepository: any;
   let splitsRepository: any;
+  let cashVouchersRepository: any;
 
   beforeEach(() => {
     waybillsRepository = {
@@ -69,6 +86,13 @@ describe('WaybillsService', () => {
       save: jest.fn(),
       create: jest.fn(),
     };
+    cashVouchersRepository = {
+      find: jest.fn(),
+      findOne: jest.fn(),
+      save: jest.fn(),
+      create: jest.fn(),
+      createQueryBuilder: jest.fn(createQueryBuilder),
+    };
     const ordersService = {
       createFromWaybillEntry: jest.fn().mockResolvedValue({ id: 'o1', order_code: 'DH20260101-001' }),
     };
@@ -81,7 +105,7 @@ describe('WaybillsService', () => {
       { findOne: jest.fn() } as any,
       { find: jest.fn(), save: jest.fn(), create: jest.fn() } as any,
       { find: jest.fn(), delete: jest.fn(), save: jest.fn(), create: jest.fn() } as any,
-      { find: jest.fn(), findOne: jest.fn(), save: jest.fn(), create: jest.fn() } as any,
+      cashVouchersRepository,
       ordersService as any,
       vendorsService,
     );
@@ -95,18 +119,51 @@ describe('WaybillsService', () => {
     await expect(service.create({ waybill_code: '', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager)).rejects.toThrow(BadRequestException);
   });
 
-  it('create uses provided waybill_code', async () => {
+  it('create normalizes a legacy hyphenated waybill_code to the contiguous format', async () => {
     waybillsRepository.findOne.mockResolvedValue(null);
     const result = await service.create({ waybill_code: 'ECO-HAN-109602', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager);
-    expect(result.waybill_code).toBe('ECO-HAN-109602');
+    expect(result.waybill_code).toBe('ECOHAN109602');
     expect(result.order_code).toBe('DH20260101-001');
     expect(result.status).toBe(WaybillStatus.RECEIVED);
-    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ waybill_code: 'ECO-HAN-109602', current_state: WaybillStatus.RECEIVED }));
+    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ waybill_code: 'ECOHAN109602', current_state: WaybillStatus.RECEIVED }));
+    expect(waybillsRepository.findOne).toHaveBeenCalledWith({
+      where: [
+        expect.objectContaining({ waybill_code: 'ECOHAN109602' }),
+        expect.objectContaining({ waybill_code: 'ECO-HAN-109602' }),
+      ],
+    });
   });
 
   it('create rejects waybill_code with wrong hub prefix', async () => {
     waybillsRepository.findOne.mockResolvedValue(null);
-    await expect(service.create({ waybill_code: 'ECO-HCM-1', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager)).rejects.toThrow(BadRequestException);
+    await expect(service.create({ waybill_code: 'ECOHCM1', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager)).rejects.toThrow(BadRequestException);
+  });
+
+  it.each(['ECOHAN0', 'ECO-HAN-000', 'ECOHANABC'])('create rejects invalid waybill sequence %s', async (waybillCode) => {
+    waybillsRepository.findOne.mockResolvedValue(null);
+    await expect(service.create({ waybill_code: waybillCode, sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager)).rejects.toThrow(BadRequestException);
+  });
+
+  it('create detects a legacy code as duplicate of its contiguous equivalent', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ id: 'legacy', waybill_code: 'ECO-HAN-109602' }));
+    await expect(service.create({ waybill_code: 'ECOHAN109602', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager)).rejects.toThrow(ConflictException);
+  });
+
+  it('update normalizes a legacy waybill code and ignores the same record in duplicate checks', async () => {
+    const existing = makeWaybill({
+      waybill_code: 'ECO-HAN-7',
+      origin_hub: { id: '1', code: 'HAN' },
+    });
+    waybillsRepository.findOne
+      .mockResolvedValueOnce(existing)
+      .mockResolvedValueOnce(null);
+
+    await expect(service.update('1', { waybill_code: ' ECO-HAN-7 ' }, manager))
+      .resolves.toMatchObject({ waybill_code: 'ECOHAN7' });
+    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: '1',
+      waybill_code: 'ECOHAN7',
+    }));
   });
 
   it('preview next code uses independent hub prefix sequence', async () => {
@@ -115,13 +172,13 @@ describe('WaybillsService', () => {
     waybillsRepository.createQueryBuilder.mockReturnValue(qb);
     waybillsRepository.findOne.mockResolvedValue(null);
 
-    await expect(service.previewNextWaybillCode('1', warehouse)).resolves.toEqual({ waybill_code: 'ECO-HAN-8' });
-    expect(qb.setParameters).toHaveBeenCalledWith({ codePattern: '^ECO-HAN-[0-9]+$', codeReplacePattern: '^ECO-HAN-' });
+    await expect(service.previewNextWaybillCode('1', warehouse)).resolves.toEqual({ waybill_code: 'ECOHAN8' });
+    expect(qb.setParameters).toHaveBeenCalledWith({ codePattern: '^ECO-?HAN-?[0-9]+$', codeReplacePattern: '^ECO-?HAN-?' });
   });
 
   it('create blocks missing or inactive hub', async () => {
     hubsRepository.findOne.mockResolvedValueOnce(null);
-    await expect(service.create({ waybill_code: 'ECO-HAN-1', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager)).rejects.toThrow(BadRequestException);
+    await expect(service.create({ waybill_code: 'ECOHAN1', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager)).rejects.toThrow(BadRequestException);
   });
 
   it('findAll applies keyword/status/hub/priority/date filters', async () => {
@@ -131,6 +188,53 @@ describe('WaybillsService', () => {
     expect(qb.andWhere).toHaveBeenCalledWith('waybill.current_state IN (:...statuses)', { statuses: [WaybillStatus.RECEIVED] });
     expect(qb.andWhere).toHaveBeenCalledWith('waybill.origin_hub_id = :originHubId', { originHubId: '1' });
     expect(qb.andWhere).toHaveBeenCalledWith('waybill.priority IN (:...priorities)', { priorities: [WaybillPriority.HIGH] });
+  });
+
+  it.each(['ECOHAN108962', 'ECO-HAN-108962'])(
+    'findAll matches both legacy and contiguous bill codes for keyword %s',
+    async (keyword) => {
+      const qb = createQueryBuilder();
+      waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findAll({ keyword }, manager);
+
+      const inner = evaluateFirstBrackets(qb);
+      expect(inner.orWhere).toHaveBeenCalledWith(
+        `REGEXP_REPLACE(UPPER(waybill.waybill_code), '[-[:space:]]+', '', 'g') ILIKE :normalizedWaybillKeyword`,
+        { normalizedWaybillKeyword: '%ECOHAN108962%' },
+      );
+    },
+  );
+
+  it('findAll keeps ordinary keyword search unchanged', async () => {
+    const qb = createQueryBuilder();
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.findAll({ keyword: 'Nguyen Van A' }, manager);
+
+    const inner = evaluateFirstBrackets(qb);
+    expect(inner.where).toHaveBeenCalledWith(
+      'waybill.waybill_code ILIKE :keyword',
+      { keyword: '%Nguyen Van A%' },
+    );
+    expect(inner.orWhere.mock.calls.some(([condition]) => String(condition).includes('REGEXP_REPLACE'))).toBe(false);
+  });
+
+  it('cash voucher search matches bill codes across legacy and contiguous formats', async () => {
+    const qb = createQueryBuilder();
+    cashVouchersRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.searchCashVouchers({ keyword: 'ECOHAN108962' }, manager);
+
+    const inner = evaluateFirstBrackets(qb);
+    expect(inner.orWhere).toHaveBeenCalledWith(
+      `REGEXP_REPLACE(UPPER(voucher.waybill_code), '[-[:space:]]+', '', 'g') ILIKE :normalizedWaybillKeyword`,
+      { normalizedWaybillKeyword: '%ECOHAN108962%' },
+    );
+    expect(inner.orWhere).toHaveBeenCalledWith(
+      `REGEXP_REPLACE(UPPER(waybill.waybill_code), '[-[:space:]]+', '', 'g') ILIKE :normalizedWaybillKeyword`,
+      { normalizedWaybillKeyword: '%ECOHAN108962%' },
+    );
   });
 
   it('user hub only sees waybills in assigned hub scope', async () => {
@@ -143,7 +247,7 @@ describe('WaybillsService', () => {
   it('create stores up to four normalized bill images', async () => {
     waybillsRepository.findOne.mockResolvedValue(null);
     const result = await service.create({
-      waybill_code: 'ECO-HAN-109603',
+      waybill_code: 'ECOHAN109603',
       sender_name: 'A',
       sender_phone: '1',
       sender_address: 'HN',
@@ -273,6 +377,31 @@ describe('WaybillsService', () => {
   it('getByCode returns accessible waybill by code', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
     await expect(service.getByCode('ECO1', warehouse)).resolves.toMatchObject({ waybill_code: 'ECO1' });
+  });
+
+  it('getByCode finds a legacy hyphenated record from the contiguous printed code', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ waybill_code: 'ECO-HAN-108962' }));
+
+    await expect(service.getByCode('ECOHAN108962', warehouse))
+      .resolves.toMatchObject({ waybill_code: 'ECO-HAN-108962' });
+    expect(waybillsRepository.findOne).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.arrayContaining([
+        expect.objectContaining({ waybill_code: 'ECOHAN108962' }),
+        expect.objectContaining({ waybill_code: 'ECO-HAN-108962' }),
+      ]),
+    }));
+  });
+
+  it('getByCode preserves a legacy zero-padded sequence when building lookup candidates', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ waybill_code: 'ECO-HAN-001' }));
+
+    await expect(service.getByCode('ECOHAN001', warehouse))
+      .resolves.toMatchObject({ waybill_code: 'ECO-HAN-001' });
+    expect(waybillsRepository.findOne).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.arrayContaining([
+        expect.objectContaining({ waybill_code: 'ECO-HAN-001' }),
+      ]),
+    }));
   });
 
   it('getInventory, getIncoming and getOverdue delegate to filtered lists', async () => {

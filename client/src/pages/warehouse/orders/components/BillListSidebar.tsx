@@ -10,6 +10,7 @@ interface Props {
   onDelete?: (bill: BillListItem) => void;
   canDelete?: boolean;
   isDeleting?: boolean;
+  disabled?: boolean;
   filterDate: string;
   onFilterDateChange: (value: string) => void;
   isLoading?: boolean;
@@ -42,6 +43,7 @@ export default function BillListSidebar({
   onDelete,
   canDelete = false,
   isDeleting = false,
+  disabled = false,
   filterDate,
   onFilterDateChange,
   isLoading = false,
@@ -105,7 +107,7 @@ export default function BillListSidebar({
   const columnCount = 7 + (onDelete ? 1 : 0);
 
   return (
-    <aside className="flex w-[700px] shrink-0 flex-col border-l border-slate-300 bg-slate-50/90">
+    <aside className="flex min-h-[360px] w-full shrink-0 flex-col border-t border-slate-300 bg-slate-50/90 lg:min-h-0 lg:w-[700px] lg:border-l lg:border-t-0">
       <div className="border-b border-slate-300 bg-gradient-to-b from-slate-100 to-slate-200 px-2 py-1.5">
         <div className="text-center text-[12px] font-black text-slate-800">Danh sách theo ngày</div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -213,7 +215,12 @@ export default function BillListSidebar({
                         />
                       </td>
                       <td className="border-b border-r border-slate-300 p-0">
-                        <button type="button" onClick={() => onSelect(bill)} className="block w-full px-2 py-1.5 text-left font-black">
+                        <button
+                          type="button"
+                          onClick={() => onSelect(bill)}
+                          disabled={disabled}
+                          className="block w-full px-2 py-1.5 text-left font-black disabled:cursor-wait"
+                        >
                           <span className="block truncate">{bill.waybill_code}</span>
                         </button>
                       </td>
@@ -253,7 +260,7 @@ export default function BillListSidebar({
                           <button
                             type="button"
                             title={`Xóa ${bill.waybill_code}`}
-                            disabled={!canDelete || isDeleting}
+                            disabled={!canDelete || isDeleting || disabled}
                             onClick={(e) => {
                               e.stopPropagation();
                               onDelete(bill);

@@ -33,8 +33,6 @@ interface Props {
   onPrintA5: () => void;
   onPrintRegular: () => void;
   printableBillId: string | null;
-  showPricingOnPrint: boolean;
-  onShowPricingOnPrintChange: (value: boolean) => void;
   billFilterDate: string;
   onBillFilterDateChange: (value: string) => void;
   isBillListLoading: boolean;
@@ -65,8 +63,6 @@ export default function NewOrderWorkbench({
   onPrintA5,
   onPrintRegular,
   printableBillId,
-  showPricingOnPrint,
-  onShowPricingOnPrintChange,
   billFilterDate,
   onBillFilterDateChange,
   isBillListLoading,
@@ -87,8 +83,8 @@ export default function NewOrderWorkbench({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#e8eef5]">
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto p-2.5">
+      <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+        <div className="flex flex-none flex-col overflow-visible p-2.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
           <div className="mb-2 rounded-lg border border-slate-300 bg-gradient-to-b from-slate-100 to-slate-200 px-4 py-1.5 text-center text-[14px] font-black text-slate-800 shadow-sm">
             Thông tin đơn hàng
           </div>
@@ -200,7 +196,7 @@ export default function NewOrderWorkbench({
                   <CompactInput
                     value={form.soBill}
                     onChange={(e) => setField('soBill', e.target.value.toUpperCase())}
-                    placeholder="ECO-HAN-1"
+                    placeholder="ECOHAN1"
                     className="font-bold text-primary"
                   />
                 </CompactField>
@@ -342,15 +338,6 @@ export default function NewOrderWorkbench({
             <ActionButton label="Xem A5" onClick={onPreviewA5} disabled={!printableBillId} />
             <ActionButton label="In A5" onClick={onPrintA5} disabled={!printableBillId} />
             <ActionButton label="In thường" onClick={onPrintRegular} disabled={!printableBillId} />
-            <label className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-[12px] font-extrabold text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50">
-              <input
-                type="checkbox"
-                checked={showPricingOnPrint}
-                onChange={(event) => onShowPricingOnPrintChange(event.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
-              />
-              Hiện cước khi in
-            </label>
           </div>
         </div>
 
@@ -360,7 +347,8 @@ export default function NewOrderWorkbench({
           onSelect={onSelectBill}
           onDelete={onDeleteBill}
           canDelete={canManage}
-          isDeleting={isSubmitting}
+          isDeleting={isBusy}
+          disabled={isBusy}
           filterDate={billFilterDate}
           onFilterDateChange={onBillFilterDateChange}
           isLoading={isBillListLoading}

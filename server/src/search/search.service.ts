@@ -96,10 +96,19 @@ export class SearchService {
 
     if (dto.keyword) {
       const keyword = `%${dto.keyword}%`;
-      qb.andWhere(new Brackets((inner) => inner
-        .where('waybill.waybill_code ILIKE :keyword', { keyword })
-        .orWhere('waybill.sender_info ILIKE :keyword', { keyword })
-        .orWhere('waybill.receiver_info ILIKE :keyword', { keyword })));
+      const normalizedWaybillKeyword = this.normalizeWaybillCodeKeyword(dto.keyword);
+      qb.andWhere(new Brackets((inner) => {
+        inner
+          .where('waybill.waybill_code ILIKE :keyword', { keyword })
+          .orWhere('waybill.sender_info ILIKE :keyword', { keyword })
+          .orWhere('waybill.receiver_info ILIKE :keyword', { keyword });
+        if (normalizedWaybillKeyword) {
+          inner.orWhere(
+            `REGEXP_REPLACE(UPPER(waybill.waybill_code), '[-[:space:]]+', '', 'g') ILIKE :normalizedWaybillKeyword`,
+            { normalizedWaybillKeyword },
+          );
+        }
+      }));
     }
     if (dto.status) qb.andWhere('waybill.current_state = :status', { status: dto.status });
     if (dto.payment_type) qb.andWhere('waybill.payment_type = :paymentType', { paymentType: dto.payment_type });
@@ -158,6 +167,13 @@ export class SearchService {
     if (!normalized) return undefined;
     if (normalized.length < 2) throw new BadRequestException('Keyword must be at least 2 characters');
     return normalized;
+  }
+
+  private normalizeWaybillCodeKeyword(keyword: string): string | null {
+    const compactKeyword = keyword.trim().toUpperCase().replace(/[-\s]+/g, '');
+    return /^ECO[A-Z]{2,8}[0-9]+$/.test(compactKeyword)
+      ? `%${compactKeyword}%`
+      : null;
   }
 
   mapGlobalResults(waybills: WaybillSearchRow[], trips: TripSearchRow[]): SearchResultEntity[] {

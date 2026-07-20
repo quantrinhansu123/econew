@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
+import { Brackets, In, IsNull, Not, Repository, SelectQueryBuilder } from 'typeorm';
 import { HubEntity } from '../hubs/hub.entity';
 import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
@@ -189,8 +189,11 @@ export class WaybillsService {
     }
 
     if (patch.waybill_code !== undefined) {
-      const normalized = patch.waybill_code.trim().toUpperCase();
-      if (!normalized) throw new BadRequestException('Waybill code is required');
+      const originHubCode = patch.origin_hub_id
+        ? (await this.getActiveHub(String(patch.origin_hub_id))).code
+        : waybill.origin_hub?.code
+          ?? (await this.getActiveHub(String(waybill.origin_hub_id))).code;
+      const normalized = this.normalizeWaybillCode(patch.waybill_code, originHubCode);
       if (normalized !== waybill.waybill_code) {
         await this.assertUniqueWaybillCode(normalized, id);
         waybill.waybill_code = normalized;
@@ -307,7 +310,20 @@ export class WaybillsService {
   }
 
   async getByCode(code: string, currentUser: UserEntity): Promise<WaybillRecord> {
-    const waybill = await this.waybillsRepository.findOne({ where: { waybill_code: code, deleted_at: IsNull() } as any, relations: ['origin_hub', 'dest_hub'] }) as WaybillRecord | null;
+    const rawCode = code.trim();
+    const compactCode = rawCode.toUpperCase().replace(/[-\s]+/g, '');
+    const candidates = [...new Set([
+      rawCode,
+      rawCode.toUpperCase(),
+      ...this.getEquivalentWaybillCodes(compactCode),
+    ])];
+    const waybill = await this.waybillsRepository.findOne({
+      where: candidates.map((waybillCode) => ({
+        waybill_code: waybillCode,
+        deleted_at: IsNull(),
+      })) as any,
+      relations: ['origin_hub', 'dest_hub'],
+    }) as WaybillRecord | null;
     if (!waybill) throw new NotFoundException('Waybill not found');
     this.assertWaybillAccess(waybill, currentUser);
     return this.sanitize(waybill, currentUser);
@@ -552,12 +568,27 @@ export class WaybillsService {
     }
 
     if (query.keyword?.trim()) {
-      const keyword = `%${query.keyword.trim()}%`;
-      qb.andWhere(new Brackets((builder) => builder
-        .where('voucher.waybill_code ILIKE :keyword', { keyword })
-        .orWhere('waybill.waybill_code ILIKE :keyword', { keyword })
-        .orWhere('waybill.ma_kh ILIKE :keyword', { keyword })
-        .orWhere('voucher.note ILIKE :keyword', { keyword })));
+      const rawKeyword = query.keyword.trim();
+      const keyword = `%${rawKeyword}%`;
+      const normalizedWaybillKeyword = this.normalizeWaybillSearchKeyword(rawKeyword);
+      qb.andWhere(new Brackets((builder) => {
+        builder
+          .where('voucher.waybill_code ILIKE :keyword', { keyword })
+          .orWhere('waybill.waybill_code ILIKE :keyword', { keyword })
+          .orWhere('waybill.ma_kh ILIKE :keyword', { keyword })
+          .orWhere('voucher.note ILIKE :keyword', { keyword });
+        if (normalizedWaybillKeyword) {
+          builder
+            .orWhere(
+              `REGEXP_REPLACE(UPPER(voucher.waybill_code), '[-[:space:]]+', '', 'g') ILIKE :normalizedWaybillKeyword`,
+              { normalizedWaybillKeyword },
+            )
+            .orWhere(
+              `REGEXP_REPLACE(UPPER(waybill.waybill_code), '[-[:space:]]+', '', 'g') ILIKE :normalizedWaybillKeyword`,
+              { normalizedWaybillKeyword },
+            );
+        }
+      }));
     }
 
     if (query.voucher_type) {
@@ -1284,8 +1315,22 @@ export class WaybillsService {
 
   private applyFilters(qb: any, query: QueryWaybillsDto) {
     if (query.keyword?.trim()) {
-      const keyword = `%${query.keyword.trim()}%`;
-      qb.andWhere(new Brackets((builder) => builder.where('waybill.waybill_code ILIKE :keyword', { keyword }).orWhere('waybill.sender_info ILIKE :keyword', { keyword }).orWhere('waybill.receiver_info ILIKE :keyword', { keyword }).orWhere('waybill.ma_kh ILIKE :keyword', { keyword })));
+      const rawKeyword = query.keyword.trim();
+      const keyword = `%${rawKeyword}%`;
+      const normalizedWaybillKeyword = this.normalizeWaybillSearchKeyword(rawKeyword);
+      qb.andWhere(new Brackets((builder) => {
+        builder
+          .where('waybill.waybill_code ILIKE :keyword', { keyword })
+          .orWhere('waybill.sender_info ILIKE :keyword', { keyword })
+          .orWhere('waybill.receiver_info ILIKE :keyword', { keyword })
+          .orWhere('waybill.ma_kh ILIKE :keyword', { keyword });
+        if (normalizedWaybillKeyword) {
+          builder.orWhere(
+            `REGEXP_REPLACE(UPPER(waybill.waybill_code), '[-[:space:]]+', '', 'g') ILIKE :normalizedWaybillKeyword`,
+            { normalizedWaybillKeyword },
+          );
+        }
+      }));
     }
 
     if (query.ma_kh?.trim()) {
@@ -1416,28 +1461,63 @@ export class WaybillsService {
   }
 
   private async resolveWaybillCode(explicit: string | undefined, originHubCode: string): Promise<string> {
-    const code = explicit?.trim();
-    if (!code) throw new BadRequestException('Waybill code is required');
-    const normalized = code.toUpperCase();
-    const expectedPrefix = this.formatEcoBillPrefix(originHubCode);
-    if (!normalized.startsWith(`${expectedPrefix}-`)) {
-      throw new BadRequestException(`Waybill code must start with ${expectedPrefix}-`);
-    }
+    const normalized = this.normalizeWaybillCode(explicit, originHubCode);
     await this.assertUniqueWaybillCode(normalized);
     return normalized;
   }
 
-  private async assertUniqueWaybillCode(code: string, excludeId?: string) {
-    const existing = await this.waybillsRepository.findOne({
-      where: { waybill_code: code, deleted_at: IsNull() } as any,
-    });
-    if (existing && String(existing.id) !== String(excludeId ?? '')) {
-      throw new ConflictException('Waybill code already exists');
+  private normalizeWaybillCode(explicit: string | undefined, originHubCode: string): string {
+    const code = explicit?.trim();
+    if (!code) throw new BadRequestException('Waybill code is required');
+
+    const compactCode = code.toUpperCase().replace(/[-\s]+/g, '');
+    const expectedPrefix = this.formatEcoBillPrefix(originHubCode);
+    if (!compactCode.startsWith(expectedPrefix)) {
+      throw new BadRequestException(`Waybill code must start with ${expectedPrefix}`);
     }
+
+    const suffix = compactCode.slice(expectedPrefix.length);
+    if (!/^[0-9]+$/.test(suffix)) {
+      throw new BadRequestException(`Waybill code must follow ${expectedPrefix}<number>`);
+    }
+
+    const sequence = Number(suffix);
+    if (!Number.isSafeInteger(sequence) || sequence <= 0) {
+      throw new BadRequestException('Waybill sequence must be a positive integer');
+    }
+
+    return this.formatEcoBillCode(originHubCode, sequence);
+  }
+
+  private async assertUniqueWaybillCode(code: string, excludeId?: string) {
+    const variants = this.getEquivalentWaybillCodes(code);
+    const existing = await this.waybillsRepository.findOne({
+      where: variants.map((waybillCode) => ({
+        waybill_code: waybillCode,
+        deleted_at: IsNull(),
+        ...(excludeId ? { id: Not(excludeId) } : {}),
+      })) as any,
+    });
+    if (existing) throw new ConflictException('Waybill code already exists');
+  }
+
+  private getEquivalentWaybillCodes(code: string): string[] {
+    const match = /^ECO([A-Z]+)([0-9]+)$/.exec(code);
+    if (!match) return [code];
+    const [, hubCode, sequence] = match;
+    return [code, `ECO-${hubCode}-${sequence}`];
+  }
+
+  private normalizeWaybillSearchKeyword(keyword: string): string | null {
+    const compactKeyword = keyword.trim().toUpperCase().replace(/[-\s]+/g, '');
+    return /^ECO[A-Z]{2,8}[0-9]+$/.test(compactKeyword)
+      ? `%${compactKeyword}%`
+      : null;
   }
 
   private async getMaxEcoBillSequence(hubCode: string): Promise<number> {
     const prefix = this.formatEcoBillPrefix(hubCode);
+    const normalizedHubCode = prefix.slice(3);
     const row = await this.waybillsRepository
       .createQueryBuilder('waybill')
       .select(
@@ -1452,8 +1532,8 @@ export class WaybillsService {
       )
       .where('waybill.deleted_at IS NULL')
       .setParameters({
-        codePattern: `^${prefix}-[0-9]+$`,
-        codeReplacePattern: `^${prefix}-`,
+        codePattern: `^ECO-?${normalizedHubCode}-?[0-9]+$`,
+        codeReplacePattern: `^ECO-?${normalizedHubCode}-?`,
       })
       .getRawOne<{ maxSeq: string | null }>();
 
@@ -1463,11 +1543,11 @@ export class WaybillsService {
   private formatEcoBillPrefix(hubCode: string): string {
     const normalizedHubCode = String(hubCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!normalizedHubCode) throw new BadRequestException('Hub code is required');
-    return `ECO-${normalizedHubCode}`;
+    return `ECO${normalizedHubCode}`;
   }
 
   private formatEcoBillCode(hubCode: string, sequence: number): string {
-    return `${this.formatEcoBillPrefix(hubCode)}-${Math.max(1, Math.floor(sequence))}`;
+    return `${this.formatEcoBillPrefix(hubCode)}${Math.max(1, Math.floor(sequence))}`;
   }
 
   private async generateUniqueCode(hubCode: string): Promise<string> {

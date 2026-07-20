@@ -25,14 +25,10 @@ export interface WaybillPrintData {
   thuHo: string;
   khaiGia: string;
   ngayGuiDon: string;
-  cuocChinh: string;
-  dichVuCongThem: string;
-  tongCuoc: string;
   tongPhaiThuPhat: string;
   dichVu: string;
   dvGtgt: string;
   codStamp: boolean;
-  showPricing: boolean;
 }
 
 const waitForImage = (image: HTMLImageElement) => {
@@ -154,7 +150,7 @@ function parseM3FromNote(note: string) {
   return (length * width * height) / 1_000_000;
 }
 
-export function buildWaybillPrintData(waybill: WaybillDetail, showPricing: boolean): WaybillPrintData {
+export function buildWaybillPrintData(waybill: WaybillDetail): WaybillPrintData {
   const note = waybill.note || waybill.notes || '';
   const sender = parseContact(waybill.sender_info);
   const receiver = parseContact(waybill.receiver_info);
@@ -174,13 +170,8 @@ export function buildWaybillPrintData(waybill: WaybillDetail, showPricing: boole
     0;
 
   const cod = Number(waybill.cod_amount) || 0;
-  const freight = Number(waybill.freight_amount ?? waybill.cost_amount) || 0;
   const paymentType = String(waybill.payment_type || '').toUpperCase();
   const phuongThuc = parseNoteField(note, 'phuong_thuc');
-  const isReceiverPayment = phuongThuc === 'Người nhận thanh toán' || paymentType === 'CC';
-  const showFreight = showPricing && isReceiverPayment;
-  const freightToCollect = isReceiverPayment ? freight : 0;
-  const tongPhaiThuPhat = freightToCollect + cod;
   const createdAt = waybill.received_at || (waybill as { created_at?: string }).created_at;
 
   return {
@@ -213,13 +204,9 @@ export function buildWaybillPrintData(waybill: WaybillDetail, showPricing: boole
     thuHo: formatNum(cod, 0) || '0',
     khaiGia: 'Không',
     ngayGuiDon: formatDate(createdAt),
-    cuocChinh: showFreight ? formatNum(freight, 0) : '',
-    dichVuCongThem: showFreight ? '0' : '',
-    tongCuoc: showFreight ? formatNum(freight, 0) : '',
-    tongPhaiThuPhat: formatNum(tongPhaiThuPhat, 0) || '0',
+    tongPhaiThuPhat: formatNum(cod, 0) || '0',
     dichVu: (dichVu || loaiBp || 'ĐƯỜNG BỘ').toUpperCase(),
     dvGtgt: parseNoteField(note, 'dich_vu_gia_tang') || 'Tiêu chuẩn',
     codStamp: paymentType === 'COD' || cod > 0,
-    showPricing: showFreight,
   };
 }

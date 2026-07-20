@@ -2,13 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Loader2, Printer } from 'lucide-react';
 import { ApiError, apiRequest } from '../../lib/api';
-import { getStoredAuthUser } from '../../lib/authUser';
 import type { WaybillDetail } from '../warehouse/orders/types';
 import WaybillInvoiceTemplate from './WaybillInvoiceTemplate';
 import { buildWaybillPrintData, printWaybillWhenReady } from './waybillPrintUtils';
 import './waybill-invoice.css';
-
-const MANAGER_ROLES = 32 | 64;
 
 export default function PrintWaybillsBulkPage() {
   const [searchParams] = useSearchParams();
@@ -17,14 +14,6 @@ export default function PrintWaybillsBulkPage() {
     [searchParams],
   );
   const autoPrint = searchParams.get('print') === '1';
-  const pricingParam = searchParams.get('pricing');
-
-  const showPricing = useMemo(() => {
-    const user = getStoredAuthUser();
-    const canViewPricing = ((user?.role_mask ?? 0) & MANAGER_ROLES) !== 0;
-    if (!canViewPricing) return false;
-    return pricingParam !== 'hide';
-  }, [pricingParam]);
 
   const [waybills, setWaybills] = useState<WaybillDetail[]>([]);
   const [loading, setLoading] = useState(ids.length > 0);
@@ -68,8 +57,8 @@ export default function PrintWaybillsBulkPage() {
   }, [autoPrint, loading, error, waybills.length]);
 
   const printItems = useMemo(
-    () => waybills.map((waybill) => buildWaybillPrintData(waybill, showPricing)),
-    [waybills, showPricing],
+    () => waybills.map((waybill) => buildWaybillPrintData(waybill)),
+    [waybills],
   );
   const displayError = ids.length ? error : 'Chưa chọn vận đơn để in.';
 
@@ -107,7 +96,9 @@ export default function PrintWaybillsBulkPage() {
       <div className="waybill-bulk-print-stack">
         {printItems.map((data) => (
           <div key={data.waybillCode} className="waybill-bulk-print-item">
-            <WaybillInvoiceTemplate data={data} />
+            <div className="waybill-paper-preview waybill-paper-preview--a5">
+              <WaybillInvoiceTemplate data={data} />
+            </div>
           </div>
         ))}
       </div>

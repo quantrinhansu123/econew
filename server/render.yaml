@@ -6,8 +6,8 @@ services:
     name: eco-transport-api
     runtime: node
     rootDir: server
-    buildCommand: npm install && npm run build
-    startCommand: npm run start:prod
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start:prod
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV
@@ -15,6 +15,8 @@ services:
       - key: SUPABASE_POOLER_DATABASE_URL
         sync: false
       - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
