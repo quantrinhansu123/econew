@@ -266,7 +266,7 @@ export class TripsService {
       await this.waybillsService.backfillInTransitTripsForHub(hubId);
     }
 
-    const activeStatuses = [TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED];
+    const activeStatuses = [TripStatus.PLANNED, TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED];
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('truck.vendor', 'vendor')
@@ -291,7 +291,8 @@ export class TripsService {
     const statusRank: Record<string, number> = {
       [TripStatus.ARRIVED]: 0,
       [TripStatus.IN_TRANSIT]: 1,
-      [TripStatus.COMPLETED]: 2,
+      [TripStatus.PLANNED]: 2,
+      [TripStatus.COMPLETED]: 3,
     };
 
     const trips = (await qb.getMany()).sort((left, right) => {
@@ -629,7 +630,12 @@ export class TripsService {
     const trip = await this.findOne(id, currentUser);
     const waybills = await this.getManifestWaybills(trip.manifest_id);
     const revenue = waybills.reduce((sum, waybill) => sum + Number(waybill.cost_amount ?? 0), 0);
-    const total_cost = this.toNumber(trip.fuel_cost) + this.toNumber(trip.other_costs);
+    const tripCost = this.toNumber(trip.trip_cost);
+    const rawOtherCosts = this.toNumber(trip.other_costs);
+    // Older trip creation stored the NCC cost in both fields because other_costs
+    // was the legacy alias. Count equal values once, but preserve genuine extras.
+    const otherCosts = tripCost > 0 && rawOtherCosts === tripCost ? 0 : rawOtherCosts;
+    const total_cost = this.toNumber(trip.fuel_cost) + tripCost + otherCosts;
     return { revenue, total_cost, profit: revenue - total_cost, waybill_count: waybills.length };
   }
 

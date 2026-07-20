@@ -14,7 +14,11 @@ import type { AuthUserProfile } from './login/types';
 import AssignManifestTripDialog from './warehouse/manifests/dialogs/AssignManifestTripDialog';
 import ManifestDetailDialog from './warehouse/manifests/dialogs/ManifestDetailDialog';
 import {
-  filterDepartedFromOrigin,
+  departedColumnTitle,
+  expectedArrivalColumnTitle,
+  filterActiveOutboundFromHub,
+  filterExpectedInboundToHub,
+  getTripStatus,
   manifestOriginLane,
   manifestTrip as resolveManifestTrip,
   resolveUserHubView,
@@ -109,12 +113,23 @@ const getManifestWeight = (manifest: LoadPlanningManifest) => Number(manifest.to
 const formatTime = (value?: string | null) => value ? new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }).format(new Date(value)) : null;
 const formatManifestSubline = (manifest: LoadPlanningManifest) => {
   const trip = manifestTrip(manifest);
+  const tripStatus = getTripStatus(manifest).trim().toUpperCase();
+  const tripStatusText: Record<string, string> = {
+    PLANNED: 'Đã lên kế hoạch',
+    ASSIGNED: 'Đã gán chuyến',
+    ASSIGNED_TO_TRIP: 'Đã xếp lên xe',
+    IN_TRANSIT: 'Đang chạy',
+    DEPARTED: 'Đã khởi hành',
+  };
   const parts = [
+    tripStatusText[tripStatus] || null,
     truckLabel(manifest),
     driverLabel(manifest),
     `${getWaybillCount(manifest).toLocaleString('vi-VN')} đơn`,
     `${formatNumber(getManifestWeight(manifest))} kg`,
-    trip?.departure_time ? `Khởi hành ${formatTime(trip.departure_time)}` : null,
+    (tripStatus === 'IN_TRANSIT' || tripStatus === 'DEPARTED') && trip?.departure_time
+      ? `Khởi hành ${formatTime(trip.departure_time)}`
+      : null,
     trip?.expected_arrival_time ? `ETA ${formatTime(trip.expected_arrival_time)}` : null,
   ].filter(Boolean);
   return parts.join(' · ');
@@ -184,15 +199,15 @@ export default function WarehouseManifestsPage() {
 
   const userHubView = useMemo(() => resolveUserHubView(user, hubs), [user, hubs]);
   const keyword = filters.keyword.trim().toLowerCase();
-  const departedFromHanManifests = useMemo(
-    () => filterDepartedFromOrigin(manifests, 'HAN').filter((manifest) => matchesManifestKeyword(manifest, keyword)),
-    [manifests, keyword],
+  const activeOutboundManifests = useMemo(
+    () => filterActiveOutboundFromHub(manifests, userHubView).filter((manifest) => matchesManifestKeyword(manifest, keyword)),
+    [manifests, keyword, userHubView],
   );
-  const departedFromHcmManifests = useMemo(
-    () => filterDepartedFromOrigin(manifests, 'HCM').filter((manifest) => matchesManifestKeyword(manifest, keyword)),
-    [manifests, keyword],
+  const expectedInboundManifests = useMemo(
+    () => filterExpectedInboundToHub(manifests, userHubView).filter((manifest) => matchesManifestKeyword(manifest, keyword)),
+    [manifests, keyword, userHubView],
   );
-  const transitManifestCount = departedFromHanManifests.length + departedFromHcmManifests.length;
+  const activeManifestCount = activeOutboundManifests.length + expectedInboundManifests.length;
 
   const hubOptions = useMemo(() => hubs.map(hub => ({ value: String(hub.id), label: hub.code ? `${hub.code} · ${hub.name || 'Bưu cục'}` : hub.name || `Hub #${hub.id}` })), [hubs]);
   const tripOptions = useMemo(() => trips.map(trip => ({ value: String(trip.id), label: tripLabel(trip) })), [trips]);
@@ -442,15 +457,16 @@ export default function WarehouseManifestsPage() {
             <StateBlock icon={<AlertTriangle size={22} />} title={error} />
           ) : (
             <ManifestTransitBoard
-              departedFromHan={departedFromHanManifests}
-              departedFromHcm={departedFromHcmManifests}
+              hubView={userHubView}
+              activeOutbound={activeOutboundManifests}
+              expectedInbound={expectedInboundManifests}
               onDetail={openDetail}
               onPrint={openPrint}
             />
           )}
         </div>
 
-        <div className="shrink-0 border-t border-border bg-card px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[12px] font-bold text-muted-foreground">{`${transitManifestCount} xe đang chạy · ${rangeStart}-${rangeEnd}/Tổng:${total}`}</p><div className="flex items-center gap-2"><SearchableSelect value={String(filters.limit)} onValueChange={value => updateFilters({ limit: Number(value), page: 1 })} options={[{ value: '20', label: '20' }, { value: '50', label: '50' }, { value: '100', label: '100' }]} className="h-9 w-[88px] rounded-lg bg-white px-3 text-[13px] text-muted-foreground" searchPlaceholder="Tìm số dòng..." /><span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button><span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span><span className="text-[13px] font-bold text-foreground">/ {totalPages}</span></div></div></div>
+        <div className="shrink-0 border-t border-border bg-card px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[12px] font-bold text-muted-foreground">{`${activeManifestCount} chuyến đang hoạt động · ${rangeStart}-${rangeEnd}/Tổng:${total}`}</p><div className="flex items-center gap-2"><SearchableSelect value={String(filters.limit)} onValueChange={value => updateFilters({ limit: Number(value), page: 1 })} options={[{ value: '20', label: '20' }, { value: '50', label: '50' }, { value: '100', label: '100' }]} className="h-9 w-[88px] rounded-lg bg-white px-3 text-[13px] text-muted-foreground" searchPlaceholder="Tìm số dòng..." /><span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button><span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span><span className="text-[13px] font-bold text-foreground">/ {totalPages}</span></div></div></div>
       </div>
       <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} tripOptions={tripOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />
       <ManifestDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} isSubmitting={isSubmitting} manifest={detailManifest} statusConfig={statusConfig} canManage={canManageManifest} showHubDeliveryStatus={userHubView === 'HCM'} onClose={closeDetail} onRemoveWaybill={confirmRemoveWaybill} onUpdateDispatchFields={updateDetailDispatchFields} onUpdateExpectedArrival={updateExpectedArrival} />
@@ -464,35 +480,37 @@ export default function WarehouseManifestsPage() {
 }
 
 function ManifestTransitBoard({
-  departedFromHan,
-  departedFromHcm,
+  hubView,
+  activeOutbound,
+  expectedInbound,
   onDetail,
   onPrint,
 }: {
-  departedFromHan: LoadPlanningManifest[];
-  departedFromHcm: LoadPlanningManifest[];
+  hubView: 'HAN' | 'HCM';
+  activeOutbound: LoadPlanningManifest[];
+  expectedInbound: LoadPlanningManifest[];
   onDetail: (manifest: LoadPlanningManifest) => void;
   onPrint: (manifest: LoadPlanningManifest) => void;
 }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 p-3">
       <p className="shrink-0 text-[12px] font-medium text-muted-foreground">
-        Chỉ hiển thị xe đã khởi hành và chưa đến nơi. Xe đã đến được theo dõi trong Tổng danh sách xe.
+        Hiển thị ngay chuyến đã xếp hàng hoặc đang di chuyển theo bưu cục hiện tại. Chuyến đã đến được theo dõi trong Tổng danh sách xe.
       </p>
       <div className="flex min-h-0 w-full flex-1 flex-col gap-3 lg:flex-row lg:gap-4">
         <ManifestTransitTable
-          title="Xe khởi hành từ Hà Nội"
+          title={departedColumnTitle(hubView)}
           tone="border-blue-200 bg-blue-50 text-blue-800"
-          emptyText="Chưa có xe đang chạy từ Hà Nội."
-          manifests={departedFromHan}
+          emptyText={`Chưa có xe đi từ ${hubView === 'HAN' ? 'Hà Nội' : 'TP.HCM'}.`}
+          manifests={activeOutbound}
           onDetail={onDetail}
           onPrint={onPrint}
         />
         <ManifestTransitTable
-          title="Xe khởi hành từ TP.HCM"
+          title={expectedArrivalColumnTitle(hubView)}
           tone="border-orange-200 bg-orange-50 text-orange-800"
-          emptyText="Chưa có xe đang chạy từ TP.HCM."
-          manifests={departedFromHcm}
+          emptyText={`Chưa có xe dự kiến tới ${hubView === 'HAN' ? 'Hà Nội' : 'HCM'}.`}
+          manifests={expectedInbound}
           onDetail={onDetail}
           onPrint={onPrint}
         />

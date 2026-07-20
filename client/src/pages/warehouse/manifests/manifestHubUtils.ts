@@ -3,7 +3,9 @@ import type { HubSummary, LoadPlanningManifest } from './types';
 
 export type HubViewCode = 'HAN' | 'HCM';
 
-export const IN_TRANSIT_TRIP_STATUSES = ['PLANNED', 'ASSIGNED', 'ASSIGNED_TO_TRIP', 'IN_TRANSIT'];
+export const ACTIVE_TRIP_STATUSES = ['PLANNED', 'ASSIGNED', 'ASSIGNED_TO_TRIP', 'IN_TRANSIT', 'DEPARTED'];
+// Kept as an alias because older callers use this name for the whole active lane.
+export const IN_TRANSIT_TRIP_STATUSES = ACTIVE_TRIP_STATUSES;
 export const ARRIVED_TRIP_STATUSES = ['ARRIVED', 'COMPLETED', 'AT_DEST_HUB', 'DELIVERED', 'DONE', 'FINISHED'];
 
 export function isArrivedTripStatus(status?: string | null): boolean {
@@ -11,6 +13,11 @@ export function isArrivedTripStatus(status?: string | null): boolean {
   if (ARRIVED_TRIP_STATUSES.includes(normalized)) return true;
   const raw = String(status || '').trim();
   return /đã\s*(đến|tới)|xe\s*đã\s*đến/i.test(raw);
+}
+
+export function isActiveTripStatus(status?: string | null): boolean {
+  const normalized = String(status || '').trim().toUpperCase();
+  return ACTIVE_TRIP_STATUSES.includes(normalized);
 }
 
 export const HUB_DELIVERY_STATUS_OPTIONS = [
@@ -47,20 +54,18 @@ export function getTripStatus(manifest: LoadPlanningManifest): string {
 
 export function isInTransitManifest(manifest: LoadPlanningManifest): boolean {
   const tripStatus = getTripStatus(manifest);
-  if (IN_TRANSIT_TRIP_STATUSES.includes(tripStatus)) return true;
-  const manifestStatus = String(manifest.status || '');
+  if (isArrivedTripStatus(tripStatus)) return false;
+  if (isActiveTripStatus(tripStatus)) return true;
+  const manifestStatus = String(manifest.status || '').trim().toUpperCase();
   return manifestStatus === 'IN_TRANSIT' || manifestStatus === 'ASSIGNED_TO_TRIP';
 }
 
 export type ManifestBoardGroup = 'departed' | 'expected' | 'arrived' | 'other';
 
 export function resolveManifestBoardGroup(manifest: LoadPlanningManifest, hubView: HubViewCode): ManifestBoardGroup {
-  if (hubView === 'HAN') {
-    if (isOutboundFromHub(manifest, hubView) && isInTransitManifest(manifest)) return 'departed';
-  } else {
-    if (isInboundToHub(manifest, hubView) && isInTransitManifest(manifest)) return 'expected';
-    if (isInboundToHub(manifest, hubView) && isArrivedManifest(manifest)) return 'arrived';
-  }
+  if (isInboundToHub(manifest, hubView) && isArrivedManifest(manifest)) return 'arrived';
+  if (isInboundToHub(manifest, hubView) && isInTransitManifest(manifest)) return 'expected';
+  if (isOutboundFromHub(manifest, hubView) && isInTransitManifest(manifest)) return 'departed';
   return 'other';
 }
 
@@ -94,18 +99,12 @@ export function isArrivedManifest(manifest: LoadPlanningManifest): boolean {
   return isArrivedTripStatus(getTripStatus(manifest));
 }
 
-const ON_ROAD_TRIP_STATUSES = ['IN_TRANSIT', 'DEPARTED'];
-
 export function isDepartedNotArrivedManifest(manifest: LoadPlanningManifest): boolean {
-  if (isArrivedManifest(manifest)) return false;
-  const tripStatus = getTripStatus(manifest);
-  if (ON_ROAD_TRIP_STATUSES.includes(tripStatus)) return true;
-  return String(manifest.status || '') === 'IN_TRANSIT';
+  return !isArrivedManifest(manifest) && isInTransitManifest(manifest);
 }
 
-export function filterDepartedFromOrigin(manifests: LoadPlanningManifest[], origin: HubViewCode): LoadPlanningManifest[] {
+function sortActiveManifests(manifests: LoadPlanningManifest[]): LoadPlanningManifest[] {
   return manifests
-    .filter((manifest) => manifestOriginLane(manifest) === origin && isDepartedNotArrivedManifest(manifest))
     .sort((left, right) => {
       const etaLeft = manifestTrip(left)?.expected_arrival_time || '';
       const etaRight = manifestTrip(right)?.expected_arrival_time || '';
@@ -115,6 +114,22 @@ export function filterDepartedFromOrigin(manifests: LoadPlanningManifest[], orig
       if (depLeft && depRight) return depRight.localeCompare(depLeft);
       return String(right.created_at || '').localeCompare(String(left.created_at || ''));
     });
+}
+
+export function filterActiveOutboundFromHub(manifests: LoadPlanningManifest[], origin: HubViewCode): LoadPlanningManifest[] {
+  return sortActiveManifests(
+    manifests.filter((manifest) => isOutboundFromHub(manifest, origin) && isDepartedNotArrivedManifest(manifest)),
+  );
+}
+
+export function filterExpectedInboundToHub(manifests: LoadPlanningManifest[], destination: HubViewCode): LoadPlanningManifest[] {
+  return sortActiveManifests(
+    manifests.filter((manifest) => isInboundToHub(manifest, destination) && isDepartedNotArrivedManifest(manifest)),
+  );
+}
+
+export function filterDepartedFromOrigin(manifests: LoadPlanningManifest[], origin: HubViewCode): LoadPlanningManifest[] {
+  return filterActiveOutboundFromHub(manifests, origin);
 }
 
 export function manifestOriginLane(manifest: LoadPlanningManifest): HubViewCode | null {
@@ -138,11 +153,11 @@ export function filterManifestsForHub(manifests: LoadPlanningManifest[], hub: Hu
 }
 
 export function departedColumnTitle(hub: HubViewCode): string {
-  return hub === 'HAN' ? 'Đã khởi hành ở Hà Nội' : 'Đã khởi hành ở TP.HCM';
+  return hub === 'HAN' ? 'Xe đi từ Hà Nội' : 'Xe đi từ TP.HCM';
 }
 
 export function expectedArrivalColumnTitle(hub: HubViewCode): string {
-  return hub === 'HAN' ? 'Dự kiến đến Hà Nội' : 'Dự kiến đến HCM';
+  return hub === 'HAN' ? 'Xe dự kiến tới Hà Nội' : 'Xe dự kiến tới HCM';
 }
 
 export function arrivedColumnTitle(hub: HubViewCode): string {

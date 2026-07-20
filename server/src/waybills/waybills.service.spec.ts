@@ -114,6 +114,7 @@ describe('WaybillsService', () => {
     };
     trucksRepository = {
       findOne: jest.fn(),
+      save: jest.fn(async (value) => value),
     };
     manifestsRepository = {
       find: jest.fn().mockResolvedValue([]),
@@ -159,6 +160,7 @@ describe('WaybillsService', () => {
       syncRoutingFromWaybill: jest.fn().mockResolvedValue(undefined),
     };
     vendorsService = {
+      findOne: jest.fn(),
       resolveDefaultVendorId: jest.fn(),
       addPayableDebt: jest.fn(),
     };
@@ -391,7 +393,7 @@ describe('WaybillsService', () => {
     expect(transactionOrderRepository.update).not.toHaveBeenCalled();
   });
 
-  it('bulk stack creates separate manifests and trips for mixed destination hubs', async () => {
+  const setupMixedDestinationBulkStack = (truckOverrides: Record<string, any> = {}) => {
     const waybills = {
       w1: makeWaybill({
         id: 'w1',
@@ -403,6 +405,7 @@ describe('WaybillsService', () => {
       w2: makeWaybill({
         id: 'w2',
         waybill_code: 'ECOHAN2',
+        package_count: 3,
         dest_hub_id: '3',
         origin_hub: { id: '1', code: 'HAN' },
         dest_hub: { id: '3', code: 'DAN' },
@@ -414,8 +417,10 @@ describe('WaybillsService', () => {
     trucksRepository.findOne.mockResolvedValue({
       id: 'truck-1',
       bks: '29A-12345',
+      nha_xe: null,
       vendor_id: null,
       vendor: null,
+      ...truckOverrides,
     });
     splitsRepository.find.mockResolvedValue([]);
     let splitSequence = 0;
@@ -434,12 +439,22 @@ describe('WaybillsService', () => {
       return value;
     });
     tripsRepository.findOne.mockResolvedValue(null);
+  };
+
+  it('bulk stack deterministically allocates shared vendor cost and links a selected vendor to a legacy truck', async () => {
+    setupMixedDestinationBulkStack();
+    const selectedVendor = { id: 'vendor-1', name: 'Công ty Anh Dũng', status: 'ACTIVE' };
+    vendorsService.findOne.mockResolvedValue(selectedVendor);
 
     const result = await service.bulkStackOntoTruck({
       items: [
-        { waybill_id: 'w1', truck_id: 'truck-1' },
-        { waybill_id: 'w2', truck_id: 'truck-1' },
+        { waybill_id: 'w1', truck_id: 'truck-1', package_count: 1 },
+        { waybill_id: 'w2', truck_id: 'truck-1', package_count: 3 },
       ],
+      driver_name: ' Nguyễn Văn A ',
+      driver_phone: ' 0901234567 ',
+      vendor_id: 'vendor-1',
+      vendor_cost: 100.01,
     }, manager);
 
     expect(result.saved_count).toBe(2);
@@ -451,7 +466,198 @@ describe('WaybillsService', () => {
       .toEqual(['2', '3']);
     expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.end_hub_id))
       .toEqual(['2', '3']);
+    expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.driver_name))
+      .toEqual(['Nguyễn Văn A', 'Nguyễn Văn A']);
+    expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.driver_phone))
+      .toEqual(['0901234567', '0901234567']);
+    expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.trip_cost))
+      .toEqual(['25', '75.01']);
+    expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.other_costs))
+      .toEqual([null, null]);
+    for (const [tripData] of tripsRepository.create.mock.calls) {
+      expect(tripData.expected_arrival_time.getTime()).toBeGreaterThan(tripData.departure_time.getTime());
+      expect(tripData.expected_arrival_time.getTime() - tripData.departure_time.getTime())
+        .toBe(3 * 24 * 60 * 60 * 1000);
+    }
+    expect(vendorsService.findOne).toHaveBeenCalledWith('vendor-1');
+    expect(trucksRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      vendor_id: 'vendor-1',
+      vendor: selectedVendor,
+      nha_xe: 'Công ty Anh Dũng',
+    }));
+    expect(vendorsService.addPayableDebt).toHaveBeenCalledTimes(2);
+    expect(vendorsService.addPayableDebt).toHaveBeenNthCalledWith(
+      1, 'vendor-1', 25, 't1', expect.stringContaining('Chi phí chuyến #t1'),
+    );
+    expect(vendorsService.addPayableDebt).toHaveBeenNthCalledWith(
+      2, 'vendor-1', 75.01, 't2', expect.stringContaining('Chi phí chuyến #t2'),
+    );
+    expect(vendorsService.resolveDefaultVendorId).not.toHaveBeenCalled();
+    expect(vendorsService.addPayableDebt.mock.invocationCallOrder[0])
+      .toBeGreaterThan(tripsRepository.save.mock.invocationCallOrder[0]);
+    expect(vendorsService.addPayableDebt.mock.invocationCallOrder[1])
+      .toBeGreaterThan(tripsRepository.save.mock.invocationCallOrder[1]);
     expect(manifestWaybillsRepository.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('bulk stack keeps shared vendor cost allocation stable when selection order is reversed', async () => {
+    const selectedVendor = { id: 'vendor-1', name: 'Công ty Anh Dũng', status: 'ACTIVE' };
+    setupMixedDestinationBulkStack({ vendor_id: 'vendor-1', vendor: selectedVendor });
+    vendorsService.findOne.mockResolvedValue(selectedVendor);
+
+    await service.bulkStackOntoTruck({
+      items: [
+        { waybill_id: 'w2', truck_id: 'truck-1', package_count: 3 },
+        { waybill_id: 'w1', truck_id: 'truck-1', package_count: 1 },
+      ],
+      vendor_id: 'vendor-1',
+      vendor_cost: 100.01,
+    }, manager);
+
+    const costByDestination = Object.fromEntries(
+      tripsRepository.create.mock.calls.map(([value]: [any]) => [value.end_hub_id, Number(value.trip_cost)]),
+    );
+    expect(costByDestination).toEqual({ '2': 25, '3': 75.01 });
+    expect(Object.values(costByDestination).reduce((sum, cost) => sum + cost, 0)).toBeCloseTo(100.01, 2);
+    expect(vendorsService.addPayableDebt.mock.calls.map(([, amount, tripId]: [string, number, string]) => [amount, tripId]))
+      .toEqual([[25, 't1'], [75.01, 't2']]);
+  });
+
+  it('bulk stack keeps legacy line vendor costs local to their destination group', async () => {
+    const vendor = { id: 'vendor-1', name: 'Công ty Anh Dũng', status: 'ACTIVE' };
+    setupMixedDestinationBulkStack({ vendor_id: 'vendor-1', vendor });
+
+    await service.bulkStackOntoTruck({
+      items: [
+        { waybill_id: 'w2', truck_id: 'truck-1', package_count: 3, vendor_cost: 20.25 },
+        { waybill_id: 'w1', truck_id: 'truck-1', package_count: 1, vendor_cost: 10.1 },
+      ],
+    }, manager);
+
+    const costByDestination = Object.fromEntries(
+      tripsRepository.create.mock.calls.map(([value]: [any]) => [value.end_hub_id, Number(value.trip_cost)]),
+    );
+    expect(costByDestination).toEqual({ '2': 10.1, '3': 20.25 });
+    expect(vendorsService.addPayableDebt.mock.calls.map(([vendorId, amount, tripId]: [string, number, string]) => [vendorId, amount, tripId]))
+      .toEqual([['vendor-1', 10.1, 't1'], ['vendor-1', 20.25, 't2']]);
+  });
+
+  it('bulk stack rejects shared vendor cost across multiple trucks', async () => {
+    await expect(service.bulkStackOntoTruck({
+      items: [
+        { waybill_id: 'w1', truck_id: 'truck-1', package_count: 1 },
+        { waybill_id: 'w2', truck_id: 'truck-2', package_count: 1 },
+      ],
+      vendor_cost: 100,
+    }, manager)).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(trucksRepository.findOne).not.toHaveBeenCalled();
+    expect(splitsRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('bulk stack rejects duplicate waybills before reading or mutating repositories', async () => {
+    await expect(service.bulkStackOntoTruck({
+      items: [
+        { waybill_id: 'w1', truck_id: 'truck-1', package_count: 1 },
+        { waybill_id: 'w1', truck_id: 'truck-1', package_count: 1 },
+      ],
+    }, manager)).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(vendorsService.findOne).not.toHaveBeenCalled();
+    expect(trucksRepository.findOne).not.toHaveBeenCalled();
+    expect(waybillsRepository.findOne).not.toHaveBeenCalled();
+    expect(splitsRepository.find).not.toHaveBeenCalled();
+    expect(splitsRepository.save).not.toHaveBeenCalled();
+    expect(tripsRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('bulk stack rejects an explicit vendor that conflicts with the truck vendor', async () => {
+    setupMixedDestinationBulkStack({ vendor_id: 'vendor-existing' });
+    vendorsService.findOne.mockResolvedValue({ id: 'vendor-selected', name: 'NCC mới', status: 'ACTIVE' });
+
+    await expect(service.bulkStackOntoTruck({
+      items: [{ waybill_id: 'w1', truck_id: 'truck-1', package_count: 1 }],
+      vendor_id: 'vendor-selected',
+      vendor_cost: 100,
+    }, manager)).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(trucksRepository.save).not.toHaveBeenCalled();
+    expect(splitsRepository.save).not.toHaveBeenCalled();
+    expect(tripsRepository.save).not.toHaveBeenCalled();
+    expect(vendorsService.addPayableDebt).not.toHaveBeenCalled();
+  });
+
+  it('bulk stack does not persist a vendor link until every waybill passes pre-validation', async () => {
+    setupMixedDestinationBulkStack();
+    vendorsService.findOne.mockResolvedValue({ id: 'vendor-1', name: 'NCC mới', status: 'ACTIVE' });
+    waybillsRepository.findOne
+      .mockReset()
+      .mockResolvedValueOnce(makeWaybill({ id: 'w1', waybill_code: 'ECOHAN1' }))
+      .mockResolvedValueOnce(null);
+
+    await expect(service.bulkStackOntoTruck({
+      items: [
+        { waybill_id: 'w1', truck_id: 'truck-1', package_count: 1 },
+        { waybill_id: 'missing', truck_id: 'truck-1', package_count: 1 },
+      ],
+      vendor_id: 'vendor-1',
+    }, manager)).rejects.toThrow('Waybill missing not found');
+
+    expect(trucksRepository.save).not.toHaveBeenCalled();
+    expect(splitsRepository.save).not.toHaveBeenCalled();
+    expect(tripsRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('bulk stack rejects an explicitly selected inactive vendor', async () => {
+    vendorsService.findOne.mockResolvedValue({ id: 'vendor-inactive', name: 'NCC nghỉ', status: 'INACTIVE' });
+
+    await expect(service.bulkStackOntoTruck({
+      items: [{ waybill_id: 'w1', truck_id: 'truck-1', package_count: 1 }],
+      vendor_id: 'vendor-inactive',
+      vendor_cost: 100,
+    }, manager)).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(trucksRepository.findOne).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: 'shared root cost',
+      payload: {
+        items: [{ waybill_id: 'w1', truck_id: 'truck-1', package_count: 1 }],
+        vendor_cost: 100,
+      },
+    },
+    {
+      label: 'legacy line cost',
+      payload: {
+        items: [{ waybill_id: 'w1', truck_id: 'truck-1', package_count: 1, vendor_cost: 100 }],
+      },
+    },
+  ])('bulk stack rejects $label from non-manager before financial mutation', async ({ payload }) => {
+    await expect(service.bulkStackOntoTruck(payload, warehouse))
+      .rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(vendorsService.findOne).not.toHaveBeenCalled();
+    expect(trucksRepository.findOne).not.toHaveBeenCalled();
+    expect(waybillsRepository.findOne).not.toHaveBeenCalled();
+    expect(splitsRepository.save).not.toHaveBeenCalled();
+    expect(tripsRepository.save).not.toHaveBeenCalled();
+    expect(vendorsService.addPayableDebt).not.toHaveBeenCalled();
+  });
+
+  it('bulk stack allows an operational vendor link for warehouse users without exposing vendor cost', async () => {
+    setupMixedDestinationBulkStack();
+    vendorsService.findOne.mockResolvedValue({ id: 'vendor-1', name: 'NCC vận tải', status: 'ACTIVE' });
+
+    const result = await service.bulkStackOntoTruck({
+      items: [{ waybill_id: 'w1', truck_id: 'truck-1', package_count: 1 }],
+      vendor_id: 'vendor-1',
+    }, warehouse);
+
+    expect(trucksRepository.save).toHaveBeenCalledWith(expect.objectContaining({ vendor_id: 'vendor-1' }));
+    expect(result.items[0]).not.toHaveProperty('vendor_cost');
+    expect(vendorsService.addPayableDebt).not.toHaveBeenCalled();
   });
 
   it('preview next code uses independent hub prefix sequence', async () => {

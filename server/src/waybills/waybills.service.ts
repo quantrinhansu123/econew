@@ -731,16 +731,86 @@ export class WaybillsService {
   }
 
   async bulkStackOntoTruck(dto: BulkStackOntoTruckDto, currentUser: UserEntity) {
+    const vendorCostSubmitted = dto.vendor_cost != null
+      || dto.items.some((line) => line.vendor_cost != null);
+    if (vendorCostSubmitted && !isManager(currentUser.role_mask)) {
+      throw new ForbiddenException('Only managers can assign vendor cost');
+    }
+    const requestedWaybillIds = dto.items.map((line) => String(line.waybill_id));
+    if (new Set(requestedWaybillIds).size !== requestedWaybillIds.length) {
+      throw new BadRequestException('Each waybill can only appear once in a stack request');
+    }
+
     const saved: Array<Record<string, unknown>> = [];
+    const stackDepartureTime = new Date();
+    const sharedVendorCostProvided = dto.vendor_cost != null;
+    const sharedVendorCost = sharedVendorCostProvided
+      ? this.normalizeStackVendorCost(dto.vendor_cost!)
+      : 0;
+    const legacyVendorCosts = dto.items.map((line) => (
+      line.vendor_cost != null ? this.normalizeStackVendorCost(line.vendor_cost) : 0
+    ));
+    const truckIds = [...new Set(dto.items.map((line) => String(line.truck_id)))];
+    if (sharedVendorCostProvided && truckIds.length !== 1) {
+      throw new BadRequestException('Shared vendor cost requires all waybills to use the same truck');
+    }
+
+    const selectedVendorId = dto.vendor_id?.trim() || null;
+    const selectedVendor = selectedVendorId
+      ? await this.vendorsService.findOne(selectedVendorId)
+      : null;
+    if (selectedVendor?.status && selectedVendor.status.toUpperCase() !== 'ACTIVE') {
+      throw new BadRequestException('Selected vendor is not active');
+    }
+    const trucksById = new Map<string, TruckEntity>();
+    const trucksPendingVendorLink: TruckEntity[] = [];
+    for (const truckId of truckIds) {
+      const truck = await this.trucksRepository.findOne({
+        where: { id: truckId },
+        relations: ['vendor'],
+      });
+      if (!truck) throw new NotFoundException(`Truck ${truckId} not found`);
+
+      if (selectedVendorId && selectedVendor) {
+        const currentVendorId = truck.vendor_id ? String(truck.vendor_id) : null;
+        if (currentVendorId && currentVendorId !== selectedVendorId) {
+          throw new BadRequestException(`Truck ${truckId} is assigned to a different vendor`);
+        }
+        if (!currentVendorId) {
+          truck.vendor_id = selectedVendorId;
+          truck.vendor = selectedVendor;
+          truck.nha_xe = truck.nha_xe?.trim() || selectedVendor.name?.trim() || null;
+          trucksPendingVendorLink.push(truck);
+        } else if (!truck.vendor) {
+          truck.vendor = selectedVendor;
+        }
+      }
+      trucksById.set(truckId, truck);
+    }
+
     const stackedRows: Array<{
       waybill: WaybillRecord;
       loading_position: number | null;
+      package_count: number;
       split_id: string;
       expected_arrival_at: Date | null;
       truck_id: string;
+      vendor_id: string | null;
+      vendor_cost: number;
+      license_plate: string | null;
+    }> = [];
+    const preparedRows: Array<{
+      line: BulkStackOntoTruckDto['items'][number];
+      line_index: number;
+      waybill: WaybillRecord;
+      truck: TruckEntity;
+      package_count: number;
+      total_packages: number;
+      expected_arrival_at: Date;
+      carrier_label: string | null;
     }> = [];
 
-    for (const line of dto.items) {
+    for (const [lineIndex, line] of dto.items.entries()) {
       const waybill = await this.waybillsRepository.findOne({
         where: { id: String(line.waybill_id), deleted_at: IsNull() } as any,
         relations: ['order', 'origin_hub', 'dest_hub'],
@@ -751,10 +821,7 @@ export class WaybillsService {
         throw new BadRequestException(`Waybill ${waybill.waybill_code} cannot be stacked`);
       }
 
-      const truck = await this.trucksRepository.findOne({
-        where: { id: String(line.truck_id) },
-        relations: ['vendor'],
-      });
+      const truck = trucksById.get(String(line.truck_id));
       if (!truck) throw new NotFoundException(`Truck ${line.truck_id} not found`);
 
       const existingSplits = await this.splitsRepository.find({ where: { waybill_id: String(line.waybill_id) } });
@@ -769,12 +836,43 @@ export class WaybillsService {
         throw new BadRequestException(`Waybill ${waybill.waybill_code}: allocated packages exceed order total`);
       }
 
-      const expectedArrivalAt = this.computeExpectedArrivalAt(waybill);
+      const expectedArrivalAt = this.resolveStackExpectedArrivalAt(
+        stackDepartureTime,
+        line.expected_arrival_at,
+      );
       const carrierLabel = truck.nha_xe?.trim()
         || truck.vendor?.name?.trim()
         || truck.bks?.trim()
         || truck.license_plate?.trim()
         || null;
+
+      preparedRows.push({
+        line,
+        line_index: lineIndex,
+        waybill,
+        truck,
+        package_count: packageCount,
+        total_packages: totalPackages,
+        expected_arrival_at: expectedArrivalAt,
+        carrier_label: carrierLabel,
+      });
+    }
+
+    for (const truck of trucksPendingVendorLink) {
+      await this.trucksRepository.save(truck);
+    }
+
+    for (const prepared of preparedRows) {
+      const {
+        line,
+        line_index: lineIndex,
+        waybill,
+        truck,
+        package_count: packageCount,
+        total_packages: totalPackages,
+        expected_arrival_at: expectedArrivalAt,
+        carrier_label: carrierLabel,
+      } = prepared;
 
       const split = await this.splitsRepository.save(this.splitsRepository.create({
         waybill_id: String(line.waybill_id),
@@ -788,18 +886,10 @@ export class WaybillsService {
         created_by: currentUser.id,
       }));
 
-      let vendorDebtAmount: number | undefined;
-      if (line.vendor_cost != null && line.vendor_cost > 0) {
-        const vendorId = truck.vendor_id ?? await this.vendorsService.resolveDefaultVendorId();
-        const plate = truck.bks ?? truck.license_plate ?? '';
-        await this.vendorsService.addPayableDebt(
-          vendorId,
-          line.vendor_cost,
-          undefined,
-          `Xếp hàng ${waybill.waybill_code} · ${plate} · split #${split.id}`,
-        );
-        vendorDebtAmount = line.vendor_cost;
-      }
+      const legacyVendorCost = legacyVendorCosts[lineIndex];
+      const vendorDebtAmount = legacyVendorCost > 0
+        ? legacyVendorCost
+        : undefined;
 
       const ratio = packageCount / totalPackages;
       const totalFreight = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0);
@@ -813,15 +903,19 @@ export class WaybillsService {
         loading_position: split.loading_position,
         package_count: split.package_count,
         expected_arrival_at: split.expected_arrival_at,
-        vendor_cost: vendorDebtAmount,
+        ...(isManager(currentUser.role_mask) ? { vendor_cost: vendorDebtAmount } : {}),
         allocated_freight: isManager(currentUser.role_mask) ? Math.round(totalFreight * ratio) : undefined,
       });
       stackedRows.push({
         waybill,
         loading_position: split.loading_position,
+        package_count: Number(split.package_count),
         split_id: String(split.id),
         expected_arrival_at: split.expected_arrival_at,
         truck_id: String(line.truck_id),
+        vendor_id: truck.vendor_id ? String(truck.vendor_id) : null,
+        vendor_cost: vendorDebtAmount ?? 0,
+        license_plate: truck.bks ?? truck.license_plate ?? null,
       });
     }
 
@@ -835,7 +929,21 @@ export class WaybillsService {
       group.push(row);
       groups.set(key, group);
       return groups;
-    }, new Map<string, typeof stackedRows>()).values()];
+    }, new Map<string, typeof stackedRows>()).values()].sort((left, right) => {
+      const leftKey = [left[0].truck_id, left[0].waybill.origin_hub_id, left[0].waybill.dest_hub_id]
+        .map(String)
+        .join(':');
+      const rightKey = [right[0].truck_id, right[0].waybill.origin_hub_id, right[0].waybill.dest_hub_id]
+        .map(String)
+        .join(':');
+      return leftKey.localeCompare(rightKey, 'en', { numeric: true });
+    });
+    const sharedCostAllocations = sharedVendorCostProvided
+      ? this.allocateStackVendorCost(
+        sharedVendorCost,
+        routeGroups.map((group) => group.reduce((sum, row) => sum + row.package_count, 0)),
+      )
+      : [];
     const manifestResults: Array<{
       id: string;
       manifest_code: string;
@@ -844,12 +952,13 @@ export class WaybillsService {
       trip_id: string | null;
       waybill_count: number;
     }> = [];
-    const stackDepartureTime = new Date();
-
-    for (const group of routeGroups) {
+    for (const [groupIndex, group] of routeGroups.entries()) {
       const manifest = await this.createClosedManifestForStack(group, currentUser);
       if (!manifest) throw new ConflictException('Không thể tạo bảng kê cho nhóm HUB đến');
       let tripId: string | null = null;
+      const vendorCost = sharedVendorCostProvided
+        ? sharedCostAllocations[groupIndex]
+        : group.reduce((sum, row) => sum + Math.round(row.vendor_cost * 100), 0) / 100;
       const trip = await this.createInTransitTripForStack(
         manifest,
         group[0].truck_id,
@@ -859,8 +968,25 @@ export class WaybillsService {
         })),
         group,
         stackDepartureTime,
+        {
+          driver_name: dto.driver_name,
+          driver_phone: dto.driver_phone,
+          trip_cost: vendorCost,
+        },
       );
       tripId = trip.id;
+      if (vendorCost > 0) {
+        const pricedRow = group.find((row) => row.vendor_cost > 0) ?? group[0];
+        const vendorId = selectedVendorId
+          ?? pricedRow.vendor_id
+          ?? await this.vendorsService.resolveDefaultVendorId();
+        await this.vendorsService.addPayableDebt(
+          vendorId,
+          vendorCost,
+          trip.id,
+          `Chi phí chuyến #${trip.id} · ${pricedRow.license_plate ?? ''} · bảng kê ${manifest.manifest_code}`,
+        );
+      }
       manifestResults.push({
         id: String(manifest.id),
         manifest_code: manifest.manifest_code,
@@ -943,6 +1069,11 @@ export class WaybillsService {
     splitRows: Array<{ split_id: string | number; expected_arrival_at?: Date | string | null }>,
     _waybillRows: Array<{ waybill: WaybillRecord }>,
     departureTime = new Date(),
+    tripDetails: {
+      driver_name?: string;
+      driver_phone?: string;
+      trip_cost?: number;
+    } = {},
   ): Promise<TripEntity> {
     const expectedTimes = splitRows
       .map((row) => (row.expected_arrival_at ? new Date(row.expected_arrival_at) : null))
@@ -971,6 +1102,12 @@ export class WaybillsService {
       arrival_time: expectedArrival,
       expected_arrival_time: expectedArrival,
       status: TripStatus.PLANNED,
+      driver_name: tripDetails.driver_name?.trim() || null,
+      driver_phone: tripDetails.driver_phone?.trim() || null,
+      trip_cost: tripDetails.trip_cost && tripDetails.trip_cost > 0
+        ? String(tripDetails.trip_cost)
+        : null,
+      other_costs: null,
     }));
 
     manifest.status = ManifestStatus.CLOSED;
@@ -1245,7 +1382,9 @@ export class WaybillsService {
       loading_position: position,
       vi_tri_hang: position,
       ngay_boc: this.formatDispatchDate(waybill.loaded_at ?? waybill.received_at ?? waybill.created_at),
-      ngay_toi: this.formatDispatchDate(split.expected_arrival_at ?? this.computeExpectedArrivalAt(waybill)),
+      ngay_toi: this.formatDispatchDate(split.expected_arrival_at ?? this.computeExpectedArrivalAt(
+        split.created_at ?? waybill.loaded_at ?? waybill.received_at ?? waybill.created_at ?? new Date(),
+      )),
       ma_tinh: hubCode,
       ten_cty: companyName,
       dv,
@@ -1277,11 +1416,52 @@ export class WaybillsService {
     return parts[1] ?? '';
   }
 
-  private computeExpectedArrivalAt(waybill: WaybillRecord): Date {
-    const base = waybill.created_at ?? waybill.received_at ?? new Date();
+  private computeExpectedArrivalAt(base: Date | string = new Date()): Date {
     const date = base instanceof Date ? new Date(base.getTime()) : new Date(base);
     date.setDate(date.getDate() + 3);
     return date;
+  }
+
+  private normalizeStackVendorCost(value: number): number {
+    const numericValue = Number(value);
+    const cents = Math.round(numericValue * 100);
+    if (
+      !Number.isFinite(numericValue)
+      || numericValue < 0
+      || Math.abs(numericValue * 100 - cents) > 1e-6
+    ) {
+      throw new BadRequestException('Vendor cost must be non-negative and have at most 2 decimal places');
+    }
+    return cents / 100;
+  }
+
+  private allocateStackVendorCost(totalCost: number, packageWeights: number[]): number[] {
+    if (!packageWeights.length) return [];
+    const totalPackages = packageWeights.reduce((sum, value) => sum + value, 0);
+    if (totalPackages <= 0) throw new BadRequestException('Cannot allocate vendor cost without packages');
+
+    const totalCents = Math.round(totalCost * 100);
+    let cumulativePackages = 0;
+    let allocatedCents = 0;
+    return packageWeights.map((packageCount, index) => {
+      cumulativePackages += packageCount;
+      const cumulativeTarget = index === packageWeights.length - 1
+        ? totalCents
+        : Math.round((totalCents * cumulativePackages) / totalPackages);
+      const groupCents = cumulativeTarget - allocatedCents;
+      allocatedCents = cumulativeTarget;
+      return groupCents / 100;
+    });
+  }
+
+  private resolveStackExpectedArrivalAt(departureTime: Date, explicit?: Date | string | null): Date {
+    const expectedArrival = explicit
+      ? new Date(explicit)
+      : new Date(departureTime.getTime() + 3 * 24 * 60 * 60 * 1000);
+    if (Number.isNaN(expectedArrival.getTime()) || expectedArrival.getTime() <= departureTime.getTime()) {
+      throw new BadRequestException('Expected arrival time must be after stack departure time');
+    }
+    return expectedArrival;
   }
 
   private formatDispatchDate(value: Date | string | null | undefined): string | null {
