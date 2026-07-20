@@ -1,5 +1,6 @@
 import { phuongThucToPrintLabel } from '../warehouse/orders/orderFormUtils';
 import type { WaybillDetail } from '../warehouse/orders/types';
+import { formatMoney } from '../../lib/formatMoney';
 
 export interface WaybillPrintData {
   waybillCode: string;
@@ -25,10 +26,14 @@ export interface WaybillPrintData {
   thuHo: string;
   khaiGia: string;
   ngayGuiDon: string;
+  cuocChinh: string;
+  dichVuCongThem: string;
+  tongCuoc: string;
   tongPhaiThuPhat: string;
   dichVu: string;
   dvGtgt: string;
   codStamp: boolean;
+  showPricing: boolean;
 }
 
 const waitForImage = (image: HTMLImageElement) => {
@@ -150,7 +155,10 @@ function parseM3FromNote(note: string) {
   return (length * width * height) / 1_000_000;
 }
 
-export function buildWaybillPrintData(waybill: WaybillDetail): WaybillPrintData {
+export function buildWaybillPrintData(
+  waybill: WaybillDetail,
+  showPricing = false,
+): WaybillPrintData {
   const note = waybill.note || waybill.notes || '';
   const sender = parseContact(waybill.sender_info);
   const receiver = parseContact(waybill.receiver_info);
@@ -170,6 +178,7 @@ export function buildWaybillPrintData(waybill: WaybillDetail): WaybillPrintData 
     0;
 
   const cod = Number(waybill.cod_amount) || 0;
+  const freight = Number(waybill.freight_amount) || Number(waybill.cost_amount) || 0;
   const paymentType = String(waybill.payment_type || '').toUpperCase();
   const phuongThuc = parseNoteField(note, 'phuong_thuc');
   const createdAt = waybill.received_at || (waybill as { created_at?: string }).created_at;
@@ -204,9 +213,13 @@ export function buildWaybillPrintData(waybill: WaybillDetail): WaybillPrintData 
     thuHo: formatNum(cod, 0) || '0',
     khaiGia: 'Không',
     ngayGuiDon: formatDate(createdAt),
+    cuocChinh: showPricing ? formatMoney(freight) : '',
+    dichVuCongThem: '',
+    tongCuoc: showPricing ? formatMoney(freight) : '',
     tongPhaiThuPhat: formatNum(cod, 0) || '0',
     dichVu: (dichVu || loaiBp || 'ĐƯỜNG BỘ').toUpperCase(),
     dvGtgt: parseNoteField(note, 'dich_vu_gia_tang') || 'Tiêu chuẩn',
     codStamp: paymentType === 'COD' || cod > 0,
+    showPricing,
   };
 }

@@ -165,7 +165,7 @@ const isManager = (user: User) => (user.role_mask & (32 | 64)) !== 0;
 | Hạn mức cước mục tiêu (load planning) | MANAGER+ |
 | Lãi/lỗ tạm tính chuyến xe | MANAGER+ |
 | Dashboard KPI & báo cáo doanh thu | DIRECTOR hoặc MANAGER |
-| Trang `/print/waybill/:id` | **KHÔNG** render cước phí, KHÔNG render tính năng ẩn |
+| Trang `/print/waybill/:id` | Mặc định ẩn cước; chỉ MANAGER/DIRECTOR được bật `Hiện cước khi in` |
 
 ---
 
@@ -256,7 +256,7 @@ const isManager = (user: User) => (user.role_mask & (32 | 64)) !== 0;
 - Tên file service/controller (NestJS): `kebab-case.service.ts` / `kebab-case.controller.ts`
 - Mọi endpoint trả về lỗi dùng HTTP status chuẩn (400, 401, 403, 404, 422, 500)
 - Không trả `cost_amount` trong response API nếu caller không có quyền MANAGER+
-- Template `/print/waybill/:id` là route riêng biệt, không tái sử dụng component có tính năng ẩn
+- Template `/print/waybill/:id` là route riêng biệt; cước chỉ render khi MANAGER/DIRECTOR chủ động bật `Hiện cước khi in`
 
 ---
 

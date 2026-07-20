@@ -22,6 +22,7 @@ import type { CustomerListItem, CustomerListResponse } from './warehouse/custome
 import type { BillListItem, NewOrderFormState } from './warehouse/orders/orderFormTypes';
 import { nextEcoBillCodeFromCodes } from './warehouse/orders/waybillCodeUtils';
 import type { BadgeConfig, CreatedWaybill, HubSummary, PaymentType, UserSummary, WaybillDetail } from './warehouse/orders/types';
+import { canViewWaybillPricing } from './print/waybillPricingAccess';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const CREATE_ROLES = 1 | 32 | 64;
@@ -91,6 +92,7 @@ export default function WarehouseOrderNewPage() {
   const [createdWaybill, setCreatedWaybill] = useState<CreatedWaybill | null>(null);
   const [isSuccessOpen, setIsSuccessOpen] = useState(false);
   const [isSuccessClosing, setIsSuccessClosing] = useState(false);
+  const [showPricingOnPrint, setShowPricingOnPrint] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [billFilterDate, setBillFilterDate] = useState('');
@@ -98,6 +100,7 @@ export default function WarehouseOrderNewPage() {
   const [hasMoreBills, setHasMoreBills] = useState(false);
 
   const canCreate = hasCreateRole(user?.role_mask ?? 0);
+  const canViewPricing = canViewWaybillPricing(user?.role_mask);
   const loginName = getLoginDisplayName(user as Parameters<typeof getLoginDisplayName>[0]);
   const hubOptions = useMemo(
     () => hubs.filter(normalizeActive).map((hub) => ({ value: String(hub.id), label: formatHub(hub) })),
@@ -424,10 +427,17 @@ export default function WarehouseOrderNewPage() {
     return bills.find((bill) => bill.waybill_code.toUpperCase() === code)?.id ?? null;
   }, [selectedBillId, form.soBill, bills]);
 
+  const buildPrintQuery = (params: Record<string, string> = {}) => {
+    const query = new URLSearchParams(params);
+    if (canViewPricing && showPricingOnPrint) query.set('pricing', 'show');
+    else query.delete('pricing');
+    return query.toString();
+  };
+
   const openPrintBill = (params: Record<string, string> = {}, billId?: string | null) => {
     const id = billId ?? printableBillId;
     if (!id) return;
-    const query = new URLSearchParams(params).toString();
+    const query = buildPrintQuery(params);
     window.open(`/print/waybill/${id}${query ? `?${query}` : ''}`, '_blank', 'noopener');
   };
 
@@ -437,10 +447,10 @@ export default function WarehouseOrderNewPage() {
 
   const handleBulkPrintBills = (billIds: string[]) => {
     if (!billIds.length) return;
-    const query = new URLSearchParams({
+    const query = buildPrintQuery({
       ids: billIds.join(','),
       print: '1',
-    }).toString();
+    });
     window.open(`/print/waybills?${query}`, '_blank', 'noopener');
   };
 
@@ -535,6 +545,9 @@ export default function WarehouseOrderNewPage() {
             onPrintRegular={() => openPrintBill({ print: '1' })}
             onPrintA5={() => openPrintBill({ print: '1', format: 'a5' })}
             printableBillId={printableBillId}
+            canViewPricing={canViewPricing}
+            showPricingOnPrint={showPricingOnPrint}
+            onShowPricingOnPrintChange={setShowPricingOnPrint}
             billFilterDate={billFilterDate}
             onBillFilterDateChange={handleBillFilterDateChange}
             isBillListLoading={isBillListLoading}
@@ -557,7 +570,10 @@ export default function WarehouseOrderNewPage() {
         paymentConfig={paymentConfig}
         onClose={closeSuccess}
         onCreateAnother={handleCreateAnother}
-        onPrint={() => createdId && navigate(`/print/waybill/${createdId}?print=1`)}
+        onPrint={() => {
+          if (!createdId) return;
+          navigate(`/print/waybill/${createdId}?${buildPrintQuery({ print: '1' })}`);
+        }}
       />
 
       <OrderBulkImportDialog

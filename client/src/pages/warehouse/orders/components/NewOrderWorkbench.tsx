@@ -33,6 +33,9 @@ interface Props {
   onPrintRegular: () => void;
   onPrintA5: () => void;
   printableBillId: string | null;
+  canViewPricing: boolean;
+  showPricingOnPrint: boolean;
+  onShowPricingOnPrintChange: (value: boolean) => void;
   billFilterDate: string;
   onBillFilterDateChange: (value: string) => void;
   isBillListLoading: boolean;
@@ -63,6 +66,9 @@ export default function NewOrderWorkbench({
   onPrintRegular,
   onPrintA5,
   printableBillId,
+  canViewPricing,
+  showPricingOnPrint,
+  onShowPricingOnPrintChange,
   billFilterDate,
   onBillFilterDateChange,
   isBillListLoading,
@@ -338,6 +344,17 @@ export default function NewOrderWorkbench({
             <ActionButton label="Xem bản in A4" onClick={onPreviewRegular} disabled={!printableBillId} />
             <ActionButton label="In A4 thường" onClick={onPrintRegular} disabled={!printableBillId} primary />
             <ActionButton label="In A5 (chọn khay)" onClick={onPrintA5} disabled={!printableBillId} />
+            {canViewPricing && (
+              <label className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-[12px] font-extrabold text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={showPricingOnPrint}
+                  onChange={(event) => onShowPricingOnPrintChange(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                />
+                Hiện cước khi in
+              </label>
+            )}
           </div>
         </div>
 
