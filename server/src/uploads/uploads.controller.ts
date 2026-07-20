@@ -1,5 +1,7 @@
 import {
   Controller,
+  HttpCode,
+  HttpStatus,
   Post,
   UploadedFile,
   UseGuards,
@@ -35,6 +37,7 @@ export class UploadsController {
   }
 
   @Post('waybill-images')
+  @HttpCode(HttpStatus.OK)
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Upload ảnh bill/hàng hóa lên Supabase Storage' })
   @ApiConsumes('multipart/form-data')
