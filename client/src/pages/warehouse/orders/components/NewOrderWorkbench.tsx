@@ -29,9 +29,9 @@ interface Props {
   onNew: () => void;
   onDelete: () => void;
   onDeleteBill: (bill: BillListItem) => void;
-  onPreviewA5: () => void;
-  onPrintA5: () => void;
+  onPreviewRegular: () => void;
   onPrintRegular: () => void;
+  onPrintA5: () => void;
   printableBillId: string | null;
   billFilterDate: string;
   onBillFilterDateChange: (value: string) => void;
@@ -59,9 +59,9 @@ export default function NewOrderWorkbench({
   onNew,
   onDelete,
   onDeleteBill,
-  onPreviewA5,
-  onPrintA5,
+  onPreviewRegular,
   onPrintRegular,
+  onPrintA5,
   printableBillId,
   billFilterDate,
   onBillFilterDateChange,
@@ -335,9 +335,9 @@ export default function NewOrderWorkbench({
             <ActionButton label={isImageUploading ? 'Đang tải ảnh' : 'Nhập'} onClick={onSave} disabled={!canManage || isBusy} primary />
             <ActionButton label="Mới" onClick={onNew} disabled={isBusy} />
             <ActionButton label="Xóa" onClick={onDelete} disabled={!canManage || !selectedBillId || isBusy} danger />
-            <ActionButton label="Xem A5" onClick={onPreviewA5} disabled={!printableBillId} />
-            <ActionButton label="In A5" onClick={onPrintA5} disabled={!printableBillId} />
-            <ActionButton label="In thường" onClick={onPrintRegular} disabled={!printableBillId} />
+            <ActionButton label="Xem bản in A4" onClick={onPreviewRegular} disabled={!printableBillId} />
+            <ActionButton label="In A4 thường" onClick={onPrintRegular} disabled={!printableBillId} primary />
+            <ActionButton label="In A5 (chọn khay)" onClick={onPrintA5} disabled={!printableBillId} />
           </div>
         </div>
 

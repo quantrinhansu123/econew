@@ -14,6 +14,10 @@ export default function PrintWaybillsBulkPage() {
     [searchParams],
   );
   const autoPrint = searchParams.get('print') === '1';
+  const printFormat = searchParams.get('format') === 'a5' ? 'a5' : 'a4';
+  const pageSizeRule = printFormat === 'a5'
+    ? '@media print { @page { size: A5 landscape; margin: 0; } }'
+    : '@media print { @page { size: A4 portrait; margin: 0; } }';
 
   const [waybills, setWaybills] = useState<WaybillDetail[]>([]);
   const [loading, setLoading] = useState(ids.length > 0);
@@ -63,7 +67,8 @@ export default function PrintWaybillsBulkPage() {
   const displayError = ids.length ? error : 'Chưa chọn vận đơn để in.';
 
   return (
-    <div className="waybill-invoice-wrap">
+    <div className={`waybill-invoice-wrap waybill-invoice-wrap--${printFormat}`}>
+      <style>{pageSizeRule}</style>
       <div className="print-toolbar mb-4 flex w-full max-w-[210mm] flex-wrap items-center gap-2">
         <button
           type="button"
@@ -75,7 +80,12 @@ export default function PrintWaybillsBulkPage() {
           In {printItems.length} phiếu
         </button>
         <span className="text-[12px] text-muted-foreground">
-          {printItems.length} phiếu A5 ngang · mỗi đơn in trên một trang.
+          {printItems.length} phiếu · mỗi đơn trên một trang {printFormat === 'a5' ? 'A5 ngang' : 'A4 dọc'}.
+        </span>
+        <span className="w-full text-[12px] text-muted-foreground">
+          {printFormat === 'a5'
+            ? 'Đã chọn A5: đặt giấy ngang và chọn đúng khay A5 trên máy in.'
+            : 'Mặc định A4: để giấy dọc như bình thường, không cần chỉnh khay.'}
         </span>
       </div>
 
@@ -96,7 +106,7 @@ export default function PrintWaybillsBulkPage() {
       <div className="waybill-bulk-print-stack">
         {printItems.map((data) => (
           <div key={data.waybillCode} className="waybill-bulk-print-item">
-            <div className="waybill-paper-preview waybill-paper-preview--a5">
+            <div className={`waybill-paper-preview waybill-paper-preview--${printFormat}`}>
               <WaybillInvoiceTemplate data={data} />
             </div>
           </div>

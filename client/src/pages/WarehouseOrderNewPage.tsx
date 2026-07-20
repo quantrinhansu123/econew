@@ -531,9 +531,9 @@ export default function WarehouseOrderNewPage() {
             onNew={() => void handleNew()}
             onDelete={handleDelete}
             onDeleteBill={(bill) => void handleDeleteBill(bill)}
-            onPreviewA5={() => openPrintBill()}
-            onPrintA5={() => openPrintBill({ print: '1' })}
-            onPrintRegular={() => openPrintBill({ print: '1', format: 'a4' })}
+            onPreviewRegular={() => openPrintBill()}
+            onPrintRegular={() => openPrintBill({ print: '1' })}
+            onPrintA5={() => openPrintBill({ print: '1', format: 'a5' })}
             printableBillId={printableBillId}
             billFilterDate={billFilterDate}
             onBillFilterDateChange={handleBillFilterDateChange}
