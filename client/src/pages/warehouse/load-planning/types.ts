@@ -97,6 +97,10 @@ export interface LoadPlanningBoardItem {
   split_id?: string | number;
   waybill_id: string | number;
   waybill_code?: string | null;
+  origin_hub_id?: string | number | null;
+  dest_hub_id?: string | number | null;
+  origin_hub?: HubSummary | null;
+  dest_hub?: HubSummary | null;
   loading_position?: number | null;
   vi_tri_hang?: number | null;
   ngay_boc?: string | null;

@@ -140,7 +140,11 @@ describe('ManifestsService', () => {
     waybillsRepo.find.mockResolvedValue([waybill({ package_count: 1 })]);
     linksRepo.create.mockImplementation((value) => value);
     await service.addWaybills('10', { waybill_ids: ['100'] }, dispatcher);
-    expect(linksRepo.save).toHaveBeenCalledWith([expect.objectContaining({ manifest_id: '10', waybill_id: '100', dispatch_fields: { so_luong: '1' } })]);
+    expect(linksRepo.save).toHaveBeenCalledWith([expect.objectContaining({
+      manifest_id: '10',
+      waybill_id: '100',
+      dispatch_fields: expect.objectContaining({ so_luong: '1' }),
+    })]);
     expect(splitsRepo.save).toHaveBeenCalled();
     expect(waybillsRepo.save).toHaveBeenCalledWith([expect.objectContaining({ manifest_id: '10' })]);
   });
@@ -156,7 +160,7 @@ describe('ManifestsService', () => {
     expect(linksRepo.save).toHaveBeenCalledWith([expect.objectContaining({
       manifest_id: '10',
       waybill_id: '100',
-      dispatch_fields: { so_luong: '5' },
+      dispatch_fields: expect.objectContaining({ so_luong: '5' }),
       loaded_at: null,
     })]);
     expect(splitsRepo.save).toHaveBeenCalledWith([expect.objectContaining({ waybill_id: '100', package_count: 5 })]);
@@ -247,6 +251,32 @@ describe('ManifestsService', () => {
     expect(linksRepo.save).toHaveBeenCalled();
   });
 
+  it('addWaybills rejects a waybill whose destination differs from the manifest destination', async () => {
+    const manifest = draftManifest({ dest_hub_id: '2' });
+    manifestsRepo.findOne.mockImplementation(async (options: any) => (
+      options?.where?.manifest_code ? null : manifest
+    ));
+    linksRepo.find.mockResolvedValue([]);
+    waybillsRepo.find.mockResolvedValue([waybill({ dest_hub_id: '3' })]);
+
+    await expect(service.addWaybills('10', { waybill_ids: ['100'] }, dispatcher))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(linksRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('update rejects changing destination when existing rows belong to another destination', async () => {
+    const manifest = draftManifest({
+      dest_hub_id: '2',
+      manifest_waybills: [{ waybill: waybill({ dest_hub_id: '2' }) }],
+    });
+    manifestsRepo.findOne.mockResolvedValue(manifest);
+    hubsRepo.findOne.mockResolvedValue({ id: '3', code: 'DAN', is_active: true });
+
+    await expect(service.update('10', { dest_hub_id: '3' }, dispatcher))
+      .rejects.toBeInstanceOf(ConflictException);
+    expect(manifestsRepo.save).not.toHaveBeenCalled();
+  });
+
   it('remove waybill khỏi manifest DRAFT thành công', async () => {
     waybillsRepo.findOne.mockResolvedValue(waybill({ manifest_id: '10' }));
     await service.removeWaybill('10', '100', dispatcher);
@@ -254,8 +284,8 @@ describe('ManifestsService', () => {
     expect(waybillsRepo.save).toHaveBeenCalledWith(expect.objectContaining({ manifest_id: null }));
   });
 
-  it('remove waybill khỏi manifest CLOSED phải bị chặn', async () => {
-    manifestsRepo.findOne.mockResolvedValue(draftManifest({ status: ManifestStatus.CLOSED }));
+  it('remove waybill khỏi manifest đã gán chuyến phải bị chặn', async () => {
+    manifestsRepo.findOne.mockResolvedValue(draftManifest({ status: ManifestStatus.ASSIGNED_TO_TRIP }));
     await expect(service.removeWaybill('10', '100', dispatcher)).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -280,6 +310,24 @@ describe('ManifestsService', () => {
     manifestsRepo.findOne.mockResolvedValue(draftManifest({ status: ManifestStatus.CLOSED }));
     tripsRepo.findOne.mockResolvedValue({ id: '9', start_hub_id: '3', status: TripStatus.PLANNED });
     await expect(service.assignTrip('10', { trip_id: '9' }, dispatcher)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('assignTrip với trip không khớp destination hub phải bị chặn', async () => {
+    manifestsRepo.findOne.mockResolvedValue(draftManifest({
+      status: ManifestStatus.CLOSED,
+      origin_hub_id: '1',
+      dest_hub_id: '2',
+    }));
+    tripsRepo.findOne.mockResolvedValue({
+      id: '9',
+      start_hub_id: '1',
+      end_hub_id: '3',
+      status: TripStatus.PLANNED,
+    });
+
+    await expect(service.assignTrip('10', { trip_id: '9' }, dispatcher))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(tripsRepo.save).not.toHaveBeenCalled();
   });
 
   it('getPrintableManifest không trả cost_amount/profit/tính năng ẩn', async () => {

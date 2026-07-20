@@ -449,7 +449,7 @@ export class TripsService {
       .addOrderBy('trip.departure_time', 'ASC')
       .take(limit);
 
-    const endHubId = query.end_hub_id != null ? String(query.end_hub_id) : currentUser.hub_id;
+    const endHubId = query.end_hub_id != null ? String(query.end_hub_id) : null;
     if (endHubId) qb.andWhere('trip.end_hub_id = :endHubId', { endHubId });
     this.applyHubScope(qb, currentUser);
 
@@ -502,6 +502,7 @@ export class TripsService {
 
       return {
         trip_id: trip.id,
+        manifest_id: trip.manifest_id,
         status: trip.status,
         license_plate: trip.truck?.license_plate ?? trip.truck?.bks ?? null,
         nha_xe: trip.truck?.nha_xe ?? trip.truck?.vendor?.name ?? null,

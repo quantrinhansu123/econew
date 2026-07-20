@@ -229,6 +229,12 @@ export default function LoadPlanningPrintTemplate({ data }: Props) {
 
           <div className="dispatch-print-info">
             <span>
+              <strong>HUB đi:</strong> {group.originHubLabel || '—'}
+            </span>
+            <span>
+              <strong>HUB đến:</strong> {group.destHubLabel || '—'}
+            </span>
+            <span>
               <strong>Biển số xe:</strong> {group.licensePlate || '—'}
             </span>
             <span>

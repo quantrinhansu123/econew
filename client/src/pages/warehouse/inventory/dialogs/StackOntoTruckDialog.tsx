@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
-import { AlertTriangle, Loader2, Plus, Printer, Save, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Building2, Loader2, Plus, Printer, Save, Trash2, X } from 'lucide-react';
 import { VendorCreatableSelect } from '../../../../components/ui/VendorCreatableSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError, apiRequest } from '../../../../lib/api';
@@ -18,6 +18,7 @@ import {
   DELIVERY_INSTRUCTION_OPTIONS,
   buildInitialSharedFields,
   buildStackFormRows,
+  resolveDestinationHubLabel,
   type StackOntoTruckFormRow,
   type StackOntoTruckSharedFields,
 } from '../stackOntoTruckUtils';
@@ -63,6 +64,14 @@ interface StackOntoTruckResult {
   saved_count?: number;
   manifest_id?: string | number | null;
   manifest_code?: string | null;
+  manifests?: Array<{
+    id: string | number;
+    manifest_code?: string | null;
+    origin_hub_id?: string | number | null;
+    dest_hub_id?: string | number | null;
+    trip_id?: string | number | null;
+    waybill_count?: number;
+  }>;
 }
 
 const normalizeTruckList = (response: TruckListResponse | TruckRecord[]) =>
@@ -105,6 +114,17 @@ export default function StackOntoTruckDialog({
     const truck = truckOptions.find((item) => item.id === shared.truck_id);
     return truck?.bks || truck?.license_plate || '';
   }, [shared.truck_id, truckOptions]);
+  const destinationHubLabels = useMemo(
+    () => {
+      const visibleWaybillIds = new Set(rows.map((row) => row.waybill_id));
+      return [...new Set(
+        waybills
+          .filter((waybill) => visibleWaybillIds.has(String(waybill.id)))
+          .map((waybill) => resolveDestinationHubLabel(waybill)),
+      )];
+    },
+    [rows, waybills],
+  );
 
   const filteredTruckOptions = useMemo(() => {
     const selectedVendorName = shared.nha_xe.trim().toLowerCase();
@@ -283,7 +303,9 @@ export default function StackOntoTruckDialog({
           <div>
             <p className="text-[11px] font-extrabold uppercase tracking-wide text-primary">In duyệt xếp hàng</p>
             <h3 className="text-[16px] font-extrabold text-foreground">
-              {printPayload.groups[0]?.manifestCode || 'BẢNG KÊ PHÁT HÀNG ECO'}
+              {printPayload.groups.length > 1
+                ? `${printPayload.groups.length} bảng kê theo HUB đến`
+                : printPayload.groups[0]?.manifestCode || 'BẢNG KÊ PHÁT HÀNG ECO'}
             </h3>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -323,7 +345,9 @@ export default function StackOntoTruckDialog({
         <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
           <div>
             <p className="text-[18px] font-black text-foreground">Xếp hàng lên xe</p>
-            <p className="text-[13px] text-muted-foreground">{rows.length} dòng được chọn · dữ liệu đồng bộ sang Phân loại ưu tiên</p>
+            <p className="text-[13px] text-muted-foreground">
+              {rows.length} dòng được chọn · tự tách {destinationHubLabels.length || 1} bảng kê theo HUB đến
+            </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-full p-2.5 hover:bg-muted"><X size={22} /></button>
         </div>
@@ -381,6 +405,14 @@ export default function StackOntoTruckDialog({
                 </div>
               </div>
 
+              <div className="mb-4 flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-[12px] font-bold text-blue-900">
+                <Building2 size={16} className="mt-0.5 shrink-0 text-primary" />
+                <span>
+                  Hệ thống tạo riêng một bảng kê cho mỗi HUB đến
+                  {destinationHubLabels.length ? `: ${destinationHubLabels.join(', ')}` : ''}.
+                </span>
+              </div>
+
               <div className="overflow-x-auto rounded-xl border border-border">
                 <table className="w-full min-w-[1180px] border-collapse text-[13px]">
                   <thead>
@@ -410,7 +442,14 @@ export default function StackOntoTruckDialog({
                           </td>
                           <td className="border-r border-border px-3 py-3"><input type="number" min={1} value={row.loading_position} onChange={(e) => updateRow(row.waybill_id, { loading_position: e.target.value })} placeholder="VT" className="h-10 w-full min-w-[72px] rounded-lg border border-yellow-300 bg-yellow-50 px-2 text-center text-[14px] font-bold outline-none focus:border-primary" /></td>
                           <td className="border-r border-border px-3 py-3 text-center text-[14px] font-bold text-emerald-800">{row.expected_arrival_label}</td>
-                          <td className="border-r border-border px-3 py-3"><select value={row.delivery_instruction} onChange={(e) => updateRow(row.waybill_id, { delivery_instruction: e.target.value })} className="h-10 w-full min-w-[150px] rounded-lg border border-slate-300 bg-white px-2 text-[13px] font-bold outline-none focus:border-primary">{DELIVERY_INSTRUCTION_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></td>
+                          <td className="border-r border-border px-3 py-3">
+                            <select value={row.delivery_instruction} onChange={(e) => updateRow(row.waybill_id, { delivery_instruction: e.target.value })} className="h-10 w-full min-w-[180px] rounded-lg border border-slate-300 bg-white px-2 text-[13px] font-bold outline-none focus:border-primary">
+                              {!DELIVERY_INSTRUCTION_OPTIONS.some((option) => option === row.delivery_instruction) && (
+                                <option value={row.delivery_instruction}>{row.delivery_instruction}</option>
+                              )}
+                              {DELIVERY_INSTRUCTION_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                            </select>
+                          </td>
                           <td className="px-3 py-3 text-center"><button type="button" onClick={() => removeRow(row.waybill_id)} className="inline-flex h-9 items-center gap-1 rounded-lg border border-red-100 bg-red-50 px-3 text-[12px] font-black text-red-600 hover:bg-red-100"><Trash2 size={14} />Bỏ đơn</button></td>
                         </tr>
                       );

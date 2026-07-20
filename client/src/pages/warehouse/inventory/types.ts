@@ -169,6 +169,10 @@ export interface RouteFormState {
 export interface AllocationBoardItem {
   waybill_id: string | number;
   waybill_code?: string | null;
+  origin_hub_id?: string | number | null;
+  dest_hub_id?: string | number | null;
+  origin_hub?: HubSummary | null;
+  dest_hub?: HubSummary | null;
   loading_position?: number | null;
   vi_tri_hang?: number | null;
   ngay_boc?: string | null;
@@ -192,6 +196,7 @@ export interface AllocationBoardItem {
 
 export interface AllocationBoardTrip {
   trip_id: string | number;
+  manifest_id?: string | number | null;
   status?: string | null;
   license_plate?: string | null;
   nha_xe?: string | null;
@@ -200,6 +205,8 @@ export interface AllocationBoardTrip {
   expected_arrival_time?: string | null;
   departure_time?: string | null;
   manifest_code?: string | null;
+  start_hub_id?: string | number | null;
+  end_hub_id?: string | number | null;
   start_hub?: HubSummary | null;
   end_hub?: HubSummary | null;
   items: AllocationBoardItem[];

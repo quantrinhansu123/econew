@@ -16,6 +16,8 @@ export interface LoadPlanningPrintGroup {
   licensePlate: string;
   nhaXe: string;
   manifestCode: string;
+  originHubLabel?: string;
+  destHubLabel?: string;
   driverName?: string;
   driverPhone?: string;
   expectedArrival?: string | null;
@@ -35,6 +37,74 @@ export interface LoadPlanningPrintPayload {
 const fmt = (value?: string | number | null) => (value == null || value === '' ? '' : String(value));
 
 const DISPATCH_COMPLETION_DAYS = 3;
+
+type HubLike = {
+  id?: string | number | null;
+  code?: string | null;
+  name?: string | null;
+} | null | undefined;
+
+type RouteSource = {
+  origin_hub_id?: string | number | null;
+  dest_hub_id?: string | number | null;
+  origin_hub?: HubLike;
+  dest_hub?: HubLike;
+};
+
+interface ResolvedHub {
+  key: string;
+  label: string;
+  code: string;
+}
+
+interface ResolvedRoute {
+  key: string;
+  origin: ResolvedHub;
+  destination: ResolvedHub;
+}
+
+function resolveHub(hub: HubLike, rawId: string | number | null | undefined, emptyLabel: string): ResolvedHub {
+  const id = String(hub?.id ?? rawId ?? '').trim();
+  const code = String(hub?.code ?? '').trim();
+  const name = String(hub?.name ?? '').trim();
+  const label =
+    code && name && code.toLocaleLowerCase('vi') !== name.toLocaleLowerCase('vi')
+      ? `${code} · ${name}`
+      : code || name || (id ? `#${id}` : emptyLabel);
+  return {
+    key: id ? `id:${id}` : code ? `code:${code.toLocaleLowerCase('vi')}` : name ? `name:${name.toLocaleLowerCase('vi')}` : 'unknown',
+    label,
+    code: code || name,
+  };
+}
+
+function resolveRoute(source: RouteSource): ResolvedRoute {
+  const origin = resolveHub(source.origin_hub, source.origin_hub_id, 'Chưa xác định');
+  const destination = resolveHub(source.dest_hub, source.dest_hub_id, 'Chưa xác định');
+  return {
+    key: `${origin.key}->${destination.key}`,
+    origin,
+    destination,
+  };
+}
+
+function groupByRoute<T extends RouteSource>(items: T[]) {
+  const grouped = new Map<string, { route: ResolvedRoute; items: T[] }>();
+  for (const item of items) {
+    const route = resolveRoute(item);
+    const current = grouped.get(route.key);
+    if (current) current.items.push(item);
+    else grouped.set(route.key, { route, items: [item] });
+  }
+  return [...grouped.values()].sort((left, right) => {
+    const byDestination = left.route.destination.label.localeCompare(right.route.destination.label, 'vi');
+    return byDestination || left.route.origin.label.localeCompare(right.route.origin.label, 'vi');
+  });
+}
+
+function destinationInstruction(destination: ResolvedHub) {
+  return `Kho ${destination.label === 'Chưa xác định' ? 'HUB đến' : destination.label}`;
+}
 
 function normalizeNgayBoc(value: string) {
   const raw = value.trim();
@@ -103,11 +173,12 @@ function resolveWaybillGoods(waybill: WaybillInventoryItem | undefined) {
 function mapItemToDispatchRow(item: LoadPlanningBoardItem, showPricing: boolean): DispatchPrintRow {
   const cod = Number(extra(item, 'allocated_cod') ?? 0);
   const freight = Number(item.allocated_freight ?? 0);
+  const route = resolveRoute(item);
 
   return {
     viTriHang: fmt(item.vi_tri_hang ?? item.loading_position),
     ngayBoc: fmt(item.ngay_boc),
-    maTinh: fmt(item.ma_tinh || item.noi_den),
+    maTinh: fmt(route.destination.code || item.ma_tinh || item.noi_den),
     quanHuyen: resolveVietnamDistrict(item.quan_huyen, item.dia_chi),
     phuongXa: resolveVietnamWard(item.phuong_xa, item.dia_chi),
     tenCtv: fmt(item.ten_cty),
@@ -125,7 +196,7 @@ function mapItemToDispatchRow(item: LoadPlanningBoardItem, showPricing: boolean)
     diaChiNhan: fmt(item.dia_chi),
     tinhTrangGiaoHang: splitLoadStatusLabel(item.load_status),
     ngayHoanThanh: addDaysToDispatchDate(normalizeNgayBoc(fmt(item.ngay_boc)), DISPATCH_COMPLETION_DAYS),
-    keHoach: '',
+    keHoach: destinationInstruction(route.destination),
     tangHaThuKhach: formatDispatchMoney(cod),
     cuoc: showPricing ? formatDispatchMoney(freight) : '',
     laiXeThuHo: '',
@@ -158,23 +229,27 @@ function buildGroupTotals(rows: DispatchPrintRow[], showPricing: boolean): Dispa
   );
 }
 
-function mapTruckGroup(truck: LoadPlanningTruckGroup, showPricing: boolean): LoadPlanningPrintGroup {
+function mapTruckGroups(truck: LoadPlanningTruckGroup, showPricing: boolean): LoadPlanningPrintGroup[] {
   const licensePlate = truck.license_plate || '';
   const nhaXe = truck.nha_xe || '';
   const truckLabel = [licensePlate, nhaXe].filter(Boolean).join(' · ') || `Xe #${truck.truck_id}`;
-  const rows = (truck.items ?? []).map((item, index) => ({
-    ...mapItemToDispatchRow(item, showPricing),
-    viTriHang: String(index + 1),
-  }));
+  return groupByRoute(truck.items ?? []).map(({ route, items }) => {
+    const rows = items.map((item, index) => ({
+      ...mapItemToDispatchRow(item, showPricing),
+      viTriHang: String(index + 1),
+    }));
 
-  return {
-    truckLabel,
-    licensePlate,
-    nhaXe,
-    manifestCode: truck.manifest_code || '',
-    rows,
-    totals: buildGroupTotals(rows, showPricing),
-  };
+    return {
+      truckLabel,
+      licensePlate,
+      nhaXe,
+      manifestCode: truck.manifest_code || '',
+      originHubLabel: route.origin.label,
+      destHubLabel: route.destination.label,
+      rows,
+      totals: buildGroupTotals(rows, showPricing),
+    };
+  });
 }
 
 export function buildLoadPlanningQuery(filters: LoadPlanningBoardFilters, forcedLoadStatuses?: string[], limit = 100) {
@@ -239,64 +314,82 @@ export function mapStackOntoTruckToPrintPayload(
   const waybillMap = new Map(waybills.map((waybill) => [String(waybill.id), waybill]));
   const ngayBoc = formatNgayBoc();
   const manifestLabel = manifestCode?.trim() || buildDraftManifestCode();
+  const routeEntries = rows.map((row) => ({
+    row,
+    waybill: waybillMap.get(row.waybill_id),
+  }));
+  const routeGroups = groupByRoute(routeEntries.map((entry) => ({
+    ...entry,
+    origin_hub_id: entry.waybill?.origin_hub_id,
+    dest_hub_id: entry.waybill?.dest_hub_id,
+    origin_hub: entry.waybill?.origin_hub,
+    dest_hub: entry.waybill?.dest_hub,
+  })));
 
-  const dispatchRows: DispatchPrintRow[] = rows.map((row, index) => {
-    const waybill = waybillMap.get(row.waybill_id);
-    const pkg = Number(row.package_count) || 0;
-    const totalPkg = Math.max(1, Number(waybill?.order_total_packages ?? waybill?.package_count ?? pkg));
-    const freightTotal = Number(waybill?.allocated_freight ?? waybill?.freight_amount ?? waybill?.cost_amount ?? 0);
-    const codTotal = Number(waybill?.allocated_cod ?? waybill?.cod_amount ?? 0);
+  const groups: LoadPlanningPrintGroup[] = routeGroups.map(({ route, items }, groupIndex) => {
+    const dispatchRows: DispatchPrintRow[] = items.map(({ row, waybill }, index) => {
+      const pkg = Number(row.package_count) || 0;
+      const totalPkg = Math.max(1, Number(waybill?.order_total_packages ?? waybill?.package_count ?? pkg));
+      const freightTotal = Number(waybill?.allocated_freight ?? waybill?.freight_amount ?? waybill?.cost_amount ?? 0);
+      const codTotal = Number(waybill?.allocated_cod ?? waybill?.cod_amount ?? 0);
+
+      return {
+        viTriHang: row.loading_position || String(index + 1),
+        ngayBoc,
+        maTinh: String(route.destination.code || waybill?.noi_den || '').trim(),
+        quanHuyen: waybill ? resolveReceiverDistrict(waybill) : '',
+        phuongXa: waybill ? resolveReceiverWard(waybill) : '',
+        tenCtv: String((waybill as { ten_cty?: string | null })?.ten_cty || waybill?.ma_kh || parseContactName(waybill?.sender_info)).trim(),
+        dv: 'TC',
+        matHang: resolveWaybillGoods(waybill),
+        matHangNote: '',
+        noiTra: String(waybill?.dest_hub?.name || waybill?.receiver_address || parseContactName(waybill?.receiver_info)).trim(),
+        soLuong: String(pkg),
+        donVi: 'kiện',
+        nguoiNhanPhone: String(waybill?.receiver_phone || '').trim(),
+        nguoiNhanDiaChi: String(waybill?.receiver_address || '').trim(),
+        diaChiNhan: String(waybill?.receiver_address || '').trim(),
+        tinhTrangGiaoHang: '',
+        ngayHoanThanh: addDaysToDispatchDate(normalizeNgayBoc(ngayBoc), DISPATCH_COMPLETION_DAYS),
+        keHoach: row.delivery_instruction || destinationInstruction(route.destination),
+        tangHaThuKhach: formatDispatchMoney(allocateByPackages(codTotal, pkg, totalPkg)),
+        cuoc: showPricing ? formatDispatchMoney(allocateByPackages(freightTotal, pkg, totalPkg)) : '',
+        laiXeThuHo: '',
+        bcThuHo: '',
+        maBill: row.waybill_code,
+        ghiChu: row.expected_arrival_label ? `Dự kiến tới ${row.expected_arrival_label}` : String(waybill?.note || waybill?.notes || '').trim(),
+        ghiChu1: '',
+        ghiChu2: '',
+        kg: String(waybill?.weight ?? ''),
+        m3: String(waybill?.the_tich_m3 ?? waybill?.volumetric_weight ?? ''),
+        duKienToiHcm: '',
+        qd: '',
+      };
+    });
+    const destinationSuffix = route.destination.code
+      .replace(/[^a-zA-Z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toUpperCase() || String(groupIndex + 1);
 
     return {
-      viTriHang: row.loading_position || String(index + 1),
-      ngayBoc,
-      maTinh: String(waybill?.noi_den || waybill?.dest_hub?.code || '').trim(),
-      quanHuyen: waybill ? resolveReceiverDistrict(waybill) : '',
-      phuongXa: waybill ? resolveReceiverWard(waybill) : '',
-      tenCtv: String((waybill as { ten_cty?: string | null })?.ten_cty || waybill?.ma_kh || parseContactName(waybill?.sender_info)).trim(),
-      dv: 'TC',
-      matHang: resolveWaybillGoods(waybill),
-      matHangNote: '',
-      noiTra: String(waybill?.dest_hub?.name || waybill?.receiver_address || parseContactName(waybill?.receiver_info)).trim(),
-      soLuong: String(pkg),
-      donVi: 'kiện',
-      nguoiNhanPhone: String(waybill?.receiver_phone || '').trim(),
-      nguoiNhanDiaChi: String(waybill?.receiver_address || '').trim(),
-      diaChiNhan: String(waybill?.receiver_address || '').trim(),
-      tinhTrangGiaoHang: '',
-      ngayHoanThanh: addDaysToDispatchDate(normalizeNgayBoc(ngayBoc), DISPATCH_COMPLETION_DAYS),
-      keHoach: row.delivery_instruction || 'Kho HCM',
-      tangHaThuKhach: formatDispatchMoney(allocateByPackages(codTotal, pkg, totalPkg)),
-      cuoc: showPricing ? formatDispatchMoney(allocateByPackages(freightTotal, pkg, totalPkg)) : '',
-      laiXeThuHo: '',
-      bcThuHo: '',
-      maBill: row.waybill_code,
-      ghiChu: row.expected_arrival_label ? `Dự kiến tới ${row.expected_arrival_label}` : String(waybill?.note || waybill?.notes || '').trim(),
-      ghiChu1: '',
-      ghiChu2: '',
-      kg: String(waybill?.weight ?? ''),
-      m3: String(waybill?.the_tich_m3 ?? waybill?.volumetric_weight ?? ''),
-      duKienToiHcm: '',
-      qd: '',
+      truckLabel: [licensePlate, shared.nha_xe].filter(Boolean).join(' · ') || licensePlate || '—',
+      licensePlate: licensePlate || '—',
+      nhaXe: shared.nha_xe || '',
+      manifestCode: routeGroups.length > 1 ? `${manifestLabel}-${destinationSuffix}` : manifestLabel,
+      originHubLabel: route.origin.label,
+      destHubLabel: route.destination.label,
+      rows: dispatchRows,
+      totals: buildGroupTotals(dispatchRows, showPricing),
     };
   });
-
-  const group: LoadPlanningPrintGroup = {
-    truckLabel: [licensePlate, shared.nha_xe].filter(Boolean).join(' · ') || licensePlate || '—',
-    licensePlate: licensePlate || '—',
-    nhaXe: shared.nha_xe || '',
-    manifestCode: manifestLabel,
-    rows: dispatchRows,
-    totals: buildGroupTotals(dispatchRows, showPricing),
-  };
 
   return {
     title: 'BẢNG KÊ PHÁT HÀNG ECO',
     printedAt: new Date().toLocaleString('vi-VN'),
-    filterSummary: manifestLabel,
+    filterSummary: routeGroups.length > 1 ? `${routeGroups.length} bảng kê theo HUB đến` : manifestLabel,
     showPricing,
     visibleColumnIds: visibleColumnIds ?? loadVisibleDispatchColumnIds(showPricing),
-    groups: [group],
+    groups,
   };
 }
 
@@ -312,7 +405,7 @@ export function mapSingleTruckPrintPayload(
     filterSummary: truck.manifest_code || truckLabel,
     showPricing,
     visibleColumnIds: visibleColumnIds ?? loadVisibleDispatchColumnIds(showPricing),
-    groups: [mapTruckGroup(truck, showPricing)],
+    groups: mapTruckGroups(truck, showPricing),
   };
 }
 
@@ -323,7 +416,7 @@ export function mapLoadPlanningBoardToPrintPayload(
   visibleColumnIds?: DispatchPrintColumnId[],
 ): LoadPlanningPrintPayload {
   const groups = (board.trucks ?? [])
-    .map((truck) => mapTruckGroup(truck, showPricing))
+    .flatMap((truck) => mapTruckGroups(truck, showPricing))
     .filter((group) => group.rows.length > 0);
 
   return {

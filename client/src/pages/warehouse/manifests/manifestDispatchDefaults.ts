@@ -104,7 +104,18 @@ export function resolveGoodsContent(waybill: DispatchLink['waybill']) {
 }
 
 export function resolveMaTinh(waybill: DispatchLink['waybill']) {
-  return blank(waybill?.noi_den) || blank(waybill?.dest_hub?.code) || blank(waybill?.dest_hub?.name);
+  return blank(waybill?.dest_hub?.code) || blank(waybill?.dest_hub?.name) || blank(waybill?.noi_den);
+}
+
+export function resolveDestinationWarehouse(waybill: DispatchLink['waybill']) {
+  const code = blank(waybill?.dest_hub?.code).trim();
+  const name = blank(waybill?.dest_hub?.name).trim();
+  const hubId = blank(waybill?.dest_hub_id).trim();
+  const destination =
+    code && name && code.toLocaleLowerCase('vi') !== name.toLocaleLowerCase('vi')
+      ? `${code} · ${name}`
+      : code || name || (hubId ? `#${hubId}` : 'HUB đến');
+  return `Kho ${destination}`;
 }
 
 const parseNoteField = (note: string | null | undefined, key: string) => {
@@ -149,6 +160,8 @@ export function resolveDispatchDefault(link: DispatchLink, key: DispatchFieldKey
       return 'kiện';
     case 'dia_chi':
       return formatReceiverAddressWithPhone(link);
+    case 'ke_hoach':
+      return resolveDestinationWarehouse(waybill);
     case 'ma_bill':
       return blank(waybill?.waybill_code);
     case 'ghi_chu_bill':

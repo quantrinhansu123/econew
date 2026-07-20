@@ -880,6 +880,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         onClose={closeStackDialog}
         onSaved={(result) => {
           setSelectedWaybillIds([]);
+          if ((result?.manifests?.length ?? 0) > 1) {
+            navigate('/warehouse/manifests');
+            return;
+          }
           if (result?.manifest_id) {
             navigate(`/warehouse/manifests?openManifestId=${encodeURIComponent(String(result.manifest_id))}`);
             return;

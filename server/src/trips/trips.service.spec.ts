@@ -8,7 +8,11 @@ import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
 import { ManifestEntity } from '../manifests/manifest.entity';
 import { TruckStatus } from '../trucks/dto/truck.enums';
 import { TruckEntity } from '../trucks/truck.entity';
+import { VendorPaymentEntity } from '../vendors/vendor-payment.entity';
+import { VendorsService } from '../vendors/vendors.service';
 import { WaybillEntity } from '../waybills/waybill.entity';
+import { WaybillSplitEntity } from '../waybills/waybill-split.entity';
+import { WaybillsService } from '../waybills/waybills.service';
 import { HubEntity } from '../hubs/hub.entity';
 import { TripEntity } from './trip.entity';
 import { TripsService } from './trips.service';
@@ -23,9 +27,11 @@ class MockQb {
   andWhere = jest.fn().mockReturnThis();
   leftJoinAndSelect = jest.fn().mockReturnThis();
   orderBy = jest.fn().mockReturnThis();
+  addOrderBy = jest.fn().mockReturnThis();
   skip = jest.fn().mockReturnThis();
   take = jest.fn().mockReturnThis();
   getOne = jest.fn();
+  getMany = jest.fn();
   getManyAndCount = jest.fn();
 }
 
@@ -35,6 +41,7 @@ const repo = () => ({
   findOne: jest.fn(),
   find: jest.fn(),
   count: jest.fn(),
+  update: jest.fn(),
   createQueryBuilder: jest.fn(),
 });
 
@@ -46,8 +53,17 @@ describe('TripsService', () => {
   let manifestWaybills: any;
   let waybills: any;
   let hubs: any;
+  let vendorsService: any;
+  let waybillsService: any;
 
   beforeEach(async () => {
+    vendorsService = {
+      addPayableDebt: jest.fn(),
+      findPaymentsByTripIds: jest.fn().mockResolvedValue([]),
+    };
+    waybillsService = {
+      backfillInTransitTripsForHub: jest.fn().mockResolvedValue(0),
+    };
     const module = await Test.createTestingModule({
       providers: [
         TripsService,
@@ -57,6 +73,10 @@ describe('TripsService', () => {
         { provide: getRepositoryToken(ManifestWaybillEntity), useFactory: repo },
         { provide: getRepositoryToken(WaybillEntity), useFactory: repo },
         { provide: getRepositoryToken(HubEntity), useFactory: repo },
+        { provide: getRepositoryToken(WaybillSplitEntity), useFactory: repo },
+        { provide: getRepositoryToken(VendorPaymentEntity), useFactory: repo },
+        { provide: VendorsService, useValue: vendorsService },
+        { provide: WaybillsService, useValue: waybillsService },
       ],
     }).compile();
 
@@ -156,6 +176,43 @@ describe('TripsService', () => {
     });
   });
 
+  describe('getAllocationBoard', () => {
+    it('does not force the user hub as destination when end_hub_id is omitted and returns manifest_id', async () => {
+      const qb = new MockQb();
+      qb.getMany.mockResolvedValue([{
+        id: 't1',
+        manifest_id: 'm1',
+        truck_id: 'truck-1',
+        start_hub_id: '1',
+        end_hub_id: '2',
+        status: TripStatus.PLANNED,
+        departure_time: new Date('2026-07-21T01:00:00Z'),
+        expected_arrival_time: new Date('2026-07-21T12:00:00Z'),
+        truck: { id: 'truck-1', license_plate: '29A-12345' },
+        manifest: { id: 'm1', manifest_code: 'BK-HCM' },
+        start_hub: { id: '1', code: 'HAN' },
+        end_hub: { id: '2', code: 'HCM' },
+      }]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+      manifestWaybills.find.mockResolvedValue([]);
+
+      const result = await service.getAllocationBoard({}, dispatcher);
+
+      expect(qb.andWhere).not.toHaveBeenCalledWith(
+        'trip.end_hub_id = :endHubId',
+        expect.anything(),
+      );
+      expect(qb.andWhere).toHaveBeenCalledWith(expect.any(Object));
+      expect(result.trips).toEqual([
+        expect.objectContaining({
+          trip_id: 't1',
+          manifest_id: 'm1',
+          manifest_code: 'BK-HCM',
+        }),
+      ]);
+    });
+  });
+
   const mockFindOne = (trip: any) => jest.spyOn(service, 'findOne').mockResolvedValue(trip);
 
   describe('startTrip', () => {
@@ -188,9 +245,11 @@ describe('TripsService', () => {
       await expect(service.startTrip('1', dispatcher)).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('manifest chưa gán → BadRequestException', async () => {
+    it('chuyến không có manifest vẫn có thể khởi hành', async () => {
       mockFindOne({ status: TripStatus.PLANNED, manifest_id: null });
-      await expect(service.startTrip('1', dispatcher)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.startTrip('1', dispatcher))
+        .resolves.toMatchObject({ status: TripStatus.IN_TRANSIT, manifest_id: null });
+      expect(manifestWaybills.find).not.toHaveBeenCalled();
     });
   });
 

@@ -302,6 +302,7 @@ export default function WarehouseManifestsPage() {
   function closeAddWaybills() { setIsAddWaybillsClosing(true); window.setTimeout(() => { setIsAddWaybillsOpen(false); setAddWaybillsManifest(null); setIsAddWaybillsClosing(false); }, 180); }
   async function fetchWaybillChoices() {
     if (!addWaybillsManifest) return;
+    const manifestDestHubId = addWaybillsManifest.dest_hub_id ?? addWaybillsManifest.dest_hub?.id;
     setIsWaybillLoading(true);
     setActionError('');
     setAddWaybillsError('');
@@ -323,7 +324,10 @@ export default function WarehouseManifestsPage() {
           receivedFrom: '',
           receivedTo: '',
         },
-        { onlyIncompleteSplit: true },
+        {
+          onlyIncompleteSplit: true,
+          destHubId: manifestDestHubId,
+        },
       );
       const response = await apiRequest<{
         items?: ManifestWaybill[];
@@ -340,6 +344,7 @@ export default function WarehouseManifestsPage() {
       );
       const list = filterManifestAddableInventoryRows(raw.filter(isIncompleteSplitRow), {
         manifestId,
+        manifestDestHubId,
         existingWaybillIds: existingIds,
       });
       setWaybillChoices(list);

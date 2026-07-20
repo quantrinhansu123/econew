@@ -1,7 +1,17 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { WaybillsService } from './waybills.service';
 import { Roles } from '../common/roles';
+import { HubEntity } from '../hubs/hub.entity';
+import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
+import { ManifestEntity } from '../manifests/manifest.entity';
+import { OrderEntity } from '../orders/order.entity';
+import { TripEntity } from '../trips/trip.entity';
 import { WaybillPriority, WaybillStatus } from './dto/waybill.enums';
+import { WaybillSplitLoadStatus } from './dto/waybill-split-load-status.enum';
+import { WaybillSplitEntity } from './waybill-split.entity';
+import { WaybillEntity } from './waybill.entity';
+import { ManifestStatus } from '../manifests/dto/manifest.enums';
+import { TripStatus } from '../common/enums';
 
 const manager = { id: 'u1', role_mask: Roles.MANAGER, hub_id: '1' } as any;
 const warehouse = { id: 'u2', role_mask: Roles.WAREHOUSE, hub_id: '1' } as any;
@@ -67,7 +77,15 @@ describe('WaybillsService', () => {
   let waybillsRepository: any;
   let hubsRepository: any;
   let splitsRepository: any;
+  let tripsRepository: any;
+  let trucksRepository: any;
+  let manifestsRepository: any;
+  let manifestWaybillsRepository: any;
   let cashVouchersRepository: any;
+  let transactionOrderRepository: any;
+  let dataSource: any;
+  let ordersService: any;
+  let vendorsService: any;
 
   beforeEach(() => {
     waybillsRepository = {
@@ -82,9 +100,35 @@ describe('WaybillsService', () => {
     };
     splitsRepository = {
       find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
       delete: jest.fn(),
-      save: jest.fn(),
-      create: jest.fn(),
+      update: jest.fn(),
+      save: jest.fn(async (value) => value),
+      create: jest.fn((value) => value),
+    };
+    tripsRepository = {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+      save: jest.fn(async (value) => value),
+      create: jest.fn((value) => value),
+    };
+    trucksRepository = {
+      findOne: jest.fn(),
+    };
+    manifestsRepository = {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+      save: jest.fn(async (value) => value),
+      create: jest.fn((value) => value),
+      exist: jest.fn().mockResolvedValue(false),
+      createQueryBuilder: jest.fn(createQueryBuilder),
+    };
+    manifestWaybillsRepository = {
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+      delete: jest.fn(),
+      save: jest.fn(async (value) => value),
+      create: jest.fn((value) => value),
     };
     cashVouchersRepository = {
       find: jest.fn(),
@@ -93,20 +137,42 @@ describe('WaybillsService', () => {
       create: jest.fn(),
       createQueryBuilder: jest.fn(createQueryBuilder),
     };
-    const ordersService = {
-      createFromWaybillEntry: jest.fn().mockResolvedValue({ id: 'o1', order_code: 'DH20260101-001' }),
+    transactionOrderRepository = {
+      update: jest.fn().mockResolvedValue(undefined),
     };
-    const vendorsService = {} as any;
+    const transactionRepositories = new Map<any, any>([
+      [WaybillEntity, waybillsRepository],
+      [HubEntity, hubsRepository],
+      [ManifestEntity, manifestsRepository],
+      [ManifestWaybillEntity, manifestWaybillsRepository],
+      [WaybillSplitEntity, splitsRepository],
+      [TripEntity, tripsRepository],
+      [OrderEntity, transactionOrderRepository],
+    ]);
+    dataSource = {
+      transaction: jest.fn(async (callback: (manager: any) => Promise<any>) => callback({
+        getRepository: (entity: any) => transactionRepositories.get(entity),
+      })),
+    };
+    ordersService = {
+      createFromWaybillEntry: jest.fn().mockResolvedValue({ id: 'o1', order_code: 'DH20260101-001' }),
+      syncRoutingFromWaybill: jest.fn().mockResolvedValue(undefined),
+    };
+    vendorsService = {
+      resolveDefaultVendorId: jest.fn(),
+      addPayableDebt: jest.fn(),
+    };
     service = new WaybillsService(
       waybillsRepository,
       hubsRepository,
       splitsRepository,
-      { findOne: jest.fn() } as any,
-      { findOne: jest.fn() } as any,
-      { find: jest.fn(), save: jest.fn(), create: jest.fn() } as any,
-      { find: jest.fn(), delete: jest.fn(), save: jest.fn(), create: jest.fn() } as any,
+      tripsRepository,
+      trucksRepository,
+      manifestsRepository,
+      manifestWaybillsRepository,
       cashVouchersRepository,
-      ordersService as any,
+      dataSource,
+      ordersService,
       vendorsService,
     );
     jest.spyOn(Date, 'now').mockReturnValue(1770000000000);
@@ -164,6 +230,228 @@ describe('WaybillsService', () => {
       id: '1',
       waybill_code: 'ECOHAN7',
     }));
+  });
+
+  it('update persists a mutable destination to the FK, relation, and linked order', async () => {
+    const existing = makeWaybill({
+      order_id: 'o1',
+      dest_hub: { id: '2', code: 'HCM', name: 'Hồ Chí Minh' },
+    });
+    const danHub = { id: '3', code: 'DAN', name: 'Đà Nẵng', is_active: true };
+    waybillsRepository.findOne.mockImplementation(async () => ({ ...existing }));
+    hubsRepository.findOne.mockResolvedValue(danHub);
+
+    const result = await service.update('1', { dest_hub_id: '3' }, manager);
+
+    expect(result).toMatchObject({
+      dest_hub_id: '3',
+      dest_hub: danHub,
+    });
+    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: '1',
+      dest_hub_id: '3',
+      dest_hub: danHub,
+    }));
+    expect(transactionOrderRepository.update).toHaveBeenCalledWith(
+      { id: 'o1' },
+      { dest_hub_id: '3' },
+    );
+  });
+
+  it('update rejects an inactive destination hub', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      order_id: 'o1',
+      dest_hub: { id: '2', code: 'HCM' },
+    }));
+    hubsRepository.findOne.mockResolvedValue(null);
+
+    await expect(service.update('1', { dest_hub_id: '3' }, manager))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(transactionOrderRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('reroutes a MANIFEST_CLOSED waybill on a PLANNED trip into a destination-specific manifest and trip', async () => {
+    const sourceTrip = {
+      id: 't1',
+      truck_id: 'truck-1',
+      manifest_id: 'm1',
+      start_hub_id: '1',
+      end_hub_id: '2',
+      departure_time: new Date('2026-07-21T01:00:00Z'),
+      arrival_time: new Date('2026-07-21T12:00:00Z'),
+      expected_arrival_time: new Date('2026-07-21T12:00:00Z'),
+      status: TripStatus.PLANNED,
+    };
+    const sourceManifest = {
+      id: 'm1',
+      manifest_code: 'BK-HCM',
+      origin_hub_id: '1',
+      dest_hub_id: '2',
+      status: ManifestStatus.ASSIGNED_TO_TRIP,
+      trips: [sourceTrip],
+    };
+    const sourceLink = {
+      manifest_id: 'm1',
+      waybill_id: '1',
+      loading_position: 4,
+      loaded_at: new Date('2026-07-20T02:00:00Z'),
+      dispatch_fields: { ma_tinh: 'HCM' },
+      manifest: sourceManifest,
+    };
+    const split = {
+      id: 's1',
+      waybill_id: '1',
+      trip_id: 't1',
+      truck_id: 'truck-1',
+      package_count: 1,
+      load_status: WaybillSplitLoadStatus.LOADED,
+    };
+    const existing = makeWaybill({
+      order_id: 'o1',
+      manifest_id: 'm1',
+      trip_id: 't1',
+      status: WaybillStatus.MANIFEST_CLOSED,
+      current_state: WaybillStatus.MANIFEST_CLOSED,
+      dest_hub: { id: '2', code: 'HCM' },
+    });
+    const danHub = { id: '3', code: 'DAN', name: 'Đà Nẵng', is_active: true };
+
+    waybillsRepository.findOne.mockImplementation(async () => ({ ...existing }));
+    hubsRepository.findOne.mockResolvedValue(danHub);
+    manifestWaybillsRepository.find.mockImplementation(async ({ where }: any) => {
+      if (where?.waybill_id) return [sourceLink];
+      if (where?.manifest_id === 'm1') {
+        return [sourceLink, { manifest_id: 'm1', waybill_id: 'other' }];
+      }
+      return [];
+    });
+    splitsRepository.find.mockResolvedValue([split]);
+    tripsRepository.findOne.mockResolvedValue(sourceTrip);
+    tripsRepository.find.mockResolvedValue([]);
+    manifestsRepository.findOne.mockResolvedValue(sourceManifest);
+    manifestsRepository.save.mockImplementation(async (value: any) => {
+      if (!value.id) value.id = 'm2';
+      return value;
+    });
+    tripsRepository.save.mockImplementation(async (value: any) => {
+      if (!value.id) value.id = 't2';
+      return value;
+    });
+
+    await expect(service.update('1', { dest_hub_id: '3' }, manager))
+      .resolves.toMatchObject({ dest_hub_id: '3', dest_hub: danHub });
+
+    expect(manifestsRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      origin_hub_id: '1',
+      dest_hub_id: '3',
+      status: ManifestStatus.CLOSED,
+    }));
+    expect(tripsRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      manifest_id: 'm2',
+      start_hub_id: '1',
+      end_hub_id: '3',
+      status: TripStatus.PLANNED,
+    }));
+    expect(manifestWaybillsRepository.delete).toHaveBeenCalledWith({
+      manifest_id: 'm1',
+      waybill_id: '1',
+    });
+    expect(manifestWaybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      manifest_id: 'm2',
+      waybill_id: '1',
+      dispatch_fields: expect.objectContaining({ ma_tinh: 'DAN' }),
+    }));
+    expect(splitsRepository.save).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 's1', trip_id: 't2' }),
+    ]);
+    expect(transactionOrderRepository.update).toHaveBeenCalledWith(
+      { id: 'o1' },
+      { dest_hub_id: '3' },
+    );
+  });
+
+  it('rejects a destination reroute after a split has departed', async () => {
+    const existing = makeWaybill({
+      order_id: 'o1',
+      status: WaybillStatus.MANIFEST_CLOSED,
+      current_state: WaybillStatus.MANIFEST_CLOSED,
+    });
+    waybillsRepository.findOne.mockImplementation(async () => ({ ...existing }));
+    hubsRepository.findOne.mockResolvedValue({ id: '3', code: 'DAN', is_active: true });
+    manifestWaybillsRepository.find.mockResolvedValue([]);
+    splitsRepository.find.mockResolvedValue([{
+      id: 's1',
+      waybill_id: '1',
+      trip_id: 't1',
+      load_status: WaybillSplitLoadStatus.DEPARTED,
+    }]);
+
+    await expect(service.update('1', { dest_hub_id: '3' }, manager))
+      .rejects.toBeInstanceOf(ConflictException);
+    expect(transactionOrderRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('bulk stack creates separate manifests and trips for mixed destination hubs', async () => {
+    const waybills = {
+      w1: makeWaybill({
+        id: 'w1',
+        waybill_code: 'ECOHAN1',
+        dest_hub_id: '2',
+        origin_hub: { id: '1', code: 'HAN' },
+        dest_hub: { id: '2', code: 'HCM' },
+      }),
+      w2: makeWaybill({
+        id: 'w2',
+        waybill_code: 'ECOHAN2',
+        dest_hub_id: '3',
+        origin_hub: { id: '1', code: 'HAN' },
+        dest_hub: { id: '3', code: 'DAN' },
+      }),
+    };
+    waybillsRepository.findOne.mockImplementation(async ({ where }: any) => (
+      waybills[where.id as keyof typeof waybills] ?? null
+    ));
+    trucksRepository.findOne.mockResolvedValue({
+      id: 'truck-1',
+      bks: '29A-12345',
+      vendor_id: null,
+      vendor: null,
+    });
+    splitsRepository.find.mockResolvedValue([]);
+    let splitSequence = 0;
+    splitsRepository.save.mockImplementation(async (value: any) => {
+      if (!Array.isArray(value) && !value.id) value.id = `s${++splitSequence}`;
+      return value;
+    });
+    let manifestSequence = 0;
+    manifestsRepository.save.mockImplementation(async (value: any) => {
+      if (!value.id) value.id = `m${++manifestSequence}`;
+      return value;
+    });
+    let tripSequence = 0;
+    tripsRepository.save.mockImplementation(async (value: any) => {
+      if (!value.id) value.id = `t${++tripSequence}`;
+      return value;
+    });
+    tripsRepository.findOne.mockResolvedValue(null);
+
+    const result = await service.bulkStackOntoTruck({
+      items: [
+        { waybill_id: 'w1', truck_id: 'truck-1' },
+        { waybill_id: 'w2', truck_id: 'truck-1' },
+      ],
+    }, manager);
+
+    expect(result.saved_count).toBe(2);
+    expect(result.manifests).toEqual([
+      expect.objectContaining({ id: 'm1', dest_hub_id: '2', trip_id: 't1', waybill_count: 1 }),
+      expect.objectContaining({ id: 'm2', dest_hub_id: '3', trip_id: 't2', waybill_count: 1 }),
+    ]);
+    expect(manifestsRepository.create.mock.calls.map(([value]: [any]) => value.dest_hub_id))
+      .toEqual(['2', '3']);
+    expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.end_hub_id))
+      .toEqual(['2', '3']);
+    expect(manifestWaybillsRepository.save).toHaveBeenCalledTimes(2);
   });
 
   it('preview next code uses independent hub prefix sequence', async () => {
