@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Images, Loader2, Plus, X } from 'lucide-react';
+import { Camera, Images, Loader2, Plus, X } from 'lucide-react';
 import { ImagePreviewModal } from '../../../../components/ImagePreviewModal';
 import { ApiError } from '../../../../lib/api';
-import { uploadWaybillImage } from '../../../../lib/uploadImage';
+import { IMAGE_UPLOAD_ACCEPT, uploadWaybillImage } from '../../../../lib/uploadImage';
 import { MAX_WAYBILL_IMAGES } from '../../../../lib/waybillImages';
 
 interface Props {
@@ -31,15 +31,21 @@ export default function WaybillImagePicker({ value, onChange, onUploadingChange,
     onUploadingChange?.(true);
     setError('');
     try {
-      const results = await Promise.allSettled(selected.map(uploadWaybillImage));
-      const uploaded = results
-        .filter((result): result is PromiseFulfilledResult<string> => result.status === 'fulfilled')
-        .map((result) => result.value);
-      if (uploaded.length) onChange([...images, ...uploaded].slice(0, MAX_WAYBILL_IMAGES));
-      const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
-      if (failed) {
-        setError(failed.reason instanceof ApiError ? failed.reason.message : 'Có ảnh không upload được.');
+      const uploaded: string[] = [];
+      let firstFailure = '';
+      for (const file of selected) {
+        try {
+          uploaded.push(await uploadWaybillImage(file));
+        } catch (uploadError) {
+          if (!firstFailure) {
+            firstFailure = uploadError instanceof ApiError
+              ? uploadError.message
+              : 'Có ảnh không upload được.';
+          }
+        }
       }
+      if (uploaded.length) onChange([...images, ...uploaded].slice(0, MAX_WAYBILL_IMAGES));
+      if (firstFailure) setError(firstFailure);
     } finally {
       setIsUploading(false);
       onUploadingChange?.(false);
@@ -55,25 +61,42 @@ export default function WaybillImagePicker({ value, onChange, onUploadingChange,
             Ảnh bill / hàng hóa ({images.length}/{MAX_WAYBILL_IMAGES})
           </div>
           <p className="mt-0.5 text-[11px] font-medium text-slate-500">
-            Ảnh cân hoặc ảnh hàng lúc nhận; ảnh này đồng thời dùng làm ảnh báo phát.
+            Trên điện thoại chọn Chụp ảnh để mở camera sau; ảnh này đồng thời dùng làm ảnh báo phát.
           </p>
         </div>
         {images.length < MAX_WAYBILL_IMAGES && (
-          <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 text-[11px] font-black text-primary hover:bg-blue-50">
-            {isUploading ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-            {isUploading ? 'Đang tải...' : 'Thêm ảnh'}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              multiple
-              className="hidden"
-              disabled={disabled || isUploading}
-              onChange={(event) => {
-                void uploadFiles(event.target.files);
-                event.target.value = '';
-              }}
-            />
-          </label>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 text-[11px] font-black text-primary hover:bg-blue-50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50">
+              {isUploading ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}
+              {isUploading ? 'Đang tải...' : 'Chụp ảnh'}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                disabled={disabled || isUploading}
+                onChange={(event) => {
+                  void uploadFiles(event.target.files);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+            <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 text-[11px] font-black text-primary hover:bg-blue-50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50">
+              <Plus size={13} />
+              Chọn ảnh
+              <input
+                type="file"
+                accept={IMAGE_UPLOAD_ACCEPT}
+                multiple
+                className="hidden"
+                disabled={disabled || isUploading}
+                onChange={(event) => {
+                  void uploadFiles(event.target.files);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+          </div>
         )}
       </div>
 
@@ -85,7 +108,7 @@ export default function WaybillImagePicker({ value, onChange, onUploadingChange,
               <button type="button" className="h-full w-full" onClick={() => setPreviewUrl(url)}>
                 <img src={url} alt={`Ảnh bill ${index + 1}`} className="h-full w-full object-cover" />
               </button>
-              {!disabled && (
+              {!disabled && !isUploading && (
                 <button
                   type="button"
                   aria-label={`Xóa ảnh ${index + 1}`}

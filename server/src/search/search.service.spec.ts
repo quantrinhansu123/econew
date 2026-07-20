@@ -28,6 +28,19 @@ const createRepository = () => ({
   findOne: jest.fn(),
 });
 
+const evaluateFirstBrackets = (qb: ReturnType<typeof createQueryBuilder>) => {
+  const brackets = qb.andWhere.mock.calls
+    .map(([condition]) => condition)
+    .find((condition) => typeof condition?.whereFactory === 'function');
+  expect(brackets).toBeDefined();
+  const inner = {
+    where: jest.fn().mockReturnThis(),
+    orWhere: jest.fn().mockReturnThis(),
+  };
+  brackets.whereFactory(inner);
+  return inner;
+};
+
 const manager = { id: '10', role_mask: Roles.MANAGER, hub_id: null } as UserEntity;
 const director = { id: '11', role_mask: Roles.DIRECTOR, hub_id: null } as UserEntity;
 const staff = { id: '12', role_mask: Roles.WAREHOUSE, hub_id: '1' } as UserEntity;
@@ -131,11 +144,45 @@ describe('SearchService', () => {
     expect(result.items[0]).toMatchObject({ waybill_code: 'WB100' });
   });
 
+  it.each(['ECOHAN108962', 'ECO-HAN-108962'])(
+    'searchWaybills matches legacy and contiguous bill codes when searching %s',
+    async (keyword) => {
+      const qb = createQueryBuilder([{ ...waybill, waybill_code: 'ECO-HAN-108962' }], 1);
+      waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+      await service.searchWaybills({ keyword }, manager);
+
+      const inner = evaluateFirstBrackets(qb);
+      expect(inner.orWhere).toHaveBeenCalledWith(
+        `REGEXP_REPLACE(UPPER(waybill.waybill_code), '[-[:space:]]+', '', 'g') ILIKE :normalizedWaybillKeyword`,
+        { normalizedWaybillKeyword: '%ECOHAN108962%' },
+      );
+    },
+  );
+
+  it('globalSearch applies contiguous bill-code matching to legacy records', async () => {
+    const qb = createQueryBuilder([{ ...waybill, waybill_code: 'ECO-HAN-108962' }], 1);
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.globalSearch({
+      type: GlobalSearchType.WAYBILL,
+      keyword: 'ECOHAN108962',
+    }, manager);
+
+    const inner = evaluateFirstBrackets(qb);
+    expect(inner.orWhere).toHaveBeenCalledWith(
+      expect.stringContaining('REGEXP_REPLACE(UPPER(waybill.waybill_code)'),
+      { normalizedWaybillKeyword: '%ECOHAN108962%' },
+    );
+  });
+
   it('searchWaybills finds by sender_info/receiver_info', async () => {
     const qb = createQueryBuilder([waybill], 1);
     waybillsRepository.createQueryBuilder.mockReturnValue(qb);
     const result = await service.searchWaybills({ keyword: 'Alice' }, manager);
     expect(result.items[0]).toMatchObject({ sender_info: 'Alice', receiver_info: 'Bob' });
+    const inner = evaluateFirstBrackets(qb);
+    expect(inner.orWhere.mock.calls.some(([condition]) => String(condition).includes('REGEXP_REPLACE'))).toBe(false);
   });
 
   it('searchWaybills filters status/payment_type/origin_hub_id/dest_hub_id', async () => {

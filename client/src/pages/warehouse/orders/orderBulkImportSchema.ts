@@ -54,7 +54,7 @@ export const ORDER_BULK_COLUMNS: OrderBulkColumn[] = [
   { key: 'huyen', label: 'Tỉnh/Thành', required: false, sample: 'HỒ CHÍ MINH' },
   { key: 'quanHuyen', label: 'Quận/Huyện', required: false, sample: 'Quận 1' },
   { key: 'phuongXa', label: 'Phường/Xã', required: false, sample: 'Phường Nguyễn Cư Trinh' },
-  { key: 'soBill', label: 'Số bill', required: true, sample: 'ECO-HAN-1001' },
+  { key: 'soBill', label: 'Số bill', required: true, sample: 'ECOHAN1001' },
   { key: 'soKien', label: 'Số kiện', required: false, sample: '1' },
   { key: 'dichVu', label: 'Dịch vụ', required: false, sample: 'Tiêu chuẩn 72h' },
   { key: 'giaoHang', label: 'Giao hàng', required: false, sample: 'Văn phòng' },

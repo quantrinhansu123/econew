@@ -2,15 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Loader2, Printer } from 'lucide-react';
 import { ApiError, apiRequest } from '../../lib/api';
-import { getStoredAuthUser } from '../../lib/authUser';
 import type { CustomerListItem, CustomerListResponse } from '../warehouse/customers/types';
 import type { WaybillDetail } from '../warehouse/orders/types';
 import WaybillInvoiceTemplate from './WaybillInvoiceTemplate';
 import { customerAddress, customerPhone } from '../warehouse/customers/customerOrderPatch';
 import { buildWaybillPrintData, printWaybillWhenReady } from './waybillPrintUtils';
 import './waybill-invoice.css';
-
-const MANAGER_ROLES = 32 | 64;
 
 type PrintFormat = 'a5' | 'a4';
 
@@ -37,10 +34,9 @@ export default function PrintWaybillPage() {
   const preview = searchParams.get('preview') === '1';
   const autoPrint = searchParams.get('print') === '1';
   const printFormat = resolvePrintFormat(searchParams.get('format'));
-  const pricingParam = searchParams.get('pricing');
   const pageSizeRule = printFormat === 'a4'
-    ? '@media print { @page { size: A4 portrait; margin: 3mm; } }'
-    : '@media print { @page { size: A5 landscape; margin: 3mm; } }';
+    ? '@media print { @page { size: A4 portrait; margin: 0; } }'
+    : '@media print { @page { size: A5 landscape; margin: 0; } }';
 
   const setPrintFormat = useCallback((format: PrintFormat) => {
     const next = new URLSearchParams(searchParams);
@@ -54,13 +50,6 @@ export default function PrintWaybillPage() {
   const [customer, setCustomer] = useState<CustomerListItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  const showPricing = useMemo(() => {
-    const user = getStoredAuthUser();
-    const canViewPricing = ((user?.role_mask ?? 0) & MANAGER_ROLES) !== 0;
-    if (!canViewPricing) return false;
-    return pricingParam !== 'hide';
-  }, [pricingParam]);
 
   useEffect(() => {
     if (!id) return;
@@ -112,7 +101,7 @@ export default function PrintWaybillPage() {
 
   const printData = useMemo(() => {
     if (!waybill) return null;
-    const base = buildWaybillPrintData(waybill, showPricing);
+    const base = buildWaybillPrintData(waybill);
     if (!customer) return base;
     const phone = customerPhone(customer);
     const address = customerAddress(customer);
@@ -124,7 +113,7 @@ export default function PrintWaybillPage() {
       sdtGui: phone || base.sdtGui,
       dichVu: customer.price_table?.toUpperCase().includes('BỘ') ? 'ĐƯỜNG BỘ' : base.dichVu,
     };
-  }, [waybill, customer, showPricing]);
+  }, [waybill, customer]);
 
   const wrapClassName = `waybill-invoice-wrap waybill-invoice-wrap--${printFormat}`;
 
@@ -169,9 +158,7 @@ export default function PrintWaybillPage() {
           <span className="text-[12px] text-muted-foreground">Chế độ xem trước — kiểm tra nội dung trước khi in.</span>
         )}
         <span className="w-full text-[12px] text-muted-foreground">{printFormatHint[printFormat]}</span>
-        {!showPricing && (
-          <span className="text-[12px] text-muted-foreground">Cước phí ẩn theo quyền — chỉ in thông tin vận chuyển.</span>
-        )}
+        <span className="text-[12px] text-muted-foreground">Phiếu giao nhận không in cước phí.</span>
       </div>
 
       {loading && (

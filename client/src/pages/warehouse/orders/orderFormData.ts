@@ -84,7 +84,7 @@ export const sampleOrderForm = (): NewOrderFormState => ({
   phuongXa: 'Phường Nguyễn Cư Trinh',
   nguoiNhan: 'Tuấn Nguyễn',
   diaChiNhan: '215i Nguyễn Trãi, P. Nguyễn Cư Trinh, Quận 1, TP HCM',
-  soBill: 'ECO-HAN-1',
+  soBill: 'ECOHAN1',
   klKg: '50',
   soKien: '1',
   klQuyDoi: '50',
