@@ -13,18 +13,18 @@ type PrintFormat = 'a5' | 'a4';
 
 const resolvePrintFormat = (value: string | null): PrintFormat => {
   // Giữ tương thích với các URL in cũ nhưng không nhân đôi phiếu trên A4.
-  if (value === 'a4' || value === 'standard' || value === 'a4-2up') return 'a4';
-  return 'a5';
+  if (value === 'a5') return 'a5';
+  return 'a4';
 };
 
 const printFormatLabel: Record<PrintFormat, string> = {
-  a5: 'A5 ngang (1 phiếu)',
-  a4: 'A4 dọc (1 phiếu)',
+  a5: 'A5 ngang (chọn khay A5)',
+  a4: 'A4 thường (không chỉnh khay)',
 };
 
 const printFormatHint: Record<PrintFormat, string> = {
-  a5: 'Tự căn khổ A5 ngang (210×148mm), mỗi trang một phiếu.',
-  a4: 'Tự căn khổ A4 dọc, phiếu nằm ở nửa trên và nửa dưới để trắng.',
+  a5: 'Dùng giấy A5 ngang (210×148mm) và chọn đúng khay A5 trên máy in.',
+  a4: 'Mặc định: để giấy A4 dọc như bình thường, phiếu tự nằm ở nửa trên trang.',
 };
 
 export default function PrintWaybillPage() {
@@ -40,7 +40,7 @@ export default function PrintWaybillPage() {
 
   const setPrintFormat = useCallback((format: PrintFormat) => {
     const next = new URLSearchParams(searchParams);
-    if (format === 'a5') next.delete('format');
+    if (format === 'a4') next.delete('format');
     else next.set('format', format);
     const query = next.toString();
     navigate({ pathname: `/print/waybill/${id}`, search: query ? `?${query}` : '' }, { replace: true });
@@ -130,7 +130,7 @@ export default function PrintWaybillPage() {
           Quay lại
         </button>
         <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-white p-1">
-          {(['a5', 'a4'] as PrintFormat[]).map((format) => (
+          {(['a4', 'a5'] as PrintFormat[]).map((format) => (
             <button
               key={format}
               type="button"

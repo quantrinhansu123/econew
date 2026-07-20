@@ -184,15 +184,15 @@ export default function WarehouseManifestsPage() {
 
   const userHubView = useMemo(() => resolveUserHubView(user, hubs), [user, hubs]);
   const keyword = filters.keyword.trim().toLowerCase();
-  const expectedFromHcmManifests = useMemo(
-    () => filterDepartedFromOrigin(manifests, 'HCM').filter((manifest) => matchesManifestKeyword(manifest, keyword)),
-    [manifests, keyword],
-  );
   const departedFromHanManifests = useMemo(
     () => filterDepartedFromOrigin(manifests, 'HAN').filter((manifest) => matchesManifestKeyword(manifest, keyword)),
     [manifests, keyword],
   );
-  const transitManifestCount = expectedFromHcmManifests.length + departedFromHanManifests.length;
+  const departedFromHcmManifests = useMemo(
+    () => filterDepartedFromOrigin(manifests, 'HCM').filter((manifest) => matchesManifestKeyword(manifest, keyword)),
+    [manifests, keyword],
+  );
+  const transitManifestCount = departedFromHanManifests.length + departedFromHcmManifests.length;
 
   const hubOptions = useMemo(() => hubs.map(hub => ({ value: String(hub.id), label: hub.code ? `${hub.code} · ${hub.name || 'Bưu cục'}` : hub.name || `Hub #${hub.id}` })), [hubs]);
   const tripOptions = useMemo(() => trips.map(trip => ({ value: String(trip.id), label: tripLabel(trip) })), [trips]);
@@ -288,7 +288,7 @@ export default function WarehouseManifestsPage() {
   }, [isAddWaybillsOpen, addWaybillsManifest, addWaybillsForm.keyword, addWaybillsForm.page, addWaybillsForm.limit, hubs]);
 
   function toForm(manifest?: LoadPlanningManifest | null): ManifestFormState {
-    return { origin_hub_id: manifest?.origin_hub_id ? String(manifest.origin_hub_id) : '', dest_hub_id: manifest?.dest_hub_id ? String(manifest.dest_hub_id) : '', seal_code: manifest?.seal_code || '', note: (manifest as any)?.note || '' };
+    return { origin_hub_id: manifest?.origin_hub_id ? String(manifest.origin_hub_id) : '', dest_hub_id: manifest?.dest_hub_id ? String(manifest.dest_hub_id) : '', seal_code: manifest?.seal_code || '', note: manifest?.note || '' };
   }
   function closeForm() { setIsFormClosing(true); window.setTimeout(() => { setIsFormOpen(false); setIsFormClosing(false); }, 180); }
   function openAdd() { setIsEditMode(false); setFormManifest(null); setFormState(toForm(null)); setIsFormOpen(true); }
@@ -410,6 +410,14 @@ export default function WarehouseManifestsPage() {
             <button title="Mở bộ lọc" onClick={openFilters} className="relative h-10 w-10 rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 flex items-center justify-center md:hidden"><Filter size={16} />{activeFilterCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white">{activeFilterCount}</span>}</button>
             {activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
             <div className="hidden flex-1 md:block" />
+            <button
+              type="button"
+              onClick={() => navigate('/warehouse/incoming')}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-primary/30 bg-blue-50 px-3 text-[13px] font-extrabold text-primary hover:bg-blue-100"
+            >
+              <Truck size={16} />
+              <span>Tổng danh sách xe</span>
+            </button>
             <button disabled={!canManageManifest} onClick={openAdd} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-3 text-[13px] font-extrabold text-white hover:bg-primary/90"><Plus size={16} /><span className="hidden sm:inline">Thêm</span></button>
           </div>
           <div className="hidden md:flex flex-wrap items-center gap-2">
@@ -429,8 +437,8 @@ export default function WarehouseManifestsPage() {
             <StateBlock icon={<AlertTriangle size={22} />} title={error} />
           ) : (
             <ManifestTransitBoard
-              expectedFromHcm={expectedFromHcmManifests}
               departedFromHan={departedFromHanManifests}
+              departedFromHcm={departedFromHcmManifests}
               onDetail={openDetail}
               onPrint={openPrint}
             />
@@ -451,34 +459,39 @@ export default function WarehouseManifestsPage() {
 }
 
 function ManifestTransitBoard({
-  expectedFromHcm,
   departedFromHan,
+  departedFromHcm,
   onDetail,
   onPrint,
 }: {
-  expectedFromHcm: LoadPlanningManifest[];
   departedFromHan: LoadPlanningManifest[];
+  departedFromHcm: LoadPlanningManifest[];
   onDetail: (manifest: LoadPlanningManifest) => void;
   onPrint: (manifest: LoadPlanningManifest) => void;
 }) {
   return (
-    <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 p-3 lg:flex-row lg:gap-4">
-      <ManifestTransitTable
-        title="Xe dự kiến tới"
-        tone="border-orange-200 bg-orange-50 text-orange-800"
-        emptyText="Chưa có xe khởi hành từ TP.HCM."
-        manifests={expectedFromHcm}
-        onDetail={onDetail}
-        onPrint={onPrint}
-      />
-      <ManifestTransitTable
-        title="Xe đi từ Hà Nội"
-        tone="border-blue-200 bg-blue-50 text-blue-800"
-        emptyText="Chưa có xe khởi hành từ Hà Nội."
-        manifests={departedFromHan}
-        onDetail={onDetail}
-        onPrint={onPrint}
-      />
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 p-3">
+      <p className="shrink-0 text-[12px] font-medium text-muted-foreground">
+        Chỉ hiển thị xe đã khởi hành và chưa đến nơi. Xe đã đến được theo dõi trong Tổng danh sách xe.
+      </p>
+      <div className="flex min-h-0 w-full flex-1 flex-col gap-3 lg:flex-row lg:gap-4">
+        <ManifestTransitTable
+          title="Xe khởi hành từ Hà Nội"
+          tone="border-blue-200 bg-blue-50 text-blue-800"
+          emptyText="Chưa có xe đang chạy từ Hà Nội."
+          manifests={departedFromHan}
+          onDetail={onDetail}
+          onPrint={onPrint}
+        />
+        <ManifestTransitTable
+          title="Xe khởi hành từ TP.HCM"
+          tone="border-orange-200 bg-orange-50 text-orange-800"
+          emptyText="Chưa có xe đang chạy từ TP.HCM."
+          manifests={departedFromHcm}
+          onDetail={onDetail}
+          onPrint={onPrint}
+        />
+      </div>
     </div>
   );
 }
