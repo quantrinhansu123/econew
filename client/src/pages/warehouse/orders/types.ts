@@ -6,6 +6,9 @@ export interface HubSummary {
   code?: string | null;
   name?: string | null;
   address?: string | null;
+  province?: string | null;
+  district?: string | null;
+  ward?: string | null;
   is_active?: boolean | string | number | null;
   status?: string | null;
 }

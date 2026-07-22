@@ -50,4 +50,33 @@ describe('receiver company on order form', () => {
     expect(payload.note).toContain('quan_huyen=Nha Trang');
     expect(payload.note).toContain('phuong_xa=Phước Hải');
   });
+
+  it('does not save an unprefixed ward as the receiver province', () => {
+    const payload = buildCreatePayload({
+      ...emptyOrderForm(),
+      originHubId: '1',
+      destHubId: '2',
+      huyen: '',
+      diaChiNhan: '165 Thạch Xuân, Thới An',
+    }, 0);
+
+    expect(payload.noi_den).toBeUndefined();
+    expect(payload.note).not.toContain('tinh_den=Thới An');
+  });
+
+  it('loads the destination HUB province for a legacy bill without receiver province metadata', () => {
+    const form = waybillToOrderForm({
+      id: '59',
+      receiver_address: '165 Thạch Xuân, Thới An',
+      dest_hub: {
+        id: '2',
+        code: 'HCM',
+        name: 'Bưu cục Hồ Chí Minh',
+        province: 'Hồ Chí Minh',
+      },
+    }, []);
+
+    expect(form.huyen).toBe('Hồ Chí Minh');
+    expect(form.quanHuyen).toBe('');
+  });
 });

@@ -11,7 +11,7 @@ const waybill = (overrides: Partial<WaybillDetail> = {}): WaybillDetail => ({
   receiver_phone: '0938938112',
   receiver_address: '129 Trần Đại Nghĩa',
   receiver_company_name: 'CÔNG TY NHẬN HÀNG',
-  dest_hub: { id: '2', code: 'HCM', name: 'Hồ Chí Minh' },
+  dest_hub: { id: '2', code: 'HCM', name: 'Bưu cục Hồ Chí Minh', province: 'Hồ Chí Minh' },
   origin_hub: { id: '1', code: 'HAN', name: 'Hà Nội' },
   package_count: 1,
   weight: 10,
@@ -46,5 +46,16 @@ describe('buildWaybillPrintData receiver fields', () => {
     expect(data.tenCongTyNhan).toBe('');
     expect(data.tenLienHeNhan).toBe('Nguyễn Văn Nhận');
     expect(data.sdtNhan).toBe('0938938112');
+  });
+
+  it('does not mistake an unprefixed ward for the receiver province', () => {
+    const data = buildWaybillPrintData(waybill({
+      receiver_address: '165 Thạch Xuân, Thới An',
+      noi_den: null,
+      note: 'ma_kh=KHACHLE | content=PK008786',
+    }));
+
+    expect(data.quanHuyenNhan).toBe('');
+    expect(data.tinhNhan).toBe('Hồ Chí Minh');
   });
 });

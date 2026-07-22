@@ -213,6 +213,7 @@ export function buildWaybillPrintData(
       || parseNoteField(note, 'huyen')
       || waybill.noi_den?.trim()
       || extractProvinceFromAddress(receiverAddress)
+      || waybill.dest_hub?.province?.trim()
       || waybill.dest_hub?.name
       || waybill.dest_hub?.code?.toUpperCase()
       || '',

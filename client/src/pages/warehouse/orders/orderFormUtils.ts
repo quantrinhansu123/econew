@@ -269,6 +269,7 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
       (waybill as { noi_den?: string }).noi_den?.trim()
       || parseNoteField(note, 'tinh_den')
       || parseNoteField(note, 'huyen')
+      || waybill.dest_hub?.province?.trim()
       || waybill.dest_hub?.name
       || '',
     quanHuyen:
