@@ -62,7 +62,7 @@ export class OrderEntity {
   @Column({ type: 'varchar', length: 32, default: 'CONFIRMED' })
   status: string;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
+  @Column({ type: 'text', nullable: true })
   note: string | null;
 
   @Column({ type: 'bigint', nullable: true })
