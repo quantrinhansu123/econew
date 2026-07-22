@@ -40,7 +40,10 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           <img src={WAYBILL_PRINT_LOGO_SRC} alt="" className="eco-logo" />
           <div className="eco-phone">
             <span className="eco-phone-label">Hotline</span>
-            0946 936 999<br />0969 444 816
+            <span className="eco-phone-numbers">
+              <span>0969 444 816</span>
+              <span>0946 936 999</span>
+            </span>
           </div>
         </div>
         <div className="eco-a5-title">
@@ -57,41 +60,42 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
       </header>
 
       <div className="eco-a5-row eco-a5-people-row">
-        <div className="eco-band eco-band--codes">
+        <div className="eco-band eco-band--codes eco-band--left eco-band--top">
           <MiniLine label="Mã KH gửi:" strong>{value(data.maKhGui)}</MiniLine>
           <MiniLine label="Mã BC gửi:" strong>{value(data.maBcGui)}</MiniLine>
         </div>
-        <div className="eco-band">
-          <MiniLine label="Tên công ty nhận:" strong>{value(data.tenCongTyNhan)}</MiniLine>
+        <div className="eco-band eco-band--receiver-summary eco-band--top">
+          <div className="eco-recipient-summary">
+            <MiniLine label="Tên công ty nhận:" strong>{value(data.tenCongTyNhan)}</MiniLine>
+            <MiniLine label="Số điện thoại:" strong className="eco-recipient-phone">{value(data.sdtNhan)}</MiniLine>
+          </div>
         </div>
-        <div className="eco-band">
+        <div className="eco-band eco-band--sender-details eco-band--left">
           <MiniLine label="Tên khách gửi:" strong>{value(data.tenKhGui)}</MiniLine>
           <MiniLine label="Địa chỉ:" className="eco-mini-line--address">{value(data.diaChiGui)}</MiniLine>
         </div>
-        <div className="eco-band">
+        <div className="eco-band eco-band--receiver-details">
           <MiniLine label="Địa chỉ:" className="eco-mini-line--address">{value(data.diaChiNhan)}</MiniLine>
         </div>
-        <div className="eco-band">
+        <div className="eco-band eco-band--sender-region eco-band--left">
           <div className="eco-two-col-line">
             <MiniLine label="Quận/Huyện:">{value(data.quanHuyenGui)}</MiniLine>
             <MiniLine label="Tỉnh/TP:" strong>{value(data.tinhGui)}</MiniLine>
           </div>
         </div>
-        <div className="eco-band">
+        <div className="eco-band eco-band--receiver-region">
           <div className="eco-two-col-line eco-two-col-line--dest">
             <MiniLine label="Quận/Huyện:" strong>{value(data.quanHuyenNhan)}</MiniLine>
             <MiniLine label="Tỉnh/TP:" strong>{value(data.tinhNhan)}</MiniLine>
           </div>
         </div>
-        <div className="eco-band">
-          <div className="eco-two-col-line">
-            <MiniLine label="Số điện thoại:" strong>{value(data.sdtGui)}</MiniLine>
+        <div className="eco-band eco-band--sender-contact eco-band--left">
+          <div className="eco-two-col-line eco-two-col-line--sender-contact">
             <MiniLine label="Tên liên hệ:">{' '}</MiniLine>
           </div>
         </div>
-        <div className="eco-band">
-          <div className="eco-two-col-line">
-            <MiniLine label="Số điện thoại:" strong>{value(data.sdtNhan)}</MiniLine>
+        <div className="eco-band eco-band--receiver-contact">
+          <div className="eco-two-col-line eco-two-col-line--receiver-contact">
             <MiniLine label="Tên liên hệ:" strong>{value(data.tenLienHeNhan)}</MiniLine>
           </div>
         </div>
