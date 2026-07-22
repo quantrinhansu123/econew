@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { IncomingTripTable } from './warehouse/incoming/IncomingTripTable';
+import { IncomingExpectedTripCards } from './warehouse/incoming/IncomingExpectedTripCards';
 import { IncomingTripsPageLayout } from './warehouse/incoming/IncomingTripsPageLayout';
 import { IncomingTripDeleteDialog } from './warehouse/incoming/dialogs/IncomingTripDeleteDialog';
 import { IncomingTripDetailDialog } from './warehouse/incoming/dialogs/IncomingTripDetailDialog';
@@ -17,6 +19,7 @@ import {
   filterTripsByVendors,
   formatFilterDateRangeLabel,
   hasActiveIncomingFilters,
+  getManifestId,
   sortTrips,
   summarizeIncomingTrips,
 } from './warehouse/incoming/incomingTripUtils';
@@ -24,6 +27,7 @@ import type { IncomingVendorPaymentStatus } from './warehouse/incoming/incomingT
 import { useIncomingTripActions } from './warehouse/incoming/useIncomingTripActions';
 import { useIncomingTrips } from './warehouse/incoming/useIncomingTrips';
 import { downloadIncomingTripsExcel } from './warehouse/incoming/incomingTripsExcelUtils';
+import type { IncomingTrip } from './warehouse/incoming/types';
 
 export interface WarehouseIncomingPageProps {
   mode?: 'overview' | 'expected-arrivals';
@@ -38,6 +42,7 @@ export default function WarehouseIncomingPage({
   subtitle = 'Theo dõi chuyến xe, ngày đến, BKS, tài xế và nhà cung cấp.',
   emptyText = 'Chưa có chuyến xe.',
 }: WarehouseIncomingPageProps = {}) {
+  const navigate = useNavigate();
   const { trips, isLoading, error, updatedAt, refresh } = useIncomingTrips({ source: mode });
   const [filterFromDate, setFilterFromDate] = useState('');
   const [filterToDate, setFilterToDate] = useState('');
@@ -234,6 +239,18 @@ export default function WarehouseIncomingPage({
     }
   }, [displayTrips, enabledPaymentStatuses, enabledPlates, enabledStatuses, enabledVendors, filterFromDate, filterToDate, mode, paymentStatusValues.length, plateOptions.length, statusValues.length, title, vendorOptions.length]);
 
+  const handleViewManifest = useCallback((trip: IncomingTrip) => {
+    const manifestId = getManifestId(trip);
+    if (!manifestId) return;
+    navigate(`/warehouse/manifests/${encodeURIComponent(String(manifestId))}`);
+  }, [navigate]);
+
+  const handlePrintManifest = useCallback((trip: IncomingTrip) => {
+    const manifestId = getManifestId(trip);
+    if (!manifestId) return;
+    window.open(`/print/manifest/${encodeURIComponent(String(manifestId))}`, '_blank', 'noopener');
+  }, []);
+
   return (
     <>
       <IncomingTripsPageLayout
@@ -272,17 +289,26 @@ export default function WarehouseIncomingPage({
           </button>
         }
       >
-        <IncomingTripTable
-          trips={displayTrips}
-          emptyText={emptyHint || emptyText}
-          showOriginColumn
-          canDelete={actions.canDelete}
-          canPay={actions.canPay}
-          onView={actions.handleView}
-          onEdit={actions.handleEdit}
-          onDelete={actions.handleDelete}
-          onPayment={actions.handlePayment}
-        />
+        {mode === 'expected-arrivals' ? (
+          <IncomingExpectedTripCards
+            trips={displayTrips}
+            emptyText={emptyHint || emptyText}
+            onViewManifest={handleViewManifest}
+            onPrintManifest={handlePrintManifest}
+          />
+        ) : (
+          <IncomingTripTable
+            trips={displayTrips}
+            emptyText={emptyHint || emptyText}
+            showOriginColumn
+            canDelete={actions.canDelete}
+            canPay={actions.canPay}
+            onView={actions.handleView}
+            onEdit={actions.handleEdit}
+            onDelete={actions.handleDelete}
+            onPayment={actions.handlePayment}
+          />
+        )}
       </IncomingTripsPageLayout>
 
       <IncomingTripDeleteDialog
