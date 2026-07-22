@@ -7,14 +7,18 @@ import CreateWaybillSuccessDialog from './warehouse/orders/dialogs/CreateWaybill
 import OrderBulkImportDialog from './warehouse/orders/dialogs/OrderBulkImportDialog';
 import NewOrderWorkbench from './warehouse/orders/components/NewOrderWorkbench';
 import { emptyOrderForm } from './warehouse/orders/orderFormData';
-import { applyReceiverByDestination, customerToOrderPatch } from './warehouse/customers/customerOrderPatch';
+import {
+  applyReceiverByDestination,
+  customerToOrderPatch,
+  receiverPatchForProvinceChange,
+} from './warehouse/customers/customerOrderPatch';
 import type { CustomerRecord } from './warehouse/customers/customerFormTypes';
 import {
   applyPricingToForm,
   buildCreatePayload,
   calcVolumetricWeight,
   isPricingField,
-  isValidVnPhone,
+  validateNewOrderForm,
   waybillToBillItem,
   waybillToOrderForm,
 } from './warehouse/orders/orderFormUtils';
@@ -81,6 +85,7 @@ export default function WarehouseOrderNewPage() {
   const skipNewFormInitRef = useRef(Boolean(editWaybillId));
   const billRequestIdRef = useRef(0);
   const billListLimitRef = useRef(INITIAL_BILL_LIST_LIMIT);
+  const selectedCustomerRef = useRef<CustomerRecord | null>(null);
   const [user] = useState<UserSummary | null>(() => getStoredUser());
   const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [bills, setBills] = useState<BillListItem[]>([]);
@@ -257,7 +262,15 @@ export default function WarehouseOrderNewPage() {
         if (match) {
           const full = await apiRequest<Partial<CustomerListItem>>(`/customers/${match.id}`);
           const record = { ...match, ...full } as CustomerRecord;
-          setForm((prev) => applyPricingToForm({ ...prev, ...customerToOrderPatch(record) }));
+          selectedCustomerRef.current = record;
+          setForm((prev) => applyPricingToForm({
+            ...prev,
+            ...customerToOrderPatch(record),
+            ...applyReceiverByDestination(record, prev.huyen),
+            huyen: prev.huyen,
+            destHubId: prev.destHubId,
+            noiDen: prev.noiDen,
+          }));
           return;
         }
       } catch {
@@ -274,8 +287,15 @@ export default function WarehouseOrderNewPage() {
   }, [editWaybillId, location.state, isLoading, hubs, navigate, location.pathname, searchParams, setSearchParams]);
 
   const setField = <K extends keyof NewOrderFormState>(key: K, value: NewOrderFormState[K]) => {
+    if (key === 'maKh') selectedCustomerRef.current = null;
     setForm((prev) => {
       let next = { ...prev, [key]: value };
+      if (key === 'huyen' && typeof value === 'string' && selectedCustomerRef.current) {
+        next = {
+          ...next,
+          ...receiverPatchForProvinceChange(selectedCustomerRef.current, prev, value),
+        };
+      }
       if (key === 'originHubId' && typeof value === 'string' && (next.destHubId === value || !next.destHubId)) {
         const destinationHub = getPreferredDestinationHub(hubs, value);
         const noiDen = destinationHub?.code?.trim().toUpperCase() || '';
@@ -310,13 +330,15 @@ export default function WarehouseOrderNewPage() {
   };
 
   const handleCustomerSelect = (patch: Partial<NewOrderFormState>, customer: CustomerRecord) => {
+    selectedCustomerRef.current = customer;
     setForm((prev) => {
-      const receiverProvince = patch.huyen || prev.huyen;
-      const receiverPatch = applyReceiverByDestination(customer, receiverProvince || 'HCM');
+      const receiverPatch = applyReceiverByDestination(customer, prev.huyen);
       return applyPricingToForm({
         ...prev,
         ...patch,
         ...receiverPatch,
+        // Tỉnh nhận là dữ liệu theo từng đơn, không lấy từ hồ sơ khách hàng.
+        huyen: prev.huyen,
         // HUB đến giữ nguyên khi chọn/đổi khách hàng.
         destHubId: prev.destHubId,
         noiDen: prev.noiDen,
@@ -332,24 +354,11 @@ export default function WarehouseOrderNewPage() {
   };
 
   const validate = () => {
-    if (!form.soBill.trim()) return 'Số bill là bắt buộc.';
-    if (!form.nguoiGui.trim()) return 'Người gửi là bắt buộc.';
-    if (!form.dienThoaiKh.trim()) return 'Điện thoại khách hàng là bắt buộc.';
-    if (!isValidVnPhone(form.dienThoaiKh)) return 'Điện thoại khách hàng không hợp lệ.';
-    if (!form.nguoiNhan.trim()) return 'Người nhận là bắt buộc.';
-    if (!form.dienThoaiNhan.trim()) return 'Điện thoại người nhận là bắt buộc.';
-    if (!form.diaChiNhan.trim()) return 'Địa chỉ nhận là bắt buộc.';
-    if (form.dienThoaiNhan.trim() && !isValidVnPhone(form.dienThoaiNhan)) {
-      return 'Số điện thoại người nhận không hợp lệ.';
-    }
-    if (!form.originHubId) return 'Chọn HUB gửi.';
-    if (!form.destHubId) return 'Chọn HUB đến.';
-    if (form.originHubId === form.destHubId) return 'HUB gửi và HUB đến không được trùng.';
-    if (!Number(form.klKg) && !volumetricWeight) return 'Nhập khối lượng hoặc kích thước.';
-    return '';
+    return validateNewOrderForm(form, volumetricWeight);
   };
 
   const handleSelectBill = async (bill: BillListItem) => {
+    selectedCustomerRef.current = null;
     setSelectedBillId(bill.id);
     setActionError('');
     try {
@@ -361,6 +370,7 @@ export default function WarehouseOrderNewPage() {
   };
 
   const handleNew = async () => {
+    selectedCustomerRef.current = null;
     skipNewFormInitRef.current = false;
     loadedEditIdRef.current = '';
     const defaultOrigin = getDefaultOriginHubId(hubs, user?.hub_id);

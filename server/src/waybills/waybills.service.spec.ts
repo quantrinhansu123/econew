@@ -43,6 +43,7 @@ const createQueryBuilder = () => {
     innerJoinAndSelect: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
@@ -199,6 +200,58 @@ describe('WaybillsService', () => {
         expect.objectContaining({ waybill_code: 'ECOHAN109602' }),
         expect.objectContaining({ waybill_code: 'ECO-HAN-109602' }),
       ],
+    });
+  });
+
+  it('create stores a missing customer phone as null', async () => {
+    waybillsRepository.findOne.mockResolvedValue(null);
+    const result = await service.create({
+      waybill_code: 'ECOHAN1',
+      sender_name: 'A',
+      sender_address: 'HN',
+      receiver_name: 'B',
+      receiver_phone: '2',
+      receiver_address: 'HCM',
+      origin_hub_id: '1',
+      dest_hub_id: '2',
+      weight: 3,
+    }, manager);
+
+    expect(result.sender_phone).toBeNull();
+    expect(result.sender_info).toBe('A | HN');
+  });
+
+  it('suggests the latest receiver address and matches formatted phone input by digits', async () => {
+    const qb = createQueryBuilder();
+    qb.getRawMany.mockResolvedValue([
+      {
+        normalized_phone: '0934 455-122',
+        receiver_address: 'Địa chỉ mới',
+        receiver_name: 'Người nhận mới',
+        receiver_company_name: null,
+        last_used_at: '2026-07-23T10:00:00.000Z',
+      },
+      {
+        normalized_phone: '0934455122',
+        receiver_address: 'Địa chỉ cũ',
+        receiver_name: 'Người nhận cũ',
+        receiver_company_name: null,
+        last_used_at: '2026-07-22T10:00:00.000Z',
+      },
+    ]);
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await expect(service.findReceiverContacts({ phone: '0934-455', limit: 12 })).resolves.toEqual([
+      {
+        phone: '0934455122',
+        receiver_address: 'Địa chỉ mới',
+        receiver_name: 'Người nhận mới',
+        receiver_company_name: null,
+        last_used_at: '2026-07-23T10:00:00.000Z',
+      },
+    ]);
+    expect(qb.andWhere).toHaveBeenCalledWith(expect.stringContaining('LIKE :receiverPhone'), {
+      receiverPhone: '%0934455%',
     });
   });
 

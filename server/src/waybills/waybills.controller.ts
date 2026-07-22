@@ -12,6 +12,7 @@ import { CancelWaybillDto } from './dto/cancel-waybill.dto';
 import { CreateWaybillDto } from './dto/create-waybill.dto';
 import { CreateWaybillCashVoucherDto } from './dto/create-waybill-cash-voucher.dto';
 import { QueryWaybillCashVouchersDto } from './dto/query-waybill-cash-vouchers.dto';
+import { QueryReceiverContactsDto } from './dto/query-receiver-contacts.dto';
 import { QueryWaybillsDto } from './dto/query-waybills.dto';
 import { ReceiveWaybillDto } from './dto/receive-waybill.dto';
 import { UpdateCodFeeDto } from './dto/update-cod-fee.dto';
@@ -98,6 +99,12 @@ export class WaybillsController {
   @ApiOperation({ summary: 'Preview next waybill code (before save)' })
   previewNextCode(@Query('origin_hub_id') originHubId: string | undefined, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.previewNextWaybillCode(originHubId, currentUser);
+  }
+
+  @Get('receiver-contacts')
+  @ApiOperation({ summary: 'Suggest receiver addresses from previously saved waybills' })
+  findReceiverContacts(@Query() query: QueryReceiverContactsDto) {
+    return this.waybillsService.findReceiverContacts(query);
   }
 
   @Get('code/:code')

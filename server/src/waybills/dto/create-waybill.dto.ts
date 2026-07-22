@@ -4,7 +4,7 @@ import { IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, MaxLength, Min 
 export class CreateWaybillDto {
   @ApiProperty({ description: 'Số bill nhập tay' }) @IsString() @IsNotEmpty() waybill_code: string;
   @ApiProperty() @IsString() @IsNotEmpty() sender_name: string;
-  @ApiProperty() @IsString() @IsNotEmpty() sender_phone: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() sender_phone?: string;
   @ApiProperty() @IsString() @IsNotEmpty() sender_address: string;
   @ApiPropertyOptional({ description: 'Tên công ty nhận, nhập tay trên bill' })
   @IsOptional()

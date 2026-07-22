@@ -142,6 +142,23 @@ export function isValidVnPhone(raw: string): boolean {
   return /^0\d{9,10}$/.test(phone);
 }
 
+export function validateNewOrderForm(form: NewOrderFormState, volumetricWeight: number): string {
+  if (!form.soBill.trim()) return 'Số bill là bắt buộc.';
+  if (!form.nguoiGui.trim()) return 'Người gửi là bắt buộc.';
+  if (form.dienThoaiKh.trim() && !isValidVnPhone(form.dienThoaiKh)) {
+    return 'Điện thoại khách hàng không hợp lệ.';
+  }
+  if (!form.nguoiNhan.trim()) return 'Người nhận là bắt buộc.';
+  if (!form.dienThoaiNhan.trim()) return 'Điện thoại người nhận là bắt buộc.';
+  if (!form.diaChiNhan.trim()) return 'Địa chỉ nhận là bắt buộc.';
+  if (!isValidVnPhone(form.dienThoaiNhan)) return 'Số điện thoại người nhận không hợp lệ.';
+  if (!form.originHubId) return 'Chọn HUB gửi.';
+  if (!form.destHubId) return 'Chọn HUB đến.';
+  if (form.originHubId === form.destHubId) return 'HUB gửi và HUB đến không được trùng.';
+  if (!Number(form.klKg) && !volumetricWeight) return 'Nhập khối lượng hoặc kích thước.';
+  return '';
+}
+
 function parseContactInfo(info?: string | null) {
   const parts = (info || '').split('|').map((part) => part.trim());
   return {

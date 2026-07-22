@@ -12,6 +12,7 @@ import type { CustomerRecord } from '../../customers/customerFormTypes';
 import { CompactField, CompactInput, CompactSelect, FormSection } from './CompactField';
 import BillListSidebar from './BillListSidebar';
 import CustomerMaKhCombobox from './CustomerMaKhCombobox';
+import ReceiverPhoneCombobox from './ReceiverPhoneCombobox';
 import WaybillImagePicker from './WaybillImagePicker';
 
 interface Props {
@@ -116,21 +117,35 @@ export default function NewOrderWorkbench({
                   </CompactSelect>
                 </CompactField>
                 <CompactField label="HUB đến (nơi tập kết)" className="col-span-12 xl:col-span-6">
-                  <CompactSelect
-                    value={form.destHubId}
-                    onChange={(e) => {
-                      const hub = hubOptions.find((o) => o.value === e.target.value);
-                      const code = hub?.label.split(' · ')[0] || '';
-                      onDestinationChange(e.target.value, code);
-                    }}
-                  >
-                    <option value="">Chọn HUB đến</option>
-                    {hubOptions.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </CompactSelect>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-1.5">
+                    <CompactSelect
+                      value={form.destHubId}
+                      onChange={(e) => {
+                        const hub = hubOptions.find((o) => o.value === e.target.value);
+                        const code = hub?.label.split(' · ')[0] || '';
+                        onDestinationChange(e.target.value, code);
+                      }}
+                    >
+                      <option value="">Chọn HUB đến</option>
+                      {hubOptions.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </CompactSelect>
+                    {canCreateHub && (
+                      <button
+                        type="button"
+                        onClick={onCreateHub}
+                        className="h-8 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-extrabold text-primary hover:bg-primary/10"
+                      >
+                        + Tạo HUB
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[10px] font-medium leading-tight text-slate-500">
+                    Nơi tập kết hàng trước khi phân xe giao chặng cuối.
+                  </p>
                 </CompactField>
               </div>
 
@@ -165,49 +180,23 @@ export default function NewOrderWorkbench({
                   <CompactInput value={form.nguoiNhan} onChange={(e) => setField('nguoiNhan', e.target.value)} />
                 </CompactField>
                 <CompactField label="ĐT người nhận" className="col-span-6 sm:col-span-3 xl:col-span-2">
-                  <CompactInput value={form.dienThoaiNhan} onChange={(e) => setField('dienThoaiNhan', e.target.value)} />
+                  <ReceiverPhoneCombobox
+                    value={form.dienThoaiNhan}
+                    disabled={isSubmitting}
+                    onValueChange={(value) => setField('dienThoaiNhan', value)}
+                    onSelect={(contact) => setField('diaChiNhan', contact.receiver_address)}
+                  />
                 </CompactField>
                 <CompactField label="Địa chỉ nhận" className="col-span-12 xl:col-span-4">
                   <CompactInput value={form.diaChiNhan} onChange={(e) => setField('diaChiNhan', e.target.value)} />
                 </CompactField>
-                <CompactField label="HUB đến" className="col-span-12 sm:col-span-6 xl:col-span-4">
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-1.5">
-                    <CompactSelect
-                      value={form.destHubId}
-                      onChange={(e) => {
-                        const hub = hubOptions.find((o) => o.value === e.target.value);
-                        const code = hub?.label.split(' · ')[0] || '';
-                        onDestinationChange(e.target.value, code);
-                      }}
-                    >
-                      <option value="">Chọn HUB tập kết</option>
-                      {hubOptions.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </CompactSelect>
-                    {canCreateHub && (
-                      <button
-                        type="button"
-                        onClick={onCreateHub}
-                        className="h-8 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-extrabold text-primary hover:bg-primary/10"
-                      >
-                        + Tạo HUB
-                      </button>
-                    )}
-                  </div>
-                  <p className="mt-1 text-[10px] font-medium leading-tight text-slate-500">
-                    Nơi tập kết hàng trước khi phân xe giao chặng cuối.
-                  </p>
-                </CompactField>
-                <CompactField label="Tỉnh/Thành nhận" className="col-span-6 sm:col-span-4 xl:col-span-2">
+                <CompactField label="Tỉnh/Thành nhận" className="col-span-12 sm:col-span-4 xl:col-span-4">
                   <CompactInput value={form.huyen} onChange={(e) => setField('huyen', e.target.value)} />
                 </CompactField>
-                <CompactField label="Quận/Huyện nhận" className="col-span-6 sm:col-span-4 xl:col-span-3">
+                <CompactField label="Quận/Huyện nhận" className="col-span-6 sm:col-span-4 xl:col-span-4">
                   <CompactInput value={form.quanHuyen} onChange={(e) => setField('quanHuyen', e.target.value)} />
                 </CompactField>
-                <CompactField label="Phường/Xã nhận" className="col-span-6 sm:col-span-4 xl:col-span-3">
+                <CompactField label="Phường/Xã nhận" className="col-span-6 sm:col-span-4 xl:col-span-4">
                   <CompactInput value={form.phuongXa} onChange={(e) => setField('phuongXa', e.target.value)} />
                 </CompactField>
               </div>

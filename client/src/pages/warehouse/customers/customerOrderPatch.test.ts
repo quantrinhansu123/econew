@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { emptyOrderForm } from '../orders/orderFormData';
 import type { CustomerRecord } from './customerFormTypes';
-import { applyReceiverByDestination, customerToOrderPatch } from './customerOrderPatch';
+import {
+  applyReceiverByDestination,
+  customerToOrderPatch,
+  receiverPatchForProvinceChange,
+} from './customerOrderPatch';
 
 const customer = {
   id: '10',
@@ -25,20 +30,31 @@ const customer = {
 describe('customer order autofill', () => {
   it('keeps customer phone separate from the HCM receiver phone', () => {
     const patch = customerToOrderPatch(customer);
+    const receiverPatch = applyReceiverByDestination(customer, 'HCM');
 
     expect(patch.dienThoaiKh).toBe('0901111222');
-    expect(patch.dienThoaiNhan).toBe('0934455122');
+    expect(patch.dienThoaiNhan).toBeUndefined();
+    expect(receiverPatch.dienThoaiNhan).toBe('0934455122');
     expect(patch.giaoHang).toBeUndefined();
   });
 
-  it('switches receiver contact when destination changes between HAN and HCM', () => {
-    expect(applyReceiverByDestination(customer, 'HAN')).toMatchObject({
-      nguoiNhan: 'Kho A Đào HN',
-      dienThoaiNhan: '0912222333',
-      diaChiNhan: '1 Trần Duy Hưng, Cầu Giấy, Hà Nội',
-    });
+  it('only autofills the fixed receiver when destination province is HCM', () => {
     expect(applyReceiverByDestination(customer, 'HCM')).toMatchObject({
       nguoiNhan: 'Kho A Đào HCM',
+      dienThoaiNhan: '0934455122',
+      diaChiNhan: '129 Trần Đại Nghĩa, Bình Chánh, Hồ Chí Minh',
+    });
+    expect(applyReceiverByDestination(customer, 'Đà Nẵng')).toEqual({});
+    expect(applyReceiverByDestination(customer, 'HAN')).toEqual({});
+  });
+
+  it('only uses receiver fields from the HCM warehouse section', () => {
+    expect(applyReceiverByDestination({
+      ...customer,
+      receiver_hcm: null,
+      contact_person: 'Liên hệ chung',
+    }, 'HCM')).toMatchObject({
+      nguoiNhan: '',
       dienThoaiNhan: '0934455122',
       diaChiNhan: '129 Trần Đại Nghĩa, Bình Chánh, Hồ Chí Minh',
     });
@@ -52,14 +68,49 @@ describe('customer order autofill', () => {
     });
 
     expect(patch.dienThoaiKh).toBe('');
-    expect(patch.dienThoaiNhan).toBe('0934455122');
+    expect(patch.dienThoaiNhan).toBeUndefined();
   });
 
-  it('does not derive HUB destination from the receiver province', () => {
+  it('does not derive order province or HUB destination from the customer profile', () => {
     const patch = customerToOrderPatch(customer);
 
-    expect(patch.huyen).toBe('HCM');
+    expect(patch.huyen).toBeUndefined();
     expect(patch.destHubId).toBeUndefined();
     expect(patch.noiDen).toBeUndefined();
+  });
+
+  it('clears unchanged HCM autofill when the order province changes', () => {
+    const form = {
+      ...emptyOrderForm(),
+      huyen: 'HCM',
+      ...applyReceiverByDestination(customer, 'HCM'),
+    };
+    const next = {
+      ...form,
+      huyen: 'Đà Nẵng',
+      ...receiverPatchForProvinceChange(customer, form, 'Đà Nẵng'),
+    };
+
+    expect(next.nguoiNhan).toBe('');
+    expect(next.dienThoaiNhan).toBe('');
+    expect(next.diaChiNhan).toBe('');
+    expect(next.quanHuyen).toBe('');
+    expect(next.phuongXa).toBe('');
+  });
+
+  it('preserves receiver details entered manually for a non-HCM order', () => {
+    const form = {
+      ...emptyOrderForm(),
+      huyen: 'HCM',
+      ...applyReceiverByDestination(customer, 'HCM'),
+      diaChiNhan: '25 Nguyễn Văn Linh, Đà Nẵng',
+    };
+    const next = {
+      ...form,
+      huyen: 'Đà Nẵng',
+      ...receiverPatchForProvinceChange(customer, form, 'Đà Nẵng'),
+    };
+
+    expect(next.diaChiNhan).toBe('25 Nguyễn Văn Linh, Đà Nẵng');
   });
 });

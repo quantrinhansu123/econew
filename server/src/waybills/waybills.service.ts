@@ -17,6 +17,7 @@ import { CancelWaybillDto } from './dto/cancel-waybill.dto';
 import { CreateWaybillDto } from './dto/create-waybill.dto';
 import { CreateWaybillCashVoucherDto } from './dto/create-waybill-cash-voucher.dto';
 import { QueryWaybillCashVouchersDto } from './dto/query-waybill-cash-vouchers.dto';
+import { QueryReceiverContactsDto } from './dto/query-receiver-contacts.dto';
 import { QueryWaybillsDto } from './dto/query-waybills.dto';
 import { ReceiveWaybillDto } from './dto/receive-waybill.dto';
 import { UpdateCodFeeDto } from './dto/update-cod-fee.dto';
@@ -41,6 +42,14 @@ import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
 
 type WaybillRecord = WaybillEntity & Record<string, any>;
 
+export interface ReceiverContactSuggestion {
+  phone: string;
+  receiver_address: string;
+  receiver_name: string | null;
+  receiver_company_name: string | null;
+  last_used_at: string | Date | null;
+}
+
 const FINAL_STATUSES = [WaybillStatus.DELIVERED, WaybillStatus.RETURNED, WaybillStatus.CANCELLED];
 const INVENTORY_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE, WaybillStatus.MANIFEST_CLOSED, WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY];
 const ALL_ORDER_LIST_STATUSES = [
@@ -59,6 +68,13 @@ const ROUTE_ASSIGNABLE_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WARE
 const parseNoteField = (note: string | null | undefined, key: string) => {
   const match = (note || '').match(new RegExp(`${key}=([^|]+)`, 'i'));
   return match?.[1]?.trim() || '';
+};
+
+const normalizeReceiverPhone = (value: string | null | undefined) => {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('84') && digits.length >= 11) digits = `0${digits.slice(2)}`;
+  if (digits.length === 9 && /^[35789]/.test(digits)) digits = `0${digits}`;
+  return digits;
 };
 
 const plainGoodsNote = (note: string | null | undefined) => {
@@ -123,7 +139,7 @@ export class WaybillsService {
 
     Object.assign(record, {
       sender_name: dto.sender_name,
-      sender_phone: dto.sender_phone,
+      sender_phone: dto.sender_phone?.trim() || null,
       sender_address: dto.sender_address,
       receiver_company_name: dto.receiver_company_name?.trim() || null,
       receiver_name: dto.receiver_name,
@@ -155,6 +171,74 @@ export class WaybillsService {
       if ((error as { code?: string }).code === '23505') throw new ConflictException('Waybill code already exists');
       throw error;
     }
+  }
+
+  /**
+   * Danh bạ người nhận được suy ra từ vận đơn: với mỗi SĐT chuẩn hóa, bản ghi
+   * được lưu/cập nhật gần nhất là địa chỉ hiện hành. Vì vậy lưu lại cùng SĐT
+   * với địa chỉ mới sẽ tự ghi đè kết quả gợi ý mà không nhân đôi dữ liệu.
+   */
+  async findReceiverContacts(query: QueryReceiverContactsDto): Promise<ReceiverContactSuggestion[]> {
+    const searchedPhone = normalizeReceiverPhone(query.phone);
+    const limit = Math.min(query.limit ?? 12, 20);
+    const phoneDigitsExpression = `REGEXP_REPLACE(COALESCE(NULLIF(BTRIM(waybill.receiver_phone), ''), NULLIF(BTRIM(SPLIT_PART(waybill.receiver_info, '|', 2)), '')), '[^0-9]+', '', 'g')`;
+    const normalizedPhoneExpression = `CASE
+      WHEN ${phoneDigitsExpression} LIKE '84%' AND LENGTH(${phoneDigitsExpression}) >= 11
+        THEN '0' || SUBSTRING(${phoneDigitsExpression} FROM 3)
+      WHEN LENGTH(${phoneDigitsExpression}) = 9 AND LEFT(${phoneDigitsExpression}, 1) IN ('3', '5', '7', '8', '9')
+        THEN '0' || ${phoneDigitsExpression}
+      ELSE ${phoneDigitsExpression}
+    END`;
+    const receiverAddressExpression = `COALESCE(NULLIF(BTRIM(waybill.receiver_address), ''), NULLIF(BTRIM(SPLIT_PART(waybill.receiver_info, '|', 3)), ''))`;
+    const receiverNameExpression = `COALESCE(NULLIF(BTRIM(waybill.receiver_name), ''), NULLIF(BTRIM(SPLIT_PART(waybill.receiver_info, '|', 1)), ''))`;
+
+    const qb = this.waybillsRepository.createQueryBuilder('waybill')
+      .select(normalizedPhoneExpression, 'normalized_phone')
+      .addSelect(receiverAddressExpression, 'receiver_address')
+      .addSelect(receiverNameExpression, 'receiver_name')
+      .addSelect('waybill.receiver_company_name', 'receiver_company_name')
+      .addSelect('COALESCE(waybill.updated_at, waybill.created_at)', 'last_used_at')
+      .where('waybill.deleted_at IS NULL')
+      .andWhere(`${normalizedPhoneExpression} <> ''`)
+      .andWhere(`${receiverAddressExpression} IS NOT NULL`)
+      .orderBy('COALESCE(waybill.updated_at, waybill.created_at)', 'DESC')
+      .addOrderBy('waybill.id', 'DESC')
+      .take(200);
+
+    if (searchedPhone) {
+      qb.andWhere(`${normalizedPhoneExpression} LIKE :receiverPhone`, {
+        receiverPhone: `%${searchedPhone}%`,
+      });
+    }
+
+    const rows = await qb.getRawMany<{
+      normalized_phone?: string | null;
+      receiver_address?: string | null;
+      receiver_name?: string | null;
+      receiver_company_name?: string | null;
+      last_used_at?: string | Date | null;
+    }>();
+    const seenPhones = new Set<string>();
+    const suggestions: ReceiverContactSuggestion[] = [];
+
+    for (const row of rows) {
+      const phone = normalizeReceiverPhone(row.normalized_phone);
+      const receiverAddress = row.receiver_address?.trim() || '';
+      if (!phone || !receiverAddress || seenPhones.has(phone)) continue;
+      if (searchedPhone && !phone.includes(searchedPhone)) continue;
+
+      seenPhones.add(phone);
+      suggestions.push({
+        phone,
+        receiver_address: receiverAddress,
+        receiver_name: row.receiver_name?.trim() || null,
+        receiver_company_name: row.receiver_company_name?.trim() || null,
+        last_used_at: row.last_used_at ?? null,
+      });
+      if (suggestions.length >= limit) break;
+    }
+
+    return suggestions;
   }
 
   async findAll(query: QueryWaybillsDto, currentUser: UserEntity) {
@@ -226,7 +310,7 @@ export class WaybillsService {
     if (patch.note !== undefined || patch.cc_amount !== undefined || patch.cod_amount !== undefined) {
       waybill.payment_type = this.resolvePaymentType({ ...waybill, ...patch } as CreateWaybillDto);
     }
-    if (patch.sender_name || patch.sender_phone || patch.sender_address) {
+    if (patch.sender_name !== undefined || patch.sender_phone !== undefined || patch.sender_address !== undefined) {
       waybill.sender_info = this.packContact(waybill.sender_name, waybill.sender_phone, waybill.sender_address);
     }
     if (patch.receiver_name || patch.receiver_phone || patch.receiver_address) {
