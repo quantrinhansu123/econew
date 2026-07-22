@@ -430,28 +430,6 @@ export default function WarehouseOrderNewPage() {
     }
   };
 
-  const handleDeleteBill = async (bill: BillListItem) => {
-    if (!canCreate) return;
-    if (!window.confirm(`Xóa vận đơn ${bill.waybill_code}?`)) return;
-    setIsSubmitting(true);
-    setActionError('');
-    try {
-      await apiRequest(`/waybills/${bill.id}`, { method: 'DELETE' });
-      if (selectedBillId === bill.id) void handleNew();
-      await loadBills(billFilterDate, billListLimitRef.current);
-    } catch (error) {
-      setActionError(error instanceof ApiError ? error.message : 'Không thể xóa vận đơn.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDelete = () => {
-    const bill = bills.find((item) => item.id === selectedBillId);
-    if (!bill) return;
-    void handleDeleteBill(bill);
-  };
-
   const printableBillId = useMemo(() => {
     if (selectedBillId) return selectedBillId;
     const code = form.soBill.trim().toUpperCase();
@@ -572,8 +550,6 @@ export default function WarehouseOrderNewPage() {
             hubOptions={hubOptions}
             onSave={() => void handleSave()}
             onNew={() => void handleNew()}
-            onDelete={handleDelete}
-            onDeleteBill={(bill) => void handleDeleteBill(bill)}
             onPreviewRegular={() => openPrintBill()}
             onPrintRegular={() => openPrintBill({ print: '1' })}
             onPrintA5={() => openPrintBill({ print: '1', format: 'a5' })}

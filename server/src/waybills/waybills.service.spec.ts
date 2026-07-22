@@ -16,6 +16,7 @@ import { TripStatus } from '../common/enums';
 const manager = { id: 'u1', role_mask: Roles.MANAGER, hub_id: '1' } as any;
 const warehouse = { id: 'u2', role_mask: Roles.WAREHOUSE, hub_id: '1' } as any;
 const accountant = { id: 'u3', role_mask: Roles.ACCOUNTANT, hub_id: '1' } as any;
+const director = { id: 'u4', role_mask: Roles.DIRECTOR, hub_id: null } as any;
 
 const makeWaybill = (overrides: Record<string, any> = {}) => ({
   id: '1',
@@ -910,7 +911,20 @@ describe('WaybillsService', () => {
 
   it('softDelete blocks MANIFEST_CLOSED waybill', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.MANIFEST_CLOSED }));
-    await expect(service.softDelete('1', manager)).rejects.toThrow(BadRequestException);
+    await expect(service.softDelete('1', director)).rejects.toThrow(BadRequestException);
+  });
+
+  it('softDelete only allows DIRECTOR and soft deletes mutable waybills', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill());
+    await expect(service.softDelete('1', manager)).rejects.toThrow(ForbiddenException);
+
+    const waybill = makeWaybill();
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+    await expect(service.softDelete('1', director)).resolves.toBeUndefined();
+    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      deleted_at: expect.any(Date),
+      updated_by: director.id,
+    }));
   });
 
   it('response omits fee fields for non-manager users', async () => {

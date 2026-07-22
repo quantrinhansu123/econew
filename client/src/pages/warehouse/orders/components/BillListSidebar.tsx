@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronDown, ChevronRight, Loader2, Printer, Trash2, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronRight, Loader2, Printer, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Fragment, useMemo, useState } from 'react';
 import type { BillListItem } from '../orderFormTypes';
@@ -7,9 +7,6 @@ interface Props {
   bills: BillListItem[];
   selectedId: string | null;
   onSelect: (bill: BillListItem) => void;
-  onDelete?: (bill: BillListItem) => void;
-  canDelete?: boolean;
-  isDeleting?: boolean;
   disabled?: boolean;
   filterDate: string;
   onFilterDateChange: (value: string) => void;
@@ -40,9 +37,6 @@ export default function BillListSidebar({
   bills,
   selectedId,
   onSelect,
-  onDelete,
-  canDelete = false,
-  isDeleting = false,
   disabled = false,
   filterDate,
   onFilterDateChange,
@@ -104,7 +98,7 @@ export default function BillListSidebar({
     onBulkPrint(ids);
   };
 
-  const columnCount = 7 + (onDelete ? 1 : 0);
+  const columnCount = 7;
 
   return (
     <aside className="flex min-h-[360px] w-full shrink-0 flex-col border-t border-slate-300 bg-slate-50/90 lg:min-h-0 lg:w-[700px] lg:border-l lg:border-t-0">
@@ -160,7 +154,6 @@ export default function BillListSidebar({
               <th className="w-[190px] border-b border-r border-slate-300 px-2 py-1.5 text-left font-black">Khách gửi / Mã KH</th>
               <th className="w-24 border-b border-r border-slate-300 px-2 py-1.5 text-right font-black">Phải thu</th>
               <th className="w-8 border-b border-r border-slate-300 px-1 py-1.5 text-center font-black" title="In bill">In</th>
-              {onDelete && <th className="w-7 border-b border-slate-300" />}
             </tr>
           </thead>
           <tbody>
@@ -255,25 +248,6 @@ export default function BillListSidebar({
                           <Printer size={13} />
                         </button>
                       </td>
-                      {onDelete && (
-                        <td className="border-b border-slate-300 p-0">
-                          <button
-                            type="button"
-                            title={`Xóa ${bill.waybill_code}`}
-                            disabled={!canDelete || isDeleting || disabled}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDelete(bill);
-                            }}
-                            className={clsx(
-                              'flex h-full min-h-7 w-7 shrink-0 items-center justify-center transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-                              active ? 'text-white hover:bg-red-500' : 'text-red-500 hover:bg-red-50',
-                            )}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      )}
                     </tr>
                   )}
                 </Fragment>

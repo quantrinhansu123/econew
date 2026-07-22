@@ -247,7 +247,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const canUpdateCustomerPayment = ((user?.role_mask ?? 0) & (ACCOUNTANT | MANAGER | DIRECTOR)) !== 0;
   const selectionEnabled = (!isAllOrders && canUpdate) || (isAllOrders && canUpdateCustomerPayment);
   const canEdit = canEditWaybill(user?.role_mask ?? 0);
-  const canDelete = hasManagerAccess(user?.role_mask ?? 0);
+  const canDelete = isAllOrders && ((user?.role_mask ?? 0) & DIRECTOR) !== 0;
   const [visibleColumnIds, setVisibleColumnIds] = useState<InventoryColumnId[]>(() =>
     isAllOrders ? loadAllOrdersVisibleColumnIds() : loadVisibleColumnIds(canViewPricing),
   );
@@ -824,7 +824,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                 </tfoot>
                 )}
               </table>
-              <div className="grid gap-3 p-3 md:hidden">{waybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} canUpdate={canUpdate} canEdit={canEdit} canDelete={canDelete} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onDelete={confirmDeleteWaybill} onSplit={openSplit} onCashVoucher={openCashVoucher} />)}</div>
+              <div className="grid gap-3 p-3 md:hidden">{waybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} canDelete={canDelete} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onDelete={confirmDeleteWaybill} onSplit={openSplit} onCashVoucher={openCashVoucher} />)}</div>
             </>
           )}
         </div>
@@ -1184,44 +1184,24 @@ function InventoryRow({
         return (
           <td className={clsx(isAllOrders ? 'px-2 py-2' : 'px-4 py-3')} onClick={(event) => event.stopPropagation()}>
             {isAllOrders ? (
-              <div className="flex items-center justify-center gap-1">
-                <button
-                  type="button"
-                  title="Xem đơn"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDetail(waybill);
-                  }}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-foreground hover:bg-muted"
-                >
-                  <Eye size={14} />
-                </button>
-                <button
-                  type="button"
-                  title={!canEdit ? 'Cần quyền WAREHOUSE trở lên' : 'Sửa đơn'}
-                  disabled={!canEdit}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (!canEdit) return;
-                    onEdit(waybill);
-                  }}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-primary hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Pencil size={14} />
-                </button>
-              </div>
+              <AllOrdersActions
+                waybill={waybill}
+                canEdit={canEdit}
+                canDelete={canDelete}
+                onDetail={onDetail}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
             ) : (
               <Actions
                 waybill={waybill}
                 canEdit={canEdit}
-                canDelete={canDelete}
                 isMutable={isMutableWaybill(waybill)}
                 isOpen={openActionMenuId === actionMenuId(waybill)}
                 onToggle={() => onToggleActionMenu(actionMenuId(waybill))}
                 onClose={onCloseActionMenu}
                 onDetail={onDetail}
                 onEdit={onEdit}
-                onDelete={onDelete}
                 onSplit={onSplit}
                 onCashVoucher={onCashVoucher}
               />
@@ -1259,7 +1239,62 @@ function InventoryRow({
   );
 }
 
-function InventoryCard({ waybill, canUpdate, canEdit, canDelete, openActionMenuId, onToggleActionMenu, onCloseActionMenu, onDetail, onEdit, onDelete, onSplit, onCashVoucher }: InventoryItemProps) {
+function AllOrdersActions({
+  waybill,
+  canEdit,
+  canDelete,
+  onDetail,
+  onEdit,
+  onDelete,
+}: Pick<InventoryItemProps, 'waybill' | 'canEdit' | 'canDelete' | 'onDetail' | 'onEdit' | 'onDelete'>) {
+  const deleteDisabled = !isMutableWaybill(waybill);
+
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <button
+        type="button"
+        title="Xem đơn"
+        onClick={(event) => {
+          event.stopPropagation();
+          onDetail(waybill);
+        }}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-foreground hover:bg-muted"
+      >
+        <Eye size={14} />
+      </button>
+      <button
+        type="button"
+        title={!canEdit ? 'Cần quyền WAREHOUSE trở lên' : 'Sửa đơn'}
+        disabled={!canEdit}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (!canEdit) return;
+          onEdit(waybill);
+        }}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-primary hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        <Pencil size={14} />
+      </button>
+      {canDelete && (
+        <button
+          type="button"
+          title={deleteDisabled ? 'Chỉ xóa được đơn ở trạng thái «Đã tạo đơn» hoặc «Trong kho»' : 'Admin xóa vận đơn'}
+          disabled={deleteDisabled}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (deleteDisabled) return;
+            onDelete(waybill);
+          }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          <Trash2 size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function InventoryCard({ waybill, isAllOrders, canUpdate, canEdit, canDelete, openActionMenuId, onToggleActionMenu, onCloseActionMenu, onDetail, onEdit, onDelete, onSplit, onCashVoucher }: InventoryItemProps & { isAllOrders: boolean }) {
   return (
     <article className="rounded-2xl border border-border bg-white p-4 shadow-sm">
       <div className="flex items-start gap-3">
@@ -1312,20 +1347,22 @@ function InventoryCard({ waybill, canUpdate, canEdit, canDelete, openActionMenuI
       </div>
 
       <div className="mt-3 border-t border-border pt-3">
-        <Actions
-          waybill={waybill}
-          canEdit={canEdit}
-          canDelete={canDelete}
-          isMutable={isMutableWaybill(waybill)}
-          isOpen={openActionMenuId === actionMenuId(waybill)}
-          onToggle={() => onToggleActionMenu(actionMenuId(waybill))}
-          onClose={onCloseActionMenu}
-          onDetail={onDetail}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          onSplit={onSplit}
-          onCashVoucher={onCashVoucher}
-        />
+        {isAllOrders ? (
+          <AllOrdersActions waybill={waybill} canEdit={canEdit} canDelete={canDelete} onDetail={onDetail} onEdit={onEdit} onDelete={onDelete} />
+        ) : (
+          <Actions
+            waybill={waybill}
+            canEdit={canEdit}
+            isMutable={isMutableWaybill(waybill)}
+            isOpen={openActionMenuId === actionMenuId(waybill)}
+            onToggle={() => onToggleActionMenu(actionMenuId(waybill))}
+            onClose={onCloseActionMenu}
+            onDetail={onDetail}
+            onEdit={onEdit}
+            onSplit={onSplit}
+            onCashVoucher={onCashVoucher}
+          />
+        )}
       </div>
     </article>
   );
@@ -1349,20 +1386,17 @@ interface InventoryItemProps {
 function Actions({
   waybill,
   canEdit,
-  canDelete,
   isMutable,
   isOpen,
   onToggle,
   onClose,
   onDetail,
   onEdit,
-  onDelete,
   onSplit,
   onCashVoucher,
-}: Pick<InventoryItemProps, 'waybill' | 'canEdit' | 'canDelete' | 'onDetail' | 'onEdit' | 'onDelete' | 'onSplit' | 'onCashVoucher'> & { isMutable: boolean; isOpen: boolean; onToggle: () => void; onClose: () => void }) {
+}: Pick<InventoryItemProps, 'waybill' | 'canEdit' | 'onDetail' | 'onEdit' | 'onSplit' | 'onCashVoucher'> & { isMutable: boolean; isOpen: boolean; onToggle: () => void; onClose: () => void }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const editDisabled = !canEdit || !isMutable;
-  const deleteDisabled = !canDelete || !isMutable;
   useEffect(() => {
     if (!isOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
@@ -1384,7 +1418,7 @@ function Actions({
     onClose();
     action();
   };
-  const lockedTitle = 'Chỉ sửa/xóa được đơn ở trạng thái «Đã tạo đơn» hoặc «Trong kho»';
+  const lockedTitle = 'Chỉ sửa được đơn ở trạng thái «Đã tạo đơn» hoặc «Trong kho»';
 
   return (
     <div ref={menuRef} className="relative inline-block text-left">
@@ -1409,14 +1443,6 @@ function Actions({
           disabled={editDisabled}
           title={editDisabled ? (canEdit ? lockedTitle : 'Cần quyền WAREHOUSE trở lên') : 'Sửa thông tin đơn'}
           onClick={() => runAction(() => onEdit(waybill))}
-        />
-        <MenuAction
-          icon={<Trash2 size={14} />}
-          label="Xóa"
-          disabled={deleteDisabled}
-          title={deleteDisabled ? (canDelete ? lockedTitle : 'Chỉ MANAGER/DIRECTOR được xóa') : 'Xóa vận đơn'}
-          onClick={() => runAction(() => onDelete(waybill))}
-          tone="danger"
         />
       </div>}
     </div>

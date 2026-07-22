@@ -421,6 +421,9 @@ export class WaybillsService {
   }
 
   async softDelete(id: string, currentUser: UserEntity): Promise<void> {
+    if (!hasRole(currentUser.role_mask, Roles.DIRECTOR)) {
+      throw new ForbiddenException('Only administrators can delete waybills');
+    }
     const waybill = await this.findMutable(id, currentUser);
     if (!MUTABLE_STATUSES.includes(this.getStatus(waybill))) throw new BadRequestException('Cannot delete operated waybill');
     Object.assign(waybill, { deleted_at: new Date(), updated_by: currentUser.id });

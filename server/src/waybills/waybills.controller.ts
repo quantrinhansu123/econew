@@ -226,8 +226,8 @@ export class WaybillsController {
   }
 
   @Delete(':id')
-  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Soft delete a waybill' })
+  @RequireRoles(Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Soft delete a waybill (DIRECTOR only)' })
   softDelete(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.softDelete(id, currentUser);
   }

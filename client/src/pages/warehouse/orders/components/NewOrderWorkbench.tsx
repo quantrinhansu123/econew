@@ -28,8 +28,6 @@ interface Props {
   hubOptions: { value: string; label: string }[];
   onSave: () => void;
   onNew: () => void;
-  onDelete: () => void;
-  onDeleteBill: (bill: BillListItem) => void;
   onPreviewRegular: () => void;
   onPrintRegular: () => void;
   onPrintA5: () => void;
@@ -62,8 +60,6 @@ export default function NewOrderWorkbench({
   hubOptions,
   onSave,
   onNew,
-  onDelete,
-  onDeleteBill,
   onPreviewRegular,
   onPrintRegular,
   onPrintA5,
@@ -348,7 +344,6 @@ export default function NewOrderWorkbench({
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2 border-t border-slate-300 pt-3">
             <ActionButton label={isImageUploading ? 'Đang tải ảnh' : 'Nhập'} onClick={onSave} disabled={!canManage || isBusy} primary />
             <ActionButton label="Mới" onClick={onNew} disabled={isBusy} />
-            <ActionButton label="Xóa" onClick={onDelete} disabled={!canManage || !selectedBillId || isBusy} danger />
             <ActionButton label="Xem bản in A4" onClick={onPreviewRegular} disabled={!printableBillId} />
             <ActionButton label="In A4 thường" onClick={onPrintRegular} disabled={!printableBillId} primary />
             <ActionButton label="In A5 (chọn khay)" onClick={onPrintA5} disabled={!printableBillId} />
@@ -370,9 +365,6 @@ export default function NewOrderWorkbench({
           bills={bills}
           selectedId={selectedBillId}
           onSelect={onSelectBill}
-          onDelete={onDeleteBill}
-          canDelete={canManage}
-          isDeleting={isBusy}
           disabled={isBusy}
           filterDate={billFilterDate}
           onFilterDateChange={onBillFilterDateChange}
