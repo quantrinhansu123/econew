@@ -13,6 +13,24 @@ const MIME_EXT: Record<string, string> = {
   'image/gif': 'gif',
 };
 
+const hasBytes = (buffer: Buffer, offset: number, expected: number[]) => (
+  expected.every((value, index) => buffer[offset + index] === value)
+);
+
+const detectImageMime = (buffer: Buffer): string | null => {
+  if (hasBytes(buffer, 0, [0xff, 0xd8, 0xff])) return 'image/jpeg';
+  if (hasBytes(buffer, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png';
+  const gifHeader = buffer.subarray(0, 6).toString('ascii');
+  if (gifHeader === 'GIF87a' || gifHeader === 'GIF89a') return 'image/gif';
+  if (
+    hasBytes(buffer, 0, [0x52, 0x49, 0x46, 0x46])
+    && hasBytes(buffer, 8, [0x57, 0x45, 0x42, 0x50])
+  ) {
+    return 'image/webp';
+  }
+  return null;
+};
+
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
@@ -98,9 +116,15 @@ export class StorageService {
       this.throwStorageResponseError('list buckets', listResponse.status, detail);
     }
 
-    const buckets = (await listResponse.json()) as Array<{ name?: string; id?: string }>;
-    const exists = buckets.some((item) => item.name === this.bucket || item.id === this.bucket);
-    if (!exists) {
+    const buckets = (await listResponse.json()) as Array<{
+      name?: string;
+      id?: string;
+      public?: boolean;
+    }>;
+    const existingBucket = buckets.find(
+      (item) => item.name === this.bucket || item.id === this.bucket,
+    );
+    if (!existingBucket) {
       const createResponse = await this.storageFetch(
         `${this.supabaseUrl}/storage/v1/bucket`,
         {
@@ -122,6 +146,37 @@ export class StorageService {
           throw new InternalServerErrorException(`Không tạo được bucket "${this.bucket}" trên Supabase.`);
         }
       }
+    } else if (existingBucket.public !== true) {
+      const bucketId = existingBucket.id || this.bucket;
+      const updateResponse = await this.storageFetch(
+        `${this.supabaseUrl}/storage/v1/bucket/${encodeURIComponent(bucketId)}`,
+        {
+          method: 'PUT',
+          headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            id: bucketId,
+            name: existingBucket.name || this.bucket,
+            public: true,
+          }),
+        },
+        'make bucket public',
+      );
+      if (!updateResponse.ok) {
+        const detail = await updateResponse.text();
+        this.logger.error(
+          `Supabase Storage make bucket public failed: ${updateResponse.status} ${detail}`,
+        );
+        if (updateResponse.status === 401 || updateResponse.status === 403) {
+          this.throwStorageResponseError(
+            'make bucket public',
+            updateResponse.status,
+            detail,
+          );
+        }
+        throw new InternalServerErrorException(
+          `Bucket "${this.bucket}" đang ở chế độ private và không thể chuyển sang public.`,
+        );
+      }
     }
   }
 
@@ -135,9 +190,14 @@ export class StorageService {
 
   private async uploadImage(file: Express.Multer.File, folder: string): Promise<string> {
     if (!file?.buffer?.length) throw new BadRequestException('Thiếu file ảnh.');
-    if (file.size > MAX_BYTES) throw new BadRequestException('Ảnh tối đa 5 MB.');
+    if (file.size > MAX_BYTES || file.buffer.length > MAX_BYTES) {
+      throw new BadRequestException('Ảnh tối đa 5 MB.');
+    }
     if (!ALLOWED_MIME.has(file.mimetype)) {
       throw new BadRequestException('Chỉ chấp nhận ảnh JPEG, PNG, WebP hoặc GIF.');
+    }
+    if (detectImageMime(file.buffer) !== file.mimetype) {
+      throw new BadRequestException('Nội dung file không khớp định dạng ảnh đã khai báo.');
     }
 
     await this.ensureBucket();
@@ -171,6 +231,68 @@ export class StorageService {
     }
 
     return `${this.supabaseUrl}/storage/v1/object/public/${this.bucket}/${objectPath}`;
+  }
+
+  private waybillObjectPath(publicUrl: string): string | null {
+    let candidate: URL;
+    try {
+      candidate = new URL(publicUrl);
+    } catch {
+      return null;
+    }
+
+    const storageRoot = new URL(this.supabaseUrl);
+    const rootPath = storageRoot.pathname.replace(/\/+$/, '');
+    const expectedPrefix = `${rootPath}/storage/v1/object/public/${this.bucket}/`;
+    if (
+      candidate.origin !== storageRoot.origin
+      || candidate.search
+      || candidate.hash
+      || !candidate.pathname.startsWith(expectedPrefix)
+    ) {
+      return null;
+    }
+
+    try {
+      const objectPath = decodeURIComponent(candidate.pathname.slice(expectedPrefix.length));
+      return /^waybills\/[^/]+\.(?:jpe?g|png|webp|gif)$/i.test(objectPath)
+        ? objectPath
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Kiểm tra metadata trực tiếp trong Storage thay vì tin URL do client gửi lên.
+   * DELIVERED phải bị chặn nếu object đã bị xóa hoặc URL chỉ đúng về hình thức.
+   */
+  async assertWaybillImagesExist(publicUrls: string[]): Promise<void> {
+    const objectPaths = publicUrls.map((publicUrl) => this.waybillObjectPath(publicUrl));
+    if (objectPaths.some((objectPath) => !objectPath)) {
+      throw new BadRequestException('Ảnh giao hàng phải được upload bằng hệ thống.');
+    }
+
+    await Promise.all(objectPaths.map(async (objectPath) => {
+      const encodedPath = objectPath!
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+      const response = await this.storageFetch(
+        `${this.supabaseUrl}/storage/v1/object/info/${encodeURIComponent(this.bucket)}/${encodedPath}`,
+        { headers: this.authHeaders() },
+        'read waybill object metadata',
+      );
+
+      if (response.ok) return;
+
+      const detail = await response.text();
+      if (response.status === 400 || response.status === 404) {
+        this.logger.warn(`Supabase Storage waybill object missing: ${response.status} ${objectPath}`);
+        throw new BadRequestException('Ảnh giao hàng không tồn tại trên Storage. Vui lòng upload lại.');
+      }
+      this.throwStorageResponseError('read waybill object metadata', response.status, detail);
+    }));
   }
 
   uploadPaymentProof(file: Express.Multer.File): Promise<string> {

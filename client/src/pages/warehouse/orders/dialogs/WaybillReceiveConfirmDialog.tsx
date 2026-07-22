@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle2, PackageCheck, X } from 'lucide-react';
 
+import { parseWaybillImages } from '../../../../lib/waybillImages';
 import type { ReceiveFormState, WaybillDetail } from '../types';
 
 interface Props {
@@ -17,6 +18,7 @@ const displayCode = (waybill: WaybillDetail | null) => waybill?.waybill_code || 
 
 export default function WaybillReceiveConfirmDialog({ isOpen, isClosing, isSubmitting, waybill, formState, onClose, onConfirm }: Props) {
   if (!isOpen && !isClosing) return null;
+  const photoCount = parseWaybillImages(formState.deliveryPhotoUrl).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
@@ -42,7 +44,7 @@ export default function WaybillReceiveConfirmDialog({ isOpen, isClosing, isSubmi
             <p className="mt-1 text-xl font-black text-foreground">{displayCode(waybill)}</p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Info label="Ảnh tiếp nhận" value={formState.deliveryPhotoUrl || '—'} />
+            <Info label="Ảnh tiếp nhận" value={photoCount > 0 ? `${photoCount} ảnh đã upload` : '—'} />
           </div>
         </div>
 

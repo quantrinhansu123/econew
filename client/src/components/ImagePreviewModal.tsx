@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { ImageIcon, X } from 'lucide-react';
+import { ImageIcon, ImageOff, RotateCcw, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export function ImagePreviewModal({
@@ -50,15 +50,47 @@ export function ImagePreviewModal({
           </button>
         </div>
         <div className="flex flex-1 items-center justify-center overflow-auto p-4 custom-scrollbar">
-          <img
-            src={imageUrl}
-            alt={title}
-            className="max-h-[78dvh] w-auto max-w-full rounded-lg object-contain"
-          />
+          <PreviewImage key={imageUrl} imageUrl={imageUrl} title={title} />
         </div>
       </div>
     </div>,
     document.body,
+  );
+}
+
+function PreviewImage({ imageUrl, title }: { imageUrl: string; title: string }) {
+  const [hasError, setHasError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+
+  if (hasError) {
+    return (
+      <div className="flex max-w-sm flex-col items-center rounded-2xl border border-red-400/30 bg-white/5 px-6 py-8 text-center text-white" role="alert">
+        <ImageOff size={34} className="text-red-300" />
+        <p className="mt-3 text-[14px] font-extrabold">Không tải được ảnh</p>
+        <p className="mt-1 text-[12px] leading-5 text-white/65">URL ảnh có thể đã hết hạn, bị xóa hoặc mạng đang gián đoạn.</p>
+        <button
+          type="button"
+          onClick={() => {
+            setRetryKey((current) => current + 1);
+            setHasError(false);
+          }}
+          className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 text-[12px] font-bold text-white hover:bg-white/15"
+        >
+          <RotateCcw size={14} />
+          Thử tải lại
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      key={retryKey}
+      src={imageUrl}
+      alt={title}
+      onError={() => setHasError(true)}
+      className="max-h-[78dvh] w-auto max-w-full rounded-lg object-contain"
+    />
   );
 }
 

@@ -4,6 +4,7 @@ import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
 import { getStoredAuthUser } from '../lib/authUser';
 import UpdateDeliveryStatusDialog from './delivery/last-mile/dialogs/UpdateDeliveryStatusDialog';
+import type { DeliveryStatus } from './delivery/last-mile/deliveryStatusUtils';
 import type { LastMileWaybill, ListResponse } from './delivery/last-mile/types';
 
 const DRIVER = 4;
@@ -64,18 +65,17 @@ export default function NhiemVuGiaoHangPage() {
   }, [isManager, keyword, user?.id]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadTasks();
   }, [loadTasks]);
 
-  const confirmUpdateStatus = async (status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED') => {
+  const confirmUpdateStatus = async (status: DeliveryStatus, deliveryPhotoUrl?: string) => {
     if (!statusWaybill) return;
     setIsSubmitting(true);
     setActionError('');
     try {
-      const body: { status: string; delivery_photo_url?: string } = { status };
-      if (status === 'DELIVERED') {
-        body.delivery_photo_url = statusWaybill.delivery_photo_url || 'pending-upload';
-      }
+      const body: { status: DeliveryStatus; delivery_photo_url?: string } = { status };
+      if (status === 'DELIVERED' && deliveryPhotoUrl) body.delivery_photo_url = deliveryPhotoUrl;
       await apiRequest(`/waybills/${statusWaybill.id}/status`, { method: 'PATCH', body });
       setStatusWaybill(null);
       await loadTasks();

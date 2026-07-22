@@ -36,6 +36,13 @@ export interface WaybillPrintData {
   showPricing: boolean;
 }
 
+/** Giữ mã bill liền mạch cho cả dòng chữ, barcode và QR. */
+export function normalizeWaybillPrintCode(code: unknown) {
+  return String(code ?? '')
+    .normalize('NFKC')
+    .replace(/[\s\u00AD\u200B-\u200D\u2060\u2010-\u2015-]+/g, '');
+}
+
 const waitForImage = (image: HTMLImageElement) => {
   if (image.complete) {
     return typeof image.decode === 'function'
@@ -48,6 +55,36 @@ const waitForImage = (image: HTMLImageElement) => {
     image.addEventListener('error', () => resolve(), { once: true });
   });
 };
+
+const FIT_SCALE_PROPERTY = '--eco-fit-scale';
+
+/**
+ * Co toàn bộ nội dung phiếu theo kích thước thực tế của DOM. Phiếu vẫn dùng
+ * layout Arial gốc ở tỷ lệ 1 khi dữ liệu vừa; chỉ các phiếu dài mới bị co.
+ */
+export function fitWaybillInvoiceElement(invoice: HTMLElement): number {
+  const frame = invoice.closest<HTMLElement>('.waybill-invoice-frame');
+  if (!frame || !frame.clientWidth || !frame.clientHeight) return 1;
+
+  invoice.style.setProperty(FIT_SCALE_PROPERTY, '1');
+  const naturalWidth = Math.max(invoice.scrollWidth, invoice.offsetWidth);
+  const naturalHeight = Math.max(invoice.scrollHeight, invoice.offsetHeight);
+  if (!naturalWidth || !naturalHeight) return 1;
+
+  const scale = Math.min(
+    1,
+    frame.clientWidth / naturalWidth,
+    frame.clientHeight / naturalHeight,
+  );
+  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  invoice.style.setProperty(FIT_SCALE_PROPERTY, safeScale.toFixed(4));
+  return safeScale;
+}
+
+export function fitWaybillInvoicesToPage(root: ParentNode = document): number[] {
+  return Array.from(root.querySelectorAll<HTMLElement>('.waybill-invoice'))
+    .map(fitWaybillInvoiceElement);
+}
 
 /**
  * Đợi logo, barcode và QR sẵn sàng để tránh mở hộp thoại in khi ảnh còn trống.
@@ -63,6 +100,7 @@ export async function printWaybillWhenReady() {
   });
 
   await Promise.race([assetsReady, timeout]);
+  fitWaybillInvoicesToPage();
   await new Promise<void>((resolve) => {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => resolve());

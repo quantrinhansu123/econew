@@ -371,7 +371,7 @@ export default function WarehouseOrderNewPage() {
     setIsSubmitting(true);
     setActionError('');
     try {
-      const body = buildCreatePayload(form, volumetricWeight);
+      const body = buildCreatePayload(form, volumetricWeight, selectedBillId ? 'update' : 'create');
       if (selectedBillId) {
         await apiRequest(`/waybills/${selectedBillId}`, { method: 'PATCH', body });
         await loadBills(billFilterDate, billListLimitRef.current);

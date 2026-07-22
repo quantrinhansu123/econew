@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { Brackets, DataSource, In, IsNull, Not, Repository, SelectQueryBuilder } from 'typeorm';
 import { HubEntity } from '../hubs/hub.entity';
 import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
@@ -36,8 +37,13 @@ import { assertSplitLoadStatusTransition, WaybillSplitLoadStatus } from './dto/w
 import { OrdersService } from '../orders/orders.service';
 import { OrderEntity } from '../orders/order.entity';
 import { VendorsService } from '../vendors/vendors.service';
-import { normalizeWaybillPhotos } from '../common/waybill-photos';
+import {
+  normalizeWaybillPhotos,
+  parseWaybillPhotos,
+  WaybillPhotoValidationOptions,
+} from '../common/waybill-photos';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
+import { StorageService } from '../uploads/storage.service';
 
 type WaybillRecord = WaybillEntity & Record<string, any>;
 
@@ -56,6 +62,17 @@ const ALL_ORDER_LIST_STATUSES = [
 ];
 const MUTABLE_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE];
 const ROUTE_ASSIGNABLE_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE, WaybillStatus.AT_DEST_HUB];
+const DESTINATION_HUB_STATUSES = [
+  WaybillStatus.AT_DEST_HUB,
+  WaybillStatus.OUT_FOR_DELIVERY,
+  WaybillStatus.DELIVERED,
+  WaybillStatus.RETURNED,
+];
+const LAST_MILE_STATUSES = [
+  WaybillStatus.OUT_FOR_DELIVERY,
+  WaybillStatus.DELIVERED,
+  WaybillStatus.RETURNED,
+];
 const parseNoteField = (note: string | null | undefined, key: string) => {
   const match = (note || '').match(new RegExp(`${key}=([^|]+)`, 'i'));
   return match?.[1]?.trim() || '';
@@ -68,12 +85,12 @@ const plainGoodsNote = (note: string | null | undefined) => {
 };
 
 const STATE_TRANSITIONS: Record<string, WaybillStatus[]> = {
-  [WaybillStatus.RECEIVED]: [WaybillStatus.IN_WAREHOUSE, WaybillStatus.MANIFEST_CLOSED],
+  [WaybillStatus.RECEIVED]: [WaybillStatus.IN_WAREHOUSE],
   [WaybillStatus.IN_WAREHOUSE]: [WaybillStatus.MANIFEST_CLOSED],
-  [WaybillStatus.MANIFEST_CLOSED]: [WaybillStatus.LOADED],
+  [WaybillStatus.MANIFEST_CLOSED]: [WaybillStatus.LOADED, WaybillStatus.IN_TRANSIT],
   [WaybillStatus.LOADED]: [WaybillStatus.IN_TRANSIT],
   [WaybillStatus.IN_TRANSIT]: [WaybillStatus.AT_DEST_HUB],
-  [WaybillStatus.AT_DEST_HUB]: [WaybillStatus.OUT_FOR_DELIVERY, WaybillStatus.DELIVERED],
+  [WaybillStatus.AT_DEST_HUB]: [WaybillStatus.OUT_FOR_DELIVERY],
   [WaybillStatus.OUT_FOR_DELIVERY]: [WaybillStatus.DELIVERED, WaybillStatus.RETURNED],
 };
 
@@ -91,6 +108,8 @@ export class WaybillsService {
     private readonly dataSource: DataSource,
     private readonly ordersService: OrdersService,
     private readonly vendorsService: VendorsService,
+    private readonly configService: ConfigService,
+    private readonly storageService: StorageService,
   ) {}
 
   async create(dto: CreateWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
@@ -117,7 +136,9 @@ export class WaybillsService {
       origin_hub_id: dto.origin_hub_id,
       dest_hub_id: dto.dest_hub_id,
       last_mile_driver_id: null,
-      delivery_photo_url: normalizeWaybillPhotos(dto.delivery_photo_url),
+      delivery_photo_url: dto.delivery_photo_url === undefined
+        ? null
+        : this.normalizeSubmittedPhotos(dto.delivery_photo_url, false),
       delivery_time: null,
     } as any) as unknown as WaybillRecord;
 
@@ -181,13 +202,14 @@ export class WaybillsService {
     const originChanged = requestedOriginHubId !== null && requestedOriginHubId !== String(waybill.origin_hub_id);
     const destChanged = requestedDestHubId !== null && requestedDestHubId !== String(waybill.dest_hub_id);
 
-    if (patch.delivery_photo_url !== undefined) {
-      const normalizedPhotos = normalizeWaybillPhotos(patch.delivery_photo_url);
-      if (normalizedPhotos) patch.delivery_photo_url = normalizedPhotos;
-      else {
-        waybill.delivery_photo_url = null;
-        delete patch.delivery_photo_url;
-      }
+    if (Object.prototype.hasOwnProperty.call(dto, 'delivery_photo_url')) {
+      this.assertPhotoUpdateAccess(waybill, currentUser);
+      const normalizedPhotos = this.normalizeSubmittedPhotos(
+        (dto as { delivery_photo_url?: string | null }).delivery_photo_url,
+        true,
+      );
+      this.assertPhotoClearAllowed(waybill, normalizedPhotos);
+      (patch as { delivery_photo_url?: string | null }).delivery_photo_url = normalizedPhotos;
     }
 
     let originHub: HubEntity | null = null;
@@ -267,8 +289,9 @@ export class WaybillsService {
     if (this.getStatus(waybill) !== WaybillStatus.RECEIVED) throw new BadRequestException('Only RECEIVED waybills can be received');
     const receiveHubId = currentUser.hub_id ?? waybill.origin_hub_id;
     await this.assertHubAccess(receiveHubId, currentUser);
+    const photos = this.normalizeSubmittedPhotos(dto.delivery_photo_url, false);
     this.setStatus(waybill, WaybillStatus.IN_WAREHOUSE);
-    Object.assign(waybill, { current_hub_id: receiveHubId, delivery_photo_url: normalizeWaybillPhotos(dto.delivery_photo_url), received_at: new Date(), received_by: currentUser.id, updated_by: currentUser.id });
+    Object.assign(waybill, { current_hub_id: receiveHubId, delivery_photo_url: photos, received_at: new Date(), received_by: currentUser.id, updated_by: currentUser.id });
     return this.saveWithAudit(waybill, currentUser, 'RECEIVE');
   }
 
@@ -276,10 +299,28 @@ export class WaybillsService {
     const waybill = await this.findMutable(id, currentUser);
     const currentStatus = this.getStatus(waybill);
     if (!STATE_TRANSITIONS[currentStatus]?.includes(dto.status)) throw new BadRequestException('Invalid waybill state transition');
-    if (dto.status === WaybillStatus.DELIVERED && !dto.delivery_photo_url && !waybill.delivery_photo_url) throw new BadRequestException('Delivery photo is required');
+    this.assertStatusTransitionAccess(waybill, currentStatus, dto.status, currentUser);
+    if (dto.status === WaybillStatus.IN_TRANSIT) await this.assertManifestHasSeal(id);
+
+    let submittedPhotos: string | undefined;
+    if (Object.prototype.hasOwnProperty.call(dto, 'delivery_photo_url')) {
+      submittedPhotos = this.normalizeSubmittedPhotos(dto.delivery_photo_url, false) ?? undefined;
+    }
+    if (dto.status === WaybillStatus.DELIVERED) {
+      let deliveryPhotos = submittedPhotos;
+      if (!deliveryPhotos) {
+        try {
+          deliveryPhotos = this.normalizeSubmittedPhotos(waybill.delivery_photo_url, false) ?? undefined;
+        } catch {
+          throw new BadRequestException('Delivery photo is required');
+        }
+      }
+      if (!deliveryPhotos) throw new BadRequestException('Delivery photo is required');
+      await this.storageService.assertWaybillImagesExist(parseWaybillPhotos(deliveryPhotos));
+    }
     this.setStatus(waybill, dto.status);
     Object.assign(waybill, { updated_by: currentUser.id, note: dto.note ?? waybill.note });
-    if (dto.delivery_photo_url) waybill.delivery_photo_url = normalizeWaybillPhotos(dto.delivery_photo_url);
+    if (submittedPhotos) waybill.delivery_photo_url = submittedPhotos;
     if (dto.status === WaybillStatus.DELIVERED) Object.assign(waybill, { delivered_at: new Date(), delivery_time: new Date() });
     if (dto.status === WaybillStatus.RETURNED) waybill.returned_at = new Date();
     return this.saveWithAudit(waybill, currentUser, 'STATUS_CHANGE');
@@ -287,7 +328,13 @@ export class WaybillsService {
 
   async updatePhotos(id: string, dto: UpdateWaybillPhotosDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
-    waybill.delivery_photo_url = normalizeWaybillPhotos(dto.delivery_photo_url);
+    if (!Object.prototype.hasOwnProperty.call(dto, 'delivery_photo_url')) {
+      throw new BadRequestException('delivery_photo_url is required; use null to clear photos');
+    }
+    this.assertPhotoUpdateAccess(waybill, currentUser);
+    const photos = this.normalizeSubmittedPhotos(dto.delivery_photo_url, true);
+    this.assertPhotoClearAllowed(waybill, photos);
+    waybill.delivery_photo_url = photos;
     waybill.updated_by = currentUser.id;
     return this.sanitize(await this.waybillsRepository.save(waybill), currentUser);
   }
@@ -2041,6 +2088,105 @@ export class WaybillsService {
 
   private getStatus(waybill: WaybillRecord): WaybillStatus {
     return (waybill.status ?? waybill.current_state) as WaybillStatus;
+  }
+
+  private photoValidationOptions(allowLegacyExternalUrls = false): WaybillPhotoValidationOptions {
+    return {
+      supabaseUrl: this.configService.get<string>('SUPABASE_URL'),
+      storageBucket: this.configService.get<string>('SUPABASE_STORAGE_BUCKET') || 'payment-proofs',
+      allowLegacyExternalUrls,
+    };
+  }
+
+  private normalizeSubmittedPhotos(value: unknown, allowClear: boolean): string | null {
+    if (value === null) {
+      if (allowClear) return null;
+      throw new BadRequestException('At least one uploaded waybill photo is required');
+    }
+    if (typeof value !== 'string') {
+      throw new BadRequestException('delivery_photo_url must be a string');
+    }
+    const normalized = normalizeWaybillPhotos(value, this.photoValidationOptions(false));
+    if (!normalized) throw new BadRequestException('At least one uploaded waybill photo is required');
+    return normalized;
+  }
+
+  private assertPhotoClearAllowed(waybill: WaybillRecord, photos: string | null): void {
+    if (photos === null && this.getStatus(waybill) === WaybillStatus.DELIVERED) {
+      throw new BadRequestException('Delivered waybills must keep at least one delivery photo');
+    }
+  }
+
+  private assertPhotoUpdateAccess(waybill: WaybillRecord, currentUser: UserEntity): void {
+    if (isManager(currentUser.role_mask)) return;
+
+    const status = this.getStatus(waybill);
+    const isAssignedLastMileDriver = LAST_MILE_STATUSES.includes(status)
+      && hasRole(currentUser.role_mask, Roles.DRIVER)
+      && String(waybill.last_mile_driver_id ?? '') === String(currentUser.id);
+    if (isAssignedLastMileDriver) return;
+
+    const isHubOperator = this.hasAnyRole(currentUser, [
+      Roles.WAREHOUSE,
+      Roles.PACKER,
+      Roles.DISPATCHER,
+    ]);
+    const requiredHubId = DESTINATION_HUB_STATUSES.includes(status)
+      ? waybill.dest_hub_id
+      : waybill.current_hub_id ?? waybill.origin_hub_id;
+    if (
+      isHubOperator
+      && currentUser.hub_id
+      && String(currentUser.hub_id) === String(requiredHubId)
+    ) {
+      return;
+    }
+
+    throw new ForbiddenException('User cannot update photos for this waybill state');
+  }
+
+  private assertStatusTransitionAccess(
+    waybill: WaybillRecord,
+    currentStatus: WaybillStatus,
+    targetStatus: WaybillStatus,
+    currentUser: UserEntity,
+  ): void {
+    if (isManager(currentUser.role_mask)) return;
+
+    const isAssignedLastMileTransition = (
+      (
+        currentStatus === WaybillStatus.AT_DEST_HUB
+        && targetStatus === WaybillStatus.OUT_FOR_DELIVERY
+      )
+      || (
+        currentStatus === WaybillStatus.OUT_FOR_DELIVERY
+        && [WaybillStatus.DELIVERED, WaybillStatus.RETURNED].includes(targetStatus)
+      )
+    )
+      && hasRole(currentUser.role_mask, Roles.DRIVER)
+      && String(waybill.last_mile_driver_id ?? '') === String(currentUser.id);
+    if (isAssignedLastMileTransition) return;
+
+    if (!this.hasAnyRole(currentUser, [Roles.WAREHOUSE, Roles.DISPATCHER])) {
+      throw new ForbiddenException('User cannot change this waybill state');
+    }
+
+    const requiredHubId = DESTINATION_HUB_STATUSES.includes(targetStatus)
+      ? waybill.dest_hub_id
+      : waybill.current_hub_id ?? waybill.origin_hub_id;
+    if (!currentUser.hub_id || String(currentUser.hub_id) !== String(requiredHubId)) {
+      throw new ForbiddenException('User cannot change this waybill state outside the assigned hub');
+    }
+  }
+
+  private async assertManifestHasSeal(waybillId: string): Promise<void> {
+    const link = await this.manifestWaybillsRepository.findOne({
+      where: { waybill_id: waybillId },
+      relations: ['manifest'],
+    });
+    if (!link?.manifest?.seal_code?.trim()) {
+      throw new BadRequestException('Manifest seal code is required before transit');
+    }
   }
 
   private setStatus(waybill: WaybillRecord, status: WaybillStatus) {

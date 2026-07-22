@@ -24,3 +24,18 @@ export function isPublicImageUrl(value: string): boolean {
     return false;
   }
 }
+
+/** URL do endpoint upload vận đơn sinh ra; không chấp nhận URL/placeholder tự nhập. */
+export function isUploadedWaybillImageUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return (url.protocol === 'https:' || url.protocol === 'http:')
+      && !url.username
+      && !url.password
+      && !url.search
+      && !url.hash
+      && /\/storage\/v1\/object\/public\/[^/]+\/waybills\/\d{13}-[a-f0-9]{16}\.(?:jpe?g|png|webp|gif)$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}

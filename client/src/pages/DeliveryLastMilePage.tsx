@@ -9,6 +9,7 @@ import { FilterSelect } from '../components/ui/FilterSelect';
 import type { AuthUserProfile } from './login/types';
 import LastMileWaybillDetailDialog from './delivery/last-mile/dialogs/LastMileWaybillDetailDialog';
 import UpdateDeliveryStatusDialog from './delivery/last-mile/dialogs/UpdateDeliveryStatusDialog';
+import type { DeliveryStatus } from './delivery/last-mile/deliveryStatusUtils';
 import type { BadgeConfig, LastMileFilters, LastMileWaybill, LastMileWaybillDetail, FilterOption, HubSummary, ListResponse, TripSummary, UserSummary } from './delivery/last-mile/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -67,7 +68,7 @@ export default function DeliveryLastMilePage() {
   const [statusWaybill, setStatusWaybill] = useState<LastMileWaybill | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
-  const user = useMemo(getStoredUser, []);
+  const user = useMemo(() => getStoredUser(), []);
   const canUpdate = canUpdateLastMile(user?.role_mask ?? 0);
 
   const hubOptions = useMemo<FilterOption[]>(() => hubs.map(hub => ({ value: String(hub.id), label: [hub.code?.toUpperCase(), hub.name].filter(Boolean).join(' · ') || `Hub #${hub.id}` })), [hubs]);
@@ -105,7 +106,9 @@ export default function DeliveryLastMilePage() {
     finally { setIsLoading(false); }
   };
 
-  useEffect(() => { loadWaybills(); }, [filters]);
+  // loadWaybills owns the loading/result state for this query lifecycle.
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => { void loadWaybills(); }, [filters]);
   useEffect(() => {
     Promise.allSettled([
       apiRequest<ListResponse<HubSummary> | HubSummary[]>('/hubs/active'),
@@ -122,11 +125,13 @@ export default function DeliveryLastMilePage() {
     try { setDetailWaybill(await apiRequest<LastMileWaybillDetail>(`/waybills/${waybill.id}`)); }
     catch { setDetailWaybill(waybill); }
   };
-  const confirmUpdateStatus = async (status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED') => {
+  const confirmUpdateStatus = async (status: DeliveryStatus, deliveryPhotoUrl?: string) => {
     if (!statusWaybill) return;
     setIsSubmitting(true); setActionError('');
     try {
-      await apiRequest(`/waybills/${statusWaybill.id}/status`, { method: 'PATCH', body: { status } });
+      const body: { status: DeliveryStatus; delivery_photo_url?: string } = { status };
+      if (status === 'DELIVERED' && deliveryPhotoUrl) body.delivery_photo_url = deliveryPhotoUrl;
+      await apiRequest(`/waybills/${statusWaybill.id}/status`, { method: 'PATCH', body });
       setStatusWaybill(null); await loadWaybills();
     } catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái vận đơn.'); }
     finally { setIsSubmitting(false); }

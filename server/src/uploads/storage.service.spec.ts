@@ -3,9 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { StorageService } from './storage.service';
 
 const imageFile = {
-  buffer: Buffer.from('image-bytes'),
+  buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]),
   mimetype: 'image/jpeg',
-  size: 11,
+  size: 6,
 } as Express.Multer.File;
 
 const jsonResponse = (status: number, body: unknown) => new Response(
@@ -43,7 +43,7 @@ describe('StorageService', () => {
   it('uses only the apikey header for a new Supabase secret key', async () => {
     config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'payment-proofs' }]))
+      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'payment-proofs', public: true }]))
       .mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
 
     const url = await createService().uploadWaybillImage(imageFile);
@@ -62,7 +62,7 @@ describe('StorageService', () => {
   it('recognizes a new secret key even when Render keeps it under the legacy env name', async () => {
     config.SUPABASE_SERVICE_ROLE_KEY = 'sb_secret_render_key';
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'payment-proofs' }]))
+      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'payment-proofs', public: true }]))
       .mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
 
     await createService().uploadWaybillImage(imageFile);
@@ -75,7 +75,7 @@ describe('StorageService', () => {
   it('keeps Bearer authorization for a legacy service-role JWT', async () => {
     config.SUPABASE_SERVICE_ROLE_KEY = 'eyJheader.eyJpayload.signature';
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, [{ name: 'payment-proofs' }]))
+      .mockResolvedValueOnce(jsonResponse(200, [{ name: 'payment-proofs', public: true }]))
       .mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
 
     await createService().uploadWaybillImage(imageFile);
@@ -94,6 +94,73 @@ describe('StorageService', () => {
     );
   });
 
+  it('rejects a file whose bytes do not match its declared image MIME type', async () => {
+    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
+    const fakeImage = {
+      ...imageFile,
+      buffer: Buffer.from('not-an-image'),
+      size: 12,
+    } as Express.Multer.File;
+
+    await expect(createService().uploadWaybillImage(fakeImage)).rejects.toThrow(
+      'Nội dung file không khớp định dạng ảnh đã khai báo.',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('checks the actual buffer size even when metadata understates it', async () => {
+    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
+    const oversized = {
+      ...imageFile,
+      buffer: Buffer.concat([
+        imageFile.buffer,
+        Buffer.alloc(5 * 1024 * 1024),
+      ]),
+      size: imageFile.size,
+    } as Express.Multer.File;
+
+    await expect(createService().uploadWaybillImage(oversized)).rejects.toThrow('Ảnh tối đa 5 MB.');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('makes an existing private bucket public before returning public URLs', async () => {
+    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, [{
+        id: 'payment-proofs',
+        name: 'payment-proofs',
+        public: false,
+      }]))
+      .mockResolvedValueOnce(jsonResponse(200, { message: 'Successfully updated' }))
+      .mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
+
+    await expect(createService().uploadWaybillImage(imageFile)).resolves.toContain('/object/public/');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://project.supabase.co/storage/v1/bucket/payment-proofs',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          id: 'payment-proofs',
+          name: 'payment-proofs',
+          public: true,
+        }),
+      }),
+    );
+  });
+
+  it('fails clearly and does not upload when a private bucket cannot be made public', async () => {
+    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'payment-proofs', public: false }]))
+      .mockResolvedValueOnce(jsonResponse(500, { message: 'update failed' }));
+
+    await expect(createService().uploadWaybillImage(imageFile)).rejects.toThrow(
+      'Bucket "payment-proofs" đang ở chế độ private và không thể chuyển sang public.',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('maps network failures to the Storage connection error', async () => {
     config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
     fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
@@ -106,7 +173,7 @@ describe('StorageService', () => {
   it('shares one bucket lookup across concurrent uploads', async () => {
     config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'payment-proofs' }]))
+      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'payment-proofs', public: true }]))
       .mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo-1.jpg' }))
       .mockResolvedValueOnce(jsonResponse(200, { Key: 'vendor-payments/photo-2.jpg' }));
 
@@ -133,7 +200,7 @@ describe('StorageService', () => {
     );
 
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'payment-proofs' }]))
+      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'payment-proofs', public: true }]))
       .mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
     await expect(service.uploadWaybillImage(imageFile)).resolves.toContain('/waybills/');
 
@@ -151,5 +218,36 @@ describe('StorageService', () => {
       .mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
 
     await expect(createService().uploadWaybillImage(imageFile)).resolves.toContain('/waybills/');
+  });
+
+  it('verifies that a managed waybill object exists through Storage metadata', async () => {
+    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { name: 'photo.jpg', size: 6 }));
+    const url = 'https://project.supabase.co/storage/v1/object/public/payment-proofs/waybills/1770000000000-0123456789abcdef.jpg';
+
+    await expect(createService().assertWaybillImagesExist([url])).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://project.supabase.co/storage/v1/object/info/payment-proofs/waybills/1770000000000-0123456789abcdef.jpg',
+      expect.objectContaining({ headers: expect.objectContaining({ apikey: 'sb_secret_server_key' }) }),
+    );
+  });
+
+  it('rejects delivery when the referenced waybill object is missing', async () => {
+    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
+    fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: 'not found' }));
+    const url = 'https://project.supabase.co/storage/v1/object/public/payment-proofs/waybills/1770000000000-0123456789abcdef.jpg';
+
+    await expect(createService().assertWaybillImagesExist([url])).rejects.toThrow(
+      'Ảnh giao hàng không tồn tại trên Storage. Vui lòng upload lại.',
+    );
+  });
+
+  it('does not perform a Storage request for an external waybill URL', async () => {
+    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
+
+    await expect(createService().assertWaybillImagesExist([
+      'https://example.com/waybills/photo.jpg',
+    ])).rejects.toThrow('Ảnh giao hàng phải được upload bằng hệ thống.');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

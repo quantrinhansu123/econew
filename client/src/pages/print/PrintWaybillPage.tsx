@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Loader2, Printer } from 'lucide-react';
 import { ApiError, apiRequest } from '../../lib/api';
@@ -9,25 +9,15 @@ import WaybillInvoiceTemplate from './WaybillInvoiceTemplate';
 import { customerAddress, customerPhone } from '../warehouse/customers/customerOrderPatch';
 import { buildWaybillPrintData, printWaybillWhenReady } from './waybillPrintUtils';
 import { canViewWaybillPricing, shouldShowWaybillPricing } from './waybillPricingAccess';
+import {
+  buildWaybillPageSizeRule,
+  resolveWaybillPrintFormat,
+  WAYBILL_PRINT_FORMAT_CONFIG,
+  WAYBILL_PRINT_FORMATS,
+  withWaybillPrintFormat,
+  type WaybillPrintFormat,
+} from './waybillPrintFormat';
 import './waybill-invoice.css';
-
-type PrintFormat = 'a5' | 'a4';
-
-const resolvePrintFormat = (value: string | null): PrintFormat => {
-  // Giữ tương thích với các URL in cũ nhưng không nhân đôi phiếu trên A4.
-  if (value === 'a5') return 'a5';
-  return 'a4';
-};
-
-const printFormatLabel: Record<PrintFormat, string> = {
-  a5: 'A5 ngang (chọn khay A5)',
-  a4: 'A4 thường (không chỉnh khay)',
-};
-
-const printFormatHint: Record<PrintFormat, string> = {
-  a5: 'Dùng giấy A5 ngang (210×148mm) và chọn đúng khay A5 trên máy in.',
-  a4: 'Mặc định: để giấy A4 dọc như bình thường, phiếu tự nằm ở nửa trên trang.',
-};
 
 export default function PrintWaybillPage() {
   const { id } = useParams<{ id: string }>();
@@ -35,21 +25,27 @@ export default function PrintWaybillPage() {
   const navigate = useNavigate();
   const preview = searchParams.get('preview') === '1';
   const autoPrint = searchParams.get('print') === '1';
-  const printFormat = resolvePrintFormat(searchParams.get('format'));
+  const printFormat = resolveWaybillPrintFormat(searchParams.get('format'));
   const roleMask = getStoredAuthUser()?.role_mask;
   const canViewPricing = canViewWaybillPricing(roleMask);
   const showPricing = shouldShowWaybillPricing(roleMask, searchParams.get('pricing'));
-  const pageSizeRule = printFormat === 'a4'
-    ? '@media print { @page { size: A4 portrait; margin: 0; } }'
-    : '@media print { @page { size: A5 landscape; margin: 0; } }';
+  const pageSizeRule = buildWaybillPageSizeRule(printFormat);
 
-  const setPrintFormat = useCallback((format: PrintFormat) => {
-    const next = new URLSearchParams(searchParams);
-    if (format === 'a4') next.delete('format');
-    else next.set('format', format);
+  const updateSearchParams = (next: URLSearchParams) => {
     const query = next.toString();
     navigate({ pathname: `/print/waybill/${id}`, search: query ? `?${query}` : '' }, { replace: true });
-  }, [id, navigate, searchParams]);
+  };
+
+  const setPrintFormat = (format: WaybillPrintFormat) => {
+    updateSearchParams(withWaybillPrintFormat(searchParams, format));
+  };
+
+  const setShowPricing = (checked: boolean) => {
+    const next = new URLSearchParams(searchParams);
+    if (canViewPricing && checked) next.set('pricing', 'show');
+    else next.delete('pricing');
+    updateSearchParams(next);
+  };
 
   const [waybill, setWaybill] = useState<WaybillDetail | null>(null);
   const [customer, setCustomer] = useState<CustomerListItem | null>(null);
@@ -125,7 +121,7 @@ export default function PrintWaybillPage() {
   return (
     <div className={wrapClassName}>
       <style>{pageSizeRule}</style>
-      <div className="print-toolbar mb-4 flex w-full max-w-[210mm] flex-wrap items-center gap-2">
+      <div className="print-toolbar mb-4 flex w-full max-w-[297mm] flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -135,21 +131,33 @@ export default function PrintWaybillPage() {
           Quay lại
         </button>
         <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-white p-1">
-          {(['a4', 'a5'] as PrintFormat[]).map((format) => (
+          {WAYBILL_PRINT_FORMATS.map((format) => (
             <button
               key={format}
               type="button"
               onClick={() => setPrintFormat(format)}
+              aria-pressed={printFormat === format}
               className={`inline-flex h-8 items-center rounded-md px-2.5 text-[12px] font-bold transition-colors ${
                 printFormat === format
                   ? 'bg-primary text-white'
                   : 'text-muted-foreground hover:bg-muted'
               }`}
             >
-              {printFormatLabel[format]}
+              {WAYBILL_PRINT_FORMAT_CONFIG[format].label}
             </button>
           ))}
         </div>
+        {canViewPricing && (
+          <label className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[12px] font-bold text-slate-700">
+            <input
+              type="checkbox"
+              checked={showPricing}
+              onChange={(event) => setShowPricing(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+            />
+            Hiện cước khi in
+          </label>
+        )}
         <button
           type="button"
           onClick={() => void printWaybillWhenReady()}
@@ -162,7 +170,9 @@ export default function PrintWaybillPage() {
         {preview && (
           <span className="text-[12px] text-muted-foreground">Chế độ xem trước — kiểm tra nội dung trước khi in.</span>
         )}
-        <span className="w-full text-[12px] text-muted-foreground">{printFormatHint[printFormat]}</span>
+        <span className="w-full text-[12px] text-muted-foreground">
+          {WAYBILL_PRINT_FORMAT_CONFIG[printFormat].hint}
+        </span>
         <span className="text-[12px] text-muted-foreground">
           {showPricing
             ? 'Phiếu đang hiển thị cước phí.'

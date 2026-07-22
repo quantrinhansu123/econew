@@ -396,7 +396,22 @@ function resolveUnitPrice(waybill: WaybillDetail, billingUnit: string): number {
   return Math.round(totalFreight / quantity);
 }
 
-export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: number) {
+export type WaybillPayloadMode = 'create' | 'update';
+
+export function resolveWaybillPhotoField(
+  images: string[],
+  mode: WaybillPayloadMode = 'create',
+): string | null | undefined {
+  const joinedImages = joinWaybillImages(images);
+  if (joinedImages) return joinedImages;
+  return mode === 'update' ? null : undefined;
+}
+
+export function buildCreatePayload(
+  form: NewOrderFormState,
+  volumetricWeight: number,
+  mode: WaybillPayloadMode = 'create',
+) {
   const paymentType = paymentTypeFromForm(form);
   const freight = calcCuocChinhAmount(form);
   const cod = parseMoneyAmount(form.cod);
@@ -432,7 +447,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     cc_amount: paymentType === 'CC' ? thanhToan : 0,
     xe_lay: form.xeLay.trim() || undefined,
     xe_phat: form.xePhat.trim() || undefined,
-    delivery_photo_url: joinWaybillImages(form.billImages) || undefined,
+    delivery_photo_url: resolveWaybillPhotoField(form.billImages, mode),
     noi_dung: form.noiDung.trim() || undefined,
     note: [
       form.maKh && `ma_kh=${form.maKh}`,

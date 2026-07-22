@@ -272,10 +272,12 @@ export default function NewOrderWorkbench({
                   <CompactInput value={form.ghiChu} onChange={(e) => setField('ghiChu', e.target.value)} />
                 </CompactField>
                 <WaybillImagePicker
+                  key={selectedBillId || 'new-waybill'}
                   value={form.billImages}
                   onChange={(urls) => setField('billImages', urls)}
                   onUploadingChange={setIsImageUploading}
                   disabled={!canManage || isBusy}
+                  className="col-span-12"
                 />
               </div>
 

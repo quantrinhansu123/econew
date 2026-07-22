@@ -13,12 +13,14 @@ import { WaybillCashVoucherEntity } from './waybill-cash-voucher.entity';
 import { WaybillEntity } from './waybill.entity';
 import { WaybillsController } from './waybills.controller';
 import { WaybillsService } from './waybills.service';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([WaybillEntity, WaybillSplitEntity, WaybillCashVoucherEntity, HubEntity, TripEntity, TruckEntity, ManifestEntity, ManifestWaybillEntity, CustomerEntity]),
     OrdersModule,
     VendorsModule,
+    UploadsModule,
   ],
   controllers: [WaybillsController],
   providers: [WaybillsService],
