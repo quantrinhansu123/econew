@@ -25,7 +25,7 @@ export type SidebarItem = {
 
 export const sidebarMenu: SidebarItem[] = [
   { id: 'home', icon: Home, label: 'Trang chủ', path: '/' },
-  { id: 'orders', icon: PackagePlus, label: 'Quản lý Đơn hàng', path: '/orders', requiredRoleMask: 1 | 2 | 32 | 64 },
+  { id: 'orders', icon: PackagePlus, label: 'Quản lý Đơn hàng', path: '/orders', requiredRoleMask: 1 | 2 | 16 | 32 | 64 },
   { id: 'warehouse', icon: Warehouse, label: 'Quản lý kho', path: '/warehouse', requiredRoleMask: 1 | 2 | 32 | 64 },
   { id: 'delivery-tasks', icon: PackageSearch, label: 'Nhiệm vụ giao hàng', path: '/nhiem-vu-giao-hang', requiredRoleMask: 4 | 8 | 32 | 64 },
   { id: 'trips', icon: Truck, label: 'Quản lý xe', path: '/trips', requiredRoleMask: 8 },

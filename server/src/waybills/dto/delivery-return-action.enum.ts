@@ -1,0 +1,5 @@
+export enum DeliveryReturnAction {
+  STORE_AT_HUB = 'STORE_AT_HUB',
+  WAIT_REDELIVERY = 'WAIT_REDELIVERY',
+  REDIRECT_ADDRESS = 'REDIRECT_ADDRESS',
+}

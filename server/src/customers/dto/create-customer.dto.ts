@@ -47,6 +47,9 @@ export class CreateCustomerDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(64) contract_code?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(128) price_table?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) contact_address?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(255) receiver_han?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) address_han?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(32) phone_han?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(255) receiver_hcm?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) address_hcm?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(32) phone_hcm?: string;

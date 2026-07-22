@@ -15,6 +15,9 @@ export interface CustomerListItem {
   email: string | null;
   region: string | null;
   destination_province: string | null;
+  receiver_han?: string | null;
+  address_han?: string | null;
+  phone_han?: string | null;
   receiver_hcm?: string | null;
   receiver_dng?: string | null;
   address_hcm: string | null;

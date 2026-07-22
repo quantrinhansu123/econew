@@ -425,12 +425,19 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
             <DetailSection title="Giao nhận & kho">
               <Row label="Giao nhận" value={customer.delivery_handler} />
               <Row label="Tỉnh đến" value={customer.destination_province} />
+              <Row label="Người nhận HAN" value={customer.receiver_han} />
+              <Row label="ĐC kho HAN" value={customer.address_han} />
+              <Row label="ĐT nhận HAN" value={customer.phone_han} />
               <Row label="Người nhận HCM" value={customer.receiver_hcm} />
               <Row label="ĐC kho HCM" value={customer.address_hcm} />
               <Row label="ĐT nhận HCM" value={customer.phone_hcm} />
-              <Row label="Người nhận DNG" value={customer.receiver_dng} />
-              <Row label="ĐC DNG" value={customer.address_dng} />
-              <Row label="ĐT DNG" value={customer.phone_dng} />
+              {(customer.receiver_dng || customer.address_dng || customer.phone_dng) && (
+                <>
+                  <Row label="Người nhận DNG (cũ)" value={customer.receiver_dng} />
+                  <Row label="ĐC DNG (cũ)" value={customer.address_dng} />
+                  <Row label="ĐT DNG (cũ)" value={customer.phone_dng} />
+                </>
+              )}
             </DetailSection>
 
             <DetailSection title="Bill & giá">

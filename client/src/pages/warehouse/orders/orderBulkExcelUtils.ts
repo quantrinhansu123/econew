@@ -184,7 +184,7 @@ export function bulkRowToOrderForm(
     dichVu: values.dichVu || defaults.dichVu || 'Tiêu chuẩn 72h',
     giaoHang: values.giaoHang || defaults.giaoHang || 'Văn phòng',
     ngayDi: values.ngayDi || defaults.ngayDi || emptyOrderForm().ngayDi,
-    donGiaDonVi: values.donGiaDonVi || defaults.donGiaDonVi || 'Cân',
+    donGiaDonVi: values.donGiaDonVi || defaults.donGiaDonVi || 'Kg',
     klKg: values.klKg,
     chieuDai: values.chieuDai || '0',
     chieuRong: values.chieuRong || '0',

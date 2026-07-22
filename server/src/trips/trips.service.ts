@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, Not, Repository } from 'typeorm';
+import { Brackets, In, IsNull, Not, Repository } from 'typeorm';
 import { PaymentType, TripStatus, VendorTripPaymentStatus, WaybillState } from '../common/enums';
 import { clampPaginationLimit } from '../common/pagination';
 import { Roles, isManager } from '../common/roles';
@@ -16,6 +16,7 @@ import { VendorPaymentEntity } from '../vendors/vendor-payment.entity';
 import { WaybillsService } from '../waybills/waybills.service';
 import { WaybillEntity } from '../waybills/waybill.entity';
 import { WaybillSplitEntity } from '../waybills/waybill-split.entity';
+import { WaybillSplitLoadStatus } from '../waybills/dto/waybill-split-load-status.enum';
 import { ArriveTripDto } from './dto/arrive-trip.dto';
 import { AssignManifestDto } from './dto/assign-manifest.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
@@ -85,6 +86,7 @@ export class TripsService {
     if (manifest) {
       manifest.status = ManifestStatus.ASSIGNED_TO_TRIP;
       await this.manifestsRepository.save(manifest);
+      await this.bindUnassignedManifestSplits(String(manifest.id), savedTrip);
     }
     if (truck) {
       truck.status = TruckStatus.ASSIGNED;
@@ -194,6 +196,7 @@ export class TripsService {
     trip.manifest_id = String(dto.manifest_id);
     manifest.status = ManifestStatus.ASSIGNED_TO_TRIP;
     await this.manifestsRepository.save(manifest);
+    await this.bindUnassignedManifestSplits(String(dto.manifest_id), trip);
     return this.tripsRepository.save(trip);
   }
 
@@ -221,6 +224,14 @@ export class TripsService {
     if (trip.manifest_id) {
       await this.moveManifestWaybills(trip.manifest_id, WaybillState.LOADED, WaybillState.IN_TRANSIT);
       await this.moveManifestWaybills(trip.manifest_id, WaybillState.MANIFEST_CLOSED, WaybillState.IN_TRANSIT);
+      const links = await this.manifestWaybillsRepository.find({ where: { manifest_id: trip.manifest_id } }) ?? [];
+      const waybillIds = links.map((link) => String(link.waybill_id));
+      if (waybillIds.length) {
+        await this.waybillSplitsRepository.update(
+          { waybill_id: In(waybillIds), trip_id: String(trip.id) },
+          { load_status: WaybillSplitLoadStatus.IN_TRANSIT },
+        );
+      }
     }
     return this.tripsRepository.save(trip);
   }
@@ -230,7 +241,7 @@ export class TripsService {
     if (trip.status !== TripStatus.IN_TRANSIT) throw new BadRequestException('Only IN_TRANSIT trips can arrive');
     trip.status = TripStatus.ARRIVED;
     trip.arrival_time = dto.arrival_time ?? new Date();
-    if (trip.manifest_id) await this.moveManifestWaybills(trip.manifest_id, WaybillState.IN_TRANSIT, WaybillState.AT_DEST_HUB);
+    if (trip.manifest_id) await this.moveManifestWaybills(trip.manifest_id, WaybillState.IN_TRANSIT, WaybillState.AT_DEST_HUB, trip.end_hub_id);
     return this.tripsRepository.save(trip);
   }
 
@@ -260,6 +271,7 @@ export class TripsService {
   }
 
   async getExpectedArrivals(query: QueryExpectedArrivalsDto, currentUser: UserEntity) {
+    const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 100);
     const hubId = query.end_hub_id != null ? String(query.end_hub_id) : currentUser.hub_id;
     if (hubId) {
@@ -295,13 +307,15 @@ export class TripsService {
       [TripStatus.COMPLETED]: 3,
     };
 
-    const trips = (await qb.getMany()).sort((left, right) => {
+    const allTrips = (await qb.getMany()).sort((left, right) => {
       const rankDiff = (statusRank[left.status] ?? 9) - (statusRank[right.status] ?? 9);
       if (rankDiff !== 0) return rankDiff;
       const leftTime = new Date(left.arrival_time || left.expected_arrival_time || left.departure_time || 0).getTime();
       const rightTime = new Date(right.arrival_time || right.expected_arrival_time || right.departure_time || 0).getTime();
       return rightTime - leftTime;
-    }).slice(0, limit);
+    });
+    const total = allTrips.length;
+    const trips = allTrips.slice((page - 1) * limit, page * limit);
     const data = await Promise.all(trips.map(async (trip) => {
       const waybills = await this.getManifestWaybills(trip.manifest_id);
       const weight = waybills.reduce((sum, wb) => sum + Number(wb.weight ?? 0), 0);
@@ -329,7 +343,7 @@ export class TripsService {
         vehicle_type: trip.truck?.loai_xe?.trim() || null,
       };
     }));
-    return { data, total: data.length };
+    return { data, total, page, limit };
   }
 
   async getIncomingTripDetail(id: string, currentUser: UserEntity) {
@@ -701,10 +715,13 @@ export class TripsService {
     }));
   }
 
-  private async moveManifestWaybills(manifestId: string, from: WaybillState, to: WaybillState): Promise<void> {
+  private async moveManifestWaybills(manifestId: string, from: WaybillState, to: WaybillState, currentHubId?: string | null): Promise<void> {
     const waybills = await this.getManifestWaybills(manifestId);
     const changed = waybills.filter((waybill) => waybill.current_state === from);
-    changed.forEach((waybill) => { waybill.current_state = to; });
+    changed.forEach((waybill) => {
+      waybill.current_state = to;
+      if (currentHubId) waybill.current_hub_id = String(currentHubId);
+    });
     if (changed.length) await this.waybillsRepository.save(changed);
   }
 
@@ -823,5 +840,19 @@ export class TripsService {
     if (!info?.trim()) return '';
     const parts = info.split('|').map((part) => part.trim());
     return parts[2] || parts[parts.length - 1] || '';
+  }
+
+  private async bindUnassignedManifestSplits(manifestId: string, trip: TripEntity): Promise<void> {
+    const links = await this.manifestWaybillsRepository.find({ where: { manifest_id: manifestId } }) ?? [];
+    const waybillIds = links.map((link) => String(link.waybill_id));
+    if (!waybillIds.length) return;
+    await this.waybillSplitsRepository.update(
+      { waybill_id: In(waybillIds), trip_id: IsNull() },
+      {
+        trip_id: String(trip.id),
+        truck_id: trip.truck_id ? String(trip.truck_id) : null,
+        load_status: WaybillSplitLoadStatus.LOADED,
+      },
+    );
   }
 }

@@ -17,6 +17,11 @@ import { SearchResultEntity } from './search-result.entity';
 type Paginated<T> = { items: T[]; meta: { total: number; page: number; limit: number; total_pages: number } };
 type WaybillSearchRow = WaybillEntity & { origin_hub?: HubEntity; dest_hub?: HubEntity };
 type TripSearchRow = TripEntity & { truck?: TruckEntity | null; manifest?: ManifestEntity; start_hub?: HubEntity; end_hub?: HubEntity };
+type WaybillQueryFilters = Omit<Partial<SearchWaybillsDto>, 'status' | 'payment_type'> & {
+  status?: string;
+  payment_type?: string;
+};
+type TripQueryFilters = Omit<Partial<SearchTripsDto>, 'status'> & { status?: string };
 
 @Injectable()
 export class SearchService {
@@ -37,17 +42,49 @@ export class SearchService {
     const type = dto.type ?? GlobalSearchType.ALL;
     const offset = (page - 1) * limit;
 
-    const [waybills, waybillTotal] = type === GlobalSearchType.TRIP
-      ? [[], 0] as [WaybillSearchRow[], number]
-      : await this.buildWaybillQuery({ keyword, status: this.isWaybillStatus(dto.status) ? dto.status : undefined, date_from: dto.date_from, date_to: dto.date_to, page: 1, limit: 100 }, currentUser).getManyAndCount() as [WaybillSearchRow[], number];
+    const selectedStatuses = this.parseCsv(dto.status);
+    const selectedPaymentTypes = this.parseCsv(dto.payment_type);
+    const waybillStatuses = selectedStatuses.filter((status) => this.isWaybillStatus(status));
+    const tripStatuses = selectedStatuses.filter((status) => this.isTripStatus(status));
+    const includeWaybills = type !== GlobalSearchType.TRIP && (!selectedStatuses.length || waybillStatuses.length > 0);
+    const includeTrips = type !== GlobalSearchType.WAYBILL
+      && selectedPaymentTypes.length === 0
+      && (!selectedStatuses.length || tripStatuses.length > 0);
 
-    const [trips, tripTotal] = type === GlobalSearchType.WAYBILL
+    const [waybills, waybillTotal] = !includeWaybills
+      ? [[], 0] as [WaybillSearchRow[], number]
+      : await this.buildWaybillQuery({
+        keyword,
+        status: waybillStatuses.join(',') || undefined,
+        payment_type: dto.payment_type,
+        origin_hub_id: dto.origin_hub_id,
+        dest_hub_id: dto.dest_hub_id,
+        date_from: dto.date_from,
+        date_to: dto.date_to,
+        page: 1,
+        limit: 100,
+      }, currentUser).getManyAndCount() as [WaybillSearchRow[], number];
+
+    const [trips, tripTotal] = !includeTrips
       ? [[], 0] as [TripSearchRow[], number]
-      : await this.buildTripQuery({ keyword, status: this.isTripStatus(dto.status) ? dto.status : undefined, departure_from: dto.date_from, departure_to: dto.date_to, page: 1, limit: 100 }, currentUser).getManyAndCount() as [TripSearchRow[], number];
+      : await this.buildTripQuery({
+        keyword,
+        status: tripStatuses.join(',') || undefined,
+        start_hub_id: dto.origin_hub_id,
+        end_hub_id: dto.dest_hub_id,
+        departure_from: dto.date_from,
+        departure_to: dto.date_to,
+        page: 1,
+        limit: 100,
+      }, currentUser).getManyAndCount() as [TripSearchRow[], number];
 
     const results = this.mapGlobalResults(waybills, trips)
       .sort((left, right) => this.resultTime(right).getTime() - this.resultTime(left).getTime());
-    const total = type === GlobalSearchType.ALL ? waybillTotal + tripTotal : results.length;
+    const total = type === GlobalSearchType.WAYBILL
+      ? waybillTotal
+      : type === GlobalSearchType.TRIP
+        ? tripTotal
+        : waybillTotal + tripTotal;
 
     return this.paginateItems(results.slice(offset, offset + limit), total, page, limit);
   }
@@ -78,7 +115,7 @@ export class SearchService {
     return this.paginateItems(items.map((item) => this.sanitizeTrip(item as TripSearchRow, currentUser)), total, page, limit);
   }
 
-  buildWaybillQuery(dto: Partial<SearchWaybillsDto>, currentUser: UserEntity): SelectQueryBuilder<WaybillEntity> {
+  buildWaybillQuery(dto: WaybillQueryFilters, currentUser: UserEntity): SelectQueryBuilder<WaybillEntity> {
     const page = dto.page ?? 1;
     const limit = this.resolveLimit(dto.limit);
     const qb = this.waybillsRepository.createQueryBuilder('waybill')
@@ -87,6 +124,7 @@ export class SearchService {
       .select([
         'waybill.id', 'waybill.waybill_code', 'waybill.sender_info', 'waybill.receiver_info', 'waybill.payment_type', 'waybill.current_state',
         'waybill.origin_hub_id', 'waybill.dest_hub_id', 'waybill.current_hub_id', 'waybill.last_mile_driver_id', 'waybill.created_at', 'waybill.cost_amount',
+        'waybill.sender_phone', 'waybill.receiver_phone', 'waybill.receiver_address', 'waybill.ma_kh', 'waybill.noi_den',
         'waybill.weight', 'waybill.length', 'waybill.width', 'waybill.height', 'waybill.volumetric_weight',
         'origin_hub.id', 'origin_hub.code', 'origin_hub.name', 'dest_hub.id', 'dest_hub.code', 'dest_hub.name',
       ])
@@ -101,7 +139,12 @@ export class SearchService {
         inner
           .where('waybill.waybill_code ILIKE :keyword', { keyword })
           .orWhere('waybill.sender_info ILIKE :keyword', { keyword })
-          .orWhere('waybill.receiver_info ILIKE :keyword', { keyword });
+          .orWhere('waybill.receiver_info ILIKE :keyword', { keyword })
+          .orWhere('waybill.sender_phone ILIKE :keyword', { keyword })
+          .orWhere('waybill.receiver_phone ILIKE :keyword', { keyword })
+          .orWhere('waybill.receiver_address ILIKE :keyword', { keyword })
+          .orWhere('waybill.ma_kh ILIKE :keyword', { keyword })
+          .orWhere('waybill.noi_den ILIKE :keyword', { keyword });
         if (normalizedWaybillKeyword) {
           inner.orWhere(
             `REGEXP_REPLACE(UPPER(waybill.waybill_code), '[-[:space:]]+', '', 'g') ILIKE :normalizedWaybillKeyword`,
@@ -110,17 +153,17 @@ export class SearchService {
         }
       }));
     }
-    if (dto.status) qb.andWhere('waybill.current_state = :status', { status: dto.status });
-    if (dto.payment_type) qb.andWhere('waybill.payment_type = :paymentType', { paymentType: dto.payment_type });
-    if (dto.origin_hub_id) qb.andWhere('waybill.origin_hub_id = :originHubId', { originHubId: dto.origin_hub_id });
-    if (dto.dest_hub_id) qb.andWhere('waybill.dest_hub_id = :destHubId', { destHubId: dto.dest_hub_id });
+    this.applyCsvFilter(qb, 'waybill.current_state', 'status', dto.status);
+    this.applyCsvFilter(qb, 'waybill.payment_type', 'paymentType', dto.payment_type);
+    this.applyCsvFilter(qb, 'waybill.origin_hub_id', 'originHubId', dto.origin_hub_id);
+    this.applyCsvFilter(qb, 'waybill.dest_hub_id', 'destHubId', dto.dest_hub_id);
     if (dto.date_from) qb.andWhere('waybill.created_at >= :dateFrom', { dateFrom: dto.date_from });
     if (dto.date_to) qb.andWhere('waybill.created_at <= :dateTo', { dateTo: dto.date_to });
     this.applyWaybillScope(qb, currentUser);
     return qb;
   }
 
-  buildTripQuery(dto: Partial<SearchTripsDto>, currentUser: UserEntity): SelectQueryBuilder<TripEntity> {
+  buildTripQuery(dto: TripQueryFilters, currentUser: UserEntity): SelectQueryBuilder<TripEntity> {
     const page = dto.page ?? 1;
     const limit = this.resolveLimit(dto.limit);
     const qb = this.tripsRepository.createQueryBuilder('trip')
@@ -151,11 +194,11 @@ export class SearchService {
         if (numericKeyword) inner.orWhere('trip.id = :numericKeyword', { numericKeyword });
       }));
     }
-    if (dto.status) qb.andWhere('trip.status = :status', { status: dto.status });
+    this.applyCsvFilter(qb, 'trip.status', 'status', dto.status);
     if (dto.truck_id) qb.andWhere('trip.truck_id = :truckId', { truckId: dto.truck_id });
     if (dto.manifest_id) qb.andWhere('trip.manifest_id = :manifestId', { manifestId: dto.manifest_id });
-    if (dto.start_hub_id) qb.andWhere('trip.start_hub_id = :startHubId', { startHubId: dto.start_hub_id });
-    if (dto.end_hub_id) qb.andWhere('trip.end_hub_id = :endHubId', { endHubId: dto.end_hub_id });
+    this.applyCsvFilter(qb, 'trip.start_hub_id', 'startHubId', dto.start_hub_id);
+    this.applyCsvFilter(qb, 'trip.end_hub_id', 'endHubId', dto.end_hub_id);
     if (dto.departure_from) qb.andWhere('trip.departure_time >= :departureFrom', { departureFrom: dto.departure_from });
     if (dto.departure_to) qb.andWhere('trip.departure_time <= :departureTo', { departureTo: dto.departure_to });
     this.applyTripScope(qb, currentUser);
@@ -211,7 +254,12 @@ export class SearchService {
     if (!hubId) return;
     const hub = await this.hubsRepository.findOne({ where: { id: hubId } });
     if (!hub) throw new NotFoundException('Hub not found');
-    if (!isManager(currentUser.role_mask) && currentUser.hub_id && currentUser.hub_id !== hubId) throw new ForbiddenException('User cannot search outside assigned hub');
+    if (
+      !isManager(currentUser.role_mask)
+      && !hasRole(currentUser.role_mask, Roles.ACCOUNTANT)
+      && currentUser.hub_id
+      && currentUser.hub_id !== hubId
+    ) throw new ForbiddenException('User cannot search outside assigned hub');
   }
 
   private async validateTruckFilter(truckId?: string): Promise<void> {
@@ -237,7 +285,7 @@ export class SearchService {
   }
 
   private applyWaybillScope(qb: SelectQueryBuilder<WaybillEntity>, currentUser: UserEntity): void {
-    if (isManager(currentUser.role_mask)) return;
+    if (isManager(currentUser.role_mask) || hasRole(currentUser.role_mask, Roles.ACCOUNTANT)) return;
     if (hasRole(currentUser.role_mask, Roles.DRIVER)) {
       qb.andWhere('waybill.last_mile_driver_id = :driverId', { driverId: currentUser.id });
       return;
@@ -326,6 +374,25 @@ export class SearchService {
     return result.departure_time ?? result.created_at ?? new Date(0);
   }
 
+  private parseCsv(value?: string): string[] {
+    return [...new Set(String(value || '').split(',').map((item) => item.trim()).filter(Boolean))];
+  }
+
+  private applyCsvFilter(
+    qb: SelectQueryBuilder<WaybillEntity> | SelectQueryBuilder<TripEntity>,
+    column: string,
+    parameter: string,
+    rawValue?: string,
+  ): void {
+    const values = this.parseCsv(rawValue);
+    if (!values.length) return;
+    if (values.length === 1) {
+      qb.andWhere(`${column} = :${parameter}`, { [parameter]: values[0] });
+      return;
+    }
+    qb.andWhere(`${column} IN (:...${parameter})`, { [parameter]: values });
+  }
+
   private isWaybillStatus(status?: string): status is WaybillState {
     return !!status && Object.values(WaybillState).includes(status as WaybillState);
   }
@@ -334,6 +401,3 @@ export class SearchService {
     return !!status && Object.values(TripStatus).includes(status as TripStatus);
   }
 }
-
-
-

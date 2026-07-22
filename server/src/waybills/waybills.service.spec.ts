@@ -16,6 +16,7 @@ import { TripStatus } from '../common/enums';
 const manager = { id: 'u1', role_mask: Roles.MANAGER, hub_id: '1' } as any;
 const warehouse = { id: 'u2', role_mask: Roles.WAREHOUSE, hub_id: '1' } as any;
 const accountant = { id: 'u3', role_mask: Roles.ACCOUNTANT, hub_id: '1' } as any;
+const driver = { id: 'u4', role_mask: Roles.DRIVER, hub_id: '2' } as any;
 
 const makeWaybill = (overrides: Record<string, any> = {}) => ({
   id: '1',
@@ -32,6 +33,7 @@ const makeWaybill = (overrides: Record<string, any> = {}) => ({
   freight_amount: 0,
   cc_amount: 0,
   package_count: 1,
+  delivery_attempt_count: 0,
   created_at: new Date('2026-01-01'),
   ...overrides,
 });
@@ -86,6 +88,7 @@ describe('WaybillsService', () => {
   let dataSource: any;
   let ordersService: any;
   let vendorsService: any;
+  let deliveryAttemptsRepository: any;
 
   beforeEach(() => {
     waybillsRepository = {
@@ -164,6 +167,12 @@ describe('WaybillsService', () => {
       resolveDefaultVendorId: jest.fn(),
       addPayableDebt: jest.fn(),
     };
+    deliveryAttemptsRepository = {
+      create: jest.fn((value) => value),
+      save: jest.fn(async (value) => value),
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+    };
     service = new WaybillsService(
       waybillsRepository,
       hubsRepository,
@@ -176,6 +185,7 @@ describe('WaybillsService', () => {
       dataSource,
       ordersService,
       vendorsService,
+      deliveryAttemptsRepository,
     );
     jest.spyOn(Date, 'now').mockReturnValue(1770000000000);
     jest.spyOn(Math, 'random').mockReturnValue(0.123);
@@ -802,6 +812,81 @@ describe('WaybillsService', () => {
   it('updateStatus blocks skipped transition', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
     await expect(service.updateStatus('1', { status: WaybillStatus.IN_TRANSIT }, warehouse)).rejects.toThrow(BadRequestException);
+  });
+
+  it('nhận đi giao tại hub đích tạo lần phát và tự gán tài xế', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      status: WaybillStatus.AT_DEST_HUB,
+      current_state: WaybillStatus.AT_DEST_HUB,
+      current_hub_id: '2',
+    }));
+
+    const result = await service.updateStatus('1', {
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+      delivery_vehicle: '51H-12345',
+    }, driver);
+
+    expect(result).toMatchObject({
+      current_state: WaybillStatus.OUT_FOR_DELIVERY,
+      last_mile_driver_id: driver.id,
+      xe_phat: '51H-12345',
+      delivery_attempt_count: 1,
+    });
+    expect(deliveryAttemptsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      attempt_number: 1,
+      status: 'IN_PROGRESS',
+      driver_id: driver.id,
+    }));
+  });
+
+  it('hoàn hàng bắt buộc lý do và hướng xử lý', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+      current_state: WaybillStatus.OUT_FOR_DELIVERY,
+      current_hub_id: '2',
+      delivery_attempt_count: 1,
+    }));
+
+    await expect(service.updateStatus('1', {
+      status: WaybillStatus.RETURNED,
+    }, driver)).rejects.toThrow(BadRequestException);
+  });
+
+  it('hoàn hàng có thể phát lại nhiều lần đến khi giao thành công', async () => {
+    const returned = makeWaybill({
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+      current_state: WaybillStatus.OUT_FOR_DELIVERY,
+      current_hub_id: '2',
+      last_mile_driver_id: driver.id,
+      delivery_attempt_count: 1,
+    });
+    waybillsRepository.findOne.mockResolvedValue(returned);
+    deliveryAttemptsRepository.findOne.mockResolvedValue({ id: 'a1', waybill_id: '1', attempt_number: 1, status: 'IN_PROGRESS' });
+
+    const result = await service.updateStatus('1', {
+      status: WaybillStatus.RETURNED,
+      return_reason: 'Khách hẹn ngày khác',
+      return_action: 'REDIRECT_ADDRESS' as any,
+      redelivery_address: '123 Đường mới, TP.HCM',
+    }, driver);
+
+    expect(result).toMatchObject({
+      current_state: WaybillStatus.RETURNED,
+      return_reason: 'Khách hẹn ngày khác',
+      redelivery_address: '123 Đường mới, TP.HCM',
+    });
+
+    waybillsRepository.findOne.mockResolvedValue({ ...returned, ...result });
+    deliveryAttemptsRepository.findOne.mockResolvedValue(null);
+    const retry = await service.updateStatus('1', {
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+    }, driver);
+
+    expect(retry).toMatchObject({
+      current_state: WaybillStatus.OUT_FOR_DELIVERY,
+      receiver_address: '123 Đường mới, TP.HCM',
+      delivery_attempt_count: 2,
+    });
   });
 
   it('updatePhotos works without changing logistics status', async () => {

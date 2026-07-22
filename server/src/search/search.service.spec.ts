@@ -43,6 +43,7 @@ const evaluateFirstBrackets = (qb: ReturnType<typeof createQueryBuilder>) => {
 
 const manager = { id: '10', role_mask: Roles.MANAGER, hub_id: null } as UserEntity;
 const director = { id: '11', role_mask: Roles.DIRECTOR, hub_id: null } as UserEntity;
+const accountant = { id: '14', role_mask: Roles.ACCOUNTANT, hub_id: '1' } as UserEntity;
 const staff = { id: '12', role_mask: Roles.WAREHOUSE, hub_id: '1' } as UserEntity;
 const driver = { id: '13', role_mask: Roles.DRIVER, hub_id: '1' } as UserEntity;
 
@@ -185,6 +186,57 @@ describe('SearchService', () => {
     expect(inner.orWhere.mock.calls.some(([condition]) => String(condition).includes('REGEXP_REPLACE'))).toBe(false);
   });
 
+  it('searchWaybills also searches customer code, phones and receiver address', async () => {
+    const qb = createQueryBuilder([waybill], 1);
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.searchWaybills({ keyword: '0934455122' }, manager);
+
+    const inner = evaluateFirstBrackets(qb);
+    expect(inner.orWhere).toHaveBeenCalledWith('waybill.sender_phone ILIKE :keyword', { keyword: '%0934455122%' });
+    expect(inner.orWhere).toHaveBeenCalledWith('waybill.receiver_phone ILIKE :keyword', { keyword: '%0934455122%' });
+    expect(inner.orWhere).toHaveBeenCalledWith('waybill.receiver_address ILIKE :keyword', { keyword: '%0934455122%' });
+    expect(inner.orWhere).toHaveBeenCalledWith('waybill.ma_kh ILIKE :keyword', { keyword: '%0934455122%' });
+  });
+
+  it('globalSearch accepts multi-select status and hub filters from the UI', async () => {
+    const waybillQb = createQueryBuilder([waybill], 1);
+    const tripQb = createQueryBuilder([trip], 1);
+    waybillsRepository.createQueryBuilder.mockReturnValue(waybillQb);
+    tripsRepository.createQueryBuilder.mockReturnValue(tripQb);
+
+    await service.globalSearch({
+      status: `${WaybillState.RECEIVED},${WaybillState.IN_WAREHOUSE},${TripStatus.PLANNED}`,
+      origin_hub_id: '1,2',
+      dest_hub_id: '2',
+    }, manager);
+
+    expect(waybillQb.andWhere).toHaveBeenCalledWith(
+      'waybill.current_state IN (:...status)',
+      { status: [WaybillState.RECEIVED, WaybillState.IN_WAREHOUSE] },
+    );
+    expect(waybillQb.andWhere).toHaveBeenCalledWith(
+      'waybill.origin_hub_id IN (:...originHubId)',
+      { originHubId: ['1', '2'] },
+    );
+    expect(tripQb.andWhere).toHaveBeenCalledWith('trip.status = :status', { status: TripStatus.PLANNED });
+  });
+
+  it('globalSearch applies payment filters to waybills and excludes trips', async () => {
+    const waybillQb = createQueryBuilder([waybill], 1);
+    waybillsRepository.createQueryBuilder.mockReturnValue(waybillQb);
+
+    await service.globalSearch({
+      payment_type: `${PaymentType.PP},${PaymentType.COD}`,
+    }, manager);
+
+    expect(waybillQb.andWhere).toHaveBeenCalledWith(
+      'waybill.payment_type IN (:...paymentType)',
+      { paymentType: [PaymentType.PP, PaymentType.COD] },
+    );
+    expect(tripsRepository.createQueryBuilder).not.toHaveBeenCalled();
+  });
+
   it('searchWaybills filters status/payment_type/origin_hub_id/dest_hub_id', async () => {
     const qb = createQueryBuilder([waybill], 1);
     waybillsRepository.createQueryBuilder.mockReturnValue(qb);
@@ -246,6 +298,15 @@ describe('SearchService', () => {
     expect(directorQb.andWhere).not.toHaveBeenCalled();
   });
 
+  it('ACCOUNTANT sees the shared cross-hub bill list', async () => {
+    const qb = createQueryBuilder([waybill], 1);
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.searchWaybills({}, accountant);
+
+    expect(qb.andWhere).not.toHaveBeenCalled();
+  });
+
   it('response hides sensitive fields and profit without manager/director', async () => {
     const wbQb = createQueryBuilder([{ ...waybill, password_hash: 'secret', refresh_token: 'token' }], 1);
     waybillsRepository.createQueryBuilder.mockReturnValue(wbQb);
@@ -294,5 +355,3 @@ describe('SearchService', () => {
     await expect(service.searchTrips({ manifest_id: '999' }, manager)).rejects.toThrow(NotFoundException);
   });
 });
-
-

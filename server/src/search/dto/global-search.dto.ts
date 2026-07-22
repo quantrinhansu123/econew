@@ -26,6 +26,21 @@ export class GlobalSearchDto {
   @IsString()
   status?: WaybillState | TripStatus | string;
 
+  @ApiPropertyOptional({ description: 'Một hoặc nhiều mã bưu cục đi, phân cách bằng dấu phẩy' })
+  @IsOptional()
+  @IsString()
+  origin_hub_id?: string;
+
+  @ApiPropertyOptional({ description: 'Một hoặc nhiều mã bưu cục đến, phân cách bằng dấu phẩy' })
+  @IsOptional()
+  @IsString()
+  dest_hub_id?: string;
+
+  @ApiPropertyOptional({ description: 'Một hoặc nhiều loại thanh toán, phân cách bằng dấu phẩy' })
+  @IsOptional()
+  @IsString()
+  payment_type?: string;
+
   @ApiPropertyOptional({ type: String, format: 'date-time' })
   @IsOptional()
   @Type(() => Date)

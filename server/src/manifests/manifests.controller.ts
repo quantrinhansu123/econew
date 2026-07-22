@@ -13,6 +13,7 @@ import { CreateManifestDto } from './dto/create-manifest.dto';
 import { QueryManifestsDto } from './dto/query-manifests.dto';
 import { UpdateManifestDto } from './dto/update-manifest.dto';
 import { UpdateManifestKanbanDto } from './dto/update-manifest-kanban.dto';
+import { UpdateManifestWaybillDto } from './dto/update-manifest-waybill.dto';
 import { ManifestsService } from './manifests.service';
 
 @ApiTags('Manifests')
@@ -68,6 +69,18 @@ export class ManifestsController {
   @ApiOperation({ summary: 'Add waybills to a draft manifest' })
   addWaybills(@Param('id') id: string, @Body() dto: AddWaybillsToManifestDto, @CurrentUser() currentUser: UserEntity) {
     return this.manifestsService.addWaybills(id, dto, currentUser);
+  }
+
+  @Patch(':id/waybills/:waybillId')
+  @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Update package quantity for a waybill on an editable manifest trip' })
+  updateWaybill(
+    @Param('id') id: string,
+    @Param('waybillId') waybillId: string,
+    @Body() dto: UpdateManifestWaybillDto,
+    @CurrentUser() currentUser: UserEntity,
+  ) {
+    return this.manifestsService.updateWaybillPackageCount(id, waybillId, dto, currentUser);
   }
 
   @Delete(':id/waybills/:waybillId')

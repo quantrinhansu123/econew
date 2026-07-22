@@ -59,7 +59,7 @@ export const ORDER_BULK_COLUMNS: OrderBulkColumn[] = [
   { key: 'dichVu', label: 'Dịch vụ', required: false, sample: 'Tiêu chuẩn 72h' },
   { key: 'giaoHang', label: 'Giao hàng', required: false, sample: 'Văn phòng' },
   { key: 'ngayDi', label: 'Ngày gửi', required: false, sample: '2026-06-25' },
-  { key: 'donGiaDonVi', label: 'Tính cước theo', required: false, sample: 'Cân' },
+  { key: 'donGiaDonVi', label: 'Tính cước theo', required: false, sample: 'Kg' },
   { key: 'klKg', label: 'Số cân (kg)', required: false, sample: '50' },
   { key: 'chieuDai', label: 'Dài (cm)', required: false, sample: '60' },
   { key: 'chieuRong', label: 'Rộng (cm)', required: false, sample: '40' },

@@ -254,8 +254,8 @@ export default function WarehouseCustomerList({
                   <tr key={customer.id} className={clsx('hover:bg-blue-50/40', customer.is_suspended && 'opacity-60')}>
                     <td className="px-3 py-3 font-extrabold text-primary">{customer.code}</td>
                     <td className="px-3 py-3 font-medium">{customer.name}</td>
-                    <td className="max-w-[140px] truncate px-3 py-3" title={customer.receiver_hcm || customer.receiver_dng || ''}>
-                      {customer.receiver_hcm || customer.receiver_dng || '—'}
+                    <td className="max-w-[140px] truncate px-3 py-3" title={customer.receiver_han || customer.receiver_hcm || customer.receiver_dng || ''}>
+                      {customer.receiver_han || customer.receiver_hcm || customer.receiver_dng || '—'}
                     </td>
                     <td className="max-w-[140px] truncate px-3 py-3" title={customer.short_name || ''}>
                       {customer.short_name || '—'}

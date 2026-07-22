@@ -87,6 +87,15 @@ export class CustomerListViewEntity {
   contact_address: string | null;
 
   @ViewColumn()
+  receiver_han: string | null;
+
+  @ViewColumn()
+  address_han: string | null;
+
+  @ViewColumn()
+  phone_han: string | null;
+
+  @ViewColumn()
   receiver_hcm: string | null;
 
   @ViewColumn()

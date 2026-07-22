@@ -156,6 +156,13 @@ export class WaybillsController {
     return this.waybillsService.createCashVoucher(id, dto, currentUser);
   }
 
+  @Get(':id/delivery-attempts')
+  @RequireRoles(Roles.WAREHOUSE, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Lịch sử các lần phát, giao thành công và hoàn hàng' })
+  getDeliveryAttempts(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.getDeliveryAttempts(id, currentUser);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get waybill detail' })
   findOne(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {

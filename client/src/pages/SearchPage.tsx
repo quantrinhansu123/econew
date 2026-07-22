@@ -71,7 +71,7 @@ const buildQuery = (filters: SearchFilters) => {
 const getResultCode = (item: SearchResultItem) => item.code || item.waybill_code || (item.type === 'TRIP' ? `TRIP-${item.id}` : `WB-${item.id}`);
 const getResultStatus = (item: SearchResultItem) => item.status || item.current_state || '—';
 const getResultTime = (item: SearchResultItem) => item.time || item.departure_time || item.created_at || null;
-const getMatchedField = (item: SearchResultItem) => item.matched_field || item.matchedField || '—';
+const getMatchedField = (item: SearchResultItem) => item.matched_field || item.matchedField || item.matched_fields?.join(', ') || '—';
 
 const getDateRangeValue = (filters: SearchFilters) => {
   if (!filters.date_from && !filters.date_to) return [];
@@ -104,7 +104,7 @@ const getRouteText = (item: SearchResultItem, hubMap: Map<string, HubSummary>) =
   const endHub = end != null ? hubMap.get(String(end)) : null;
   if (item.route) return item.route;
   if (start || end) return `${startHub?.code || start || '—'} → ${endHub?.code || end || '—'}`;
-  return item.hub || '—';
+  return item.hub || item.hub_summary || '—';
 };
 
 function Badge({ children, tone = 'slate' }: { children: string; tone?: 'blue' | 'green' | 'amber' | 'slate' | 'purple' }) {
@@ -119,7 +119,7 @@ function ResultCard({ item, hubMap, onOpen }: { item: SearchResultItem; hubMap: 
   const isWaybill = item.type === 'WAYBILL';
   const route = getRouteText(item, hubMap);
   const title = item.title || getResultCode(item);
-  const description = item.description || (isWaybill ? 'Vận đơn trong hệ thống ECO' : 'Chuyến xe vận tải');
+  const description = item.description || item.subtitle || (isWaybill ? 'Vận đơn trong hệ thống ECO' : 'Chuyến xe vận tải');
 
   return (
     <article className="group rounded-2xl border border-border bg-white p-4 shadow-sm transition-all hover:border-primary/30 hover:shadow-md">
@@ -303,7 +303,6 @@ export default function SearchPage() {
     </div>
   );
 }
-
 
 
 

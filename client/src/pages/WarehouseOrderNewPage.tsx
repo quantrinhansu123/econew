@@ -28,6 +28,7 @@ const USER_PROFILE_KEY = 'eco_user_profile';
 const CREATE_ROLES = 1 | 32 | 64;
 const INITIAL_BILL_LIST_LIMIT = 20;
 const EXPANDED_BILL_LIST_LIMIT = 100;
+const OPERATIONAL_HUB_CODES = new Set(['HAN', 'HCM']);
 type NextWaybillCodeResponse = { waybill_code?: string; code?: string };
 
 const statusConfig: Record<string, BadgeConfig> = {
@@ -70,6 +71,19 @@ const hasCreateRole = (roleMask: number) => (roleMask & CREATE_ROLES) !== 0;
 
 const getHubCode = (hubs: HubSummary[], hubId: string) =>
   hubs.find((hub) => String(hub.id) === String(hubId))?.code?.trim().toUpperCase() || 'HUB';
+
+const selectOperationalHubs = (hubs: HubSummary[]) => {
+  const primary = hubs.filter((hub) => OPERATIONAL_HUB_CODES.has(hub.code?.trim().toUpperCase() || ''));
+  return primary.length >= 2 ? primary : hubs;
+};
+
+const getDefaultOriginHubId = (hubs: HubSummary[], assignedHubId?: string | number | null) => {
+  const assigned = hubs.find((hub) => String(hub.id) === String(assignedHubId || ''));
+  return String(assigned?.id || hubs.find((hub) => hub.code?.trim().toUpperCase() === 'HAN')?.id || hubs[0]?.id || '');
+};
+
+const getOppositeHub = (hubs: HubSummary[], originHubId: string) =>
+  hubs.find((hub) => String(hub.id) !== String(originHubId)) || null;
 
 export default function WarehouseOrderNewPage() {
   const navigate = useNavigate();
@@ -169,7 +183,7 @@ export default function WarehouseOrderNewPage() {
       const billsPromise = loadBills('', INITIAL_BILL_LIST_LIMIT);
       try {
         const response = await hubsPromise;
-        const activeHubs = extractList(response).filter(normalizeActive);
+        const activeHubs = selectOperationalHubs(extractList(response).filter(normalizeActive));
         setHubs(activeHubs);
 
         const pendingEditId =
@@ -181,8 +195,9 @@ export default function WarehouseOrderNewPage() {
           return;
         }
 
-        const defaultOrigin = user?.hub_id ? String(user.hub_id) : String(activeHubs[0]?.id || '');
-        const defaultDest = String(activeHubs.find((h) => h.code?.toUpperCase() === 'HCM')?.id || activeHubs[1]?.id || '');
+        const defaultOrigin = getDefaultOriginHubId(activeHubs, user?.hub_id);
+        const destinationHub = getOppositeHub(activeHubs, defaultOrigin);
+        const defaultDest = String(destinationHub?.id || '');
         const nextCode = await loadNextWaybillCode(defaultOrigin);
         const fallbackBills = nextCode ? [] : await billsPromise;
         const defaultOriginCode = getHubCode(activeHubs, defaultOrigin);
@@ -192,7 +207,7 @@ export default function WarehouseOrderNewPage() {
             soBill: nextCode || nextEcoBillCodeFromCodes(fallbackBills.map((item) => item.waybill_code), defaultOriginCode),
             originHubId: defaultOrigin,
             destHubId: defaultDest,
-            noiDen: 'HCM',
+            noiDen: destinationHub?.code?.trim().toUpperCase() || '',
             nvgn: loginName !== 'bạn' ? loginName : 'ADMIN',
           }),
         );
@@ -267,6 +282,21 @@ export default function WarehouseOrderNewPage() {
   const setField = <K extends keyof NewOrderFormState>(key: K, value: NewOrderFormState[K]) => {
     setForm((prev) => {
       let next = { ...prev, [key]: value };
+      if (key === 'originHubId' && typeof value === 'string' && (next.destHubId === value || !next.destHubId)) {
+        const destinationHub = getOppositeHub(hubs, value);
+        const noiDen = destinationHub?.code?.trim().toUpperCase() || '';
+        const huyen = destinationHub?.name?.trim() || noiDen;
+        const receiverPatch = selectedCustomer
+          ? applyReceiverByDestination(selectedCustomer, noiDen, huyen)
+          : {};
+        next = {
+          ...next,
+          destHubId: String(destinationHub?.id || ''),
+          noiDen,
+          huyen,
+          ...receiverPatch,
+        };
+      }
       if (key === 'chieuDai' || key === 'chieuRong' || key === 'chieuCao') {
         next = {
           ...next,
@@ -315,7 +345,10 @@ export default function WarehouseOrderNewPage() {
   const validate = () => {
     if (!form.soBill.trim()) return 'Số bill là bắt buộc.';
     if (!form.nguoiGui.trim()) return 'Người gửi là bắt buộc.';
+    if (!form.dienThoaiKh.trim()) return 'Điện thoại khách hàng là bắt buộc.';
+    if (!isValidVnPhone(form.dienThoaiKh)) return 'Điện thoại khách hàng không hợp lệ.';
     if (!form.nguoiNhan.trim()) return 'Người nhận là bắt buộc.';
+    if (!form.dienThoaiNhan.trim()) return 'Điện thoại người nhận là bắt buộc.';
     if (!form.diaChiNhan.trim()) return 'Địa chỉ nhận là bắt buộc.';
     if (form.dienThoaiNhan.trim() && !isValidVnPhone(form.dienThoaiNhan)) {
       return 'Số điện thoại người nhận không hợp lệ.';
@@ -342,8 +375,9 @@ export default function WarehouseOrderNewPage() {
   const handleNew = async () => {
     skipNewFormInitRef.current = false;
     loadedEditIdRef.current = '';
-    const defaultOrigin = user?.hub_id ? String(user.hub_id) : String(hubs[0]?.id || '');
-    const defaultDest = String(hubs.find((h) => h.code?.toUpperCase() === 'HCM')?.id || hubs[1]?.id || '');
+    const defaultOrigin = getDefaultOriginHubId(hubs, user?.hub_id);
+    const destinationHub = getOppositeHub(hubs, defaultOrigin);
+    const defaultDest = String(destinationHub?.id || '');
     const nextCode = await loadNextWaybillCode(defaultOrigin);
     const defaultOriginCode = getHubCode(hubs, defaultOrigin);
     setSelectedBillId(null);
@@ -354,7 +388,7 @@ export default function WarehouseOrderNewPage() {
         soBill: nextCode || nextEcoBillCodeFromCodes(bills.map((item) => item.waybill_code), defaultOriginCode),
         originHubId: defaultOrigin,
         destHubId: defaultDest,
-        noiDen: 'HCM',
+        noiDen: destinationHub?.code?.trim().toUpperCase() || '',
         nvgn: loginName !== 'bạn' ? loginName : 'ADMIN',
       }),
     );

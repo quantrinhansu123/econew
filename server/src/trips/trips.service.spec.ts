@@ -233,6 +233,23 @@ describe('TripsService', () => {
       expect(result.data).toContainEqual(expect.objectContaining({ id: 'planned', status: TripStatus.PLANNED }));
       expect(result.total).toBe(4);
     });
+
+    it('paginates without losing the total used by full Excel export', async () => {
+      const qb = new MockQb();
+      qb.getMany.mockResolvedValue([
+        { id: '1', status: TripStatus.IN_TRANSIT, manifest_id: null, departure_time: new Date('2026-07-20T03:00:00Z') },
+        { id: '2', status: TripStatus.IN_TRANSIT, manifest_id: null, departure_time: new Date('2026-07-20T02:00:00Z') },
+        { id: '3', status: TripStatus.IN_TRANSIT, manifest_id: null, departure_time: new Date('2026-07-20T01:00:00Z') },
+      ]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.getExpectedArrivals({ end_hub_id: 2, page: 2, limit: 2 }, manager);
+
+      expect(result.total).toBe(3);
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(2);
+      expect(result.data.map((trip) => trip.id)).toEqual(['3']);
+    });
   });
 
   const mockFindOne = (trip: any) => jest.spyOn(service, 'findOne').mockResolvedValue(trip);

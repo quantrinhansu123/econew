@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Roles } from '../common/roles';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
+import { VendorsService } from '../vendors/vendors.service';
 import { TruckStatus } from './dto/truck.enums';
 import { TruckEntity } from './truck.entity';
 import { TrucksService } from './trucks.service';
@@ -40,6 +41,7 @@ describe('TrucksService canonical schema', () => {
         { provide: getRepositoryToken(TruckEntity), useValue: trucksRepo },
         { provide: getRepositoryToken(UserEntity), useValue: usersRepo },
         { provide: getRepositoryToken(TripEntity), useValue: tripsRepo },
+        { provide: VendorsService, useValue: { resolveDefaultVendorId: jest.fn().mockResolvedValue('1') } },
       ],
     }).compile();
 
@@ -110,6 +112,5 @@ describe('TrucksService canonical schema', () => {
 });
 
 function mockQb() {
-  return { where: jest.fn().mockReturnThis(), andWhere: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), skip: jest.fn().mockReturnThis(), take: jest.fn().mockReturnThis(), getManyAndCount: jest.fn() } as any;
+  return { leftJoinAndSelect: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), andWhere: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), skip: jest.fn().mockReturnThis(), take: jest.fn().mockReturnThis(), getManyAndCount: jest.fn() } as any;
 }
-

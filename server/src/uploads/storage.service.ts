@@ -16,34 +16,50 @@ const MIME_EXT: Record<string, string> = {
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
-  private bucketReadyPromise: Promise<void> | null = null;
 
   constructor(private readonly configService: ConfigService) {}
 
-  private get supabaseUrl(): string {
-    const url = this.configService.get<string>('SUPABASE_URL')?.trim();
-    if (!url) throw new InternalServerErrorException('SUPABASE_URL chưa được cấu hình trên server.');
-    return url.replace(/\/$/, '');
+  private cleanEnvValue(value?: string): string {
+    const trimmed = value?.trim() || '';
+    const wrapped = trimmed.match(/^(['"])([\s\S]*)\1$/);
+    return (wrapped?.[2] || trimmed).trim();
   }
 
-  private get serverKey(): string {
-    const key =
-      this.configService.get<string>('SUPABASE_SECRET_KEY')?.trim()
-      || this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')?.trim();
-    if (!key) {
+  private get supabaseUrl(): string {
+    const url = this.cleanEnvValue(this.configService.get<string>('SUPABASE_URL'));
+    if (!url) throw new InternalServerErrorException('SUPABASE_URL chưa được cấu hình trên server.');
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:' || !parsed.hostname) throw new Error('invalid protocol or host');
+      return parsed.origin;
+    } catch {
+      throw new InternalServerErrorException('SUPABASE_URL trên server không hợp lệ.');
+    }
+  }
+
+  private get serverKeys(): string[] {
+    const keys = [
+      this.cleanEnvValue(this.configService.get<string>('SUPABASE_SECRET_KEY')),
+      this.cleanEnvValue(this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')),
+    ].filter(Boolean);
+    const uniqueKeys = [...new Set(keys)];
+    if (!uniqueKeys.length) {
       throw new InternalServerErrorException(
         'SUPABASE_SECRET_KEY hoặc SUPABASE_SERVICE_ROLE_KEY chưa được cấu hình trên server.',
       );
     }
-    return key;
+    return uniqueKeys;
   }
 
   private get bucket(): string {
-    return this.configService.get<string>('SUPABASE_STORAGE_BUCKET')?.trim() || 'payment-proofs';
+    const bucket = this.cleanEnvValue(this.configService.get<string>('SUPABASE_STORAGE_BUCKET')) || 'payment-proofs';
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(bucket)) {
+      throw new InternalServerErrorException('SUPABASE_STORAGE_BUCKET trên server không hợp lệ.');
+    }
+    return bucket;
   }
 
-  private authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-    const key = this.serverKey;
+  private authHeaders(key: string, extra: Record<string, string> = {}): Record<string, string> {
     const isLegacyJwt = key.split('.').length === 3;
     return {
       apikey: key,
@@ -73,66 +89,6 @@ export class StorageService {
     }
   }
 
-  private throwStorageResponseError(
-    operation: string,
-    status: number,
-    detail: string,
-  ): never {
-    this.logger.error(`Supabase Storage ${operation} failed: ${status} ${detail}`);
-    if (status === 401 || status === 403) {
-      throw new InternalServerErrorException(
-        'Khóa Supabase Storage trên server không hợp lệ hoặc không đủ quyền.',
-      );
-    }
-    throw new InternalServerErrorException('Không kết nối được Supabase Storage.');
-  }
-
-  private async initializeBucket(): Promise<void> {
-    const listResponse = await this.storageFetch(
-      `${this.supabaseUrl}/storage/v1/bucket`,
-      { headers: this.authHeaders() },
-      'list buckets',
-    );
-    if (!listResponse.ok) {
-      const detail = await listResponse.text();
-      this.throwStorageResponseError('list buckets', listResponse.status, detail);
-    }
-
-    const buckets = (await listResponse.json()) as Array<{ name?: string; id?: string }>;
-    const exists = buckets.some((item) => item.name === this.bucket || item.id === this.bucket);
-    if (!exists) {
-      const createResponse = await this.storageFetch(
-        `${this.supabaseUrl}/storage/v1/bucket`,
-        {
-          method: 'POST',
-          headers: this.authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ id: this.bucket, name: this.bucket, public: true }),
-        },
-        'create bucket',
-      );
-      if (!createResponse.ok) {
-        const detail = await createResponse.text();
-        const isCreateConflict =
-          createResponse.status === 409
-          || /\b(already exists|conflict|duplicate)\b/i.test(detail);
-        if (isCreateConflict) {
-          this.logger.warn(`Supabase Storage bucket "${this.bucket}" đã được tạo đồng thời.`);
-        } else {
-          this.logger.error(`Supabase Storage create bucket failed: ${createResponse.status} ${detail}`);
-          throw new InternalServerErrorException(`Không tạo được bucket "${this.bucket}" trên Supabase.`);
-        }
-      }
-    }
-  }
-
-  private ensureBucket(): Promise<void> {
-    this.bucketReadyPromise ??= this.initializeBucket().catch((error: unknown) => {
-      this.bucketReadyPromise = null;
-      throw error;
-    });
-    return this.bucketReadyPromise;
-  }
-
   private async uploadImage(file: Express.Multer.File, folder: string): Promise<string> {
     if (!file?.buffer?.length) throw new BadRequestException('Thiếu file ảnh.');
     if (file.size > MAX_BYTES) throw new BadRequestException('Ảnh tối đa 5 MB.');
@@ -140,37 +96,46 @@ export class StorageService {
       throw new BadRequestException('Chỉ chấp nhận ảnh JPEG, PNG, WebP hoặc GIF.');
     }
 
-    await this.ensureBucket();
-
     const ext = MIME_EXT[file.mimetype] ?? 'jpg';
     const objectPath = `${folder}/${Date.now()}-${randomBytes(8).toString('hex')}.${ext}`;
     const uploadUrl = `${this.supabaseUrl}/storage/v1/object/${this.bucket}/${objectPath}`;
+    const serverKeys = this.serverKeys;
 
-    const uploadResponse = await this.storageFetch(
-      uploadUrl,
-      {
-        method: 'POST',
-        headers: this.authHeaders({
-          'Content-Type': file.mimetype,
-          'x-upsert': 'true',
-        }),
-        body: new Uint8Array(file.buffer),
-      },
-      'upload object',
-    );
+    for (const [index, key] of serverKeys.entries()) {
+      const uploadResponse = await this.storageFetch(
+        uploadUrl,
+        {
+          method: 'POST',
+          headers: this.authHeaders(key, {
+            'Content-Type': file.mimetype,
+            'x-upsert': 'true',
+          }),
+          body: new Uint8Array(file.buffer),
+        },
+        'upload object',
+      );
 
-    if (!uploadResponse.ok) {
+      if (uploadResponse.ok) {
+        return `${this.supabaseUrl}/storage/v1/object/public/${this.bucket}/${objectPath}`;
+      }
+
       const detail = await uploadResponse.text();
       this.logger.error(`Supabase Storage upload object failed: ${uploadResponse.status} ${detail}`);
       if (uploadResponse.status === 401 || uploadResponse.status === 403) {
+        if (index < serverKeys.length - 1) continue;
         throw new InternalServerErrorException(
           'Khóa Supabase Storage trên server không hợp lệ hoặc không đủ quyền.',
         );
       }
-      throw new InternalServerErrorException('Không upload được ảnh lên cloud.');
+      if (uploadResponse.status === 404 && /bucket/i.test(detail)) {
+        throw new InternalServerErrorException(`Không tìm thấy bucket "${this.bucket}" trên Supabase Storage.`);
+      }
+      throw new InternalServerErrorException('Không upload được ảnh lên Supabase Storage.');
     }
 
-    return `${this.supabaseUrl}/storage/v1/object/public/${this.bucket}/${objectPath}`;
+    throw new InternalServerErrorException(
+      'Khóa Supabase Storage trên server không hợp lệ hoặc không đủ quyền.',
+    );
   }
 
   uploadPaymentProof(file: Express.Multer.File): Promise<string> {

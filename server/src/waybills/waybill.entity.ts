@@ -134,6 +134,21 @@ export class WaybillEntity {
   @Column({ type: 'timestamp', nullable: true })
   returned_at: Date | null;
 
+  @Column({ type: 'int', default: 0 })
+  delivery_attempt_count: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  last_delivery_attempt_at: Date | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  return_reason: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  return_action: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  redelivery_address: string | null;
+
   @Column({ type: 'timestamp', nullable: true })
   cancelled_at: Date | null;
 

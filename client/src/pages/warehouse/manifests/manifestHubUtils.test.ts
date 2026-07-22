@@ -19,13 +19,22 @@ const manifest = (tripStatus: string): LoadPlanningManifest => ({
 });
 
 describe('manifest HUB lanes', () => {
-  it('maps a planned HAN to HCM trip to the origin and destination contexts', () => {
+  it('does not show a planned trip before departure', () => {
     const planned = manifest('PLANNED');
 
-    expect(resolveManifestBoardGroup(planned, 'HAN')).toBe('departed');
-    expect(resolveManifestBoardGroup(planned, 'HCM')).toBe('expected');
-    expect(filterActiveOutboundFromHub([planned], 'HAN')).toEqual([planned]);
-    expect(filterExpectedInboundToHub([planned], 'HCM')).toEqual([planned]);
+    expect(resolveManifestBoardGroup(planned, 'HAN')).toBe('other');
+    expect(resolveManifestBoardGroup(planned, 'HCM')).toBe('other');
+    expect(filterActiveOutboundFromHub([planned], 'HAN')).toEqual([]);
+    expect(filterExpectedInboundToHub([planned], 'HCM')).toEqual([]);
+  });
+
+  it('maps an in-transit trip to departed and expected lanes', () => {
+    const inTransit = manifest('IN_TRANSIT');
+
+    expect(resolveManifestBoardGroup(inTransit, 'HAN')).toBe('departed');
+    expect(resolveManifestBoardGroup(inTransit, 'HCM')).toBe('expected');
+    expect(filterActiveOutboundFromHub([inTransit], 'HAN')).toEqual([inTransit]);
+    expect(filterExpectedInboundToHub([inTransit], 'HCM')).toEqual([inTransit]);
   });
 
   it('excludes an arrived trip from both active lanes', () => {

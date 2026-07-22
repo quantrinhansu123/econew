@@ -74,11 +74,11 @@ export const moduleGroups: ModuleGroup[] = [
     id: 'orders',
     path: '/orders',
     section: 'Quản lý Đơn hàng',
-    requiredRoleMask: WAREHOUSE_ROLES | MANAGER_ROLES,
+    requiredRoleMask: WAREHOUSE_ROLES | ACCOUNTANT | MANAGER_ROLES,
     items: [
       { icon: PackagePlus, title: 'Nhập đơn mới', description: 'Tạo vận đơn và ghi nhận thông tin gửi hàng.', colorScheme: 'green', path: '/orders/new', requiredRoleMask: WAREHOUSE_STAFF | MANAGER_ROLES },
       { icon: Users, title: 'Danh sách Khách hàng', description: 'Tra cứu mã KH và thông tin người gửi từ vận đơn.', colorScheme: 'emerald', path: '/orders/customers', requiredRoleMask: WAREHOUSE_ROLES | MANAGER_ROLES },
-      { icon: Warehouse, title: 'Danh sách đơn', description: 'Xem toàn bộ vận đơn theo ngày và mã bill.', colorScheme: 'blue', path: '/warehouse/orders', requiredRoleMask: WAREHOUSE_ROLES | MANAGER_ROLES },
+      { icon: Warehouse, title: 'Danh sách đơn', description: 'Xem toàn bộ vận đơn theo ngày và mã bill.', colorScheme: 'blue', path: '/warehouse/orders', requiredRoleMask: WAREHOUSE_ROLES | ACCOUNTANT | MANAGER_ROLES },
       { icon: FileSearch, title: 'Tìm kiếm vận đơn', description: 'Tra cứu vận đơn theo mã, trạng thái và bưu cục.', colorScheme: 'slate', path: '/search/waybills' },
     ],
   },

@@ -1,5 +1,15 @@
 export type PaymentType = 'PP' | 'CC' | 'COD';
 export type WaybillState = 'RECEIVED' | 'IN_WAREHOUSE' | 'MANIFEST_CLOSED' | 'IN_TRANSIT' | 'AT_DEST_HUB' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED';
+export type DeliveryReturnAction = 'STORE_AT_HUB' | 'WAIT_REDELIVERY' | 'REDIRECT_ADDRESS';
+
+export interface DeliveryStatusPayload {
+  status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED';
+  delivery_photo_url?: string;
+  return_reason?: string;
+  return_action?: DeliveryReturnAction;
+  redelivery_address?: string;
+  delivery_vehicle?: string;
+}
 
 export interface FilterOption { value: string; label: string; count?: number }
 export interface BadgeConfig { label: string; className: string }
@@ -57,6 +67,12 @@ export interface LastMileWaybill {
   last_mile_driver?: UserSummary | null;
   driver?: UserSummary | null;
   delivery_photo_url?: string | null;
+  delivery_attempt_count?: number;
+  last_delivery_attempt_at?: string | null;
+  return_reason?: string | null;
+  return_action?: DeliveryReturnAction | string | null;
+  redelivery_address?: string | null;
+  xe_phat?: string | null;
   trip_id?: string | number | null;
   trip?: TripSummary | null;
 }
@@ -86,4 +102,3 @@ export interface LastMileFilters {
   page: number;
   limit: number;
 }
-
