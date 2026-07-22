@@ -9,9 +9,12 @@ import {
   buildBulkCreatePayload,
   bulkRowToOrderForm,
   downloadOrderBulkTemplate,
+  enrichOrderBulkRowsWithCustomers,
   parseOrderBulkWorkbook,
   type ParsedOrderBulkRow,
 } from '../orderBulkExcelUtils';
+import type { CustomerRecord } from '../../customers/customerFormTypes';
+import type { CustomerListItem, CustomerListResponse } from '../../customers/types';
 
 interface Props {
   isOpen: boolean;
@@ -29,6 +32,30 @@ type ImportResult = {
   message: string;
 };
 
+const customerList = (payload: CustomerListResponse | CustomerListItem[]) =>
+  Array.isArray(payload) ? payload : payload.items || [];
+
+async function loadCustomersByCodes(codes: string[]): Promise<CustomerRecord[]> {
+  const uniqueCodes = [...new Set(codes.map((code) => code.trim().toUpperCase()).filter(Boolean))];
+  const customers: CustomerRecord[] = [];
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < uniqueCodes.length) {
+      const code = uniqueCodes[nextIndex];
+      nextIndex += 1;
+      const response = await apiRequest<CustomerListResponse | CustomerListItem[]>(
+        `/customers?keyword=${encodeURIComponent(code)}&limit=5`,
+      );
+      const match = customerList(response).find((customer) => customer.code.trim().toUpperCase() === code);
+      if (match) customers.push(match as CustomerRecord);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(6, uniqueCodes.length) }, () => worker()));
+  return customers;
+}
+
 export default function OrderBulkImportDialog({
   isOpen,
   onClose,
@@ -41,6 +68,7 @@ export default function OrderBulkImportDialog({
   const [rows, setRows] = useState<ParsedOrderBulkRow[]>([]);
   const [fileName, setFileName] = useState('');
   const [parseError, setParseError] = useState('');
+  const [isReadingFile, setIsReadingFile] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [results, setResults] = useState<ImportResult[]>([]);
 
@@ -58,7 +86,7 @@ export default function OrderBulkImportDialog({
   };
 
   const handleClose = () => {
-    if (isImporting) return;
+    if (isImporting || isReadingFile) return;
     resetFileState();
     onClose();
   };
@@ -68,6 +96,7 @@ export default function OrderBulkImportDialog({
     setParseError('');
     setResults([]);
     setFileName(file.name);
+    setIsReadingFile(true);
     try {
       const buffer = await file.arrayBuffer();
       const parsed = parseOrderBulkWorkbook(buffer);
@@ -76,12 +105,18 @@ export default function OrderBulkImportDialog({
         setParseError('Không tìm thấy dòng dữ liệu trong file Excel.');
         return;
       }
-      const annotated = annotateBulkRows(parsed, hubs);
+      const customers = await loadCustomersByCodes(parsed.map((row) => row.values.maKh));
+      const enriched = enrichOrderBulkRowsWithCustomers(parsed, customers);
+      const annotated = annotateBulkRows(enriched, hubs);
       assignBulkWaybillCodes(annotated, hubs, existingWaybillCodes);
       setRows(annotateBulkRows(annotated, hubs));
-    } catch {
+    } catch (error) {
       setRows([]);
-      setParseError('Không đọc được file Excel. Vui lòng dùng đúng mẫu .xlsx.');
+      setParseError(error instanceof ApiError
+        ? `Không tải được thông tin Mã KH: ${error.message}`
+        : 'Không đọc được file Excel. Vui lòng dùng đúng mẫu .xlsx.');
+    } finally {
+      setIsReadingFile(false);
     }
   };
 
@@ -145,7 +180,7 @@ export default function OrderBulkImportDialog({
           <button
             type="button"
             onClick={handleClose}
-            disabled={isImporting}
+            disabled={isImporting || isReadingFile}
             className="rounded-lg p-2 text-muted-foreground hover:bg-muted disabled:opacity-50"
           >
             <X size={18} />
@@ -165,11 +200,11 @@ export default function OrderBulkImportDialog({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={isImporting}
+              disabled={isImporting || isReadingFile}
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary bg-primary px-3 text-[12px] font-extrabold text-white hover:bg-primary/90 disabled:opacity-50"
             >
-              <Upload size={14} />
-              Chọn file Excel
+              {isReadingFile ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {isReadingFile ? 'Đang đọc file' : 'Chọn file Excel'}
             </button>
             <input
               ref={fileInputRef}
@@ -263,7 +298,7 @@ export default function OrderBulkImportDialog({
           <button
             type="button"
             onClick={handleClose}
-            disabled={isImporting}
+            disabled={isImporting || isReadingFile}
             className="h-9 rounded-lg border border-border px-4 text-[12px] font-extrabold text-muted-foreground hover:bg-muted disabled:opacity-50"
           >
             Đóng
@@ -271,7 +306,7 @@ export default function OrderBulkImportDialog({
           <button
             type="button"
             onClick={() => void handleImport()}
-            disabled={isImporting || validCount === 0}
+            disabled={isImporting || isReadingFile || validCount === 0}
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary bg-primary px-4 text-[12px] font-extrabold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isImporting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}

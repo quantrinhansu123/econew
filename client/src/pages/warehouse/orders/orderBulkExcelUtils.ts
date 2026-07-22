@@ -11,9 +11,12 @@ import {
   parseDecimalNumber,
 } from './orderFormUtils';
 import type { HubSummary } from './types';
+import { applyReceiverByDestination, customerToOrderPatch } from '../customers/customerOrderPatch';
+import type { CustomerRecord } from '../customers/customerFormTypes';
 import {
   ORDER_BULK_COLUMNS,
   ORDER_BULK_INSTRUCTIONS,
+  ORDER_BULK_TEMPLATE_NOTES,
   orderBulkHeaderLabel,
   type OrderBulkFieldKey,
 } from './orderBulkImportSchema';
@@ -27,9 +30,17 @@ export interface ParsedOrderBulkRow {
   rowNumber: number;
   values: OrderBulkRow;
   errors: string[];
+  customerMatched?: boolean;
 }
 
-const normalizeHeader = (value: unknown) => String(value ?? '').replace(/\*/g, '').trim().toLowerCase();
+const normalizeHeader = (value: unknown) => String(value ?? '')
+  .normalize('NFD')
+  .toLowerCase()
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/g, 'd')
+  .replace(/\*/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
 
 const cellText = (value: unknown) => {
   if (value == null) return '';
@@ -45,10 +56,33 @@ const headerToKey = (() => {
   }
   // Tương thích mẫu nhập cũ trước khi tách riêng tỉnh, quận và phường.
   map.set(normalizeHeader('Huyện'), 'huyen');
+  map.set(normalizeHeader('Số khối (m3)'), 'm3');
+  map.set(normalizeHeader('Số khối m3'), 'm3');
   return map;
 })();
 
+function findHeaderRowIndex(matrix: unknown[][]) {
+  let bestIndex = -1;
+  let bestMatchCount = 0;
+  const limit = Math.min(matrix.length, 20);
+
+  for (let index = 0; index < limit; index += 1) {
+    const matchedKeys = new Set(
+      (matrix[index] || [])
+        .map((cell) => headerToKey.get(normalizeHeader(cell)))
+        .filter((key): key is OrderBulkFieldKey => Boolean(key)),
+    );
+    if (matchedKeys.size > bestMatchCount) {
+      bestIndex = index;
+      bestMatchCount = matchedKeys.size;
+    }
+  }
+
+  return bestMatchCount >= 4 ? bestIndex : -1;
+}
+
 export function downloadOrderBulkTemplate() {
+  const notes = ORDER_BULK_COLUMNS.map((column) => ORDER_BULK_TEMPLATE_NOTES[column.key] || '');
   const headers = ORDER_BULK_COLUMNS.map(orderBulkHeaderLabel);
   const sample = ORDER_BULK_COLUMNS.map((column) => column.sample ?? '');
   const instructions = ORDER_BULK_INSTRUCTIONS.map((line, index) => ({
@@ -57,7 +91,11 @@ export function downloadOrderBulkTemplate() {
   }));
 
   const workbook = utils.book_new();
-  utils.book_append_sheet(workbook, utils.aoa_to_sheet([headers, sample]), 'Don_hang');
+  const orderSheet = utils.aoa_to_sheet([notes, headers, sample]);
+  orderSheet['!cols'] = ORDER_BULK_COLUMNS.map((column) => ({
+    wch: Math.max(12, column.label.length + 3, (ORDER_BULK_TEMPLATE_NOTES[column.key] || '').length > 24 ? 24 : 0),
+  }));
+  utils.book_append_sheet(workbook, orderSheet, 'Don_hang');
   utils.book_append_sheet(workbook, utils.json_to_sheet(instructions), 'Huong_dan');
   writeFile(workbook, 'mau-nhap-don-hang-loat.xlsx');
 }
@@ -82,11 +120,13 @@ export function parseOrderBulkWorkbook(file: ArrayBuffer): ParsedOrderBulkRow[] 
   const matrix = utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' }) as unknown[][];
   if (!matrix.length) return [];
 
-  const headerRow = matrix[0] || [];
+  const headerRowIndex = findHeaderRowIndex(matrix);
+  if (headerRowIndex < 0) return [];
+  const headerRow = matrix[headerRowIndex] || [];
   const columnIndexes = headerRow.map((header) => headerToKey.get(normalizeHeader(header)) || null);
 
   const parsed: ParsedOrderBulkRow[] = [];
-  for (let index = 1; index < matrix.length; index += 1) {
+  for (let index = headerRowIndex + 1; index < matrix.length; index += 1) {
     const raw = matrix[index] || [];
     const values = emptyBulkRow();
     columnIndexes.forEach((key, colIndex) => {
@@ -97,6 +137,39 @@ export function parseOrderBulkWorkbook(file: ArrayBuffer): ParsedOrderBulkRow[] 
     parsed.push({ rowNumber: index + 1, values, errors: [] });
   }
   return parsed;
+}
+
+export function enrichOrderBulkRowsWithCustomers(
+  rows: ParsedOrderBulkRow[],
+  customers: CustomerRecord[],
+): ParsedOrderBulkRow[] {
+  const customerByCode = new Map(
+    customers.map((customer) => [customer.code.trim().toUpperCase(), customer]),
+  );
+
+  return rows.map((row) => {
+    const code = row.values.maKh.trim().toUpperCase();
+    const customer = customerByCode.get(code);
+    if (!customer) return { ...row, customerMatched: false };
+
+    const values = { ...row.values, maKh: customer.code.trim().toUpperCase() };
+    const customerPatch = customerToOrderPatch(customer);
+    const receiverPatch = applyReceiverByDestination(customer, values.huyen);
+    const fillIfBlank = (key: OrderBulkFieldKey, value: unknown) => {
+      if (!values[key].trim() && value != null) values[key] = String(value).trim();
+    };
+
+    fillIfBlank('dienThoaiKh', customerPatch.dienThoaiKh);
+    fillIfBlank('nguoiGui', customerPatch.nguoiGui);
+    fillIfBlank('diaChiGui', customerPatch.diaChiGui);
+    fillIfBlank('nguoiNhan', receiverPatch.nguoiNhan);
+    fillIfBlank('dienThoaiNhan', receiverPatch.dienThoaiNhan);
+    fillIfBlank('diaChiNhan', receiverPatch.diaChiNhan);
+    fillIfBlank('quanHuyen', receiverPatch.quanHuyen);
+    fillIfBlank('phuongXa', receiverPatch.phuongXa);
+
+    return { ...row, values, customerMatched: true };
+  });
 }
 
 function resolveHubId(hubs: HubSummary[], raw: string) {
@@ -119,7 +192,11 @@ function hasWeightInput(values: OrderBulkRow) {
   return l > 0 && w > 0 && h > 0;
 }
 
-export function validateOrderBulkRow(values: OrderBulkRow, hubs: HubSummary[]): string[] {
+export function validateOrderBulkRow(
+  values: OrderBulkRow,
+  hubs: HubSummary[],
+  customerMatched?: boolean,
+): string[] {
   const errors: string[] = [];
   const originHubId = resolveHubId(hubs, values.bcGui);
   const destHubId = resolveHubId(hubs, values.bcDen);
@@ -134,8 +211,12 @@ export function validateOrderBulkRow(values: OrderBulkRow, hubs: HubSummary[]): 
     errors.push('BC gửi và BC đến không được trùng.');
   }
 
+  if (!values.maKh.trim()) errors.push('Thiếu Mã KH.');
+  else if (customerMatched === false) errors.push(`Không tìm thấy Mã KH "${values.maKh}".`);
+
   if (!values.nguoiGui.trim()) errors.push('Thiếu người gửi.');
   if (!values.nguoiNhan.trim()) errors.push('Thiếu người nhận.');
+  if (!values.dienThoaiNhan.trim()) errors.push('Thiếu SĐT người nhận.');
   if (!values.diaChiNhan.trim()) errors.push('Thiếu địa chỉ nhận.');
 
   if (values.dienThoaiNhan.trim() && !isValidVnPhone(values.dienThoaiNhan)) {
@@ -145,6 +226,10 @@ export function validateOrderBulkRow(values: OrderBulkRow, hubs: HubSummary[]): 
   if (!hasWeightInput(values)) {
     errors.push('Cần Số cân (kg), hoặc Dài/Rộng/Cao (cm), hoặc Số khối (m³).');
   }
+
+  if (!values.dichVu.trim()) errors.push('Thiếu dịch vụ.');
+  if (!values.giaoHang.trim()) errors.push('Thiếu hình thức giao hàng.');
+  if (!values.phuongThuc.trim()) errors.push('Thiếu phương thức thanh toán.');
 
   [values.anh1, values.anh2, values.anh3, values.anh4].filter(Boolean).forEach((url, index) => {
     if (!isPublicImageUrl(url)) errors.push(`URL ảnh ${index + 1} không hợp lệ.`);
@@ -241,7 +326,7 @@ export function buildBulkCreatePayload(form: NewOrderFormState) {
 export function annotateBulkRows(rows: ParsedOrderBulkRow[], hubs: HubSummary[]) {
   return rows.map((row) => ({
     ...row,
-    errors: validateOrderBulkRow(row.values, hubs),
+    errors: validateOrderBulkRow(row.values, hubs, row.customerMatched),
   }));
 }
 
