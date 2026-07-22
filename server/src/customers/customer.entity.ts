@@ -81,6 +81,15 @@ export class CustomerEntity {
   contact_address: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
+  receiver_han: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  address_han: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  phone_han: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
   receiver_hcm: string | null;
 
   @Column({ type: 'varchar', length: 500, nullable: true })

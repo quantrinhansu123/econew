@@ -450,6 +450,7 @@ export class VendorsService {
       .innerJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .where('truck.vendor_id = :vendorId', { vendorId })
+      .andWhere('trip.status IN (:...statuses)', { statuses: DEPARTED_TRIP_STATUSES })
       .andWhere('(COALESCE(trip.trip_cost, 0) > 0 OR COALESCE(trip.other_costs, 0) > 0)');
 
     if (from) qb.andWhere('trip.departure_time >= :from', { from });

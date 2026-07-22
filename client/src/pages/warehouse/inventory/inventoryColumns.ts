@@ -445,7 +445,8 @@ export function resolveServiceType(waybill: WaybillInventoryItem): string {
 }
 
 export function resolveBillingUnit(waybill: WaybillInventoryItem): string {
-  return parseNote(waybill.note || waybill.notes, 'billing_unit') || 'Cân';
+  const unit = parseNote(waybill.note || waybill.notes, 'billing_unit').trim();
+  return /^(cân|can|kg)$/i.test(unit) ? 'Kg' : unit || 'Kg';
 }
 
 export function resolveUnitPrice(waybill: WaybillInventoryItem): number {

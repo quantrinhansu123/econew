@@ -23,7 +23,7 @@ export type SafeUser = Omit<UserEntity, 'password_hash' | 'refresh_token'>;
 
 const VALID_ROLE_MASK = Roles.WAREHOUSE | Roles.PACKER | Roles.DRIVER | Roles.DISPATCHER | Roles.ACCOUNTANT | Roles.MANAGER | Roles.DIRECTOR;
 const ACTIVE_TRIP_STATUSES = [TripStatus.PLANNED, TripStatus.IN_TRANSIT];
-const ACTIVE_WAYBILL_STATES = [WaybillState.RECEIVED, WaybillState.IN_WAREHOUSE, WaybillState.MANIFEST_CLOSED, WaybillState.LOADED, WaybillState.IN_TRANSIT, WaybillState.AT_DEST_HUB, WaybillState.OUT_FOR_DELIVERY];
+const ACTIVE_WAYBILL_STATES = [WaybillState.RECEIVED, WaybillState.IN_WAREHOUSE, WaybillState.MANIFEST_CLOSED, WaybillState.LOADED, WaybillState.IN_TRANSIT, WaybillState.AT_DEST_HUB, WaybillState.OUT_FOR_DELIVERY, WaybillState.RETURNED];
 
 @Injectable()
 export class UsersService {
@@ -206,4 +206,3 @@ export class UsersService {
     if (counts.some((count) => count > 0)) throw new BadRequestException(`Cannot ${action} user with active tasks`);
   }
 }
-

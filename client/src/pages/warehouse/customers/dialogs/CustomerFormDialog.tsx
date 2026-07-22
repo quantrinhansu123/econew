@@ -122,7 +122,7 @@ export default function CustomerFormDialog({
           </section>
 
           <section className="rounded-2xl border border-border bg-white p-4 shadow-sm">
-            <p className="mb-3 text-[12px] font-extrabold uppercase tracking-wide text-primary">Kho nhận HCM & liên hệ</p>
+            <p className="mb-3 text-[12px] font-extrabold uppercase tracking-wide text-primary">Kho nhận HCM &amp; Liên hệ</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Người nhận">
                 <input value={form.receiver_hcm} onChange={(e) => onChange('receiver_hcm', e.target.value)} className={inputClass} />

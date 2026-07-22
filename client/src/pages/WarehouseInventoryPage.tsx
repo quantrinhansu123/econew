@@ -69,7 +69,7 @@ const MUTABLE_WAYBILL_STATUSES = ['RECEIVED', 'IN_WAREHOUSE'];
 const defaultFilters: InventoryFilters = { keyword: '', ma_kh: '', statuses: [], orderStatusGroups: [], noiDenKeyword: '', billingUnits: [], customerPaymentStatuses: [], hubIds: [], paymentTypes: [], priorities: [], receivedFrom: '', receivedTo: '', page: 1, limit: 10 };
 const allOrdersDefaultFilters: InventoryFilters = { ...defaultFilters, limit: 25 };
 const billingUnitFilterOptions: FilterOption[] = [
-  { value: 'Cân', label: 'Cân' },
+  { value: 'Kg', label: 'Kg' },
   { value: 'Khối', label: 'Khối' },
   { value: 'Trọn gói', label: 'Trọn gói' },
   { value: 'Chuyến', label: 'Chuyến' },
@@ -1495,7 +1495,6 @@ function FilterSummaryCard({ label, value, tone }: { label: string; value: strin
 
 function Alert({ message, tone = 'amber' }: { message: string; tone?: 'amber' | 'red' }) { return <div className={clsx('flex gap-2 rounded-2xl border px-4 py-3 text-[13px] font-bold', tone === 'red' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800')}><AlertTriangle size={16} className="mt-0.5 shrink-0" />{message}</div>; }
 function StateCard({ icon, title, description, compact = false }: { icon: ReactNode; title: string; description: string; compact?: boolean }) { return <div className={clsx('flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-white text-center', compact ? 'm-5 min-h-[320px] p-6' : 'min-h-[420px] p-8')}><div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">{icon}</div><h3 className="text-base font-black text-foreground">{title}</h3><p className="mt-2 max-w-md text-[13px] leading-6 text-muted-foreground">{description}</p></div>; }
-
 
 
 

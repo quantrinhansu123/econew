@@ -9,15 +9,14 @@ import { FilterSelect } from '../components/ui/FilterSelect';
 import type { AuthUserProfile } from './login/types';
 import LastMileWaybillDetailDialog from './delivery/last-mile/dialogs/LastMileWaybillDetailDialog';
 import UpdateDeliveryStatusDialog from './delivery/last-mile/dialogs/UpdateDeliveryStatusDialog';
-import type { DeliveryStatus } from './delivery/last-mile/deliveryStatusUtils';
-import type { BadgeConfig, LastMileFilters, LastMileWaybill, LastMileWaybillDetail, FilterOption, HubSummary, ListResponse, TripSummary, UserSummary } from './delivery/last-mile/types';
+import type { BadgeConfig, DeliveryStatusPayload, LastMileFilters, LastMileWaybill, LastMileWaybillDetail, FilterOption, HubSummary, ListResponse, TripSummary, UserSummary } from './delivery/last-mile/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const DRIVER = 4;
 const DISPATCHER = 8;
 const MANAGER = 32;
 const DIRECTOR = 64;
-const defaultFilters: LastMileFilters = { keyword: '', statuses: ['AT_DEST_HUB', 'OUT_FOR_DELIVERY'], driverIds: [], tripIds: [], routeIds: [], originHubIds: [], destHubIds: [], paymentTypes: [], page: 1, limit: 10 };
+const defaultFilters: LastMileFilters = { keyword: '', statuses: ['AT_DEST_HUB', 'OUT_FOR_DELIVERY', 'RETURNED'], driverIds: [], tripIds: [], routeIds: [], originHubIds: [], destHubIds: [], paymentTypes: [], page: 1, limit: 10 };
 
 const statusConfig: Record<string, BadgeConfig> = {
   RECEIVED: { label: 'Đã tạo đơn', className: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -48,7 +47,7 @@ const normalizeList = <T,>(response: ListResponse<T> | T[], key?: 'users' | 'hub
 const normalizeTotal = (response: ListResponse<LastMileWaybill> | LastMileWaybill[], fallback: number) => Array.isArray(response) ? fallback : response.total ?? response.meta?.total ?? fallback;
 const displayValue = (value: unknown, suffix = '') => value === null || value === undefined || value === '' ? '—' : `${value}${suffix}`;
 const normalizeStatus = (waybill: LastMileWaybill) => String(waybill.current_state || '').toUpperCase();
-const isUpdatable = (waybill: LastMileWaybill) => ['AT_DEST_HUB', 'OUT_FOR_DELIVERY'].includes(normalizeStatus(waybill));
+const isUpdatable = (waybill: LastMileWaybill) => ['AT_DEST_HUB', 'OUT_FOR_DELIVERY', 'RETURNED'].includes(normalizeStatus(waybill));
 const getDriverName = (waybill: LastMileWaybill) => waybill.last_mile_driver?.name || waybill.driver?.name || waybill.last_mile_driver?.username || waybill.driver?.username || (waybill.last_mile_driver_id ? `Tài xế #${waybill.last_mile_driver_id}` : '—');
 const driverLabel = (driver: UserSummary) => [driver.name || driver.username, driver.phone].filter(Boolean).join(' · ');
 const routeLabel = (trip: TripSummary) => [trip.start_hub_id ? `Hub #${trip.start_hub_id}` : '', trip.end_hub_id ? `Hub #${trip.end_hub_id}` : ''].filter(Boolean).join(' → ') || `Chuyến #${trip.id}`;
@@ -68,7 +67,7 @@ export default function DeliveryLastMilePage() {
   const [statusWaybill, setStatusWaybill] = useState<LastMileWaybill | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
-  const user = useMemo(() => getStoredUser(), []);
+  const user = useMemo(getStoredUser, []);
   const canUpdate = canUpdateLastMile(user?.role_mask ?? 0);
 
   const hubOptions = useMemo<FilterOption[]>(() => hubs.map(hub => ({ value: String(hub.id), label: [hub.code?.toUpperCase(), hub.name].filter(Boolean).join(' · ') || `Hub #${hub.id}` })), [hubs]);
@@ -106,9 +105,7 @@ export default function DeliveryLastMilePage() {
     finally { setIsLoading(false); }
   };
 
-  // loadWaybills owns the loading/result state for this query lifecycle.
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { void loadWaybills(); }, [filters]);
+  useEffect(() => { loadWaybills(); }, [filters]);
   useEffect(() => {
     Promise.allSettled([
       apiRequest<ListResponse<HubSummary> | HubSummary[]>('/hubs/active'),
@@ -125,13 +122,11 @@ export default function DeliveryLastMilePage() {
     try { setDetailWaybill(await apiRequest<LastMileWaybillDetail>(`/waybills/${waybill.id}`)); }
     catch { setDetailWaybill(waybill); }
   };
-  const confirmUpdateStatus = async (status: DeliveryStatus, deliveryPhotoUrl?: string) => {
+  const confirmUpdateStatus = async (payload: DeliveryStatusPayload) => {
     if (!statusWaybill) return;
     setIsSubmitting(true); setActionError('');
     try {
-      const body: { status: DeliveryStatus; delivery_photo_url?: string } = { status };
-      if (status === 'DELIVERED' && deliveryPhotoUrl) body.delivery_photo_url = deliveryPhotoUrl;
-      await apiRequest(`/waybills/${statusWaybill.id}/status`, { method: 'PATCH', body });
+      await apiRequest(`/waybills/${statusWaybill.id}/status`, { method: 'PATCH', body: payload });
       setStatusWaybill(null); await loadWaybills();
     } catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái vận đơn.'); }
     finally { setIsSubmitting(false); }
@@ -198,7 +193,6 @@ function IconButton({ title, children, onClick, disabled = false }: { title: str
 function StateBlock({ icon, title, description }: { icon: ReactNode; title: string; description: string }) { return <div className="flex-1 min-h-[360px] flex items-center justify-center"><div className="text-center"><div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">{icon}</div><h3 className="text-base font-black text-foreground">{title}</h3><p className="mt-2 max-w-md text-[13px] leading-6 text-muted-foreground">{description}</p></div></div>; }
 function MobileInfo({ label, value }: { label: string; value: ReactNode }) { return <div className="min-w-0"><span className="text-muted-foreground">{label}: </span><span className="font-bold text-foreground break-words">{value}</span></div>; }
 function MobileCard({ waybill, canUpdate, formatHub, openDetail, openUpdate }: { waybill: LastMileWaybill; canUpdate: boolean; formatHub: (id?: string | number | null) => string; openDetail: (waybill: LastMileWaybill) => void; openUpdate: () => void }) { return <div className="rounded-2xl border border-border bg-white p-3 shadow-sm"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="font-black text-foreground">{waybill.waybill_code}</div><div className="mt-1 flex flex-wrap gap-1">{renderStatus(waybill.current_state)}{renderPayment(waybill.payment_type)}</div></div><div className="flex gap-2"><IconButton title="Xem" onClick={() => openDetail(waybill)}><Eye size={16} /></IconButton>{canUpdate ? <button type="button" onClick={openUpdate} className="inline-flex h-9 items-center gap-1 rounded-lg bg-emerald-600 px-3 text-[12px] font-extrabold text-white"><Truck size={14} />Giao hàng</button> : null}</div></div><div className="mt-3 grid gap-2 text-[13px]"><MobileInfo label="Người gửi" value={waybill.sender_info} /><MobileInfo label="Người nhận" value={waybill.receiver_info} /><MobileInfo label="Hub đi" value={<HubBadge>{formatHub(waybill.origin_hub_id)}</HubBadge>} /><MobileInfo label="Hub đến" value={<HubBadge>{formatHub(waybill.dest_hub_id)}</HubBadge>} /><MobileInfo label="Tài xế" value={<DriverBadge>{getDriverName(waybill)}</DriverBadge>} /><MobileInfo label="Cân nặng" value={displayValue(waybill.weight, ' kg')} /><MobileInfo label="Kích thước" value={`${displayValue(waybill.length)} × ${displayValue(waybill.width)} × ${displayValue(waybill.height)}`} /><MobileInfo label="TL quy đổi" value={displayValue(waybill.volumetric_weight, ' kg')} /><MobileInfo label="Cước phí" value={displayValue(waybill.cost_amount)} /></div></div>; }
-
 
 
 

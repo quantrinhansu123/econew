@@ -35,6 +35,7 @@ export function IncomingTripsPageLayout({
   onPaymentStatusesChange,
   onClearFilters,
   summary,
+  headerActions,
   children,
 }: {
   title: string;
@@ -60,6 +61,7 @@ export function IncomingTripsPageLayout({
   onPaymentStatusesChange?: (statuses: string[]) => void;
   onClearFilters?: () => void;
   summary?: IncomingTripSummary;
+  headerActions?: ReactNode;
   children: ReactNode;
 }) {
   const showFilters = summary && onFilterFromDateChange && onFilterToDateChange && enabledVendors && onVendorToggle && enabledPlates && onPlatesChange && enabledStatuses && onStatusesChange && enabledPaymentStatuses && onPaymentStatusesChange;
@@ -96,9 +98,12 @@ export function IncomingTripsPageLayout({
                 <p className="hidden text-[12px] font-medium text-muted-foreground md:block">{subtitle}</p>
               </div>
             </div>
-            <div className="ml-auto flex h-9 items-center gap-2 rounded-lg border border-border bg-muted/10 px-3 text-[11px] font-bold text-muted-foreground">
-              <RefreshCw size={13} className={isLoading ? 'animate-spin text-primary' : 'text-primary'} />
-              <span>{formatUpdatedAt(updatedAt)}</span>
+            <div className="ml-auto flex items-center gap-2">
+              {headerActions}
+              <div className="flex h-9 items-center gap-2 rounded-lg border border-border bg-muted/10 px-3 text-[11px] font-bold text-muted-foreground">
+                <RefreshCw size={13} className={isLoading ? 'animate-spin text-primary' : 'text-primary'} />
+                <span>{formatUpdatedAt(updatedAt)}</span>
+              </div>
             </div>
           </div>
 

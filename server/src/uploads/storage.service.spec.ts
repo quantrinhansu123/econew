@@ -72,6 +72,40 @@ describe('StorageService', () => {
     expect(headers).not.toHaveProperty('Authorization');
   });
 
+  it('falls back to the service-role key when a stale secret key is rejected', async () => {
+    config.SUPABASE_SECRET_KEY = 'sb_secret_stale';
+    config.SUPABASE_SERVICE_ROLE_KEY = 'eyJheader.eyJpayload.signature';
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, { message: 'Invalid API key' }))
+      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'payment-proofs', public: true }]))
+      .mockResolvedValueOnce(jsonResponse(401, { message: 'Invalid API key' }))
+      .mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
+
+    await expect(createService().uploadWaybillImage(imageFile)).resolves.toContain('/waybills/');
+
+    const listFallbackHeaders = fetchMock.mock.calls[1][1]?.headers as Record<string, string>;
+    const uploadFallbackHeaders = fetchMock.mock.calls[3][1]?.headers as Record<string, string>;
+    expect(listFallbackHeaders.apikey).toBe(config.SUPABASE_SERVICE_ROLE_KEY);
+    expect(listFallbackHeaders.Authorization).toBe(`Bearer ${config.SUPABASE_SERVICE_ROLE_KEY}`);
+    expect(uploadFallbackHeaders.apikey).toBe(config.SUPABASE_SERVICE_ROLE_KEY);
+    expect(uploadFallbackHeaders.Authorization).toBe(`Bearer ${config.SUPABASE_SERVICE_ROLE_KEY}`);
+  });
+
+  it('removes wrapping quotes copied into Render environment values', async () => {
+    config.SUPABASE_URL = '"https://project.supabase.co/"';
+    config.SUPABASE_SECRET_KEY = '"sb_secret_server_key"';
+    config.SUPABASE_STORAGE_BUCKET = '"payment-proofs"';
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'payment-proofs', public: true }]))
+      .mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
+
+    await createService().uploadWaybillImage(imageFile);
+
+    const [requestUrl, init] = fetchMock.mock.calls[1];
+    expect(String(requestUrl)).toMatch(/^https:\/\/project\.supabase\.co\/storage/);
+    expect((init?.headers as Record<string, string>).apikey).toBe('sb_secret_server_key');
+  });
+
   it('keeps Bearer authorization for a legacy service-role JWT', async () => {
     config.SUPABASE_SERVICE_ROLE_KEY = 'eyJheader.eyJpayload.signature';
     fetchMock

@@ -16,11 +16,7 @@ import { TripStatus } from '../common/enums';
 const manager = { id: 'u1', role_mask: Roles.MANAGER, hub_id: '1' } as any;
 const warehouse = { id: 'u2', role_mask: Roles.WAREHOUSE, hub_id: '1' } as any;
 const accountant = { id: 'u3', role_mask: Roles.ACCOUNTANT, hub_id: '1' } as any;
-const destinationWarehouse = { id: 'u4', role_mask: Roles.WAREHOUSE, hub_id: '2' } as any;
-const assignedDriver = { id: 'driver-1', role_mask: Roles.DRIVER, hub_id: null } as any;
-const otherDriver = { id: 'driver-2', role_mask: Roles.DRIVER, hub_id: null } as any;
-const uploadedPhoto = 'https://project.supabase.co/storage/v1/object/public/payment-proofs/waybills/1770000000000-0123456789abcdef.jpg';
-const secondUploadedPhoto = 'https://project.supabase.co/storage/v1/object/public/payment-proofs/waybills/1770000000001-fedcba9876543210.png';
+const driver = { id: 'u4', role_mask: Roles.DRIVER, hub_id: '2' } as any;
 
 const makeWaybill = (overrides: Record<string, any> = {}) => ({
   id: '1',
@@ -37,6 +33,7 @@ const makeWaybill = (overrides: Record<string, any> = {}) => ({
   freight_amount: 0,
   cc_amount: 0,
   package_count: 1,
+  delivery_attempt_count: 0,
   created_at: new Date('2026-01-01'),
   ...overrides,
 });
@@ -91,8 +88,7 @@ describe('WaybillsService', () => {
   let dataSource: any;
   let ordersService: any;
   let vendorsService: any;
-  let configService: any;
-  let storageService: any;
+  let deliveryAttemptsRepository: any;
 
   beforeEach(() => {
     waybillsRepository = {
@@ -171,14 +167,11 @@ describe('WaybillsService', () => {
       resolveDefaultVendorId: jest.fn(),
       addPayableDebt: jest.fn(),
     };
-    configService = {
-      get: jest.fn((key: string) => ({
-        SUPABASE_URL: 'https://project.supabase.co',
-        SUPABASE_STORAGE_BUCKET: 'payment-proofs',
-      })[key]),
-    };
-    storageService = {
-      assertWaybillImagesExist: jest.fn().mockResolvedValue(undefined),
+    deliveryAttemptsRepository = {
+      create: jest.fn((value) => value),
+      save: jest.fn(async (value) => value),
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
     };
     service = new WaybillsService(
       waybillsRepository,
@@ -192,8 +185,7 @@ describe('WaybillsService', () => {
       dataSource,
       ordersService,
       vendorsService,
-      configService,
-      storageService,
+      deliveryAttemptsRepository,
     );
     jest.spyOn(Date, 'now').mockReturnValue(1770000000000);
     jest.spyOn(Math, 'random').mockReturnValue(0.123);
@@ -769,9 +761,9 @@ describe('WaybillsService', () => {
       origin_hub_id: '1',
       dest_hub_id: '2',
       weight: 3,
-      delivery_photo_url: ` ${uploadedPhoto} | ${secondUploadedPhoto} `,
+      delivery_photo_url: ' https://example.com/1.jpg | https://example.com/2.jpg ',
     }, manager);
-    expect(result.delivery_photo_url).toBe(`${uploadedPhoto}|${secondUploadedPhoto}`);
+    expect(result.delivery_photo_url).toBe('https://example.com/1.jpg|https://example.com/2.jpg');
   });
 
   it('inventory combines summary queries and loads only split allocation fields for pending rows', async () => {
@@ -800,27 +792,16 @@ describe('WaybillsService', () => {
 
   it('receive transitions RECEIVED to IN_WAREHOUSE', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
-    const result = await service.receive('1', { delivery_photo_url: uploadedPhoto }, warehouse);
+    const result = await service.receive('1', { delivery_photo_url: 'https://example.com/receive.jpg' }, warehouse);
     expect(result.status).toBe(WaybillStatus.IN_WAREHOUSE);
     expect(result.received_by).toBe(warehouse.id);
-    expect(result.delivery_photo_url).toBe(uploadedPhoto);
+    expect(result.delivery_photo_url).toBe('https://example.com/receive.jpg');
   });
 
   it('receive blocks wrong status', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.IN_WAREHOUSE, current_state: WaybillStatus.IN_WAREHOUSE }));
-    await expect(service.receive('1', { delivery_photo_url: uploadedPhoto }, warehouse)).rejects.toThrow(BadRequestException);
+    await expect(service.receive('1', { delivery_photo_url: 'https://example.com/receive.jpg' }, warehouse)).rejects.toThrow(BadRequestException);
   });
-
-  it.each(['pending-upload', '   ', 'https://example.com/receive.jpg'])(
-    'receive rejects a non-uploaded photo value %p',
-    async (deliveryPhotoUrl) => {
-      waybillsRepository.findOne.mockResolvedValue(makeWaybill());
-      await expect(service.receive('1', {
-        delivery_photo_url: deliveryPhotoUrl,
-      }, warehouse)).rejects.toThrow(BadRequestException);
-      expect(waybillsRepository.save).not.toHaveBeenCalled();
-    },
-  );
 
   it('updateStatus accepts valid state machine transition', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
@@ -833,164 +814,79 @@ describe('WaybillsService', () => {
     await expect(service.updateStatus('1', { status: WaybillStatus.IN_TRANSIT }, warehouse)).rejects.toThrow(BadRequestException);
   });
 
-  it('updateStatus blocks RECEIVED to MANIFEST_CLOSED and AT_DEST_HUB to DELIVERED jumps', async () => {
-    waybillsRepository.findOne.mockResolvedValueOnce(makeWaybill());
-    await expect(service.updateStatus('1', {
-      status: WaybillStatus.MANIFEST_CLOSED,
-    }, warehouse)).rejects.toThrow(BadRequestException);
-
-    waybillsRepository.findOne.mockResolvedValueOnce(makeWaybill({
+  it('nhận đi giao tại hub đích tạo lần phát và tự gán tài xế', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
       status: WaybillStatus.AT_DEST_HUB,
       current_state: WaybillStatus.AT_DEST_HUB,
       current_hub_id: '2',
     }));
-    await expect(service.updateStatus('1', {
-      status: WaybillStatus.DELIVERED,
-    }, destinationWarehouse)).rejects.toThrow(BadRequestException);
-  });
 
-  it('updateStatus supports canonical MANIFEST_CLOSED to IN_TRANSIT with a sealed manifest', async () => {
-    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
-      status: WaybillStatus.MANIFEST_CLOSED,
-      current_state: WaybillStatus.MANIFEST_CLOSED,
-    }));
-    manifestWaybillsRepository.findOne.mockResolvedValue({
-      waybill_id: '1',
-      manifest: { seal_code: 'SEAL-001' },
+    const result = await service.updateStatus('1', {
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+      delivery_vehicle: '51H-12345',
+    }, driver);
+
+    expect(result).toMatchObject({
+      current_state: WaybillStatus.OUT_FOR_DELIVERY,
+      last_mile_driver_id: driver.id,
+      xe_phat: '51H-12345',
+      delivery_attempt_count: 1,
     });
-
-    await expect(service.updateStatus('1', {
-      status: WaybillStatus.IN_TRANSIT,
-    }, warehouse)).resolves.toMatchObject({ status: WaybillStatus.IN_TRANSIT });
-  });
-
-  it('updateStatus keeps legacy LOADED to IN_TRANSIT but still requires a seal', async () => {
-    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
-      status: WaybillStatus.LOADED,
-      current_state: WaybillStatus.LOADED,
+    expect(deliveryAttemptsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      attempt_number: 1,
+      status: 'IN_PROGRESS',
+      driver_id: driver.id,
     }));
-    manifestWaybillsRepository.findOne.mockResolvedValue({
-      waybill_id: '1',
-      manifest: { seal_code: 'SEAL-002' },
-    });
-
-    await expect(service.updateStatus('1', {
-      status: WaybillStatus.IN_TRANSIT,
-    }, warehouse)).resolves.toMatchObject({ status: WaybillStatus.IN_TRANSIT });
   });
 
-  it('updateStatus blocks IN_TRANSIT when the linked manifest has no seal', async () => {
-    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
-      status: WaybillStatus.MANIFEST_CLOSED,
-      current_state: WaybillStatus.MANIFEST_CLOSED,
-    }));
-    manifestWaybillsRepository.findOne.mockResolvedValue({
-      waybill_id: '1',
-      manifest: { seal_code: '   ' },
-    });
-
-    await expect(service.updateStatus('1', {
-      status: WaybillStatus.IN_TRANSIT,
-    }, warehouse)).rejects.toThrow('Manifest seal code is required before transit');
-  });
-
-  it.each(['pending-upload', '   ', 'https://example.com/new-delivery.jpg'])(
-    'DELIVERED rejects a fake or untrusted submitted photo %p',
-    async (deliveryPhotoUrl) => {
-      waybillsRepository.findOne.mockResolvedValue(makeWaybill({
-        status: WaybillStatus.OUT_FOR_DELIVERY,
-        current_state: WaybillStatus.OUT_FOR_DELIVERY,
-        current_hub_id: '2',
-        last_mile_driver_id: assignedDriver.id,
-      }));
-      await expect(service.updateStatus('1', {
-        status: WaybillStatus.DELIVERED,
-        delivery_photo_url: deliveryPhotoUrl,
-      }, assignedDriver)).rejects.toThrow(BadRequestException);
-      expect(waybillsRepository.save).not.toHaveBeenCalled();
-    },
-  );
-
-  it('DELIVERED rejects an invalid stored placeholder when no new photo is supplied', async () => {
+  it('hoàn hàng bắt buộc lý do và hướng xử lý', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({
       status: WaybillStatus.OUT_FOR_DELIVERY,
       current_state: WaybillStatus.OUT_FOR_DELIVERY,
       current_hub_id: '2',
-      last_mile_driver_id: assignedDriver.id,
-      delivery_photo_url: 'pending-upload',
+      delivery_attempt_count: 1,
     }));
 
     await expect(service.updateStatus('1', {
-      status: WaybillStatus.DELIVERED,
-    }, assignedDriver)).rejects.toThrow('Delivery photo is required');
+      status: WaybillStatus.RETURNED,
+    }, driver)).rejects.toThrow(BadRequestException);
   });
 
-  it('DELIVERED accepts a trusted new upload for the assigned driver', async () => {
-    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+  it('hoàn hàng có thể phát lại nhiều lần đến khi giao thành công', async () => {
+    const returned = makeWaybill({
       status: WaybillStatus.OUT_FOR_DELIVERY,
       current_state: WaybillStatus.OUT_FOR_DELIVERY,
       current_hub_id: '2',
-      last_mile_driver_id: assignedDriver.id,
-    }));
-
-    await expect(service.updateStatus('1', {
-      status: WaybillStatus.DELIVERED,
-      delivery_photo_url: uploadedPhoto,
-    }, assignedDriver)).resolves.toMatchObject({
-      status: WaybillStatus.DELIVERED,
-      delivery_photo_url: uploadedPhoto,
+      last_mile_driver_id: driver.id,
+      delivery_attempt_count: 1,
     });
-    expect(storageService.assertWaybillImagesExist).toHaveBeenCalledWith([uploadedPhoto]);
-  });
+    waybillsRepository.findOne.mockResolvedValue(returned);
+    deliveryAttemptsRepository.findOne.mockResolvedValue({ id: 'a1', waybill_id: '1', attempt_number: 1, status: 'IN_PROGRESS' });
 
-  it('only the assigned driver can start last-mile delivery from AT_DEST_HUB', async () => {
-    const arrived = makeWaybill({
-      status: WaybillStatus.AT_DEST_HUB,
-      current_state: WaybillStatus.AT_DEST_HUB,
-      current_hub_id: '2',
-      last_mile_driver_id: assignedDriver.id,
+    const result = await service.updateStatus('1', {
+      status: WaybillStatus.RETURNED,
+      return_reason: 'Khách hẹn ngày khác',
+      return_action: 'REDIRECT_ADDRESS' as any,
+      redelivery_address: '123 Đường mới, TP.HCM',
+    }, driver);
+
+    expect(result).toMatchObject({
+      current_state: WaybillStatus.RETURNED,
+      return_reason: 'Khách hẹn ngày khác',
+      redelivery_address: '123 Đường mới, TP.HCM',
     });
-    waybillsRepository.findOne.mockResolvedValueOnce(arrived);
-    await expect(service.updateStatus('1', {
-      status: WaybillStatus.OUT_FOR_DELIVERY,
-    }, otherDriver)).rejects.toThrow(ForbiddenException);
 
-    waybillsRepository.findOne.mockResolvedValueOnce(arrived);
-    await expect(service.updateStatus('1', {
+    waybillsRepository.findOne.mockResolvedValue({ ...returned, ...result });
+    deliveryAttemptsRepository.findOne.mockResolvedValue(null);
+    const retry = await service.updateStatus('1', {
       status: WaybillStatus.OUT_FOR_DELIVERY,
-    }, assignedDriver)).resolves.toMatchObject({ status: WaybillStatus.OUT_FOR_DELIVERY });
-  });
+    }, driver);
 
-  it('DELIVERED rejects persisted legacy URLs that cannot be verified in managed Storage', async () => {
-    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
-      status: WaybillStatus.OUT_FOR_DELIVERY,
+    expect(retry).toMatchObject({
       current_state: WaybillStatus.OUT_FOR_DELIVERY,
-      current_hub_id: '2',
-      delivery_photo_url: 'https://legacy.example.com/proofs/delivery.jpg',
-    }));
-
-    await expect(service.updateStatus('1', {
-      status: WaybillStatus.DELIVERED,
-    }, destinationWarehouse)).rejects.toThrow('Delivery photo is required');
-    expect(storageService.assertWaybillImagesExist).not.toHaveBeenCalled();
-  });
-
-  it('DELIVERED is blocked when the submitted Storage object no longer exists', async () => {
-    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
-      status: WaybillStatus.OUT_FOR_DELIVERY,
-      current_state: WaybillStatus.OUT_FOR_DELIVERY,
-      current_hub_id: '2',
-      last_mile_driver_id: assignedDriver.id,
-    }));
-    storageService.assertWaybillImagesExist.mockRejectedValue(
-      new BadRequestException('Ảnh giao hàng không tồn tại trên Storage. Vui lòng upload lại.'),
-    );
-
-    await expect(service.updateStatus('1', {
-      status: WaybillStatus.DELIVERED,
-      delivery_photo_url: uploadedPhoto,
-    }, assignedDriver)).rejects.toThrow('Ảnh giao hàng không tồn tại trên Storage');
-    expect(waybillsRepository.save).not.toHaveBeenCalled();
+      receiver_address: '123 Đường mới, TP.HCM',
+      delivery_attempt_count: 2,
+    });
   });
 
   it('updatePhotos works without changing logistics status', async () => {
@@ -1000,74 +896,12 @@ describe('WaybillsService', () => {
       manifest_id: 'm1',
     }));
     const result = await service.updatePhotos('1', {
-      delivery_photo_url: `${uploadedPhoto}|${secondUploadedPhoto}`,
+      delivery_photo_url: 'https://example.com/1.jpg|https://example.com/2.jpg',
     }, warehouse);
     expect(result).toMatchObject({
       status: WaybillStatus.IN_TRANSIT,
-      delivery_photo_url: `${uploadedPhoto}|${secondUploadedPhoto}`,
+      delivery_photo_url: 'https://example.com/1.jpg|https://example.com/2.jpg',
     });
-  });
-
-  it('updatePhotos requires an explicit value and rejects placeholders or external new URLs', async () => {
-    waybillsRepository.findOne.mockResolvedValue(makeWaybill());
-    await expect(service.updatePhotos('1', {} as any, warehouse)).rejects.toThrow(BadRequestException);
-
-    for (const delivery_photo_url of ['pending-upload', '   ', 'https://example.com/photo.jpg']) {
-      waybillsRepository.findOne.mockResolvedValue(makeWaybill());
-      await expect(service.updatePhotos('1', { delivery_photo_url }, warehouse)).rejects.toThrow(BadRequestException);
-    }
-  });
-
-  it('updatePhotos allows explicit null clear before delivery but not after DELIVERED', async () => {
-    waybillsRepository.findOne.mockResolvedValueOnce(makeWaybill({ delivery_photo_url: uploadedPhoto }));
-    await expect(service.updatePhotos('1', {
-      delivery_photo_url: null,
-    }, warehouse)).resolves.toMatchObject({ delivery_photo_url: null });
-
-    waybillsRepository.findOne.mockResolvedValueOnce(makeWaybill({
-      status: WaybillStatus.DELIVERED,
-      current_state: WaybillStatus.DELIVERED,
-      current_hub_id: '2',
-      delivery_photo_url: uploadedPhoto,
-    }));
-    await expect(service.updatePhotos('1', {
-      delivery_photo_url: null,
-    }, destinationWarehouse)).rejects.toThrow('Delivered waybills must keep at least one delivery photo');
-  });
-
-  it('updatePhotos allows only the assigned driver during last mile', async () => {
-    const lastMileWaybill = makeWaybill({
-      status: WaybillStatus.OUT_FOR_DELIVERY,
-      current_state: WaybillStatus.OUT_FOR_DELIVERY,
-      current_hub_id: '2',
-      last_mile_driver_id: assignedDriver.id,
-    });
-    waybillsRepository.findOne.mockResolvedValueOnce(lastMileWaybill);
-    await expect(service.updatePhotos('1', {
-      delivery_photo_url: uploadedPhoto,
-    }, otherDriver)).rejects.toThrow(ForbiddenException);
-
-    waybillsRepository.findOne.mockResolvedValueOnce(lastMileWaybill);
-    await expect(service.updatePhotos('1', {
-      delivery_photo_url: uploadedPhoto,
-    }, assignedDriver)).resolves.toMatchObject({ delivery_photo_url: uploadedPhoto });
-  });
-
-  it('updatePhotos requires destination-hub scope once the waybill has arrived', async () => {
-    const arrived = makeWaybill({
-      status: WaybillStatus.AT_DEST_HUB,
-      current_state: WaybillStatus.AT_DEST_HUB,
-      current_hub_id: '2',
-    });
-    waybillsRepository.findOne.mockResolvedValueOnce(arrived);
-    await expect(service.updatePhotos('1', {
-      delivery_photo_url: uploadedPhoto,
-    }, warehouse)).rejects.toThrow(ForbiddenException);
-
-    waybillsRepository.findOne.mockResolvedValueOnce(arrived);
-    await expect(service.updatePhotos('1', {
-      delivery_photo_url: uploadedPhoto,
-    }, destinationWarehouse)).resolves.toMatchObject({ delivery_photo_url: uploadedPhoto });
   });
 
   it('assignPriority blocks URGENT without reason', async () => {

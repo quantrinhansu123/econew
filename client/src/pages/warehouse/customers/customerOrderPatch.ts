@@ -7,9 +7,21 @@ import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
 const str = (v: string | null | undefined) => (v ?? '').trim();
 
 function inferNoiDen(customer: CustomerRecord): string {
-  const blob = [
+  const explicitDestination = [
     customer.destination_province,
     customer.region,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (/hà nội|ha noi|hanoi|\bhan\b|phú thọ|phu tho|hưng yên|hung yen|bắc ninh/.test(explicitDestination)) return 'HAN';
+  if (/bình dương|binh duong|hồ chí minh|ho chi minh|\bhcm\b|tp\.?hcm|tphcm/.test(explicitDestination)) return 'HCM';
+  if (/đà nẵng|da nang|\bdng\b|quảng ngãi|quang ngai/.test(explicitDestination)) return 'DNG';
+
+  const warehouseData = [
+    customer.address_han,
+    customer.receiver_han,
     customer.address_hcm,
     customer.address_dng,
     customer.receiver_dng,
@@ -18,9 +30,12 @@ function inferNoiDen(customer: CustomerRecord): string {
     .join(' ')
     .toLowerCase();
 
-  if (/hà nội|ha noi|hanoi|phú thọ|phu tho|hưng yên|hung yen|bắc ninh/.test(blob)) return 'HAN';
-  if (/đà nẵng|da nang|dng|quảng ngãi|quang ngai/.test(blob)) return 'DNG';
-  if (/bình dương|binh duong|hồ chí minh|ho chi minh|hcm|tp\.?hcm|tphcm/.test(blob)) return 'HCM';
+  const hasHan = /hà nội|ha noi|hanoi|\bhan\b/.test(warehouseData);
+  const hasHcm = /bình dương|binh duong|hồ chí minh|ho chi minh|\bhcm\b|tp\.?hcm|tphcm/.test(warehouseData);
+  const hasDng = /đà nẵng|da nang|\bdng\b/.test(warehouseData);
+  if (hasHan && !hasHcm && !hasDng) return 'HAN';
+  if (hasHcm && !hasHan && !hasDng) return 'HCM';
+  if (hasDng && !hasHan && !hasHcm) return 'DNG';
   return '';
 }
 
@@ -64,9 +79,23 @@ function mapGiaoHang(addressHcm: string | null | undefined): string | undefined 
   return undefined;
 }
 
-/** SĐT khách hàng/người gửi — ưu tiên số liên hệ chung, sau đó mới tới số nhận tại kho */
+const comparablePhone = (value: string | null | undefined) => str(value).replace(/\D/g, '');
+
+/**
+ * SĐT khách hàng/người gửi chỉ lấy từ thông tin liên hệ chung.
+ * Nếu dữ liệu cũ từng ghi nhầm số kho nhận vào mobile/phone_landline thì bỏ số đó,
+ * không để cùng một số xuất hiện ở cả người gửi và người nhận.
+ */
 export function customerPhone(customer: CustomerRecord) {
-  return str(customer.mobile) || str(customer.phone_landline) || str(customer.phone_hcm) || str(customer.phone_dng);
+  const receiverPhones = new Set(
+    [customer.phone_han, customer.phone_hcm, customer.phone_dng]
+      .map(comparablePhone)
+      .filter(Boolean),
+  );
+
+  return [customer.mobile, customer.phone_landline]
+    .map(str)
+    .find((phone) => phone && !receiverPhones.has(comparablePhone(phone))) || '';
 }
 
 /** Địa chỉ gửi lấy riêng từ cột address, không dùng địa chỉ kho nhận. */
@@ -76,11 +105,7 @@ export function customerSenderAddress(customer: CustomerRecord) {
 
 /** Địa chỉ nhận chung chỉ gồm dữ liệu kho nhận, không dùng địa chỉ gửi. */
 export function customerReceiverAddress(customer: CustomerRecord) {
-  return str(customer.address_hcm) || str(customer.address_dng);
-}
-
-function customerReceiverPhone(customer: CustomerRecord) {
-  return str(customer.phone_hcm) || str(customer.phone_dng) || str(customer.mobile) || str(customer.phone_landline);
+  return str(customer.address_han) || str(customer.address_hcm) || str(customer.address_dng);
 }
 
 /** @deprecated Dùng customerSenderAddress hoặc customerReceiverAddress */
@@ -111,6 +136,14 @@ export function isHcmProvince(noiDen: string, huyen = ''): boolean {
   return /hồ chí minh|ho chi minh|tp\.?hcm|tphcm|sài gòn|sai gon/.test(blob);
 }
 
+/** Tỉnh đến là Hà Nội (HAN) */
+export function isHanProvince(noiDen: string, huyen = ''): boolean {
+  const code = noiDen.trim().toUpperCase();
+  if (code === 'HAN') return true;
+  const blob = `${noiDen} ${huyen}`.trim().toLowerCase();
+  return /hà nội|ha noi|hanoi/.test(blob);
+}
+
 function isDngProvince(noiDen: string, huyen = ''): boolean {
   const code = noiDen.trim().toUpperCase();
   if (code === 'DNG') return true;
@@ -120,7 +153,8 @@ function isDngProvince(noiDen: string, huyen = ''): boolean {
 
 /**
  * Điền thông tin người nhận theo tỉnh đến, có fallback về dữ liệu nhận chung đã lưu.
- * ĐC/SĐT HCM hoặc DNG chỉ ưu tiên khi tỉnh đến khớp hub tương ứng.
+ * ĐC/SĐT HAN, HCM hoặc DNG chỉ lấy khi tỉnh đến khớp hub tương ứng.
+ * Không fallback sang SĐT khách hàng để tránh hai ô điện thoại bị trùng.
  */
 export function applyReceiverByDestination(
   customer: CustomerRecord,
@@ -128,7 +162,18 @@ export function applyReceiverByDestination(
   huyen = '',
 ): Partial<NewOrderFormState> {
   const fallbackName = str(customer.contact_person);
-  const fallbackPhone = customerReceiverPhone(customer);
+
+  if (isHanProvince(noiDen, huyen)) {
+    const receiverAddress = str(customer.address_han);
+    const addressParts = extractVietnamAddressParts(receiverAddress);
+    return {
+      nguoiNhan: str(customer.receiver_han) || fallbackName,
+      diaChiNhan: receiverAddress,
+      dienThoaiNhan: str(customer.phone_han),
+      quanHuyen: addressParts.district,
+      phuongXa: addressParts.ward,
+    };
+  }
 
   if (isHcmProvince(noiDen, huyen)) {
     const receiverAddress = str(customer.address_hcm);
@@ -136,7 +181,7 @@ export function applyReceiverByDestination(
     return {
       nguoiNhan: str(customer.receiver_hcm) || fallbackName,
       diaChiNhan: receiverAddress,
-      dienThoaiNhan: str(customer.phone_hcm) || fallbackPhone,
+      dienThoaiNhan: str(customer.phone_hcm),
       quanHuyen: addressParts.district,
       phuongXa: addressParts.ward,
     };
@@ -148,7 +193,7 @@ export function applyReceiverByDestination(
     return {
       nguoiNhan: str(customer.receiver_dng) || fallbackName,
       diaChiNhan: receiverAddress,
-      dienThoaiNhan: str(customer.phone_dng) || fallbackPhone,
+      dienThoaiNhan: str(customer.phone_dng),
       quanHuyen: addressParts.district,
       phuongXa: addressParts.ward,
     };
@@ -157,7 +202,7 @@ export function applyReceiverByDestination(
   return {
     nguoiNhan: fallbackName,
     diaChiNhan: '',
-    dienThoaiNhan: fallbackPhone,
+    dienThoaiNhan: '',
     quanHuyen: '',
     phuongXa: '',
   };
@@ -175,7 +220,8 @@ export function customerToOrderPatch(customer: CustomerRecord, hubs: HubSummary[
     maKh: customer.code,
     nguoiGui: str(customer.name) || str(customer.short_name),
     diaChiGui: customerSenderAddress(customer),
-    dienThoaiKh: phoneKh || undefined,
+    // Gán cả chuỗi rỗng để khi đổi khách hàng không giữ lại SĐT của khách trước.
+    dienThoaiKh: phoneKh,
     huyen,
     nvgn: str(customer.delivery_handler) || undefined,
     buuTaLay: str(customer.manager_name) || undefined,

@@ -15,6 +15,10 @@ const normalizeList = (response: IncomingTripListResponse | IncomingTrip[]) => (
   Array.isArray(response) ? response : response.data || response.items || response.trips || []
 );
 
+const normalizeTotal = (response: IncomingTripListResponse | IncomingTrip[], fallback: number) => (
+  Array.isArray(response) ? fallback : response.total ?? response.meta?.total ?? fallback
+);
+
 export function useIncomingTrips(options?: { queryHubCode?: HubCode }) {
   const user = useMemo(getStoredAuthUser, []);
   const userHubId = user?.hub_id;
@@ -61,10 +65,22 @@ export function useIncomingTrips(options?: { queryHubCode?: HubCode }) {
     if (showLoading) setIsLoading(true);
     setError('');
     try {
-      const query = new URLSearchParams({ limit: '100' });
-      if (hubId) query.set('end_hub_id', hubId);
-      const response = await apiRequest<IncomingTripListResponse | IncomingTrip[]>(`/trips/expected-arrivals?${query.toString()}`);
-      setTrips(normalizeList(response));
+      const loadPage = async (page: number) => {
+        const query = new URLSearchParams({ page: String(page), limit: '100' });
+        if (hubId) query.set('end_hub_id', hubId);
+        return apiRequest<IncomingTripListResponse | IncomingTrip[]>(`/trips/expected-arrivals?${query.toString()}`);
+      };
+      const firstResponse = await loadPage(1);
+      const firstPage = normalizeList(firstResponse);
+      const total = normalizeTotal(firstResponse, firstPage.length);
+      const pageCount = Math.max(1, Math.ceil(total / 100));
+      const remainingResponses = pageCount > 1
+        ? await Promise.all(Array.from({ length: pageCount - 1 }, (_, index) => loadPage(index + 2)))
+        : [];
+      setTrips([
+        ...firstPage,
+        ...remainingResponses.flatMap(normalizeList),
+      ]);
       setUpdatedAt(new Date());
     } catch (err) {
       setTrips([]);

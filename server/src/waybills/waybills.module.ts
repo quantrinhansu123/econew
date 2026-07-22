@@ -11,13 +11,14 @@ import { TruckEntity } from '../trucks/truck.entity';
 import { WaybillSplitEntity } from './waybill-split.entity';
 import { WaybillCashVoucherEntity } from './waybill-cash-voucher.entity';
 import { WaybillEntity } from './waybill.entity';
+import { WaybillDeliveryAttemptEntity } from './waybill-delivery-attempt.entity';
 import { WaybillsController } from './waybills.controller';
 import { WaybillsService } from './waybills.service';
 import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([WaybillEntity, WaybillSplitEntity, WaybillCashVoucherEntity, HubEntity, TripEntity, TruckEntity, ManifestEntity, ManifestWaybillEntity, CustomerEntity]),
+    TypeOrmModule.forFeature([WaybillEntity, WaybillDeliveryAttemptEntity, WaybillSplitEntity, WaybillCashVoucherEntity, HubEntity, TripEntity, TruckEntity, ManifestEntity, ManifestWaybillEntity, CustomerEntity]),
     OrdersModule,
     VendorsModule,
     UploadsModule,

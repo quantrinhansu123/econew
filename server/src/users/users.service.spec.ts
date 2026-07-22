@@ -79,6 +79,7 @@ describe('UsersService', () => {
 
   it('findAll filters by keyword, role_mask, hub_id, and is_active', async () => {
     const queryBuilder = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),

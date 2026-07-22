@@ -29,13 +29,16 @@ export interface SearchResultItem {
   type: 'WAYBILL' | 'TRIP';
   code?: string | null;
   title?: string | null;
+  subtitle?: string | null;
   description?: string | null;
   status?: string | null;
   hub?: string | null;
+  hub_summary?: string | null;
   route?: string | null;
   time?: string | null;
   matched_field?: string | null;
   matchedField?: string | null;
+  matched_fields?: string[] | null;
   waybill_code?: string | null;
   manifest_id?: string | number | null;
   truck_id?: string | number | null;

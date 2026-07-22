@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Download, Loader2 } from 'lucide-react';
 import { IncomingTripTable } from './warehouse/incoming/IncomingTripTable';
 import { IncomingTripsPageLayout } from './warehouse/incoming/IncomingTripsPageLayout';
 import { IncomingTripDeleteDialog } from './warehouse/incoming/dialogs/IncomingTripDeleteDialog';
@@ -22,6 +23,7 @@ import {
 import type { IncomingVendorPaymentStatus } from './warehouse/incoming/incomingTripUtils';
 import { useIncomingTripActions } from './warehouse/incoming/useIncomingTripActions';
 import { useIncomingTrips } from './warehouse/incoming/useIncomingTrips';
+import { downloadIncomingTripsExcel } from './warehouse/incoming/incomingTripsExcelUtils';
 
 export default function WarehouseIncomingPage() {
   const { trips, isLoading, error, updatedAt, refresh } = useIncomingTrips();
@@ -31,6 +33,8 @@ export default function WarehouseIncomingPage() {
   const [enabledPlates, setEnabledPlates] = useState<Set<string>>(new Set());
   const [enabledStatuses, setEnabledStatuses] = useState<Set<string>>(new Set());
   const [enabledPaymentStatuses, setEnabledPaymentStatuses] = useState<Set<IncomingVendorPaymentStatus>>(new Set());
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   const actions = useIncomingTripActions(refresh);
 
@@ -183,13 +187,38 @@ export default function WarehouseIncomingPage() {
     ? `Không có chuyến phù hợp bộ lọc${filterFromDate || filterToDate ? ` (${formatFilterDateRangeLabel(filterFromDate, filterToDate)})` : ''}.`
     : '';
 
+  const handleDownloadExcel = useCallback(() => {
+    setExportError('');
+    if (!displayTrips.length) {
+      setExportError('Không có chuyến xe phù hợp để xuất Excel.');
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const filterSummary = [
+        filterFromDate || filterToDate ? `Ngày ${formatFilterDateRangeLabel(filterFromDate, filterToDate)}` : 'Tất cả ngày',
+        enabledPlates.size !== plateOptions.length ? `${enabledPlates.size}/${plateOptions.length} BKS` : '',
+        enabledStatuses.size !== statusValues.length ? `${enabledStatuses.size}/${statusValues.length} trạng thái chuyến` : '',
+        enabledPaymentStatuses.size !== paymentStatusValues.length ? `${enabledPaymentStatuses.size}/${paymentStatusValues.length} trạng thái thanh toán` : '',
+        enabledVendors.size !== vendorOptions.length ? `${enabledVendors.size}/${vendorOptions.length} nhà cung cấp` : '',
+      ].filter(Boolean).join(' · ');
+      if (!downloadIncomingTripsExcel(displayTrips, filterSummary)) {
+        setExportError('Không có dữ liệu để xuất Excel.');
+      }
+    } catch {
+      setExportError('Không thể tạo file Excel danh sách chuyến xe.');
+    } finally {
+      setIsExporting(false);
+    }
+  }, [displayTrips, filterFromDate, filterToDate, enabledPlates, plateOptions.length, enabledStatuses, statusValues.length, enabledPaymentStatuses, paymentStatusValues.length, enabledVendors, vendorOptions.length]);
+
   return (
     <>
       <IncomingTripsPageLayout
         title="Tất cả chuyến xe"
         subtitle="Theo dõi chuyến xe, ngày đến, BKS, tài xế và nhà cung cấp."
         isLoading={isLoading}
-        error={error}
+        error={exportError || error}
         updatedAt={updatedAt}
         filterFromDate={filterFromDate}
         filterToDate={filterToDate}
@@ -209,6 +238,17 @@ export default function WarehouseIncomingPage() {
         onPaymentStatusesChange={handlePaymentStatusesChange}
         onClearFilters={handleClearFilters}
         summary={summary}
+        headerActions={
+          <button
+            type="button"
+            onClick={handleDownloadExcel}
+            disabled={isLoading || isExporting || !displayTrips.length}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[12px] font-extrabold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isExporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            <span className="hidden sm:inline">Xuất Excel</span>
+          </button>
+        }
       >
         <IncomingTripTable
           trips={displayTrips}

@@ -55,9 +55,14 @@ export function isVolumeBillingUnit(unit: string) {
   return normalized === 'khối' || normalized === 'khoi' || normalized === 'm3' || normalized === 'm³';
 }
 
-/** Số lượng tính cước theo ĐVT: Cân/Kg | Khối/m3 | Trọn gói | Chuyến | Lô */
+export function normalizeBillingUnit(unit?: string | null): string {
+  const value = String(unit || '').trim();
+  return isWeightBillingUnit(value) ? 'Kg' : value || 'Kg';
+}
+
+/** Số lượng tính cước theo ĐVT: Kg | Khối/m3 | Trọn gói | Chuyến | Lô */
 export function getBillingQuantity(form: NewOrderFormState): number {
-  const unit = (form.donGiaDonVi || 'Cân').trim().toLowerCase();
+  const unit = normalizeBillingUnit(form.donGiaDonVi).toLowerCase();
   if (isVolumeBillingUnit(unit)) return parseNumber(form.m3);
   if (unit === 'trọn gói' || unit === 'tron goi' || unit === 'chuyến' || unit === 'chuyen' || unit === 'lô' || unit === 'lo') return 1;
   const kg = parseNumber(form.klKg);
@@ -275,7 +280,7 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     loaiBp: parseNoteField(note, 'loai_bp') || 'CPN',
     dichVu: parseNoteField(note, 'dich_vu') || 'Tiêu chuẩn 72h',
     gio: parseNoteField(note, 'gio') || '16h',
-    giaoHang: parseNoteField(note, 'giao_hang') || 'Văn phòng',
+    giaoHang: parseNoteField(note, 'giao_hang') || 'Tận nơi',
     klKg: String(waybill.weight ?? ''),
     soKien: String(waybill.package_count ?? 1),
     klQuyDoi: String(waybill.volumetric_weight ?? waybill.weight ?? ''),
@@ -368,8 +373,8 @@ function phuongThucFromWaybill(waybill: WaybillDetail): string {
 
 function resolveBillingUnit(waybill: WaybillDetail): string {
   const note = waybill.note || waybill.notes || '';
-  return String(
-    (waybill as { don_gia_don_vi?: string }).don_gia_don_vi || parseNoteField(note, 'billing_unit') || 'Cân',
+  return normalizeBillingUnit(
+    (waybill as { don_gia_don_vi?: string }).don_gia_don_vi || parseNoteField(note, 'billing_unit'),
   );
 }
 
@@ -427,10 +432,10 @@ export function buildCreatePayload(
   return {
     waybill_code: form.soBill.trim().toUpperCase(),
     sender_name: form.nguoiGui.trim(),
-    sender_phone: form.dienThoaiKh.trim() || '0900000000',
+    sender_phone: normalizeVnPhone(form.dienThoaiKh.trim()),
     sender_address: form.diaChiGui.trim() || form.nguoiGui.trim(),
     receiver_name: form.nguoiNhan.trim(),
-    receiver_phone: normalizeVnPhone(form.dienThoaiNhan.trim()) || '0900000000',
+    receiver_phone: normalizeVnPhone(form.dienThoaiNhan.trim()),
     receiver_address: form.diaChiNhan.trim(),
     noi_den: receiverProvince || undefined,
     origin_hub_id: form.originHubId,

@@ -16,7 +16,7 @@ export interface ManifestKanbanFormState { status: ManifestKanbanStatus; seal_co
 export interface CloseManifestFormState { seal_code: string; note: string; }
 export interface AddWaybillsFormState { keyword: string; page: number; limit: number; }
 
-const DEPARTED_TRIP_STATUSES = ['IN_TRANSIT', 'ARRIVED', 'COMPLETED'] as const;
+const LOCKED_CARGO_TRIP_STATUSES = ['ARRIVED', 'COMPLETED', 'CANCELLED'] as const;
 
 export function manifestTripStatus(manifest?: Pick<LoadPlanningManifest, 'trip' | 'trips'> | null) {
   return String(manifest?.trip?.status || manifest?.trips?.[0]?.status || '').trim();
@@ -26,14 +26,10 @@ export function canAddWaybillsToManifest(manifest?: Pick<LoadPlanningManifest, '
   if (!manifest) return false;
 
   const tripStatus = manifestTripStatus(manifest);
-  if (DEPARTED_TRIP_STATUSES.includes(tripStatus as (typeof DEPARTED_TRIP_STATUSES)[number])) return false;
+  if (LOCKED_CARGO_TRIP_STATUSES.includes(tripStatus as (typeof LOCKED_CARGO_TRIP_STATUSES)[number])) return false;
 
   const status = String(manifest.status || '');
-  if (status === 'DRAFT' || status === 'CLOSED') return true;
-  if (status === 'ASSIGNED_TO_TRIP' || status === 'IN_TRANSIT') {
-    return tripStatus === '' || tripStatus === 'PLANNED';
-  }
-  return false;
+  return ['DRAFT', 'CLOSED', 'ASSIGNED_TO_TRIP', 'IN_TRANSIT'].includes(status);
 }
 
 export function addWaybillsDisabledReason(
@@ -43,14 +39,14 @@ export function addWaybillsDisabledReason(
   if (!canAddByRole) return 'Chỉ PACKER hoặc điều phối mới được thêm đơn';
   if (!manifest) return null;
   const tripStatus = manifestTripStatus(manifest);
-  if (DEPARTED_TRIP_STATUSES.includes(tripStatus as (typeof DEPARTED_TRIP_STATUSES)[number])) {
-    return 'Xe đã khởi hành — không thể thêm đơn vào bảng kê';
+  if (LOCKED_CARGO_TRIP_STATUSES.includes(tripStatus as (typeof LOCKED_CARGO_TRIP_STATUSES)[number])) {
+    return 'Xe đã đến bưu cục — không thể sửa danh sách hàng';
   }
   if (!canAddWaybillsToManifest(manifest)) return 'Bảng kê không ở trạng thái cho phép thêm đơn';
   return null;
 }
 
-export function canRemoveWaybillsFromManifest(manifest?: Pick<LoadPlanningManifest, 'status'> | null) {
-  return manifest?.status === 'DRAFT' || manifest?.status === 'CLOSED';
+export function canRemoveWaybillsFromManifest(manifest?: Pick<LoadPlanningManifest, 'status' | 'trip' | 'trips'> | null) {
+  return canAddWaybillsToManifest(manifest);
 }
 export type PrintableManifest = LoadPlanningManifest;

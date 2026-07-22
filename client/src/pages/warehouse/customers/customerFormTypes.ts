@@ -7,6 +7,9 @@ export type CustomerRecord = CustomerListItem & {
   mechanism?: string | null;
   contract_code?: string | null;
   contact_address?: string | null;
+  receiver_han?: string | null;
+  address_han?: string | null;
+  phone_han?: string | null;
   receiver_hcm?: string | null;
   receiver_dng?: string | null;
   address_dng?: string | null;
@@ -20,6 +23,9 @@ export type CustomerFormState = {
   name: string;
   short_name: string;
   destination_province: string;
+  receiver_han: string;
+  address_han: string;
+  phone_han: string;
   receiver_hcm: string;
   address_hcm: string;
   phone_hcm: string;
@@ -47,6 +53,9 @@ export const emptyCustomerForm = (): CustomerFormState => ({
   name: '',
   short_name: '',
   destination_province: '',
+  receiver_han: '',
+  address_han: '',
+  phone_han: '',
   receiver_hcm: '',
   address_hcm: '',
   phone_hcm: '',

@@ -38,30 +38,47 @@ export class StorageService {
 
   constructor(private readonly configService: ConfigService) {}
 
-  private get supabaseUrl(): string {
-    const url = this.configService.get<string>('SUPABASE_URL')?.trim();
-    if (!url) throw new InternalServerErrorException('SUPABASE_URL chưa được cấu hình trên server.');
-    return url.replace(/\/$/, '');
+  private cleanEnvValue(value?: string): string {
+    const trimmed = value?.trim() || '';
+    const wrapped = trimmed.match(/^(['"])([\s\S]*)\1$/);
+    return (wrapped?.[2] || trimmed).trim();
   }
 
-  private get serverKey(): string {
-    const key =
-      this.configService.get<string>('SUPABASE_SECRET_KEY')?.trim()
-      || this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')?.trim();
-    if (!key) {
+  private get supabaseUrl(): string {
+    const url = this.cleanEnvValue(this.configService.get<string>('SUPABASE_URL'));
+    if (!url) throw new InternalServerErrorException('SUPABASE_URL chưa được cấu hình trên server.');
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:' || !parsed.hostname) throw new Error('invalid Supabase URL');
+      return parsed.origin;
+    } catch {
+      throw new InternalServerErrorException('SUPABASE_URL trên server không hợp lệ.');
+    }
+  }
+
+  private get serverKeys(): string[] {
+    const keys = [
+      this.cleanEnvValue(this.configService.get<string>('SUPABASE_SECRET_KEY')),
+      this.cleanEnvValue(this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')),
+    ].filter(Boolean);
+    const uniqueKeys = [...new Set(keys)];
+    if (!uniqueKeys.length) {
       throw new InternalServerErrorException(
         'SUPABASE_SECRET_KEY hoặc SUPABASE_SERVICE_ROLE_KEY chưa được cấu hình trên server.',
       );
     }
-    return key;
+    return uniqueKeys;
   }
 
   private get bucket(): string {
-    return this.configService.get<string>('SUPABASE_STORAGE_BUCKET')?.trim() || 'payment-proofs';
+    const bucket = this.cleanEnvValue(this.configService.get<string>('SUPABASE_STORAGE_BUCKET')) || 'payment-proofs';
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(bucket)) {
+      throw new InternalServerErrorException('SUPABASE_STORAGE_BUCKET trên server không hợp lệ.');
+    }
+    return bucket;
   }
 
-  private authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-    const key = this.serverKey;
+  private authHeaders(key: string, extra: Record<string, string> = {}): Record<string, string> {
     const isLegacyJwt = key.split('.').length === 3;
     return {
       apikey: key,
@@ -91,6 +108,33 @@ export class StorageService {
     }
   }
 
+  private async storageFetchWithServerKeys(
+    url: string,
+    init: RequestInit,
+    operation: string,
+  ): Promise<Response> {
+    const keys = this.serverKeys;
+    for (const [index, key] of keys.entries()) {
+      const response = await this.storageFetch(
+        url,
+        {
+          ...init,
+          headers: this.authHeaders(key, (init.headers ?? {}) as Record<string, string>),
+        },
+        operation,
+      );
+      if ((response.status === 401 || response.status === 403) && index < keys.length - 1) {
+        const detail = await response.text();
+        this.logger.error(`Supabase Storage ${operation} auth failed with configured key #${index + 1}: ${response.status} ${detail}`);
+        continue;
+      }
+      return response;
+    }
+    throw new InternalServerErrorException(
+      'Khóa Supabase Storage trên server không hợp lệ hoặc không đủ quyền.',
+    );
+  }
+
   private throwStorageResponseError(
     operation: string,
     status: number,
@@ -106,9 +150,9 @@ export class StorageService {
   }
 
   private async initializeBucket(): Promise<void> {
-    const listResponse = await this.storageFetch(
+    const listResponse = await this.storageFetchWithServerKeys(
       `${this.supabaseUrl}/storage/v1/bucket`,
-      { headers: this.authHeaders() },
+      {},
       'list buckets',
     );
     if (!listResponse.ok) {
@@ -125,11 +169,11 @@ export class StorageService {
       (item) => item.name === this.bucket || item.id === this.bucket,
     );
     if (!existingBucket) {
-      const createResponse = await this.storageFetch(
+      const createResponse = await this.storageFetchWithServerKeys(
         `${this.supabaseUrl}/storage/v1/bucket`,
         {
           method: 'POST',
-          headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: this.bucket, name: this.bucket, public: true }),
         },
         'create bucket',
@@ -148,11 +192,11 @@ export class StorageService {
       }
     } else if (existingBucket.public !== true) {
       const bucketId = existingBucket.id || this.bucket;
-      const updateResponse = await this.storageFetch(
+      const updateResponse = await this.storageFetchWithServerKeys(
         `${this.supabaseUrl}/storage/v1/bucket/${encodeURIComponent(bucketId)}`,
         {
           method: 'PUT',
-          headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: bucketId,
             name: existingBucket.name || this.bucket,
@@ -206,14 +250,14 @@ export class StorageService {
     const objectPath = `${folder}/${Date.now()}-${randomBytes(8).toString('hex')}.${ext}`;
     const uploadUrl = `${this.supabaseUrl}/storage/v1/object/${this.bucket}/${objectPath}`;
 
-    const uploadResponse = await this.storageFetch(
+    const uploadResponse = await this.storageFetchWithServerKeys(
       uploadUrl,
       {
         method: 'POST',
-        headers: this.authHeaders({
+        headers: {
           'Content-Type': file.mimetype,
           'x-upsert': 'true',
-        }),
+        },
         body: new Uint8Array(file.buffer),
       },
       'upload object',
@@ -278,9 +322,9 @@ export class StorageService {
         .split('/')
         .map((segment) => encodeURIComponent(segment))
         .join('/');
-      const response = await this.storageFetch(
+      const response = await this.storageFetchWithServerKeys(
         `${this.supabaseUrl}/storage/v1/object/info/${encodeURIComponent(this.bucket)}/${encodedPath}`,
-        { headers: this.authHeaders() },
+        {},
         'read waybill object metadata',
       );
 
