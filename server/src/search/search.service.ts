@@ -78,7 +78,7 @@ export class SearchService {
         limit: 100,
       }, currentUser).getManyAndCount() as [TripSearchRow[], number];
 
-    const results = this.mapGlobalResults(waybills, trips)
+    const results = this.mapGlobalResults(waybills, trips, keyword)
       .sort((left, right) => this.resultTime(right).getTime() - this.resultTime(left).getTime());
     const total = type === GlobalSearchType.WAYBILL
       ? waybillTotal
@@ -124,7 +124,8 @@ export class SearchService {
       .select([
         'waybill.id', 'waybill.waybill_code', 'waybill.sender_info', 'waybill.receiver_info', 'waybill.payment_type', 'waybill.current_state',
         'waybill.origin_hub_id', 'waybill.dest_hub_id', 'waybill.current_hub_id', 'waybill.last_mile_driver_id', 'waybill.created_at', 'waybill.cost_amount',
-        'waybill.sender_phone', 'waybill.receiver_phone', 'waybill.receiver_address', 'waybill.ma_kh', 'waybill.noi_den',
+        'waybill.sender_name', 'waybill.sender_phone', 'waybill.receiver_company_name', 'waybill.receiver_name', 'waybill.receiver_phone',
+        'waybill.receiver_address', 'waybill.ma_kh', 'waybill.noi_den', 'waybill.noi_dung', 'waybill.note',
         'waybill.weight', 'waybill.length', 'waybill.width', 'waybill.height', 'waybill.volumetric_weight',
         'origin_hub.id', 'origin_hub.code', 'origin_hub.name', 'dest_hub.id', 'dest_hub.code', 'dest_hub.name',
       ])
@@ -135,20 +136,32 @@ export class SearchService {
     if (dto.keyword) {
       const keyword = `%${dto.keyword}%`;
       const normalizedWaybillKeyword = this.normalizeWaybillCodeKeyword(dto.keyword);
+      const normalizedReceiverPhoneKeyword = this.normalizePhoneKeyword(dto.keyword);
       qb.andWhere(new Brackets((inner) => {
         inner
           .where('waybill.waybill_code ILIKE :keyword', { keyword })
           .orWhere('waybill.sender_info ILIKE :keyword', { keyword })
           .orWhere('waybill.receiver_info ILIKE :keyword', { keyword })
+          .orWhere('waybill.sender_name ILIKE :keyword', { keyword })
+          .orWhere('waybill.receiver_company_name ILIKE :keyword', { keyword })
+          .orWhere('waybill.receiver_name ILIKE :keyword', { keyword })
           .orWhere('waybill.sender_phone ILIKE :keyword', { keyword })
           .orWhere('waybill.receiver_phone ILIKE :keyword', { keyword })
           .orWhere('waybill.receiver_address ILIKE :keyword', { keyword })
           .orWhere('waybill.ma_kh ILIKE :keyword', { keyword })
+          .orWhere('waybill.noi_dung ILIKE :keyword', { keyword })
+          .orWhere('waybill.note ILIKE :keyword', { keyword })
           .orWhere('waybill.noi_den ILIKE :keyword', { keyword });
         if (normalizedWaybillKeyword) {
           inner.orWhere(
             `REGEXP_REPLACE(UPPER(waybill.waybill_code), '[-[:space:]]+', '', 'g') ILIKE :normalizedWaybillKeyword`,
             { normalizedWaybillKeyword },
+          );
+        }
+        if (normalizedReceiverPhoneKeyword) {
+          inner.orWhere(
+            `REGEXP_REPLACE(COALESCE(waybill.receiver_phone, waybill.receiver_info, ''), '[^0-9]+', '', 'g') ILIKE :normalizedReceiverPhoneKeyword`,
+            { normalizedReceiverPhoneKeyword },
           );
         }
       }));
@@ -219,7 +232,12 @@ export class SearchService {
       : null;
   }
 
-  mapGlobalResults(waybills: WaybillSearchRow[], trips: TripSearchRow[]): SearchResultEntity[] {
+  private normalizePhoneKeyword(keyword: string): string | null {
+    const digits = keyword.replace(/\D/g, '');
+    return digits.length >= 6 ? `%${digits}%` : null;
+  }
+
+  mapGlobalResults(waybills: WaybillSearchRow[], trips: TripSearchRow[], keyword?: string): SearchResultEntity[] {
     const waybillResults = waybills.map((waybill) => ({
       id: waybill.id,
       type: 'WAYBILL' as const,
@@ -229,7 +247,11 @@ export class SearchService {
       status: waybill.current_state,
       hub_summary: `${this.hubLabel(waybill.origin_hub)} → ${this.hubLabel(waybill.dest_hub)}`,
       created_at: waybill.created_at,
-      matched_fields: ['waybill_code', 'sender_info', 'receiver_info'],
+      matched_fields: this.resolveWaybillMatchedFields(waybill, keyword),
+      customer_code: waybill.ma_kh,
+      receiver_name: waybill.receiver_name || this.contactPart(waybill.receiver_info, 0),
+      receiver_phone: waybill.receiver_phone || this.contactPart(waybill.receiver_info, 1),
+      goods_content: this.resolveWaybillGoodsContent(waybill),
     }));
     const tripResults = trips.map((trip) => ({
       id: trip.id,
@@ -243,6 +265,31 @@ export class SearchService {
       matched_fields: ['id', 'license_plate', 'manifest_code', 'hub'],
     }));
     return [...waybillResults, ...tripResults];
+  }
+
+  private contactPart(contact: string | null | undefined, index: number): string {
+    return String(contact || '').split('|').map((part) => part.trim())[index] || '';
+  }
+
+  private resolveWaybillGoodsContent(waybill: WaybillSearchRow): string {
+    const stored = String(waybill.noi_dung || '').trim();
+    if (stored) return stored;
+    return String(waybill.note || '').match(/(?:^|\|)\s*content=([^|]+)/i)?.[1]?.trim() || '';
+  }
+
+  private resolveWaybillMatchedFields(waybill: WaybillSearchRow, keyword?: string): string[] {
+    const raw = String(keyword || '').trim();
+    if (!raw) return ['Mã bill', 'Mã khách', 'Nội dung hàng', 'Người nhận', 'SĐT người nhận'];
+    const normalized = raw.toLocaleLowerCase('vi-VN');
+    const compactCode = raw.toUpperCase().replace(/[-\s]+/g, '');
+    const digits = raw.replace(/\D/g, '');
+    const matches: string[] = [];
+    if (waybill.waybill_code?.toUpperCase().replace(/[-\s]+/g, '').includes(compactCode)) matches.push('Mã bill');
+    if (waybill.ma_kh?.toLocaleLowerCase('vi-VN').includes(normalized)) matches.push('Mã khách');
+    if (this.resolveWaybillGoodsContent(waybill).toLocaleLowerCase('vi-VN').includes(normalized)) matches.push('Nội dung hàng');
+    if (`${waybill.receiver_name || ''} ${waybill.receiver_info || ''}`.toLocaleLowerCase('vi-VN').includes(normalized)) matches.push('Người nhận');
+    if (digits.length >= 6 && `${waybill.receiver_phone || ''} ${waybill.receiver_info || ''}`.replace(/\D/g, '').includes(digits)) matches.push('SĐT người nhận');
+    return matches.length ? matches : ['Nội dung bill'];
   }
 
   private validateRole(currentUser: UserEntity): void {
@@ -315,6 +362,14 @@ export class SearchService {
       waybill_code: waybill.waybill_code,
       sender_info: waybill.sender_info,
       receiver_info: waybill.receiver_info,
+      sender_name: waybill.sender_name,
+      receiver_company_name: waybill.receiver_company_name,
+      receiver_name: waybill.receiver_name || this.contactPart(waybill.receiver_info, 0),
+      receiver_phone: waybill.receiver_phone || this.contactPart(waybill.receiver_info, 1),
+      receiver_address: waybill.receiver_address,
+      ma_kh: waybill.ma_kh,
+      noi_dung: this.resolveWaybillGoodsContent(waybill),
+      noi_den: waybill.noi_den,
       payment_type: waybill.payment_type,
       status: waybill.current_state,
       origin_hub_id: waybill.origin_hub_id,

@@ -38,13 +38,11 @@ import { OrderEntity } from '../orders/order.entity';
 import { VendorsService } from '../vendors/vendors.service';
 import { normalizeWaybillPhotos } from '../common/waybill-photos';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
-import { DeliveryReturnAction } from './dto/delivery-return-action.enum';
-import { WaybillDeliveryAttemptEntity } from './waybill-delivery-attempt.entity';
 
 type WaybillRecord = WaybillEntity & Record<string, any>;
 
 const FINAL_STATUSES = [WaybillStatus.DELIVERED, WaybillStatus.RETURNED, WaybillStatus.CANCELLED];
-const INVENTORY_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE, WaybillStatus.MANIFEST_CLOSED, WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY, WaybillStatus.RETURNED];
+const INVENTORY_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE, WaybillStatus.MANIFEST_CLOSED, WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY];
 const ALL_ORDER_LIST_STATUSES = [
   WaybillStatus.RECEIVED,
   WaybillStatus.IN_WAREHOUSE,
@@ -77,7 +75,6 @@ const STATE_TRANSITIONS: Record<string, WaybillStatus[]> = {
   [WaybillStatus.IN_TRANSIT]: [WaybillStatus.AT_DEST_HUB],
   [WaybillStatus.AT_DEST_HUB]: [WaybillStatus.OUT_FOR_DELIVERY, WaybillStatus.DELIVERED],
   [WaybillStatus.OUT_FOR_DELIVERY]: [WaybillStatus.DELIVERED, WaybillStatus.RETURNED],
-  [WaybillStatus.RETURNED]: [WaybillStatus.OUT_FOR_DELIVERY],
 };
 
 @Injectable()
@@ -94,7 +91,6 @@ export class WaybillsService {
     private readonly dataSource: DataSource,
     private readonly ordersService: OrdersService,
     private readonly vendorsService: VendorsService,
-    @InjectRepository(WaybillDeliveryAttemptEntity) private readonly deliveryAttemptsRepository: Repository<WaybillDeliveryAttemptEntity>,
   ) {}
 
   async create(dto: CreateWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
@@ -129,6 +125,7 @@ export class WaybillsService {
       sender_name: dto.sender_name,
       sender_phone: dto.sender_phone,
       sender_address: dto.sender_address,
+      receiver_company_name: dto.receiver_company_name?.trim() || null,
       receiver_name: dto.receiver_name,
       receiver_phone: dto.receiver_phone,
       receiver_address: dto.receiver_address,
@@ -281,71 +278,12 @@ export class WaybillsService {
     const currentStatus = this.getStatus(waybill);
     if (!STATE_TRANSITIONS[currentStatus]?.includes(dto.status)) throw new BadRequestException('Invalid waybill state transition');
     if (dto.status === WaybillStatus.DELIVERED && !dto.delivery_photo_url && !waybill.delivery_photo_url) throw new BadRequestException('Delivery photo is required');
-
-    const returnReason = dto.return_reason?.trim() || '';
-    const redeliveryAddress = dto.redelivery_address?.trim() || '';
-    if (dto.status === WaybillStatus.RETURNED) {
-      if (!returnReason) throw new BadRequestException('Return reason is required');
-      if (!dto.return_action) throw new BadRequestException('Return action is required');
-      if (dto.return_action === DeliveryReturnAction.REDIRECT_ADDRESS && !redeliveryAddress) {
-        throw new BadRequestException('Redelivery address is required');
-      }
-    }
-
-    const now = new Date();
     this.setStatus(waybill, dto.status);
     Object.assign(waybill, { updated_by: currentUser.id, note: dto.note ?? waybill.note });
     if (dto.delivery_photo_url) waybill.delivery_photo_url = normalizeWaybillPhotos(dto.delivery_photo_url);
-    if (dto.status === WaybillStatus.OUT_FOR_DELIVERY) {
-      if (currentStatus === WaybillStatus.RETURNED && waybill.redelivery_address?.trim()) {
-        waybill.receiver_address = waybill.redelivery_address.trim();
-      }
-      waybill.delivery_attempt_count = Math.max(0, Number(waybill.delivery_attempt_count ?? 0)) + 1;
-      waybill.last_delivery_attempt_at = now;
-      waybill.current_hub_id = waybill.dest_hub_id;
-      if (hasRole(currentUser.role_mask, Roles.DRIVER)) waybill.last_mile_driver_id = currentUser.id;
-      if (dto.delivery_vehicle?.trim()) waybill.xe_phat = dto.delivery_vehicle.trim();
-    }
-    if (dto.status === WaybillStatus.DELIVERED) {
-      if (Number(waybill.delivery_attempt_count ?? 0) < 1) {
-        waybill.delivery_attempt_count = 1;
-        waybill.last_delivery_attempt_at = now;
-      }
-      Object.assign(waybill, {
-        delivered_at: now,
-        delivery_time: now,
-        current_hub_id: waybill.dest_hub_id,
-        return_reason: null,
-        return_action: null,
-        redelivery_address: null,
-      });
-    }
-    if (dto.status === WaybillStatus.RETURNED) {
-      if (Number(waybill.delivery_attempt_count ?? 0) < 1) {
-        waybill.delivery_attempt_count = 1;
-        waybill.last_delivery_attempt_at = now;
-      }
-      Object.assign(waybill, {
-        returned_at: now,
-        current_hub_id: waybill.dest_hub_id,
-        return_reason: returnReason,
-        return_action: dto.return_action,
-        redelivery_address: redeliveryAddress || null,
-      });
-    }
-
-    const saved = await this.saveWithAudit(waybill, currentUser, 'STATUS_CHANGE');
-    await this.trackDeliveryAttempt(waybill, dto, currentUser, now);
-    return saved;
-  }
-
-  async getDeliveryAttempts(id: string, currentUser: UserEntity) {
-    await this.findOne(id, currentUser);
-    return this.deliveryAttemptsRepository.find({
-      where: { waybill_id: id },
-      relations: ['driver'],
-      order: { attempt_number: 'DESC', id: 'DESC' },
-    });
+    if (dto.status === WaybillStatus.DELIVERED) Object.assign(waybill, { delivered_at: new Date(), delivery_time: new Date() });
+    if (dto.status === WaybillStatus.RETURNED) waybill.returned_at = new Date();
+    return this.saveWithAudit(waybill, currentUser, 'STATUS_CHANGE');
   }
 
   async updatePhotos(id: string, dto: UpdateWaybillPhotosDto, currentUser: UserEntity): Promise<WaybillRecord> {
@@ -2102,62 +2040,6 @@ export class WaybillsService {
     throw new ConflictException('Unable to generate unique waybill code');
   }
 
-  private async trackDeliveryAttempt(
-    waybill: WaybillRecord,
-    dto: UpdateWaybillStatusDto,
-    currentUser: UserEntity,
-    occurredAt: Date,
-  ): Promise<void> {
-    if (dto.status === WaybillStatus.OUT_FOR_DELIVERY) {
-      const attemptNumber = Math.max(1, Number(waybill.delivery_attempt_count ?? 1));
-      await this.deliveryAttemptsRepository.save(this.deliveryAttemptsRepository.create({
-        waybill_id: waybill.id,
-        attempt_number: attemptNumber,
-        status: 'IN_PROGRESS',
-        driver_id: waybill.last_mile_driver_id ?? null,
-        delivery_vehicle: waybill.xe_phat ?? null,
-        delivery_address: waybill.receiver_address ?? null,
-        delivery_photo_url: null,
-        return_reason: null,
-        return_action: null,
-        redelivery_address: null,
-        started_at: occurredAt,
-        completed_at: null,
-        created_by: currentUser.id,
-      }));
-      return;
-    }
-
-    if (![WaybillStatus.DELIVERED, WaybillStatus.RETURNED].includes(dto.status)) return;
-    let attempt = await this.deliveryAttemptsRepository.findOne({
-      where: { waybill_id: waybill.id, status: 'IN_PROGRESS' },
-      order: { attempt_number: 'DESC', id: 'DESC' },
-    });
-    if (!attempt) {
-      const attemptNumber = Math.max(1, Number(waybill.delivery_attempt_count ?? 0) || 1);
-      waybill.delivery_attempt_count = attemptNumber;
-      attempt = this.deliveryAttemptsRepository.create({
-        waybill_id: waybill.id,
-        attempt_number: attemptNumber,
-        started_at: waybill.last_delivery_attempt_at ?? occurredAt,
-        created_by: currentUser.id,
-      });
-    }
-
-    Object.assign(attempt, {
-      status: dto.status,
-      driver_id: waybill.last_mile_driver_id ?? null,
-      delivery_vehicle: waybill.xe_phat ?? null,
-      delivery_address: waybill.receiver_address ?? null,
-      delivery_photo_url: dto.status === WaybillStatus.DELIVERED ? waybill.delivery_photo_url ?? null : null,
-      return_reason: dto.status === WaybillStatus.RETURNED ? waybill.return_reason ?? null : null,
-      return_action: dto.status === WaybillStatus.RETURNED ? waybill.return_action ?? null : null,
-      redelivery_address: dto.status === WaybillStatus.RETURNED ? waybill.redelivery_address ?? null : null,
-      completed_at: occurredAt,
-    });
-    await this.deliveryAttemptsRepository.save(attempt);
-  }
-
   private getStatus(waybill: WaybillRecord): WaybillStatus {
     return (waybill.status ?? waybill.current_state) as WaybillStatus;
   }
@@ -2261,3 +2143,4 @@ export class WaybillsService {
     );
   }
 }
+

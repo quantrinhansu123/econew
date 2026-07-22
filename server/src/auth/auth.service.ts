@@ -34,7 +34,7 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthTokens> {
-    const user = await this.usersService.findByEmail(dto.email);
+    const user = await this.usersService.findByLogin(dto.email);
     if (!user || !user.is_active) {
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -135,4 +135,3 @@ export class AuthService {
     return [];
   }
 }
-

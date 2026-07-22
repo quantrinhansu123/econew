@@ -11,4 +11,8 @@ export class SearchResultEntity {
   created_at?: Date;
   departure_time?: Date;
   matched_fields: string[];
+  customer_code?: string | null;
+  receiver_name?: string | null;
+  receiver_phone?: string | null;
+  goods_content?: string | null;
 }

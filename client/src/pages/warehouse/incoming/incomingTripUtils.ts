@@ -1,6 +1,6 @@
 import type { IncomingHub, IncomingManifest, IncomingTrip } from './types';
 import { formatMoney, normalizeMoney } from '../../../lib/formatMoney';
-import { isActiveTripStatus, isArrivedTripStatus } from '../manifests/manifestHubUtils';
+import { isArrivedTripStatus } from '../manifests/manifestHubUtils';
 
 export type OriginLane = 'HAN' | 'HCM';
 
@@ -112,7 +112,7 @@ export const getDestinationHub = (trip: IncomingTrip) => (
 
 export const getRouteLabel = (trip: IncomingTrip) => `${getOriginHub(trip)} → ${getDestinationHub(trip)}`;
 
-export const getPlateLabel = (trip: IncomingTrip) => trip.license_plate?.trim() || trip.truck?.license_plate?.trim() || trip.truck?.bks?.trim() || `Chuyến #${trip.id}`;
+export const getPlateLabel = (trip: IncomingTrip) => trip.license_plate?.trim() || trip.truck?.license_plate?.trim() || trip.truck?.bks?.trim() || 'Chưa gán BKS';
 
 export const getDriverName = (trip: IncomingTrip) => (
   trip.driver_name?.trim()
@@ -201,13 +201,14 @@ export const getPlateFilterKey = (trip: IncomingTrip) => {
   const plate = trip.license_plate?.trim()
     || trip.truck?.license_plate?.trim()
     || trip.truck?.bks?.trim();
-  return plate || `Chuyến #${trip.id}`;
+  return plate || '';
 };
 
 export const collectPlateOptions = (trips: IncomingTrip[]) => {
   const plates = new Set<string>();
   trips.forEach((trip) => {
-    plates.add(getPlateFilterKey(trip));
+    const plate = getPlateFilterKey(trip);
+    if (plate) plates.add(plate);
   });
   return [...plates].sort((left, right) => left.localeCompare(right, 'vi'));
 };
@@ -306,7 +307,12 @@ export const filterTripsByPaymentStatuses = (
   ));
 };
 
-export const isExpectedArrivingTrip = (trip: IncomingTrip) => isActiveTripStatus(trip.status);
+export const isInTransitTrip = (trip: IncomingTrip) => {
+  const status = normalizeTripStatus(trip.status);
+  return status === 'IN_TRANSIT' || status === 'DEPARTED';
+};
+
+export const isExpectedArrivingTrip = isInTransitTrip;
 
 export const getTotalCollect = (trip: IncomingTrip) => normalizeNumber(trip.total_collect);
 

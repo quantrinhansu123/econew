@@ -1,13 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MaxLength, ValidateIf } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateWaybillPhotosDto {
-  @ApiProperty({
-    description: 'Tối đa 4 URL ảnh đã upload, phân cách bằng dấu |; dùng null để xóa ảnh khi trạng thái cho phép',
-    nullable: true,
+  @ApiPropertyOptional({
+    description: 'Tối đa 4 URL ảnh bill/hàng hóa, phân cách bằng dấu |',
   })
-  @ValidateIf((_object, value) => value !== null)
+  @IsOptional()
   @IsString()
   @MaxLength(12000)
-  delivery_photo_url!: string | null;
+  delivery_photo_url?: string | null;
 }

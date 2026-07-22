@@ -1,15 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Min } from 'class-validator';
+import { IsInt, IsOptional } from 'class-validator';
 
 export class QueryExpectedArrivalsDto {
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number;
-
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
@@ -20,6 +13,5 @@ export class QueryExpectedArrivalsDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(1)
   limit?: number;
 }

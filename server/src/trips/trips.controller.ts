@@ -46,9 +46,16 @@ export class TripsController {
 
   @Get('expected-arrivals')
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'List in-transit and arrived trips for destination hub (departing & arrived trucks)' })
+  @ApiOperation({ summary: 'List only in-transit trips whose destination is the current hub' })
   getExpectedArrivals(@Query() query: QueryExpectedArrivalsDto, @CurrentUser() currentUser: UserEntity) {
     return this.tripsService.getExpectedArrivals(query, currentUser);
+  }
+
+  @Get('incoming-overview')
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'List all hub-related trips with incoming screen totals' })
+  getIncomingOverview(@Query() query: QueryTripsDto, @CurrentUser() currentUser: UserEntity) {
+    return this.tripsService.getIncomingOverview(query, currentUser);
   }
 
   @Get(':id/incoming-detail')
@@ -143,7 +150,7 @@ export class TripsController {
   }
 
   @Get(':id/expenses')
-  @RequireRoles(Roles.WAREHOUSE, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List expenses for a trip' })
   getTripExpenses(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
     return this.expensesService.findByTrip(id, currentUser);

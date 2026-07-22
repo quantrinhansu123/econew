@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { HubSummary } from '../orders/types';
 import type { CustomerRecord } from './customerFormTypes';
 import { applyReceiverByDestination, customerToOrderPatch } from './customerOrderPatch';
-
-const hubs: HubSummary[] = [
-  { id: '1', code: 'HAN', name: 'Bưu cục Hà Nội' },
-  { id: '2', code: 'HCM', name: 'Bưu cục Hồ Chí Minh' },
-];
 
 const customer = {
   id: '10',
@@ -30,7 +24,7 @@ const customer = {
 
 describe('customer order autofill', () => {
   it('keeps customer phone separate from the HCM receiver phone', () => {
-    const patch = customerToOrderPatch(customer, hubs);
+    const patch = customerToOrderPatch(customer);
 
     expect(patch.dienThoaiKh).toBe('0901111222');
     expect(patch.dienThoaiNhan).toBe('0934455122');
@@ -55,31 +49,17 @@ describe('customer order autofill', () => {
       ...customer,
       mobile: null,
       phone_landline: null,
-    }, hubs);
+    });
 
     expect(patch.dienThoaiKh).toBe('');
     expect(patch.dienThoaiNhan).toBe('0934455122');
   });
 
-  it('rejects a receiver phone accidentally duplicated in sender contact fields', () => {
-    const patch = customerToOrderPatch({
-      ...customer,
-      mobile: '0934 455 122',
-      phone_landline: '0934455122',
-    }, hubs);
+  it('does not derive HUB destination from the receiver province', () => {
+    const patch = customerToOrderPatch(customer);
 
-    expect(patch.dienThoaiKh).toBe('');
-    expect(patch.dienThoaiNhan).toBe('0934455122');
-  });
-
-  it('uses a distinct customer phone when another contact field duplicates the receiver phone', () => {
-    const patch = customerToOrderPatch({
-      ...customer,
-      mobile: '0934455122',
-      phone_landline: '02833334444',
-    }, hubs);
-
-    expect(patch.dienThoaiKh).toBe('02833334444');
-    expect(patch.dienThoaiNhan).toBe('0934455122');
+    expect(patch.huyen).toBe('HCM');
+    expect(patch.destHubId).toBeUndefined();
+    expect(patch.noiDen).toBeUndefined();
   });
 });

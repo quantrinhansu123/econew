@@ -49,6 +49,10 @@ export interface SearchResultItem {
   end_hub_id?: string | number | null;
   departure_time?: string | null;
   created_at?: string | null;
+  customer_code?: string | null;
+  receiver_name?: string | null;
+  receiver_phone?: string | null;
+  goods_content?: string | null;
 }
 
 export interface ListResponse<T> {
@@ -72,6 +76,15 @@ export interface WaybillDetail {
   waybill_code?: string | null;
   sender_info?: string | null;
   receiver_info?: string | null;
+  sender_name?: string | null;
+  receiver_company_name?: string | null;
+  receiver_name?: string | null;
+  receiver_phone?: string | null;
+  receiver_address?: string | null;
+  ma_kh?: string | null;
+  noi_dung?: string | null;
+  noi_den?: string | null;
+  current_state?: string | null;
   weight?: number | string | null;
   length?: number | string | null;
   width?: number | string | null;
@@ -101,6 +114,14 @@ export interface SearchWaybillRow {
   waybill_code?: string | null;
   sender_info?: string | null;
   receiver_info?: string | null;
+  sender_name?: string | null;
+  receiver_company_name?: string | null;
+  receiver_name?: string | null;
+  receiver_phone?: string | null;
+  receiver_address?: string | null;
+  ma_kh?: string | null;
+  noi_dung?: string | null;
+  noi_den?: string | null;
   payment_type?: string | null;
   status?: string | null;
   current_state?: string | null;

@@ -2,14 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError, apiRequest } from '../../../lib/api';
 import { getStoredAuthUser } from '../../../lib/authUser';
 import type { IncomingTrip, IncomingTripListResponse } from './types';
-import { MANAGER_ROLES, POLLING_INTERVAL_MS } from './incomingTripUtils';
+import { isInTransitTrip, MANAGER_ROLES, POLLING_INTERVAL_MS } from './incomingTripUtils';
 
-type HubCode = 'HAN' | 'HCM';
-
-interface ActiveHub {
-  id: string | number;
-  code?: string | null;
-}
+export type IncomingTripsSource = 'overview' | 'expected-arrivals';
 
 const normalizeList = (response: IncomingTripListResponse | IncomingTrip[]) => (
   Array.isArray(response) ? response : response.data || response.items || response.trips || []
@@ -19,49 +14,44 @@ const normalizeTotal = (response: IncomingTripListResponse | IncomingTrip[], fal
   Array.isArray(response) ? fallback : response.total ?? response.meta?.total ?? fallback
 );
 
-const isLegacyExpectedArrivalsQueryError = (error: unknown) => (
-  error instanceof ApiError
-  && error.status === 400
-  && /property\s+(page|limit)\s+should\s+not\s+exist/i.test(error.message)
-);
-
-export function useIncomingTrips(options?: { queryHubCode?: HubCode }) {
-  const user = useMemo(getStoredAuthUser, []);
-  const userHubId = user?.hub_id;
+export function useIncomingTrips(options?: { source?: IncomingTripsSource }) {
+  const source = options?.source ?? 'expected-arrivals';
+  const user = useMemo(() => getStoredAuthUser(), []);
+  const userHubId = user?.hub_id != null ? String(user.hub_id) : null;
   const isManagerPlus = Boolean(user && (user.role_mask & MANAGER_ROLES) !== 0);
-  const [queryHubId, setQueryHubId] = useState<string | null>(null);
   const [trips, setTrips] = useState<IncomingTrip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
-  useEffect(() => {
-    if (!options?.queryHubCode) {
-      setQueryHubId(userHubId != null ? String(userHubId) : null);
-      return;
-    }
+  const fetchOverview = useCallback(async () => {
+    const loadPage = (page: number) => apiRequest<IncomingTripListResponse | IncomingTrip[]>(
+      `/trips/incoming-overview?page=${page}&limit=100`,
+    );
+    const firstResponse = await loadPage(1);
+    const firstPage = normalizeList(firstResponse);
+    const total = normalizeTotal(firstResponse, firstPage.length);
+    const pageCount = Math.max(1, Math.ceil(total / 100));
+    const remainingResponses = pageCount > 1
+      ? await Promise.all(Array.from({ length: pageCount - 1 }, (_, index) => loadPage(index + 2)))
+      : [];
+    return [
+      ...firstPage,
+      ...remainingResponses.flatMap(normalizeList),
+    ];
+  }, []);
 
-    let cancelled = false;
-    void (async () => {
-      try {
-        const hubs = await apiRequest<ActiveHub[]>('/hubs/active');
-        const hub = hubs.find((item) => item.code?.trim().toUpperCase() === options.queryHubCode);
-        if (!cancelled) setQueryHubId(hub ? String(hub.id) : null);
-      } catch {
-        if (!cancelled) setQueryHubId(null);
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [options?.queryHubCode, userHubId]);
-
-  const hubId = options?.queryHubCode ? queryHubId : (userHubId != null ? String(userHubId) : null);
-  const hubReady = !options?.queryHubCode || queryHubId != null;
+  const fetchExpectedArrivals = useCallback(async () => {
+    const query = new URLSearchParams({ limit: '100' });
+    if (userHubId) query.set('end_hub_id', userHubId);
+    const response = await apiRequest<IncomingTripListResponse | IncomingTrip[]>(
+      `/trips/expected-arrivals?${query.toString()}`,
+    );
+    return normalizeList(response).filter(isInTransitTrip);
+  }, [userHubId]);
 
   const fetchIncomingTrips = useCallback(async (showLoading = false) => {
-    if (!hubReady) return;
-
-    if (!hubId && !isManagerPlus) {
+    if (!userHubId && !isManagerPlus) {
       setTrips([]);
       setError('Tài khoản chưa được gán bưu cục để xem chuyến xe.');
       setIsLoading(false);
@@ -71,38 +61,10 @@ export function useIncomingTrips(options?: { queryHubCode?: HubCode }) {
     if (showLoading) setIsLoading(true);
     setError('');
     try {
-      const loadLegacy = () => {
-        const query = new URLSearchParams();
-        if (hubId) query.set('end_hub_id', hubId);
-        const suffix = query.toString();
-        return apiRequest<IncomingTripListResponse | IncomingTrip[]>(
-          `/trips/expected-arrivals${suffix ? `?${suffix}` : ''}`,
-        );
-      };
-      const loadPage = async (page: number) => {
-        const query = new URLSearchParams({ page: String(page), limit: '100' });
-        if (hubId) query.set('end_hub_id', hubId);
-        return apiRequest<IncomingTripListResponse | IncomingTrip[]>(`/trips/expected-arrivals?${query.toString()}`);
-      };
-      let firstResponse: IncomingTripListResponse | IncomingTrip[];
-      let usesLegacyResponse = false;
-      try {
-        firstResponse = await loadPage(1);
-      } catch (err) {
-        if (!isLegacyExpectedArrivalsQueryError(err)) throw err;
-        firstResponse = await loadLegacy();
-        usesLegacyResponse = true;
-      }
-      const firstPage = normalizeList(firstResponse);
-      const total = normalizeTotal(firstResponse, firstPage.length);
-      const pageCount = Math.max(1, Math.ceil(total / 100));
-      const remainingResponses = !usesLegacyResponse && pageCount > 1
-        ? await Promise.all(Array.from({ length: pageCount - 1 }, (_, index) => loadPage(index + 2)))
-        : [];
-      setTrips([
-        ...firstPage,
-        ...remainingResponses.flatMap(normalizeList),
-      ]);
+      const data = source === 'overview'
+        ? await fetchOverview()
+        : await fetchExpectedArrivals();
+      setTrips(data);
       setUpdatedAt(new Date());
     } catch (err) {
       setTrips([]);
@@ -110,14 +72,16 @@ export function useIncomingTrips(options?: { queryHubCode?: HubCode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [hubId, hubReady, isManagerPlus]);
+  }, [fetchExpectedArrivals, fetchOverview, isManagerPlus, source, userHubId]);
 
   useEffect(() => {
-    if (!hubReady) return undefined;
-    void fetchIncomingTrips(true);
+    const initialLoadId = window.setTimeout(() => void fetchIncomingTrips(true), 0);
     const intervalId = window.setInterval(() => void fetchIncomingTrips(false), POLLING_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
-  }, [fetchIncomingTrips, hubReady]);
+    return () => {
+      window.clearTimeout(initialLoadId);
+      window.clearInterval(intervalId);
+    };
+  }, [fetchIncomingTrips]);
 
-  return { trips, isLoading: isLoading || !hubReady, error, updatedAt, refresh: fetchIncomingTrips };
+  return { trips, isLoading, error, updatedAt, refresh: fetchIncomingTrips };
 }

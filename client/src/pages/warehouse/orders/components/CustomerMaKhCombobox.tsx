@@ -11,14 +11,12 @@ import type { CustomerRecord } from '../../customers/customerFormTypes';
 import { formToPayload, validateCustomerForm } from '../../customers/customerFormUtils';
 import { customerToOrderPatch } from '../../customers/customerOrderPatch';
 import type { CustomerListItem, CustomerListResponse } from '../../customers/types';
-import type { HubSummary } from '../types';
 import type { NewOrderFormState } from '../orderFormTypes';
 
 interface Props {
   value: string;
   onValueChange: (code: string) => void;
   onCustomerSelect: (patch: Partial<NewOrderFormState>, customer: CustomerRecord) => void;
-  hubs?: HubSummary[];
   disabled?: boolean;
 }
 
@@ -32,7 +30,6 @@ export default function CustomerMaKhCombobox({
   value,
   onValueChange,
   onCustomerSelect,
-  hubs = [],
   disabled,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -100,14 +97,14 @@ export default function CustomerMaKhCombobox({
       try {
         const full = await apiRequest<CustomerRecord>(`/customers/${customer.id}`);
         const record = { ...customer, ...full };
-        onCustomerSelect(customerToOrderPatch(record, hubs), record);
+        onCustomerSelect(customerToOrderPatch(record), record);
       } catch {
         const record = customer as CustomerRecord;
-        onCustomerSelect(customerToOrderPatch(record, hubs), record);
+        onCustomerSelect(customerToOrderPatch(record), record);
       }
       setOpen(false);
     },
-    [hubs, onCustomerSelect, onValueChange],
+    [onCustomerSelect, onValueChange],
   );
 
   const commitTypedCode = async (code: string) => {

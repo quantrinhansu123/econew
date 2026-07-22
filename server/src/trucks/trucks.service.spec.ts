@@ -27,11 +27,13 @@ describe('TrucksService canonical schema', () => {
   let trucksRepo: ReturnType<typeof makeRepo>;
   let usersRepo: ReturnType<typeof makeRepo>;
   let tripsRepo: ReturnType<typeof makeRepo>;
+  let vendorsService: { resolveDefaultVendorId: jest.Mock };
 
   beforeEach(async () => {
     trucksRepo = makeRepo();
     usersRepo = makeRepo();
     tripsRepo = makeRepo();
+    vendorsService = { resolveDefaultVendorId: jest.fn().mockResolvedValue('vendor-1') };
     usersRepo.findOne.mockResolvedValue({ id: '7', role_mask: Roles.DRIVER });
     tripsRepo.count.mockResolvedValue(0);
 
@@ -41,7 +43,7 @@ describe('TrucksService canonical schema', () => {
         { provide: getRepositoryToken(TruckEntity), useValue: trucksRepo },
         { provide: getRepositoryToken(UserEntity), useValue: usersRepo },
         { provide: getRepositoryToken(TripEntity), useValue: tripsRepo },
-        { provide: VendorsService, useValue: { resolveDefaultVendorId: jest.fn().mockResolvedValue('1') } },
+        { provide: VendorsService, useValue: vendorsService },
       ],
     }).compile();
 

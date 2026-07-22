@@ -32,14 +32,14 @@ export class ExpensesController {
   }
 
   @Get('trip/:tripId')
-  @RequireRoles(Roles.ACCOUNTANT, Roles.DISPATCHER, Roles.DRIVER, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.ACCOUNTANT, Roles.DISPATCHER, Roles.DRIVER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List expenses by trip' })
   findByTrip(@Param('tripId') tripId: string, @CurrentUser() currentUser: UserEntity) {
     return this.expensesService.findByTrip(tripId, currentUser);
   }
 
   @Get(':id')
-  @RequireRoles(Roles.ACCOUNTANT, Roles.DISPATCHER, Roles.DRIVER, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.ACCOUNTANT, Roles.DISPATCHER, Roles.DRIVER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Get expense detail' })
   findOne(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
     return this.expensesService.findOne(id, currentUser);

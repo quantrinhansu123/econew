@@ -24,7 +24,6 @@ import {
   resolveUserHubView,
 } from './warehouse/manifests/manifestHubUtils';
 import type { AddWaybillsFormState, AssignTripFormState, BadgeConfig, FilterOption, HubSummary, LoadPlanningFilters, LoadPlanningManifest, ManifestFormState, ManifestListResponse, ManifestWaybill, TripListResponse, TripSummary } from './warehouse/manifests/types';
-import { canAddWaybillsToManifest } from './warehouse/manifests/types';
 import {
   buildInventoryTripLinesQuery,
   filterManifestAddableInventoryRows,
@@ -35,6 +34,7 @@ const USER_PROFILE_KEY = 'eco_user_profile';
 const WAREHOUSE = 1;
 const PACKER = 2;
 const DISPATCHER = 8;
+const ACCOUNTANT = 16;
 const MANAGER = 32;
 const DIRECTOR = 64;
 
@@ -44,6 +44,7 @@ const statusConfig: Record<string, BadgeConfig> = {
   CLOSED: { label: 'Đã đóng', className: 'bg-emerald-50 text-emerald-700' },
   MANIFEST_CLOSED: { label: 'Đã đóng', className: 'bg-emerald-50 text-emerald-700' },
   ASSIGNED: { label: 'Đã gán chuyến', className: 'bg-indigo-50 text-indigo-700' },
+  ASSIGNED_TO_TRIP: { label: 'Đã gán chuyến', className: 'bg-indigo-50 text-indigo-700' },
   IN_TRANSIT: { label: 'Đang chạy', className: 'bg-amber-50 text-amber-700' },
   CANCELLED: { label: 'Đã hủy', className: 'bg-red-50 text-red-600' },
 };
@@ -158,7 +159,8 @@ export default function WarehouseManifestsPage() {
   const allowed = canViewPage(roleMask);
   const mayAssign = canAssignTrip(roleMask);
   const canManageManifest = mayAssign;
-  const canAddWaybillsByRole = mayAssign || hasRole(roleMask, PACKER);
+  const canManageExpenses = hasRole(roleMask, WAREHOUSE) || hasRole(roleMask, DISPATCHER) || hasRole(roleMask, ACCOUNTANT) || hasRole(roleMask, MANAGER) || hasRole(roleMask, DIRECTOR);
+  const canDeleteExpenses = hasRole(roleMask, MANAGER) || hasRole(roleMask, DIRECTOR);
   const [filters, setFilters] = useState<LoadPlanningFilters>(defaultFilters);
   const [draftFilters, setDraftFilters] = useState<LoadPlanningFilters>(defaultFilters);
   const [manifests, setManifests] = useState<LoadPlanningManifest[]>([]);
@@ -281,20 +283,6 @@ export default function WarehouseManifestsPage() {
     finally { setIsSubmitting(false); }
   }
 
-  async function updateDetailPackageCount(waybill: ManifestWaybill, packageCount: number) {
-    if (!detailManifest) return;
-    setIsSubmitting(true); setActionError('');
-    try {
-      const freshManifest = await apiRequest<LoadPlanningManifest>(`/manifests/${detailManifest.id}/waybills/${waybill.id}`, {
-        method: 'PATCH',
-        body: { package_count: packageCount },
-      });
-      setDetailManifest(freshManifest);
-      await fetchManifests();
-    } catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không thể cập nhật số kiện của vận đơn.'); }
-    finally { setIsSubmitting(false); }
-  }
-
   async function updateExpectedArrival(manifest: LoadPlanningManifest, value: string) {
     setIsSubmitting(true); setActionError('');
     try {
@@ -331,18 +319,9 @@ export default function WarehouseManifestsPage() {
     finally { setIsSubmitting(false); }
   }
   function closeAddWaybills() { setIsAddWaybillsClosing(true); window.setTimeout(() => { setIsAddWaybillsOpen(false); setAddWaybillsManifest(null); setIsAddWaybillsClosing(false); }, 180); }
-  function openAddWaybills(manifest: LoadPlanningManifest) {
-    setAddWaybillsManifest(manifest);
-    setAddWaybillsForm({ keyword: '', page: 1, limit: 200 });
-    setWaybillChoices([]);
-    setWaybillTotal(0);
-    setAddWaybillsError('');
-    setIsAddWaybillsOpen(true);
-  }
   async function fetchWaybillChoices() {
     if (!addWaybillsManifest) return;
     const manifestDestHubId = addWaybillsManifest.dest_hub_id ?? addWaybillsManifest.dest_hub?.id;
-    const manifestOriginHubId = resolveManifestOriginHubId(addWaybillsManifest, hubs);
     setIsWaybillLoading(true);
     setActionError('');
     setAddWaybillsError('');
@@ -358,7 +337,7 @@ export default function WarehouseManifestsPage() {
           noiDenKeyword: '',
           billingUnits: [],
           customerPaymentStatuses: [],
-          hubIds: manifestOriginHubId ? [manifestOriginHubId] : [],
+          hubIds: [],
           paymentTypes: [],
           priorities: [],
           receivedFrom: '',
@@ -491,10 +470,10 @@ export default function WarehouseManifestsPage() {
           )}
         </div>
 
-        <div className="shrink-0 border-t border-border bg-card px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[12px] font-bold text-muted-foreground">{`${activeManifestCount} chuyến đã khởi hành · ${rangeStart}-${rangeEnd}/Tổng:${total}`}</p><div className="flex items-center gap-2"><SearchableSelect value={String(filters.limit)} onValueChange={value => updateFilters({ limit: Number(value), page: 1 })} options={[{ value: '20', label: '20' }, { value: '50', label: '50' }, { value: '100', label: '100' }]} className="h-9 w-[88px] rounded-lg bg-white px-3 text-[13px] text-muted-foreground" searchPlaceholder="Tìm số dòng..." /><span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button><span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span><span className="text-[13px] font-bold text-foreground">/ {totalPages}</span></div></div></div>
+        <div className="shrink-0 border-t border-border bg-card px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[12px] font-bold text-muted-foreground">{`${activeManifestCount} chuyến đang hoạt động · ${rangeStart}-${rangeEnd}/Tổng:${total}`}</p><div className="flex items-center gap-2"><SearchableSelect value={String(filters.limit)} onValueChange={value => updateFilters({ limit: Number(value), page: 1 })} options={[{ value: '20', label: '20' }, { value: '50', label: '50' }, { value: '100', label: '100' }]} className="h-9 w-[88px] rounded-lg bg-white px-3 text-[13px] text-muted-foreground" searchPlaceholder="Tìm số dòng..." /><span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button><span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span><span className="text-[13px] font-bold text-foreground">/ {totalPages}</span></div></div></div>
       </div>
       <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} tripOptions={tripOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />
-      <ManifestDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} isSubmitting={isSubmitting} error={actionError} manifest={detailManifest} statusConfig={statusConfig} canManage={canManageManifest} canAddWaybills={canAddWaybillsByRole && canAddWaybillsToManifest(detailManifest)} showHubDeliveryStatus={userHubView === 'HCM'} onClose={closeDetail} onAddWaybills={openAddWaybills} onRemoveWaybill={confirmRemoveWaybill} onUpdatePackageCount={updateDetailPackageCount} onUpdateDispatchFields={updateDetailDispatchFields} onUpdateExpectedArrival={updateExpectedArrival} />
+      <ManifestDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} isSubmitting={isSubmitting} manifest={detailManifest} statusConfig={statusConfig} canManage={canManageManifest} canManageExpenses={canManageExpenses} canDeleteExpenses={canDeleteExpenses} showHubDeliveryStatus={userHubView === 'HCM'} onClose={closeDetail} onRemoveWaybill={confirmRemoveWaybill} onUpdateDispatchFields={updateDetailDispatchFields} onUpdateExpectedArrival={updateExpectedArrival} />
       <AddEditManifestDialog isOpen={isFormOpen} isClosing={isFormClosing} isEditMode={isEditMode} isSubmitting={isSubmitting} formState={formState} hubs={hubs} onChange={(key, value) => setFormState(prev => ({ ...prev, [key]: value }))} onClose={closeForm} onSubmit={submitForm} />
       <AddWaybillsToManifestDialog isOpen={isAddWaybillsOpen} isClosing={isAddWaybillsClosing} isLoading={isWaybillLoading} isSubmitting={isSubmitting} error={addWaybillsError} manifest={addWaybillsManifest} originHubLabel={addWaybillsManifest ? resolveManifestOriginHubLabel(addWaybillsManifest, hubs) : '—'} waybills={waybillChoices} total={waybillTotal} formState={addWaybillsForm} onChange={patch => setAddWaybillsForm(prev => ({ ...prev, ...patch }))} onClose={closeAddWaybills} onSubmit={submitAddWaybills} />
       <PrintManifestDialog isOpen={isPrintOpen} isClosing={isPrintClosing} isLoading={isPrintLoading} manifest={printManifest} showPricing={canViewPricing(roleMask)} onClose={closePrint} />
@@ -520,13 +499,13 @@ function ManifestTransitBoard({
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 p-3">
       <p className="shrink-0 text-[12px] font-medium text-muted-foreground">
-        Tổng hợp các xe đã khởi hành theo bưu cục hiện tại. Mở chi tiết để thêm đơn tồn, sửa số kiện hoặc gỡ đơn; chuyến đã đến được theo dõi trong Tổng danh sách xe.
+        Hiển thị ngay chuyến đã xếp hàng hoặc đang di chuyển theo bưu cục hiện tại. Chuyến đã đến được theo dõi trong Tổng danh sách xe.
       </p>
       <div className="flex min-h-0 w-full flex-1 flex-col gap-3 lg:flex-row lg:gap-4">
         <ManifestTransitTable
           title={departedColumnTitle(hubView)}
           tone="border-blue-200 bg-blue-50 text-blue-800"
-          emptyText={`Chưa có xe đã khởi hành từ ${hubView === 'HAN' ? 'Hà Nội' : 'TP.HCM'}.`}
+          emptyText={`Chưa có xe đi từ ${hubView === 'HAN' ? 'Hà Nội' : 'TP.HCM'}.`}
           manifests={activeOutbound}
           onDetail={onDetail}
           onPrint={onPrint}
@@ -615,6 +594,8 @@ function FilterBottomSheet({ isOpen, draftFilters, setDraftFilters, openGroups, 
   return <div className="fixed inset-0 z-50 flex items-end justify-center md:hidden"><div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} /><div className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-border bg-background shadow-2xl"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><p className="text-[11px] font-bold uppercase tracking-wider text-primary">Bộ lọc</p><h2 className="text-lg font-extrabold text-foreground">Đóng xếp hàng</h2></div><button onClick={onClose} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-white text-muted-foreground"><X size={18} /></button></div><div className="flex-1 overflow-auto p-4 custom-scrollbar">{groups.map(group => <FilterGroup key={group.id} id={group.id} title={group.title} isOpen={openGroups.includes(group.id)} search={groupSearch[group.id] || ''} options={group.options} value={draftFilters[group.key]} onToggle={() => toggleGroup(group.id)} onSearch={value => setGroupSearch(prev => ({ ...prev, [group.id]: value }))} onChange={value => setArray(group.key, value)} />)}<div className="mt-3 rounded-2xl border border-border bg-white p-4"><p className="mb-3 text-[13px] font-extrabold text-foreground">Khoảng thời gian</p><div className="grid gap-3"><input type="date" value={draftFilters.date_from} onChange={event => setDraftFilters(prev => ({ ...prev, date_from: event.target.value }))} className="h-11 rounded-xl border border-border px-3 text-[13px] font-bold outline-none" /><input type="date" value={draftFilters.date_to} onChange={event => setDraftFilters(prev => ({ ...prev, date_to: event.target.value }))} className="h-11 rounded-xl border border-border px-3 text-[13px] font-bold outline-none" /></div></div></div><div className="border-t border-border bg-white p-4"><button onClick={onApply} className="h-11 w-full rounded-xl bg-primary text-[13px] font-extrabold text-white">Áp dụng</button></div></div></div>;
 }
 function FilterGroup({ id, title, isOpen, search, options, value, onToggle, onSearch, onChange }: { id: string; title: string; isOpen: boolean; search: string; options: FilterOption[]; value: string[]; onToggle: () => void; onSearch: (value: string) => void; onChange: (value: string[]) => void }) { const filtered = options.filter(option => option.label.toLowerCase().includes(search.toLowerCase())); return <div className="mb-3 rounded-2xl border border-border bg-white"><button onClick={onToggle} className="flex w-full items-center justify-between px-4 py-3 text-left"><span className="text-[13px] font-extrabold text-foreground">{title}</span><ChevronDown size={16} className={clsx('text-muted-foreground transition-transform', isOpen && 'rotate-180')} /></button>{isOpen && <div className="border-t border-border p-3"><div className="relative mb-3"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={search} onChange={event => onSearch(event.target.value)} placeholder={`Tìm ${title.toLowerCase()}`} className="h-10 w-full rounded-xl border border-border pl-9 pr-3 text-[13px] outline-none" /></div><div className="mb-2 flex items-center gap-2"><button onClick={() => onChange(options.map(option => option.value))} className="text-[12px] font-bold text-primary">Chọn tất cả</button><button onClick={() => onChange([])} className="text-[12px] font-bold text-red-500">Xóa chọn</button></div><div className="max-h-52 overflow-auto custom-scrollbar">{filtered.map(option => <label key={`${id}-${option.value}`} className="flex items-center gap-2 rounded-lg px-2 py-2 text-[13px] font-medium hover:bg-muted/60"><input type="checkbox" checked={value.includes(option.value)} onChange={() => onChange(value.includes(option.value) ? value.filter(item => item !== option.value) : [...value, option.value])} className="h-4 w-4 rounded border-border" /><span>{option.label}</span></label>)}</div></div>}</div>; }
+
+
 
 
 

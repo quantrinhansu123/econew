@@ -191,8 +191,14 @@ export interface ExpectedArrivalTrip extends Trip {
 
 export const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
   HCM_WAREHOUSE: 'Chi kho HCM',
+  WAREHOUSE: 'Kho / bưu cục',
   EN_ROUTE_DROP: 'Thả hàng dọc đường',
   FUEL: 'Nhiên liệu',
+  TOLL: 'Cầu đường',
+  LOADING_UNLOADING: 'Bốc xếp',
+  PARKING: 'Bến bãi / gửi xe',
+  REPAIR: 'Sửa chữa',
+  DRIVER_ALLOWANCE: 'Phụ cấp tài xế',
   OTHER: 'Khác',
 };
 

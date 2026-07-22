@@ -23,26 +23,9 @@ import {
 } from './incomingTripUtils';
 
 const HEADERS = [
-  'Ngày đến',
-  'Giờ',
-  'Xuất phát',
-  'Bảng kê',
-  'Tuyến',
-  'BKS',
-  'Số đơn',
-  'Kg',
-  'Tài xế',
-  'SĐT',
-  'Nhà cung cấp',
-  'Loại xe',
-  'Phải trả',
-  'Đã trả',
-  'Phí khác',
-  'Phải thu',
-  'Lái xe đã thu',
-  'Ghi chú',
-  'Trạng thái thanh toán',
-  'Trạng thái chuyến',
+  'Ngày đến', 'Giờ', 'Xuất phát', 'Bảng kê', 'Tuyến', 'BKS', 'Số đơn', 'Kg',
+  'Tài xế', 'SĐT', 'Nhà cung cấp', 'Loại xe', 'Phải trả', 'Đã trả', 'Phí khác',
+  'Phải thu', 'Lái xe đã thu', 'Ghi chú', 'Trạng thái thanh toán', 'Trạng thái chuyến',
 ] as const;
 
 const COLUMN_WIDTHS = [13, 8, 12, 20, 18, 15, 10, 12, 20, 15, 20, 15, 15, 15, 15, 15, 17, 28, 22, 18];
@@ -123,7 +106,11 @@ function styleWorksheet(worksheet: WorkSheet, rowCount: number) {
   }
 }
 
-export function buildIncomingTripsExcelWorkbook(trips: IncomingTrip[], filterSummary: string): WorkBook | null {
+export function buildIncomingTripsExcelWorkbook(
+  trips: IncomingTrip[],
+  filterSummary: string,
+  title = 'TẤT CẢ CHUYẾN XE',
+): WorkBook | null {
   if (!trips.length) return null;
   const totalRow: Array<string | number> = Array(HEADERS.length).fill('');
   totalRow[0] = 'TỔNG CỘNG';
@@ -136,7 +123,7 @@ export function buildIncomingTripsExcelWorkbook(trips: IncomingTrip[], filterSum
   totalRow[16] = trips.reduce((sum, trip) => sum + getDriverCollectedAmount(trip), 0);
 
   const rows: Array<Array<string | number>> = [
-    ['TẤT CẢ CHUYẾN XE'],
+    [title],
     [`Bộ lọc: ${filterSummary || 'Tất cả'} · ${trips.length} chuyến`],
     [...HEADERS],
     ...trips.map(mapTripRow),
@@ -145,14 +132,18 @@ export function buildIncomingTripsExcelWorkbook(trips: IncomingTrip[], filterSum
   const worksheet = utils.aoa_to_sheet(rows);
   styleWorksheet(worksheet, trips.length);
   const workbook = utils.book_new();
-  utils.book_append_sheet(workbook, worksheet, 'Tong chuyen xe');
+  utils.book_append_sheet(workbook, worksheet, 'Chuyen xe');
   return workbook;
 }
 
-export function downloadIncomingTripsExcel(trips: IncomingTrip[], filterSummary: string) {
-  const workbook = buildIncomingTripsExcelWorkbook(trips, filterSummary);
+export function downloadIncomingTripsExcel(
+  trips: IncomingTrip[],
+  filterSummary: string,
+  options?: { title?: string; filePrefix?: string },
+) {
+  const workbook = buildIncomingTripsExcelWorkbook(trips, filterSummary, options?.title);
   if (!workbook) return false;
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-  writeFile(workbook, `tat-ca-chuyen-xe-${stamp}.xlsx`, { compression: true });
+  writeFile(workbook, `${options?.filePrefix || 'tat-ca-chuyen-xe'}-${stamp}.xlsx`, { compression: true });
   return true;
 }

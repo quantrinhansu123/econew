@@ -6,6 +6,11 @@ export class CreateWaybillDto {
   @ApiProperty() @IsString() @IsNotEmpty() sender_name: string;
   @ApiProperty() @IsString() @IsNotEmpty() sender_phone: string;
   @ApiProperty() @IsString() @IsNotEmpty() sender_address: string;
+  @ApiPropertyOptional({ description: 'Tên công ty nhận, nhập tay trên bill' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  receiver_company_name?: string;
   @ApiProperty() @IsString() @IsNotEmpty() receiver_name: string;
   @ApiProperty() @IsString() @IsNotEmpty() receiver_phone: string;
   @ApiProperty() @IsString() @IsNotEmpty() receiver_address: string;

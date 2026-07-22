@@ -30,11 +30,13 @@ export interface WaybillDetail {
   sender_phone?: string | null;
   sender_address?: string | null;
   receiver_info?: string | null;
+  receiver_company_name?: string | null;
   receiver_name?: string | null;
   receiver_phone?: string | null;
   receiver_address?: string | null;
   receiver_district?: string | null;
   receiver_ward?: string | null;
+  noi_den?: string | null;
   ma_kh?: string | null;
   weight?: number | string | null;
   length?: number | string | null;

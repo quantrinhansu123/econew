@@ -1,6 +1,8 @@
 import { phuongThucToPrintLabel } from '../warehouse/orders/orderFormUtils';
 import type { WaybillDetail } from '../warehouse/orders/types';
 import { formatMoney } from '../../lib/formatMoney';
+import { extractProvinceFromAddress } from '../../lib/vietnamProvince';
+import { extractVietnamAddressParts } from '../../lib/vietnamAddressParts';
 
 export interface WaybillPrintData {
   waybillCode: string;
@@ -12,8 +14,10 @@ export interface WaybillPrintData {
   tinhGui: string;
   sdtGui: string;
   maBcNhan: string;
-  tenKhNhan: string;
+  tenCongTyNhan: string;
+  tenLienHeNhan: string;
   diaChiNhan: string;
+  quanHuyenNhan: string;
   tinhNhan: string;
   sdtNhan: string;
   moTaHang: string;
@@ -36,13 +40,6 @@ export interface WaybillPrintData {
   showPricing: boolean;
 }
 
-/** Giữ mã bill liền mạch cho cả dòng chữ, barcode và QR. */
-export function normalizeWaybillPrintCode(code: unknown) {
-  return String(code ?? '')
-    .normalize('NFKC')
-    .replace(/[\s\u00AD\u200B-\u200D\u2060\u2010-\u2015-]+/g, '');
-}
-
 const waitForImage = (image: HTMLImageElement) => {
   if (image.complete) {
     return typeof image.decode === 'function'
@@ -55,36 +52,6 @@ const waitForImage = (image: HTMLImageElement) => {
     image.addEventListener('error', () => resolve(), { once: true });
   });
 };
-
-const FIT_SCALE_PROPERTY = '--eco-fit-scale';
-
-/**
- * Co toàn bộ nội dung phiếu theo kích thước thực tế của DOM. Phiếu vẫn dùng
- * layout Arial gốc ở tỷ lệ 1 khi dữ liệu vừa; chỉ các phiếu dài mới bị co.
- */
-export function fitWaybillInvoiceElement(invoice: HTMLElement): number {
-  const frame = invoice.closest<HTMLElement>('.waybill-invoice-frame');
-  if (!frame || !frame.clientWidth || !frame.clientHeight) return 1;
-
-  invoice.style.setProperty(FIT_SCALE_PROPERTY, '1');
-  const naturalWidth = Math.max(invoice.scrollWidth, invoice.offsetWidth);
-  const naturalHeight = Math.max(invoice.scrollHeight, invoice.offsetHeight);
-  if (!naturalWidth || !naturalHeight) return 1;
-
-  const scale = Math.min(
-    1,
-    frame.clientWidth / naturalWidth,
-    frame.clientHeight / naturalHeight,
-  );
-  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
-  invoice.style.setProperty(FIT_SCALE_PROPERTY, safeScale.toFixed(4));
-  return safeScale;
-}
-
-export function fitWaybillInvoicesToPage(root: ParentNode = document): number[] {
-  return Array.from(root.querySelectorAll<HTMLElement>('.waybill-invoice'))
-    .map(fitWaybillInvoiceElement);
-}
 
 /**
  * Đợi logo, barcode và QR sẵn sàng để tránh mở hộp thoại in khi ảnh còn trống.
@@ -100,7 +67,6 @@ export async function printWaybillWhenReady() {
   });
 
   await Promise.race([assetsReady, timeout]);
-  fitWaybillInvoicesToPage();
   await new Promise<void>((resolve) => {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => resolve());
@@ -111,10 +77,10 @@ export async function printWaybillWhenReady() {
 
 function parseContact(info?: string | null) {
   const parts = (info || '').split('|').map((p) => p.trim());
-  if (parts.length >= 3) {
-    return { phone: parts[0], name: parts[1], address: parts.slice(2).join(' | ') };
+  if (parts.length >= 2) {
+    return { name: parts[0], phone: parts[1], address: parts.slice(2).join(' | ') };
   }
-  return { phone: '', name: info || '', address: '' };
+  return { name: info || '', phone: '', address: '' };
 }
 
 function parseNoteField(note: string, key: string) {
@@ -124,6 +90,7 @@ function parseNoteField(note: string, key: string) {
 
 const NOTE_METADATA_KEYS = new Set([
   'ma_kh',
+  'receiver_company_name',
   'content',
   'loai_bp',
   'dich_vu',
@@ -207,7 +174,11 @@ export function buildWaybillPrintData(
   const loaiBp = parseNoteField(note, 'loai_bp');
 
   const receiverName = (waybill as { receiver_name?: string }).receiver_name || receiver.name || '';
+  const receiverCompanyName =
+    waybill.receiver_company_name?.trim()
+    || parseNoteField(note, 'receiver_company_name');
   const receiverAddress = waybill.receiver_address || receiver.address || '';
+  const receiverAddressParts = extractVietnamAddressParts(receiverAddress);
 
   const weight = Number(waybill.weight) || 0;
   const m3 =
@@ -231,12 +202,17 @@ export function buildWaybillPrintData(
     tinhGui: waybill.origin_hub?.code?.toUpperCase() || waybill.origin_hub?.name || '',
     sdtGui: (waybill as { sender_phone?: string }).sender_phone || sender.phone,
     maBcNhan: waybill.dest_hub?.code?.toUpperCase() || '',
-    tenKhNhan: receiverName,
+    tenCongTyNhan: receiverCompanyName,
+    tenLienHeNhan: receiverName,
     diaChiNhan: receiverAddress,
+    quanHuyenNhan:
+      parseNoteField(note, 'quan_huyen')
+      || receiverAddressParts.district,
     tinhNhan:
       parseNoteField(note, 'tinh_den')
       || parseNoteField(note, 'huyen')
-      || (waybill as { noi_den?: string }).noi_den?.trim()
+      || waybill.noi_den?.trim()
+      || extractProvinceFromAddress(receiverAddress)
       || waybill.dest_hub?.name
       || waybill.dest_hub?.code?.toUpperCase()
       || '',

@@ -21,6 +21,7 @@ import {
 import type { CustomerListItem, CustomerListResponse } from './warehouse/customers/types';
 import type { BillListItem, NewOrderFormState } from './warehouse/orders/orderFormTypes';
 import { nextEcoBillCodeFromCodes } from './warehouse/orders/waybillCodeUtils';
+import { getDefaultOriginHubId, getPreferredDestinationHub } from './warehouse/orders/orderHubUtils';
 import type { BadgeConfig, CreatedWaybill, HubSummary, PaymentType, UserSummary, WaybillDetail } from './warehouse/orders/types';
 import { canViewWaybillPricing } from './print/waybillPricingAccess';
 
@@ -28,7 +29,6 @@ const USER_PROFILE_KEY = 'eco_user_profile';
 const CREATE_ROLES = 1 | 32 | 64;
 const INITIAL_BILL_LIST_LIMIT = 20;
 const EXPANDED_BILL_LIST_LIMIT = 100;
-const OPERATIONAL_HUB_CODES = new Set(['HAN', 'HCM']);
 type NextWaybillCodeResponse = { waybill_code?: string; code?: string };
 
 const statusConfig: Record<string, BadgeConfig> = {
@@ -72,19 +72,6 @@ const hasCreateRole = (roleMask: number) => (roleMask & CREATE_ROLES) !== 0;
 const getHubCode = (hubs: HubSummary[], hubId: string) =>
   hubs.find((hub) => String(hub.id) === String(hubId))?.code?.trim().toUpperCase() || 'HUB';
 
-const selectOperationalHubs = (hubs: HubSummary[]) => {
-  const primary = hubs.filter((hub) => OPERATIONAL_HUB_CODES.has(hub.code?.trim().toUpperCase() || ''));
-  return primary.length >= 2 ? primary : hubs;
-};
-
-const getDefaultOriginHubId = (hubs: HubSummary[], assignedHubId?: string | number | null) => {
-  const assigned = hubs.find((hub) => String(hub.id) === String(assignedHubId || ''));
-  return String(assigned?.id || hubs.find((hub) => hub.code?.trim().toUpperCase() === 'HAN')?.id || hubs[0]?.id || '');
-};
-
-const getOppositeHub = (hubs: HubSummary[], originHubId: string) =>
-  hubs.find((hub) => String(hub.id) !== String(originHubId)) || null;
-
 export default function WarehouseOrderNewPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -107,7 +94,6 @@ export default function WarehouseOrderNewPage() {
   const [isSuccessOpen, setIsSuccessOpen] = useState(false);
   const [isSuccessClosing, setIsSuccessClosing] = useState(false);
   const [showPricingOnPrint, setShowPricingOnPrint] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [billFilterDate, setBillFilterDate] = useState('');
   const [isBillListLoading, setIsBillListLoading] = useState(false);
@@ -183,7 +169,7 @@ export default function WarehouseOrderNewPage() {
       const billsPromise = loadBills('', INITIAL_BILL_LIST_LIMIT);
       try {
         const response = await hubsPromise;
-        const activeHubs = selectOperationalHubs(extractList(response).filter(normalizeActive));
+        const activeHubs = extractList(response).filter(normalizeActive);
         setHubs(activeHubs);
 
         const pendingEditId =
@@ -196,7 +182,7 @@ export default function WarehouseOrderNewPage() {
         }
 
         const defaultOrigin = getDefaultOriginHubId(activeHubs, user?.hub_id);
-        const destinationHub = getOppositeHub(activeHubs, defaultOrigin);
+        const destinationHub = getPreferredDestinationHub(activeHubs, defaultOrigin);
         const defaultDest = String(destinationHub?.id || '');
         const nextCode = await loadNextWaybillCode(defaultOrigin);
         const fallbackBills = nextCode ? [] : await billsPromise;
@@ -221,6 +207,16 @@ export default function WarehouseOrderNewPage() {
   }, [loadBills, loadNextWaybillCode, location.state, loginName, searchParams, user?.hub_id]);
 
   useEffect(() => {
+    const refreshHubsAfterCatalogEdit = () => {
+      void apiRequest<HubSummary[] | { data?: HubSummary[]; hubs?: HubSummary[] }>('/hubs/active')
+        .then((response) => setHubs(extractList(response).filter(normalizeActive)))
+        .catch(() => undefined);
+    };
+    window.addEventListener('focus', refreshHubsAfterCatalogEdit);
+    return () => window.removeEventListener('focus', refreshHubsAfterCatalogEdit);
+  }, []);
+
+  useEffect(() => {
     const state = location.state as { maKh?: string; nguoiGui?: string; waybillId?: string } | null;
     const waybillId = editWaybillId || state?.waybillId?.trim() || '';
 
@@ -234,7 +230,6 @@ export default function WarehouseOrderNewPage() {
         try {
           const detail = await apiRequest<WaybillDetail>(`/waybills/${waybillId}`);
           setSelectedBillId(String(waybillId));
-          setSelectedCustomer(null);
           setForm(waybillToOrderForm(detail, hubs));
           if (editWaybillId) {
             const nextParams = new URLSearchParams(searchParams);
@@ -262,8 +257,7 @@ export default function WarehouseOrderNewPage() {
         if (match) {
           const full = await apiRequest<Partial<CustomerListItem>>(`/customers/${match.id}`);
           const record = { ...match, ...full } as CustomerRecord;
-          setSelectedCustomer(record);
-          setForm((prev) => applyPricingToForm({ ...prev, ...customerToOrderPatch(record, hubs) }));
+          setForm((prev) => applyPricingToForm({ ...prev, ...customerToOrderPatch(record) }));
           return;
         }
       } catch {
@@ -283,18 +277,12 @@ export default function WarehouseOrderNewPage() {
     setForm((prev) => {
       let next = { ...prev, [key]: value };
       if (key === 'originHubId' && typeof value === 'string' && (next.destHubId === value || !next.destHubId)) {
-        const destinationHub = getOppositeHub(hubs, value);
+        const destinationHub = getPreferredDestinationHub(hubs, value);
         const noiDen = destinationHub?.code?.trim().toUpperCase() || '';
-        const huyen = destinationHub?.name?.trim() || noiDen;
-        const receiverPatch = selectedCustomer
-          ? applyReceiverByDestination(selectedCustomer, noiDen, huyen)
-          : {};
         next = {
           ...next,
           destHubId: String(destinationHub?.id || ''),
           noiDen,
-          huyen,
-          ...receiverPatch,
         };
       }
       if (key === 'chieuDai' || key === 'chieuRong' || key === 'chieuCao') {
@@ -322,23 +310,24 @@ export default function WarehouseOrderNewPage() {
   };
 
   const handleCustomerSelect = (patch: Partial<NewOrderFormState>, customer: CustomerRecord) => {
-    setSelectedCustomer(customer);
     setForm((prev) => {
-      const noiDen = patch.noiDen || prev.noiDen || 'HCM';
-      const huyen = patch.huyen || prev.huyen;
-      const receiverPatch = applyReceiverByDestination(customer, noiDen, huyen);
-      return applyPricingToForm({ ...prev, ...patch, ...receiverPatch, noiDen });
+      const receiverProvince = patch.huyen || prev.huyen;
+      const receiverPatch = applyReceiverByDestination(customer, receiverProvince || 'HCM');
+      return applyPricingToForm({
+        ...prev,
+        ...patch,
+        ...receiverPatch,
+        // HUB đến giữ nguyên khi chọn/đổi khách hàng.
+        destHubId: prev.destHubId,
+        noiDen: prev.noiDen,
+      });
     });
     setActionError('');
   };
 
-  const handleDestinationChange = (destHubId: string, noiDen: string, huyen: string) => {
-    setForm((prev) => {
-      const receiverPatch = selectedCustomer
-        ? applyReceiverByDestination(selectedCustomer, noiDen, huyen || prev.huyen)
-        : {};
-      return applyPricingToForm({ ...prev, destHubId, noiDen, huyen, ...receiverPatch });
-    });
+  const handleDestinationChange = (destHubId: string, hubCode: string) => {
+    // Đổi HUB tập kết không được làm thay đổi tỉnh/quận/phường, địa chỉ hay SĐT người nhận.
+    setForm((prev) => ({ ...prev, destHubId, noiDen: hubCode }));
     setActionError('');
   };
 
@@ -353,16 +342,15 @@ export default function WarehouseOrderNewPage() {
     if (form.dienThoaiNhan.trim() && !isValidVnPhone(form.dienThoaiNhan)) {
       return 'Số điện thoại người nhận không hợp lệ.';
     }
-    if (!form.originHubId) return 'Chọn bưu cục gửi.';
-    if (!form.destHubId) return 'Chọn bưu cục đến.';
-    if (form.originHubId === form.destHubId) return 'Bưu cục gửi và đến không được trùng.';
+    if (!form.originHubId) return 'Chọn HUB gửi.';
+    if (!form.destHubId) return 'Chọn HUB đến.';
+    if (form.originHubId === form.destHubId) return 'HUB gửi và HUB đến không được trùng.';
     if (!Number(form.klKg) && !volumetricWeight) return 'Nhập khối lượng hoặc kích thước.';
     return '';
   };
 
   const handleSelectBill = async (bill: BillListItem) => {
     setSelectedBillId(bill.id);
-    setSelectedCustomer(null);
     setActionError('');
     try {
       const detail = await apiRequest<WaybillDetail>(`/waybills/${bill.id}`);
@@ -376,12 +364,11 @@ export default function WarehouseOrderNewPage() {
     skipNewFormInitRef.current = false;
     loadedEditIdRef.current = '';
     const defaultOrigin = getDefaultOriginHubId(hubs, user?.hub_id);
-    const destinationHub = getOppositeHub(hubs, defaultOrigin);
+    const destinationHub = getPreferredDestinationHub(hubs, defaultOrigin);
     const defaultDest = String(destinationHub?.id || '');
     const nextCode = await loadNextWaybillCode(defaultOrigin);
     const defaultOriginCode = getHubCode(hubs, defaultOrigin);
     setSelectedBillId(null);
-    setSelectedCustomer(null);
     setForm(
       applyPricingToForm({
         ...emptyOrderForm(),
@@ -405,7 +392,7 @@ export default function WarehouseOrderNewPage() {
     setIsSubmitting(true);
     setActionError('');
     try {
-      const body = buildCreatePayload(form, volumetricWeight, selectedBillId ? 'update' : 'create');
+      const body = buildCreatePayload(form, volumetricWeight);
       if (selectedBillId) {
         await apiRequest(`/waybills/${selectedBillId}`, { method: 'PATCH', body });
         await loadBills(billFilterDate, billListLimitRef.current);
@@ -566,11 +553,12 @@ export default function WarehouseOrderNewPage() {
             setField={setField}
             onCustomerSelect={handleCustomerSelect}
             onDestinationChange={handleDestinationChange}
+            onCreateHub={() => window.open('/admin/hubs', '_blank', 'noopener')}
+            canCreateHub={((user?.role_mask ?? 0) & (32 | 64)) !== 0}
             bills={bills}
             selectedBillId={selectedBillId}
             onSelectBill={(bill) => void handleSelectBill(bill)}
             hubOptions={hubOptions}
-            hubs={hubs}
             onSave={() => void handleSave()}
             onNew={() => void handleNew()}
             onDelete={handleDelete}
@@ -613,9 +601,9 @@ export default function WarehouseOrderNewPage() {
       <OrderBulkImportDialog
         isOpen={isBulkImportOpen}
         onClose={() => setIsBulkImportOpen(false)}
-        hubs={hubs}
         existingWaybillCodes={bills.map((bill) => bill.waybill_code)}
         defaultNvgn={loginName !== 'bạn' ? loginName : 'ADMIN'}
+        hubs={hubs}
         onImported={async () => { await loadBills(billFilterDate, billListLimitRef.current); }}
       />
     </div>

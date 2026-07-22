@@ -1,25 +1,24 @@
 import { useState, type ReactNode } from 'react';
-import { AlertTriangle, CalendarDays, Check, Edit3, Loader2, Package, Plus, Printer, Trash2, X } from 'lucide-react';
+import { CalendarDays, Check, Edit3, Loader2, Package, Printer, Trash2, X } from 'lucide-react';
 import { DateTimePicker } from '../../../../components/ui/DateTimePicker';
 import { hubDeliveryLabelFromWaybill, parseDeliveryPhotos } from '../manifestHubUtils';
 import { canRemoveWaybillsFromManifest } from '../types';
 import type { BadgeConfig, LoadPlanningManifest, ManifestWaybill } from '../types';
+import ManifestExpensesSection from './ManifestExpensesSection';
 
 interface Props {
   isOpen: boolean;
   isClosing: boolean;
   isLoading: boolean;
   isSubmitting?: boolean;
-  error?: string;
   manifest: LoadPlanningManifest | null;
   statusConfig: Record<string, BadgeConfig>;
   canManage: boolean;
-  canAddWaybills?: boolean;
+  canManageExpenses?: boolean;
+  canDeleteExpenses?: boolean;
   showHubDeliveryStatus?: boolean;
   onClose: () => void;
   onRemoveWaybill: (waybill: ManifestWaybill) => void;
-  onAddWaybills?: (manifest: LoadPlanningManifest) => void;
-  onUpdatePackageCount?: (waybill: ManifestWaybill, packageCount: number) => Promise<void> | void;
   onUpdateDispatchFields?: (waybill: ManifestWaybill, fields: Record<string, string>) => Promise<void> | void;
   onUpdateExpectedArrival?: (manifest: LoadPlanningManifest, value: string) => Promise<void> | void;
 }
@@ -41,7 +40,7 @@ const dispatchValue = (waybill: ManifestWaybill, key: string) => display(waybill
 const destinationName = (waybill: ManifestWaybill) => dispatchValue(waybill, 'noi_tra') || waybill.dest_hub?.name || waybill.dest_hub?.code || display(waybill.noi_den || waybill.dest_hub_id, '');
 const editableValues = (waybill: ManifestWaybill): EditableFields => ({ ghi_chu_1: dispatchValue(waybill, 'ghi_chu_1'), ghi_chu_2: dispatchValue(waybill, 'ghi_chu_2'), ke_hoach: dispatchValue(waybill, 'ke_hoach'), lai_xe_thu_ho: dispatchValue(waybill, 'lai_xe_thu_ho') });
 
-export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isSubmitting = false, error = '', manifest, statusConfig, canManage, canAddWaybills = false, showHubDeliveryStatus = false, onClose, onRemoveWaybill, onAddWaybills, onUpdatePackageCount, onUpdateDispatchFields, onUpdateExpectedArrival }: Props) {
+export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isSubmitting = false, manifest, statusConfig, canManage, canManageExpenses = false, canDeleteExpenses = false, showHubDeliveryStatus = false, onClose, onRemoveWaybill, onUpdateDispatchFields, onUpdateExpectedArrival }: Props) {
   if (!isOpen) return null;
   const waybills = extractWaybills(manifest);
   const mayRemoveWaybill = canManage && canRemoveWaybillsFromManifest(manifest);
@@ -53,14 +52,12 @@ export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isS
       <header className="manifest-detail-print-toolbar flex shrink-0 items-center justify-between border-b border-border bg-white px-6 py-4">
         <div className="min-w-0"><p className="text-[11px] font-black uppercase tracking-[0.16em] text-primary">Chi tiết bảng kê</p><h2 className="mt-1 truncate text-2xl font-black text-foreground">{manifest ? code(manifest) : 'Đang tải'}</h2></div>
         <div className="flex items-center gap-2">
-          {manifest && canAddWaybills && onAddWaybills && <button type="button" onClick={() => onAddWaybills(manifest)} disabled={isLoading || isSubmitting} className="inline-flex h-11 items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 text-[13px] font-black text-violet-700 shadow-sm hover:bg-violet-100 disabled:opacity-50"><Plus size={18} />Thêm đơn tồn</button>}
           <button type="button" onClick={() => manifest && window.open(`/print/manifest/${manifest.id}`, '_blank', 'noopener')} disabled={isLoading || !manifest} className="inline-flex h-11 items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-[13px] font-black text-emerald-700 shadow-sm hover:bg-emerald-100 disabled:opacity-50"><Printer size={18} />In bảng kê</button>
           <button type="button" onClick={onClose} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-white text-muted-foreground shadow-sm hover:bg-muted"><X size={20} /></button>
         </div>
       </header>
 
       <main className="manifest-detail-print-main min-h-0 flex-1 overflow-auto p-5 custom-scrollbar">
-        {error && <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-bold text-amber-800"><AlertTriangle size={15} />{error}</div>}
         {isLoading ? <State label="Đang tải chi tiết bảng kê..." /> : !manifest ? <State label="Không tìm thấy bảng kê." /> : <div className="space-y-4">
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <Info label="Trạng thái" value={badge(manifest.status, statusConfig[String(manifest.status || '')])} />
@@ -69,6 +66,13 @@ export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isS
             <Info label="Seal" value={display(manifest.seal_code)} mono />
             <Info label="Ngày dự kiến đến" value={<ExpectedArrivalEditor manifest={manifest} canManage={canManage && !!onUpdateExpectedArrival} isSubmitting={isSubmitting} onUpdateExpectedArrival={onUpdateExpectedArrival} />} />
           </section>
+
+          <ManifestExpensesSection
+            key={`${manifest.id}-${manifestTrip(manifest)?.id ?? manifest.trip_id ?? 'no-trip'}`}
+            manifest={manifest}
+            canManage={canManageExpenses}
+            canDelete={canDeleteExpenses}
+          />
 
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-emerald-50 px-5 py-4">
@@ -80,7 +84,7 @@ export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isS
                 <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] uppercase tracking-wider text-slate-600 shadow-sm">
                   <tr><Header className="w-[50px] text-center">Vị trí</Header><Header className="w-[70px]">Ngày bốc</Header><Header className="w-[86px]">Mã tỉnh</Header><Header className="w-[118px]">Tên CTY / DV</Header><Header className="w-[128px]">Mặt hàng / Bill</Header><Header className="w-[170px]">Nơi trả / Địa chỉ</Header><Header className="w-[70px] text-right">SL / ĐVT</Header>{showHubDeliveryStatus && <Header className="w-[120px]">TT giao</Header>}{showHubDeliveryStatus && <Header className="w-[90px]">Ảnh</Header>}<Header className="w-[140px]">Ghi chú</Header><Header className="w-[100px]">Kế hoạch</Header><Header className="w-[108px] text-right">Thu hộ</Header><Header className="w-[100px] text-right">KG / M3 / QĐ</Header>{mayRemoveWaybill && <Header className="w-[52px] text-center">Gỡ</Header>}</tr>
                 </thead>
-                <tbody>{waybills.map((waybill, index) => <WaybillRow key={waybill.id} waybill={waybill} index={index} canManage={canManage && !!onUpdateDispatchFields} canEditQuantity={canManage && mayRemoveWaybill && !!onUpdatePackageCount} isSubmitting={isSubmitting} showHubDeliveryStatus={showHubDeliveryStatus} mayRemoveWaybill={mayRemoveWaybill} onRemoveWaybill={onRemoveWaybill} onUpdatePackageCount={onUpdatePackageCount} onUpdateDispatchFields={onUpdateDispatchFields} />)}</tbody>
+                <tbody>{waybills.map((waybill, index) => <WaybillRow key={waybill.id} waybill={waybill} index={index} canManage={canManage && !!onUpdateDispatchFields} isSubmitting={isSubmitting} showHubDeliveryStatus={showHubDeliveryStatus} mayRemoveWaybill={mayRemoveWaybill} onRemoveWaybill={onRemoveWaybill} onUpdateDispatchFields={onUpdateDispatchFields} />)}</tbody>
               </table>
               <div className="grid gap-3 p-3 md:hidden">{waybills.map((waybill) => <article key={waybill.id} className="rounded-2xl border border-border bg-white p-4 text-[13px] shadow-sm"><div className="mb-3 text-base font-black text-primary">{display(waybill.waybill_code)}</div><Line label="Người gửi" value={contactName(waybill.sender_info)} /><Line label="Người nhận" value={contactName(waybill.receiver_info)} /><Line label="Trọng lượng" value={num(waybill.weight, ' kg')} /><Line label="Thanh toán" value={display(waybill.payment_type)} /></article>)}</div>
               {!waybills.length && <State label="Bảng kê chưa có vận đơn." />}
@@ -102,23 +106,14 @@ function ExpectedArrivalEditor({ manifest, canManage, isSubmitting, onUpdateExpe
   return <div className="flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-1"><CalendarDays size={14} />{formatDate(expectedArrival(manifest))}</span>{canEditArrival && <button onClick={startEdit} className="inline-flex h-8 items-center gap-1 rounded-lg border border-primary/20 bg-blue-50 px-2 text-[11px] font-black text-primary hover:bg-blue-100"><Edit3 size={13} />Sửa</button>}</div>;
 }
 
-function WaybillRow({ waybill, index, canManage, canEditQuantity, isSubmitting, showHubDeliveryStatus, mayRemoveWaybill, onRemoveWaybill, onUpdatePackageCount, onUpdateDispatchFields }: { waybill: ManifestWaybill; index: number; canManage: boolean; canEditQuantity: boolean; isSubmitting: boolean; showHubDeliveryStatus?: boolean; mayRemoveWaybill?: boolean; onRemoveWaybill?: (waybill: ManifestWaybill) => void; onUpdatePackageCount?: (waybill: ManifestWaybill, packageCount: number) => Promise<void> | void; onUpdateDispatchFields?: (waybill: ManifestWaybill, fields: Record<string, string>) => Promise<void> | void }) {
+function WaybillRow({ waybill, index, canManage, isSubmitting, showHubDeliveryStatus, mayRemoveWaybill, onRemoveWaybill, onUpdateDispatchFields }: { waybill: ManifestWaybill; index: number; canManage: boolean; isSubmitting: boolean; showHubDeliveryStatus?: boolean; mayRemoveWaybill?: boolean; onRemoveWaybill?: (waybill: ManifestWaybill) => void; onUpdateDispatchFields?: (waybill: ManifestWaybill, fields: Record<string, string>) => Promise<void> | void }) {
   const service = dispatchValue(waybill, 'dv') || 'TC';
   const bill = dispatchValue(waybill, 'ma_bill') || display(waybill.waybill_code, '');
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState<EditableFields>(() => editableValues(waybill));
-  const [isQuantityEditing, setIsQuantityEditing] = useState(false);
-  const [quantity, setQuantity] = useState(() => dispatchValue(waybill, 'so_luong') || display(waybill.package_count, '1'));
   const change = (key: keyof EditableFields, value: string) => setForm(prev => ({ ...prev, [key]: value }));
   const startEdit = () => { setForm(editableValues(waybill)); setIsEditing(true); };
   const save = async () => { if (!onUpdateDispatchFields) return; await onUpdateDispatchFields(waybill, form); setIsEditing(false); };
-  const startQuantityEdit = () => { setQuantity(dispatchValue(waybill, 'so_luong') || display(waybill.package_count, '1')); setIsQuantityEditing(true); };
-  const saveQuantity = async () => {
-    const next = Number(quantity);
-    if (!onUpdatePackageCount || !Number.isInteger(next) || next < 1) return;
-    await onUpdatePackageCount(waybill, next);
-    setIsQuantityEditing(false);
-  };
 
   return <tr className="group align-top transition-colors hover:bg-blue-50/50">
     <Cell align="center"><span className="inline-flex h-8 min-w-8 items-center justify-center rounded-xl bg-amber-100 px-2 font-black text-amber-800 ring-1 ring-amber-200">{display(waybill.loading_position ?? index + 1)}</span></Cell>
@@ -127,7 +122,7 @@ function WaybillRow({ waybill, index, canManage, canEditQuantity, isSubmitting, 
     <Cell strong><StackLines primary={dispatchValue(waybill, 'ten_cty') || contactName(waybill.sender_info)} secondary={<span className="inline-flex w-fit rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-700">{service}</span>} /></Cell>
     <Cell strong><StackLines primary={dispatchValue(waybill, 'mat_hang') || display(waybill.waybill_code, '')} secondary={<span className="whitespace-nowrap text-primary">Bill: {bill}</span>} /></Cell>
     <Cell><StackLines primary={destinationName(waybill)} secondary={dispatchValue(waybill, 'dia_chi') || contactAddress(waybill.receiver_info)} /></Cell>
-    <Cell align="right" strong>{isQuantityEditing ? <div className="flex min-w-[92px] items-center justify-end gap-1"><input type="number" min={1} value={quantity} disabled={isSubmitting} onChange={event => setQuantity(event.target.value)} className="h-8 w-14 rounded-lg border border-violet-300 bg-violet-50 px-1 text-center text-[12px] font-black outline-none focus:border-primary" /><button type="button" title="Lưu số kiện" disabled={isSubmitting || !Number.isInteger(Number(quantity)) || Number(quantity) < 1} onClick={() => void saveQuantity()} className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white disabled:opacity-50"><Check size={13} /></button><button type="button" title="Hủy" disabled={isSubmitting} onClick={() => setIsQuantityEditing(false)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-50"><X size={13} /></button></div> : <div className="flex items-center justify-end gap-1"><StackLines primary={dispatchValue(waybill, 'so_luong') || display(waybill.package_count, '1')} secondary={dispatchValue(waybill, 'loai') || 'kiện'} />{canEditQuantity && <button type="button" title="Sửa số kiện" disabled={isSubmitting} onClick={startQuantityEdit} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-50"><Edit3 size={12} /></button>}</div>}</Cell>
+    <Cell align="right" strong><StackLines primary={dispatchValue(waybill, 'so_luong') || display(waybill.package_count, '1')} secondary={dispatchValue(waybill, 'loai') || 'kiện'} /></Cell>
     {showHubDeliveryStatus && <Cell><span className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-800">{hubDeliveryLabelFromWaybill(waybill)}</span></Cell>}
     {showHubDeliveryStatus && <Cell><div className="flex flex-wrap gap-1">{parseDeliveryPhotos(waybill.delivery_photo_url).map((photo, photoIndex) => <img key={photoIndex} src={photo} alt="" className="h-8 w-8 rounded border border-slate-200 object-cover" />)}</div></Cell>}
     <Cell>{isEditing ? <EditField value={form.ghi_chu_1} placeholder="Ghi chú 1" onChange={value => change('ghi_chu_1', value)} /> : <StackLines primary={dispatchValue(waybill, 'ghi_chu_1') || '—'} secondary={dispatchValue(waybill, 'ghi_chu_2') || dispatchValue(waybill, 'ghi_chu_bill')} />}{isEditing && <EditField className="mt-2" value={form.ghi_chu_2} placeholder="Ghi chú 2" onChange={value => change('ghi_chu_2', value)} />}</Cell>

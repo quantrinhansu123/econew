@@ -1,7 +1,5 @@
 import type { CustomerRecord } from './customerFormTypes';
 import type { NewOrderFormState } from '../orders/orderFormTypes';
-import { hubIdFromCode } from '../orders/orderFormUtils';
-import type { HubSummary } from '../orders/types';
 import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
 
 const str = (v: string | null | undefined) => (v ?? '').trim();
@@ -79,23 +77,9 @@ function mapGiaoHang(addressHcm: string | null | undefined): string | undefined 
   return undefined;
 }
 
-const comparablePhone = (value: string | null | undefined) => str(value).replace(/\D/g, '');
-
-/**
- * SĐT khách hàng/người gửi chỉ lấy từ thông tin liên hệ chung.
- * Nếu dữ liệu cũ từng ghi nhầm số kho nhận vào mobile/phone_landline thì bỏ số đó,
- * không để cùng một số xuất hiện ở cả người gửi và người nhận.
- */
+/** SĐT khách hàng/người gửi chỉ lấy từ thông tin liên hệ chung, không lấy SĐT kho nhận. */
 export function customerPhone(customer: CustomerRecord) {
-  const receiverPhones = new Set(
-    [customer.phone_han, customer.phone_hcm, customer.phone_dng]
-      .map(comparablePhone)
-      .filter(Boolean),
-  );
-
-  return [customer.mobile, customer.phone_landline]
-    .map(str)
-    .find((phone) => phone && !receiverPhones.has(comparablePhone(phone))) || '';
+  return str(customer.mobile) || str(customer.phone_landline);
 }
 
 /** Địa chỉ gửi lấy riêng từ cột address, không dùng địa chỉ kho nhận. */
@@ -209,10 +193,9 @@ export function applyReceiverByDestination(
 }
 
 /** Điền form nhập đơn từ bản ghi bảng customers */
-export function customerToOrderPatch(customer: CustomerRecord, hubs: HubSummary[] = []): Partial<NewOrderFormState> {
-  const noiDen = inferNoiDen(customer);
-  const destHubId = noiDen ? hubIdFromCode(hubs, noiDen) : '';
-  const huyen = str(customer.destination_province) || str(customer.region);
+export function customerToOrderPatch(customer: CustomerRecord): Partial<NewOrderFormState> {
+  const inferredProvince = inferNoiDen(customer);
+  const huyen = str(customer.destination_province) || str(customer.region) || inferredProvince;
 
   const phoneKh = customerPhone(customer);
 
@@ -245,12 +228,9 @@ export function customerToOrderPatch(customer: CustomerRecord, hubs: HubSummary[
     patch.dichVuGiaTang = customer.price_table;
   }
 
-  if (noiDen) {
-    patch.noiDen = noiDen;
-    if (destHubId) patch.destHubId = destHubId;
-  }
-
-  const receiverPatch = applyReceiverByDestination(customer, noiDen || 'HCM', huyen);
+  // HUB đến là điểm tập kết độc lập, không được thay đổi theo tỉnh nhận của khách.
+  // Thông tin kho/người nhận chỉ chọn theo tỉnh giao cuối lưu trong hồ sơ khách.
+  const receiverPatch = applyReceiverByDestination(customer, huyen || 'HCM');
   Object.assign(patch, receiverPatch);
 
   return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as Partial<NewOrderFormState>;

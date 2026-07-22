@@ -42,6 +42,16 @@ export class UsersService {
     return this.usersRepository.findOne({ where: { email } });
   }
 
+  async findByLogin(identifier: string): Promise<UserEntity | null> {
+    const normalized = identifier.trim().toLowerCase();
+    return this.usersRepository.findOne({
+      where: [
+        { email: normalized },
+        { username: normalized },
+      ] as FindOptionsWhere<UserEntity>[],
+    });
+  }
+
   async findById(id: string): Promise<SafeUserProfile> {
     return this.toSafeUser(await this.getUserOrThrow({ id }));
   }
@@ -132,5 +142,4 @@ export class UsersService {
     return user;
   }
 }
-
 

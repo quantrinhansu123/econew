@@ -122,16 +122,13 @@ export default function CustomerFormDialog({
           </section>
 
           <section className="rounded-2xl border border-border bg-white p-4 shadow-sm">
-            <p className="mb-3 text-[12px] font-extrabold uppercase tracking-wide text-primary">Kho nhận HCM &amp; Liên hệ</p>
+            <p className="mb-3 text-[12px] font-extrabold uppercase tracking-wide text-primary">Liên hệ khách hàng</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Người nhận">
-                <input value={form.receiver_hcm} onChange={(e) => onChange('receiver_hcm', e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Điện thoại nhận">
-                <input value={form.phone_hcm} onChange={(e) => onChange('phone_hcm', e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Di động">
+              <Field label="Điện thoại KH (di động)">
                 <input value={form.mobile} onChange={(e) => onChange('mobile', e.target.value)} className={inputClass} />
+              </Field>
+              <Field label="Điện thoại KH (bàn)">
+                <input value={form.phone_landline} onChange={(e) => onChange('phone_landline', e.target.value)} className={inputClass} />
               </Field>
               <Field label="Email">
                 <input value={form.email} onChange={(e) => onChange('email', e.target.value)} className={inputClass} />
@@ -148,6 +145,33 @@ export default function CustomerFormDialog({
               <Field label="Giao nhận">
                 <input value={form.delivery_handler} onChange={(e) => onChange('delivery_handler', e.target.value)} className={inputClass} />
               </Field>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+            <p className="mb-3 text-[12px] font-extrabold uppercase tracking-wide text-primary">Kho nhận Hà Nội</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Người nhận HAN">
+                <input value={form.receiver_han} onChange={(e) => onChange('receiver_han', e.target.value)} className={inputClass} />
+              </Field>
+              <Field label="Điện thoại nhận HAN">
+                <input value={form.phone_han} onChange={(e) => onChange('phone_han', e.target.value)} className={inputClass} />
+              </Field>
+              <Field label="Địa chỉ kho nhận HAN" className="sm:col-span-2">
+                <input value={form.address_han} onChange={(e) => onChange('address_han', e.target.value)} className={inputClass} />
+              </Field>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+            <p className="mb-3 text-[12px] font-extrabold uppercase tracking-wide text-primary">Kho nhận Hồ Chí Minh</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Người nhận HCM">
+                <input value={form.receiver_hcm} onChange={(e) => onChange('receiver_hcm', e.target.value)} className={inputClass} />
+              </Field>
+              <Field label="Điện thoại nhận HCM">
+                <input value={form.phone_hcm} onChange={(e) => onChange('phone_hcm', e.target.value)} className={inputClass} />
+              </Field>
               <Field label="Địa chỉ kho nhận HCM" className="sm:col-span-2">
                 <input value={form.address_hcm} onChange={(e) => onChange('address_hcm', e.target.value)} className={inputClass} />
               </Field>
@@ -155,7 +179,7 @@ export default function CustomerFormDialog({
           </section>
 
           <section className="rounded-2xl border border-border bg-white p-4 shadow-sm">
-            <p className="mb-3 text-[12px] font-extrabold uppercase tracking-wide text-primary">Kho nhận Đà Nẵng</p>
+            <p className="mb-3 text-[12px] font-extrabold uppercase tracking-wide text-muted-foreground">Kho nhận Đà Nẵng (dữ liệu cũ)</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Người nhận">
                 <input value={form.receiver_dng} onChange={(e) => onChange('receiver_dng', e.target.value)} className={inputClass} />
@@ -183,9 +207,6 @@ export default function CustomerFormDialog({
               </Field>
               <Field label="MST">
                 <input value={form.tax_id} onChange={(e) => onChange('tax_id', e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Số ĐT">
-                <input value={form.phone_landline} onChange={(e) => onChange('phone_landline', e.target.value)} className={inputClass} />
               </Field>
             </div>
           </section>

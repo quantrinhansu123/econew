@@ -20,7 +20,6 @@ const ACTIVE_WAYBILL_STATES = [
   WaybillState.IN_TRANSIT,
   WaybillState.AT_DEST_HUB,
   WaybillState.OUT_FOR_DELIVERY,
-  WaybillState.RETURNED,
 ];
 
 const ACTIVE_TRIP_STATUSES = [TripStatus.PLANNED, TripStatus.IN_TRANSIT];

@@ -72,9 +72,9 @@ describe('ExpensesService', () => {
       await expect(service.create({ trip_id: 1 }, accountant)).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('trip.status = PLANNED → BadRequestException', async () => {
+    it('tạo expense thành công khi trip đã được lên kế hoạch', async () => {
       trips.findOne.mockResolvedValue({ id: '1', status: TripStatus.PLANNED });
-      await expect(service.create({ trip_id: 1 }, accountant)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.create({ trip_id: 1 }, accountant)).resolves.toMatchObject({ trip_id: '1' });
     });
 
     it('DRIVER tạo expense → ForbiddenException', async () => {
@@ -154,9 +154,9 @@ describe('ExpensesService', () => {
       await expect(service.update('1', { trip_id: 2 }, accountant)).resolves.toMatchObject({ trip_id: '2' });
     });
 
-    it('trip đã COMPLETED → BadRequestException', async () => {
+    it('vẫn sửa được chi phí sau khi trip COMPLETED để chốt lãi lỗ', async () => {
       jest.spyOn(service, 'findOne').mockResolvedValue({ id: '1', trip: { status: TripStatus.COMPLETED } } as any);
-      await expect(service.update('1', {}, accountant)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.update('1', { amount: 25 }, accountant)).resolves.toMatchObject({ amount: '25' });
     });
 
     it('DRIVER update → ForbiddenException', async () => {
@@ -171,9 +171,10 @@ describe('ExpensesService', () => {
       expect(expenses.remove).toHaveBeenCalled();
     });
 
-    it('trip đã COMPLETED → BadRequestException', async () => {
+    it('MANAGER vẫn xóa được chi phí sau khi trip COMPLETED', async () => {
       jest.spyOn(service, 'findOne').mockResolvedValue({ id: '1', trip: { status: TripStatus.COMPLETED } } as any);
-      await expect(service.remove('1', manager)).rejects.toBeInstanceOf(BadRequestException);
+      await service.remove('1', manager);
+      expect(expenses.remove).toHaveBeenCalled();
     });
 
     it('ACCOUNTANT xóa → ForbiddenException', async () => {

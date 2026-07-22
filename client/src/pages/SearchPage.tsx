@@ -46,7 +46,7 @@ const dateRangeOptions: FilterOption[] = [
   { value: '30d', label: '30 ngày gần nhất' },
 ];
 
-const suggestionChips = ['Mã vận đơn', 'Biển số xe', 'Manifest', 'Người nhận', 'COD'];
+const suggestionChips = ['Mã bill', 'Mã khách', 'Nội dung hàng', 'Người nhận', 'SĐT người nhận'];
 
 const normalizeList = <T,>(response: ListResponse<T> | T[]) => Array.isArray(response) ? response : response.data || response.items || response.results || [];
 const normalizeTotal = <T,>(response: ListResponse<T> | T[], fallback: number) => Array.isArray(response) ? fallback : response.total ?? response.meta?.total ?? fallback;
@@ -140,6 +140,14 @@ function ResultCard({ item, hubMap, onOpen }: { item: SearchResultItem; hubMap: 
             <Meta label="Field khớp" value={getMatchedField(item)} />
             <Meta label={isWaybill ? 'Hub liên quan' : 'Tuyến xe'} value={route} />
           </div>
+          {isWaybill && (
+            <div className="mt-2 grid gap-2 text-[12px] text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
+              <Meta label="Mã khách" value={item.customer_code || '—'} />
+              <Meta label="Người nhận" value={item.receiver_name || '—'} />
+              <Meta label="SĐT người nhận" value={item.receiver_phone || '—'} />
+              <Meta label="Nội dung hàng" value={item.goods_content || '—'} />
+            </div>
+          )}
         </div>
         <button type="button" onClick={() => onOpen(item)} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 text-[13px] font-bold text-primary transition-colors hover:bg-primary/5">
           <Eye size={16} />
@@ -194,17 +202,23 @@ export default function SearchPage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
     if (!hasSearchIntent) {
-      setItems([]);
-      setTotal(0);
-      setError('');
-      setIsLoading(false);
-      return;
+      queueMicrotask(() => {
+        if (!active) return;
+        setItems([]);
+        setTotal(0);
+        setError('');
+        setIsLoading(false);
+      });
+      return () => { active = false; };
     }
 
-    let active = true;
-    setIsLoading(true);
-    setError('');
+    queueMicrotask(() => {
+      if (!active) return;
+      setIsLoading(true);
+      setError('');
+    });
     apiRequest<ListResponse<SearchResultItem> | SearchResultItem[]>(`/search?${buildQuery({ ...filters, keyword: debouncedKeyword })}`)
       .then(response => {
         if (!active) return;
@@ -255,7 +269,7 @@ export default function SearchPage() {
             <button type="button" onClick={() => navigate(-1)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-3 text-[13px] font-bold text-foreground hover:bg-muted"><ArrowLeft size={16} />Quay lại</button>
             <div className="relative min-w-[220px] flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input value={filters.keyword} onChange={event => updateFilters({ keyword: event.target.value })} placeholder="Tìm mã vận đơn, chuyến xe, bảng kê, biển số..." className="h-10 w-full rounded-xl border border-border bg-card pl-9 pr-3 text-[13px] outline-none focus:ring-2 focus:ring-primary/10" />
+              <input value={filters.keyword} onChange={event => updateFilters({ keyword: event.target.value })} placeholder="Tìm mã bill, mã KH, nội dung hàng, người nhận, SĐT..." className="h-10 w-full rounded-xl border border-border bg-card pl-9 pr-3 text-[13px] outline-none focus:ring-2 focus:ring-primary/10" />
             </div>
             <button type="button" onClick={() => setIsFilterPanelOpen(true)} className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card text-foreground hover:bg-muted"><Filter size={17} /></button>
             {activeFilterCount > 0 && <button type="button" onClick={clearFilters} className="order-last basis-full md:order-none md:basis-auto inline-flex h-10 items-center justify-center gap-1 rounded-xl border border-red-100 bg-red-50 px-3 text-[13px] font-bold text-red-500 hover:bg-red-100"><X size={15} />Xóa {activeFilterCount} bộ lọc</button>}
@@ -273,7 +287,7 @@ export default function SearchPage() {
 
         <div className="flex-1 min-h-0 overflow-auto custom-scrollbar bg-slate-50/40">
           {isLoading ? <StateBlock icon={<Loader2 size={22} className="animate-spin" />} title="Đang tìm kiếm" description="Hệ thống đang tải kết quả theo từ khóa và bộ lọc hiện tại." /> : !items.length ? (
-            <StateBlock icon={<Search size={22} />} title={hasShortKeyword ? 'Nhập thêm ký tự' : hasSearchIntent ? 'Không tìm thấy kết quả' : 'Tra cứu toàn hệ thống'} description={hasShortKeyword ? 'Từ khóa cần tối thiểu 2 ký tự để bắt đầu tìm kiếm.' : hasSearchIntent ? 'Thử đổi từ khóa, nới khoảng thời gian hoặc xóa bớt bộ lọc để tìm vận đơn và chuyến xe.' : 'Nhập mã vận đơn, manifest, chuyến xe hoặc biển số để tra cứu nhanh dữ liệu vận hành.'}>
+            <StateBlock icon={<Search size={22} />} title={hasShortKeyword ? 'Nhập thêm ký tự' : hasSearchIntent ? 'Không tìm thấy kết quả' : 'Tra cứu toàn hệ thống'} description={hasShortKeyword ? 'Từ khóa cần tối thiểu 2 ký tự để bắt đầu tìm kiếm.' : hasSearchIntent ? 'Thử đổi từ khóa hoặc xóa bớt bộ lọc.' : 'Nhập mã bill, mã khách, nội dung hàng, người nhận hoặc SĐT người nhận để tra cứu.'}>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 {suggestionChips.map(chip => <span key={chip} className="rounded-full border border-border bg-white px-3 py-1.5 text-[12px] font-bold text-muted-foreground shadow-sm">{chip}</span>)}
               </div>
@@ -303,7 +317,5 @@ export default function SearchPage() {
     </div>
   );
 }
-
-
 
 

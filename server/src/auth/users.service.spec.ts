@@ -60,6 +60,14 @@ describe('UsersService', () => {
     await expect(service.findByEmail('user@eco.test')).resolves.toBe(user);
   });
 
+  it('findByLogin accepts either a normalized email or username', async () => {
+    repository.findOne.mockResolvedValue(user);
+    await expect(service.findByLogin(' USER01 ')).resolves.toBe(user);
+    expect(repository.findOne).toHaveBeenCalledWith({
+      where: [{ email: 'user01' }, { username: 'user01' }],
+    });
+  });
+
   it('findById returns safe profile', async () => {
     repository.findOne.mockResolvedValue(user);
     const result = await service.findById('1');
@@ -137,4 +145,3 @@ describe('UsersService', () => {
     expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({ last_login_at: expect.any(Date) }));
   });
 });
-

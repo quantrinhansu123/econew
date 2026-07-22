@@ -11,7 +11,7 @@ import { QueryExpensesDto } from './dto/query-expenses.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { ExpenseEntity } from './expense.entity';
 
-const EXPENSE_CREATABLE_TRIP_STATUSES = [TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED];
+const EXPENSE_CREATABLE_TRIP_STATUSES = [TripStatus.PLANNED, TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED];
 const EXPENSE_WRITE_ROLES = [Roles.WAREHOUSE, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR];
 
 @Injectable()
@@ -25,7 +25,7 @@ export class ExpensesService {
     this.assertAnyRole(currentUser, EXPENSE_WRITE_ROLES);
     const trip = await this.getTrip(String(dto.trip_id));
     if (!EXPENSE_CREATABLE_TRIP_STATUSES.includes(trip.status)) {
-      throw new BadRequestException('Expenses can only be recorded after trip starts');
+      throw new BadRequestException('Expenses can only be recorded for an assigned or departed trip');
     }
     if (dto.amount !== undefined && dto.amount < 0) throw new BadRequestException('Amount must not be negative');
     const expense = this.expensesRepository.create({
@@ -78,10 +78,11 @@ export class ExpensesService {
   async update(id: string, dto: UpdateExpenseDto, currentUser: UserEntity): Promise<ExpenseEntity> {
     this.assertAnyRole(currentUser, EXPENSE_WRITE_ROLES);
     const expense = await this.findOne(id, currentUser);
-    if (expense.trip.status === TripStatus.COMPLETED) throw new BadRequestException('Cannot update expense for a completed trip');
     if (dto.trip_id !== undefined) {
       const nextTrip = await this.getTrip(String(dto.trip_id));
-      if (nextTrip.status === TripStatus.COMPLETED) throw new BadRequestException('Cannot move expense to a completed trip');
+      if (!EXPENSE_CREATABLE_TRIP_STATUSES.includes(nextTrip.status)) {
+        throw new BadRequestException('Expenses can only be recorded for an assigned or departed trip');
+      }
       expense.trip_id = String(dto.trip_id);
       expense.trip = nextTrip;
     }
@@ -98,7 +99,6 @@ export class ExpensesService {
   async remove(id: string, currentUser: UserEntity): Promise<void> {
     this.assertAnyRole(currentUser, [Roles.MANAGER, Roles.DIRECTOR]);
     const expense = await this.findOne(id, currentUser);
-    if (expense.trip.status === TripStatus.COMPLETED) throw new BadRequestException('Cannot delete expense for a completed trip');
     await this.expensesRepository.remove(expense);
   }
 

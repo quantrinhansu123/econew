@@ -12,9 +12,14 @@ interface Props {
 const formatValue = (value?: string | number | null) => value == null || value === '' ? '—' : String(value);
 
 const fields: Array<{ key: keyof WaybillDetail; label: string }> = [
-  { key: 'waybill_code', label: 'Mã vận đơn' },
+  { key: 'waybill_code', label: 'Mã bill / vận đơn' },
+  { key: 'ma_kh', label: 'Mã khách hàng' },
+  { key: 'noi_dung', label: 'Nội dung hàng' },
   { key: 'sender_info', label: 'Người gửi' },
-  { key: 'receiver_info', label: 'Người nhận' },
+  { key: 'receiver_name', label: 'Người nhận' },
+  { key: 'receiver_phone', label: 'SĐT người nhận' },
+  { key: 'receiver_address', label: 'Địa chỉ nhận' },
+  { key: 'noi_den', label: 'Tỉnh/Thành nhận' },
   { key: 'weight', label: 'Khối lượng' },
   { key: 'length', label: 'Dài' },
   { key: 'width', label: 'Rộng' },
@@ -22,8 +27,8 @@ const fields: Array<{ key: keyof WaybillDetail; label: string }> = [
   { key: 'volumetric_weight', label: 'Khối lượng quy đổi' },
   { key: 'payment_type', label: 'Thanh toán' },
   { key: 'cost_amount', label: 'Cước phí' },
-  { key: 'origin_hub_id', label: 'Bưu cục đi' },
-  { key: 'dest_hub_id', label: 'Bưu cục đến' },
+  { key: 'origin_hub_id', label: 'HUB gửi' },
+  { key: 'dest_hub_id', label: 'HUB đến' },
 ];
 
 export default function SearchWaybillDetailDialog({ item, isLoading, error, onClose }: Props) {

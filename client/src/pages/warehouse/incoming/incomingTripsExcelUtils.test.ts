@@ -25,7 +25,7 @@ describe('incoming trips Excel export', () => {
     }];
 
     const workbook = buildIncomingTripsExcelWorkbook(trips, 'Tất cả ngày');
-    const sheet = workbook?.Sheets['Tong chuyen xe'];
+    const sheet = workbook?.Sheets['Chuyen xe'];
 
     expect(sheet?.A3?.v).toBe('Ngày đến');
     expect(sheet?.D4?.v).toBe('BK-001');

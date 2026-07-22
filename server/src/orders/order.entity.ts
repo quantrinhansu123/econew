@@ -26,6 +26,9 @@ export class OrderEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   receiver_name: string | null;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  receiver_company_name: string | null;
+
   @Column({ type: 'varchar', length: 32, nullable: true })
   receiver_phone: string | null;
 

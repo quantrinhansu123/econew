@@ -257,6 +257,9 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     diaChiGui: waybill.sender_address?.trim() || sender.address || '',
     dienThoaiKh: waybill.sender_phone?.trim() || sender.phone || '',
     dienThoaiNhan: waybill.receiver_phone?.trim() || receiver.phone || '',
+    tenCongTyNhan:
+      waybill.receiver_company_name?.trim()
+      || parseNoteField(note, 'receiver_company_name'),
     nguoiNhan: waybill.receiver_name?.trim() || receiver.name || waybill.receiver_info || '',
     diaChiNhan: receiverAddress,
     noiDen: destCode || 'HCM',
@@ -401,22 +404,7 @@ function resolveUnitPrice(waybill: WaybillDetail, billingUnit: string): number {
   return Math.round(totalFreight / quantity);
 }
 
-export type WaybillPayloadMode = 'create' | 'update';
-
-export function resolveWaybillPhotoField(
-  images: string[],
-  mode: WaybillPayloadMode = 'create',
-): string | null | undefined {
-  const joinedImages = joinWaybillImages(images);
-  if (joinedImages) return joinedImages;
-  return mode === 'update' ? null : undefined;
-}
-
-export function buildCreatePayload(
-  form: NewOrderFormState,
-  volumetricWeight: number,
-  mode: WaybillPayloadMode = 'create',
-) {
+export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: number) {
   const paymentType = paymentTypeFromForm(form);
   const freight = calcCuocChinhAmount(form);
   const cod = parseMoneyAmount(form.cod);
@@ -435,6 +423,7 @@ export function buildCreatePayload(
     sender_phone: normalizeVnPhone(form.dienThoaiKh.trim()),
     sender_address: form.diaChiGui.trim() || form.nguoiGui.trim(),
     receiver_name: form.nguoiNhan.trim(),
+    receiver_company_name: form.tenCongTyNhan.trim() || undefined,
     receiver_phone: normalizeVnPhone(form.dienThoaiNhan.trim()),
     receiver_address: form.diaChiNhan.trim(),
     noi_den: receiverProvince || undefined,
@@ -452,10 +441,11 @@ export function buildCreatePayload(
     cc_amount: paymentType === 'CC' ? thanhToan : 0,
     xe_lay: form.xeLay.trim() || undefined,
     xe_phat: form.xePhat.trim() || undefined,
-    delivery_photo_url: resolveWaybillPhotoField(form.billImages, mode),
+    delivery_photo_url: joinWaybillImages(form.billImages) || undefined,
     noi_dung: form.noiDung.trim() || undefined,
     note: [
       form.maKh && `ma_kh=${form.maKh}`,
+      form.tenCongTyNhan.trim() && `receiver_company_name=${form.tenCongTyNhan.trim()}`,
       form.noiDung && `content=${form.noiDung}`,
       form.loaiBp && `loai_bp=${form.loaiBp}`,
       form.dichVu && `dich_vu=${form.dichVu}`,

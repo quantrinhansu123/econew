@@ -37,7 +37,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      host: '0.0.0.0',
       port: 6060,
+      strictPort: true,
       proxy: {
         '/api': {
           target: API_TARGET,
@@ -63,7 +65,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     preview: {
+      host: '0.0.0.0',
       port: 6060,
+      strictPort: true,
       proxy: {
         '/api': {
           target: API_TARGET,

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, IsNull, Not, Repository } from 'typeorm';
+import { Brackets, In, Not, Repository } from 'typeorm';
 import { PaymentType, TripStatus, VendorTripPaymentStatus, WaybillState } from '../common/enums';
 import { clampPaginationLimit } from '../common/pagination';
 import { Roles, isManager } from '../common/roles';
@@ -16,7 +16,6 @@ import { VendorPaymentEntity } from '../vendors/vendor-payment.entity';
 import { WaybillsService } from '../waybills/waybills.service';
 import { WaybillEntity } from '../waybills/waybill.entity';
 import { WaybillSplitEntity } from '../waybills/waybill-split.entity';
-import { WaybillSplitLoadStatus } from '../waybills/dto/waybill-split-load-status.enum';
 import { ArriveTripDto } from './dto/arrive-trip.dto';
 import { AssignManifestDto } from './dto/assign-manifest.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
@@ -86,7 +85,6 @@ export class TripsService {
     if (manifest) {
       manifest.status = ManifestStatus.ASSIGNED_TO_TRIP;
       await this.manifestsRepository.save(manifest);
-      await this.bindUnassignedManifestSplits(String(manifest.id), savedTrip);
     }
     if (truck) {
       truck.status = TruckStatus.ASSIGNED;
@@ -196,7 +194,6 @@ export class TripsService {
     trip.manifest_id = String(dto.manifest_id);
     manifest.status = ManifestStatus.ASSIGNED_TO_TRIP;
     await this.manifestsRepository.save(manifest);
-    await this.bindUnassignedManifestSplits(String(dto.manifest_id), trip);
     return this.tripsRepository.save(trip);
   }
 
@@ -224,14 +221,6 @@ export class TripsService {
     if (trip.manifest_id) {
       await this.moveManifestWaybills(trip.manifest_id, WaybillState.LOADED, WaybillState.IN_TRANSIT);
       await this.moveManifestWaybills(trip.manifest_id, WaybillState.MANIFEST_CLOSED, WaybillState.IN_TRANSIT);
-      const links = await this.manifestWaybillsRepository.find({ where: { manifest_id: trip.manifest_id } }) ?? [];
-      const waybillIds = links.map((link) => String(link.waybill_id));
-      if (waybillIds.length) {
-        await this.waybillSplitsRepository.update(
-          { waybill_id: In(waybillIds), trip_id: String(trip.id) },
-          { load_status: WaybillSplitLoadStatus.IN_TRANSIT },
-        );
-      }
     }
     return this.tripsRepository.save(trip);
   }
@@ -241,7 +230,7 @@ export class TripsService {
     if (trip.status !== TripStatus.IN_TRANSIT) throw new BadRequestException('Only IN_TRANSIT trips can arrive');
     trip.status = TripStatus.ARRIVED;
     trip.arrival_time = dto.arrival_time ?? new Date();
-    if (trip.manifest_id) await this.moveManifestWaybills(trip.manifest_id, WaybillState.IN_TRANSIT, WaybillState.AT_DEST_HUB, trip.end_hub_id);
+    if (trip.manifest_id) await this.moveManifestWaybills(trip.manifest_id, WaybillState.IN_TRANSIT, WaybillState.AT_DEST_HUB);
     return this.tripsRepository.save(trip);
   }
 
@@ -271,14 +260,19 @@ export class TripsService {
   }
 
   async getExpectedArrivals(query: QueryExpectedArrivalsDto, currentUser: UserEntity) {
-    const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 100);
-    const hubId = query.end_hub_id != null ? String(query.end_hub_id) : currentUser.hub_id;
+    const managerPlus = isManager(currentUser.role_mask);
+    const requestedHubId = query.end_hub_id != null ? String(query.end_hub_id) : undefined;
+    const hubId = managerPlus ? requestedHubId : currentUser.hub_id ?? undefined;
+
+    if (!managerPlus && !hubId) {
+      throw new ForbiddenException('Tài khoản chưa được gán bưu cục');
+    }
+
     if (hubId) {
       await this.waybillsService.backfillInTransitTripsForHub(hubId);
     }
 
-    const activeStatuses = [TripStatus.PLANNED, TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED];
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('truck.vendor', 'vendor')
@@ -288,61 +282,62 @@ export class TripsService {
       .leftJoinAndSelect('manifest.dest_hub', 'manifest_dest_hub')
       .leftJoinAndSelect('trip.start_hub', 'start_hub')
       .leftJoinAndSelect('trip.end_hub', 'end_hub')
-      .where('trip.status IN (:...statuses)', { statuses: activeStatuses });
+      .where('trip.status = :status', { status: TripStatus.IN_TRANSIT });
 
     if (hubId) {
-      qb.andWhere(new Brackets((inner) => {
-        inner
-          .where('trip.start_hub_id = :hubId', { hubId })
-          .orWhere('trip.end_hub_id = :hubId', { hubId });
-      }));
+      qb.andWhere('trip.end_hub_id = :endHubId', { endHubId: hubId });
     }
 
     this.applyHubScope(qb, currentUser);
 
-    const statusRank: Record<string, number> = {
-      [TripStatus.ARRIVED]: 0,
-      [TripStatus.IN_TRANSIT]: 1,
-      [TripStatus.PLANNED]: 2,
-      [TripStatus.COMPLETED]: 3,
-    };
-
-    const allTrips = (await qb.getMany()).sort((left, right) => {
-      const rankDiff = (statusRank[left.status] ?? 9) - (statusRank[right.status] ?? 9);
-      if (rankDiff !== 0) return rankDiff;
+    const trips = (await qb.getMany()).sort((left, right) => {
       const leftTime = new Date(left.arrival_time || left.expected_arrival_time || left.departure_time || 0).getTime();
       const rightTime = new Date(right.arrival_time || right.expected_arrival_time || right.departure_time || 0).getTime();
       return rightTime - leftTime;
-    });
-    const total = allTrips.length;
-    const trips = allTrips.slice((page - 1) * limit, page * limit);
-    const data = await Promise.all(trips.map(async (trip) => {
-      const waybills = await this.getManifestWaybills(trip.manifest_id);
-      const weight = waybills.reduce((sum, wb) => sum + Number(wb.weight ?? 0), 0);
-      const volume = waybills.reduce((sum, wb) => sum + Number(wb.the_tich_m3 ?? 0), 0);
-      const total_collect = waybills.reduce((sum, wb) => sum + this.calcWaybillCollectAmount(wb), 0);
-      return {
-        ...trip,
-        manifest_code: trip.manifest?.manifest_code ?? null,
-        seal_code: trip.manifest?.seal_code ?? null,
-        waybill_count: waybills.length,
-        planned_total_weight: weight,
-        planned_total_volume: volume,
-        total_collect,
-        license_plate: trip.truck?.license_plate ?? trip.truck?.bks ?? null,
-        driver_name: trip.driver_name?.trim()
-          || trip.truck?.ten_lai_xe?.trim()
-          || trip.truck?.driver?.full_name?.trim()
-          || null,
-        driver_phone: trip.driver_phone?.trim()
-          || trip.truck?.driver?.phone?.trim()
-          || null,
-        vendor_name: trip.truck?.vendor?.name?.trim()
-          || trip.truck?.nha_xe?.trim()
-          || null,
-        vehicle_type: trip.truck?.loai_xe?.trim() || null,
-      };
-    }));
+    }).slice(0, limit);
+    const data = await Promise.all(trips.map((trip) => this.toIncomingTripSummary(trip)));
+    return { data, total: data.length };
+  }
+
+  async getIncomingOverview(query: QueryTripsDto, currentUser: UserEntity) {
+    const managerPlus = isManager(currentUser.role_mask);
+    if (!managerPlus && !currentUser.hub_id) {
+      throw new ForbiddenException('Tài khoản chưa được gán bưu cục');
+    }
+
+    await this.waybillsService.backfillInTransitTripsForHub(managerPlus ? undefined : currentUser.hub_id ?? undefined);
+
+    const page = query.page ?? 1;
+    const limit = clampPaginationLimit(query.limit, 100);
+    const qb = this.tripsRepository.createQueryBuilder('trip')
+      .leftJoinAndSelect('trip.truck', 'truck')
+      .leftJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('truck.driver', 'driver')
+      .leftJoinAndSelect('trip.manifest', 'manifest')
+      .leftJoinAndSelect('manifest.origin_hub', 'manifest_origin_hub')
+      .leftJoinAndSelect('manifest.dest_hub', 'manifest_dest_hub')
+      .leftJoinAndSelect('trip.start_hub', 'start_hub')
+      .leftJoinAndSelect('trip.end_hub', 'end_hub')
+      .orderBy('trip.departure_time', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (query.keyword) {
+      qb.andWhere(new Brackets((inner) => {
+        inner.where('manifest.manifest_code ILIKE :keyword', { keyword: `%${query.keyword}%` })
+          .orWhere('truck.license_plate ILIKE :keyword', { keyword: `%${query.keyword}%` });
+      }));
+    }
+    if (query.status) qb.andWhere('trip.status = :status', { status: query.status });
+    if (query.truck_id) qb.andWhere('trip.truck_id = :truckId', { truckId: String(query.truck_id) });
+    if (query.start_hub_id) qb.andWhere('trip.start_hub_id = :startHubId', { startHubId: String(query.start_hub_id) });
+    if (query.end_hub_id) qb.andWhere('trip.end_hub_id = :endHubId', { endHubId: String(query.end_hub_id) });
+    if (query.departure_from) qb.andWhere('trip.departure_time >= :departureFrom', { departureFrom: query.departure_from });
+    if (query.departure_to) qb.andWhere('trip.departure_time <= :departureTo', { departureTo: query.departure_to });
+    this.applyHubScope(qb, currentUser);
+
+    const [trips, total] = await qb.getManyAndCount();
+    const data = await Promise.all(trips.map((trip) => this.toIncomingTripSummary(trip)));
     return { data, total, page, limit };
   }
 
@@ -715,13 +710,10 @@ export class TripsService {
     }));
   }
 
-  private async moveManifestWaybills(manifestId: string, from: WaybillState, to: WaybillState, currentHubId?: string | null): Promise<void> {
+  private async moveManifestWaybills(manifestId: string, from: WaybillState, to: WaybillState): Promise<void> {
     const waybills = await this.getManifestWaybills(manifestId);
     const changed = waybills.filter((waybill) => waybill.current_state === from);
-    changed.forEach((waybill) => {
-      waybill.current_state = to;
-      if (currentHubId) waybill.current_hub_id = String(currentHubId);
-    });
+    changed.forEach((waybill) => { waybill.current_state = to; });
     if (changed.length) await this.waybillsRepository.save(changed);
   }
 
@@ -729,6 +721,34 @@ export class TripsService {
     if (!manifestId) return [];
     const rows = await this.manifestWaybillsRepository.find({ where: { manifest_id: manifestId }, relations: ['waybill'] });
     return rows.map((row) => row.waybill).filter(Boolean);
+  }
+
+  private async toIncomingTripSummary(trip: TripEntity) {
+    const waybills = await this.getManifestWaybills(trip.manifest_id);
+    const weight = waybills.reduce((sum, waybill) => sum + Number(waybill.weight ?? 0), 0);
+    const volume = waybills.reduce((sum, waybill) => sum + Number(waybill.the_tich_m3 ?? 0), 0);
+    const total_collect = waybills.reduce((sum, waybill) => sum + this.calcWaybillCollectAmount(waybill), 0);
+    return {
+      ...trip,
+      manifest_code: trip.manifest?.manifest_code ?? null,
+      seal_code: trip.manifest?.seal_code ?? null,
+      waybill_count: waybills.length,
+      planned_total_weight: weight,
+      planned_total_volume: volume,
+      total_collect,
+      license_plate: trip.truck?.license_plate ?? trip.truck?.bks ?? null,
+      driver_name: trip.driver_name?.trim()
+        || trip.truck?.ten_lai_xe?.trim()
+        || trip.truck?.driver?.full_name?.trim()
+        || null,
+      driver_phone: trip.driver_phone?.trim()
+        || trip.truck?.driver?.phone?.trim()
+        || null,
+      vendor_name: trip.truck?.vendor?.name?.trim()
+        || trip.truck?.nha_xe?.trim()
+        || null,
+      vehicle_type: trip.truck?.loai_xe?.trim() || null,
+    };
   }
 
   private calcWaybillCollectAmount(waybill: WaybillEntity): number {
@@ -840,19 +860,5 @@ export class TripsService {
     if (!info?.trim()) return '';
     const parts = info.split('|').map((part) => part.trim());
     return parts[2] || parts[parts.length - 1] || '';
-  }
-
-  private async bindUnassignedManifestSplits(manifestId: string, trip: TripEntity): Promise<void> {
-    const links = await this.manifestWaybillsRepository.find({ where: { manifest_id: manifestId } }) ?? [];
-    const waybillIds = links.map((link) => String(link.waybill_id));
-    if (!waybillIds.length) return;
-    await this.waybillSplitsRepository.update(
-      { waybill_id: In(waybillIds), trip_id: IsNull() },
-      {
-        trip_id: String(trip.id),
-        truck_id: trip.truck_id ? String(trip.truck_id) : null,
-        load_status: WaybillSplitLoadStatus.LOADED,
-      },
-    );
   }
 }

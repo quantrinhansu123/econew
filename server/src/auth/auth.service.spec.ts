@@ -13,7 +13,7 @@ jest.mock('bcrypt', () => ({
 
 describe('AuthService', () => {
   let service: AuthService;
-  let usersService: jest.Mocked<Pick<UsersService, 'createUser' | 'findByEmail' | 'setRefreshToken' | 'setLastLogin' | 'toSafeUser'>>;
+  let usersService: jest.Mocked<Pick<UsersService, 'createUser' | 'findByEmail' | 'findByLogin' | 'setRefreshToken' | 'setLastLogin' | 'toSafeUser'>>;
   let jwtService: jest.Mocked<Pick<JwtService, 'signAsync' | 'verifyAsync'>>;
   let configService: jest.Mocked<Pick<ConfigService, 'get' | 'getOrThrow'>>;
 
@@ -51,6 +51,7 @@ describe('AuthService', () => {
     usersService = {
       createUser: jest.fn(),
       findByEmail: jest.fn(),
+      findByLogin: jest.fn(),
       setRefreshToken: jest.fn(),
       setLastLogin: jest.fn(),
       toSafeUser: jest.fn().mockReturnValue(safeUser),
@@ -74,7 +75,7 @@ describe('AuthService', () => {
   });
 
   it('login succeeds with valid password and active user', async () => {
-    usersService.findByEmail.mockResolvedValue(user);
+    usersService.findByLogin.mockResolvedValue(user);
     (bcrypt.compare as jest.Mock).mockResolvedValue(true);
     jwtService.signAsync.mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token');
 
@@ -85,16 +86,17 @@ describe('AuthService', () => {
     });
     expect(usersService.setRefreshToken).toHaveBeenCalledWith('1', JSON.stringify(['valid-refresh-token', 'refresh-token']));
     expect(usersService.setLastLogin).toHaveBeenCalledWith('1');
+    expect(usersService.findByLogin).toHaveBeenCalledWith('driver@eco.test');
   });
 
   it('login rejects wrong password', async () => {
-    usersService.findByEmail.mockResolvedValue(user);
+    usersService.findByLogin.mockResolvedValue(user);
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
     await expect(service.login({ email: 'driver@eco.test', password: 'badpass123' })).rejects.toThrow(UnauthorizedException);
   });
 
   it('login rejects inactive user', async () => {
-    usersService.findByEmail.mockResolvedValue({ ...user, is_active: false });
+    usersService.findByLogin.mockResolvedValue({ ...user, is_active: false });
     await expect(service.login({ email: 'driver@eco.test', password: 'password123' })).rejects.toThrow(UnauthorizedException);
   });
 
@@ -129,5 +131,4 @@ describe('AuthService', () => {
     expect(usersService.setRefreshToken).toHaveBeenCalledWith('1', null);
   });
 });
-
 

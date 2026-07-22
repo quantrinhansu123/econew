@@ -24,6 +24,7 @@ export interface NewOrderFormState {
   huyen: string;
   quanHuyen: string;
   phuongXa: string;
+  tenCongTyNhan: string;
   nguoiNhan: string;
   diaChiNhan: string;
   soBill: string;

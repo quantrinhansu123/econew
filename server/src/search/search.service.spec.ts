@@ -197,6 +197,34 @@ describe('SearchService', () => {
     expect(inner.orWhere).toHaveBeenCalledWith('waybill.receiver_phone ILIKE :keyword', { keyword: '%0934455122%' });
     expect(inner.orWhere).toHaveBeenCalledWith('waybill.receiver_address ILIKE :keyword', { keyword: '%0934455122%' });
     expect(inner.orWhere).toHaveBeenCalledWith('waybill.ma_kh ILIKE :keyword', { keyword: '%0934455122%' });
+    expect(inner.orWhere).toHaveBeenCalledWith('waybill.noi_dung ILIKE :keyword', { keyword: '%0934455122%' });
+    expect(inner.orWhere).toHaveBeenCalledWith('waybill.note ILIKE :keyword', { keyword: '%0934455122%' });
+    expect(inner.orWhere).toHaveBeenCalledWith(
+      expect.stringContaining('REGEXP_REPLACE(COALESCE(waybill.receiver_phone'),
+      { normalizedReceiverPhoneKeyword: '%0934455122%' },
+    );
+  });
+
+  it('returns the bill fields needed by the search result screen', async () => {
+    const searchableWaybill = {
+      ...waybill,
+      ma_kh: 'ADAO',
+      receiver_name: 'Kho A Đào HCM',
+      receiver_phone: '0934455122',
+      receiver_address: '129 Trần Đại Nghĩa',
+      noi_dung: 'Máy phát điện',
+    } as WaybillEntity & { origin_hub: HubEntity; dest_hub: HubEntity };
+    waybillsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder([searchableWaybill], 1));
+
+    const result = await service.searchWaybills({ keyword: 'máy phát' }, manager);
+
+    expect(result.items[0]).toMatchObject({
+      waybill_code: 'WB100',
+      ma_kh: 'ADAO',
+      noi_dung: 'Máy phát điện',
+      receiver_name: 'Kho A Đào HCM',
+      receiver_phone: '0934455122',
+    });
   });
 
   it('globalSearch accepts multi-select status and hub filters from the UI', async () => {

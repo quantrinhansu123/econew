@@ -1,7 +1,6 @@
 /* Phiếu vận chuyển ECO:
    - A5: một phiếu trên A5 ngang.
    - A4: cùng một phiếu ở nửa trên, nửa dưới để trắng.
-   - A4 ngang: phóng nguyên mẫu A5 vừa một trang A4 ngang.
    @page không chừa lề để trình duyệt không tách chân phiếu sang trang 2.
    Phiếu tự chừa vùng an toàn tối thiểu 5mm bên trong khổ giấy. */
 @page {
@@ -34,30 +33,7 @@
   height: 297mm;
 }
 
-.waybill-paper-preview--a4-landscape {
-  width: 297mm;
-  height: 210mm;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.waybill-paper-preview--a4-landscape > .waybill-invoice-frame {
-  flex: 0 0 auto;
-  transform: scale(1.435);
-  transform-origin: center;
-}
-
-.waybill-invoice-frame {
-  width: 200mm;
-  height: 136mm;
-  flex: 0 0 auto;
-  overflow: hidden;
-}
-
 .waybill-invoice {
-  --eco-fit-scale: 1;
   --eco-a5-scale: 0.64;
   --eco-ink: #111;
   --eco-line: 0.7px solid var(--eco-ink);
@@ -80,12 +56,12 @@
   --fs-note: calc(11.6pt * var(--eco-a5-scale));
   box-sizing: border-box;
   width: var(--eco-a5-width);
-  min-height: var(--eco-a5-height);
+  height: var(--eco-a5-height);
   margin: 0;
   display: flex;
   flex-direction: column;
-  overflow: visible;
-  border: var(--eco-line-strong);
+  overflow: hidden;
+  border: 0;
   background: #fff;
   color: var(--eco-ink);
   font-family: Arial, Helvetica, sans-serif;
@@ -93,8 +69,6 @@
   line-height: 1.2;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
-  transform: scale(var(--eco-fit-scale));
-  transform-origin: top left;
 }
 
 .eco-a5-template p {
@@ -189,9 +163,8 @@
   width: 100%;
   max-width: 51mm;
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 1.5mm;
+  display: flex;
+  justify-content: flex-end;
   font-size: var(--fs-sm);
   line-height: 1.2;
   text-align: left;
@@ -278,7 +251,10 @@
 }
 
 .eco-a5-people-row .eco-mini-line--address .eco-mini-value {
-  white-space: normal;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .eco-two-col-line {
@@ -313,9 +289,10 @@
 
 .eco-a5-goods-code {
   padding: 1mm 1.5mm;
+  overflow: hidden;
   border-bottom: var(--eco-line);
-  overflow-wrap: anywhere;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .eco-a5-goods-code b {
@@ -421,11 +398,12 @@
 .eco-payment-method-box strong {
   margin: auto 0;
   padding: 0.5mm;
+  overflow: hidden;
   font-size: calc(14pt * var(--eco-a5-scale));
   line-height: 1.15;
   letter-spacing: -0.05mm;
-  overflow-wrap: anywhere;
-  white-space: normal;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .eco-charge-box {
@@ -642,8 +620,6 @@
     overflow: hidden !important;
     box-shadow: none !important;
     background: #fff !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
   }
 
   .waybill-paper-preview--a5 {
@@ -654,34 +630,17 @@
     height: 297mm !important;
   }
 
-  .waybill-paper-preview--a4-landscape {
-    width: 297mm !important;
-    height: 210mm !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-
   .waybill-invoice {
     width: 200mm !important;
     max-width: 200mm !important;
+    height: 136mm !important;
     min-height: 136mm !important;
+    max-height: 136mm !important;
     margin: 0 !important;
-    overflow: visible !important;
+    overflow: hidden !important;
     box-shadow: none !important;
     break-inside: avoid;
     page-break-inside: avoid;
-  }
-
-  .waybill-invoice-frame {
-    width: 200mm !important;
-    height: 136mm !important;
-    overflow: hidden !important;
-  }
-
-  .waybill-paper-preview--a4-landscape > .waybill-invoice-frame {
-    transform: scale(1.435) !important;
-    transform-origin: center !important;
   }
 
   .waybill-bulk-print-stack {

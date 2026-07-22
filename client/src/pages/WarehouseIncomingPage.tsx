@@ -25,8 +25,20 @@ import { useIncomingTripActions } from './warehouse/incoming/useIncomingTripActi
 import { useIncomingTrips } from './warehouse/incoming/useIncomingTrips';
 import { downloadIncomingTripsExcel } from './warehouse/incoming/incomingTripsExcelUtils';
 
-export default function WarehouseIncomingPage() {
-  const { trips, isLoading, error, updatedAt, refresh } = useIncomingTrips();
+export interface WarehouseIncomingPageProps {
+  mode?: 'overview' | 'expected-arrivals';
+  title?: string;
+  subtitle?: string;
+  emptyText?: string;
+}
+
+export default function WarehouseIncomingPage({
+  mode = 'overview',
+  title = 'Tất cả chuyến xe',
+  subtitle = 'Theo dõi chuyến xe, ngày đến, BKS, tài xế và nhà cung cấp.',
+  emptyText = 'Chưa có chuyến xe.',
+}: WarehouseIncomingPageProps = {}) {
+  const { trips, isLoading, error, updatedAt, refresh } = useIncomingTrips({ source: mode });
   const [filterFromDate, setFilterFromDate] = useState('');
   const [filterToDate, setFilterToDate] = useState('');
   const [enabledVendors, setEnabledVendors] = useState<Set<string>>(new Set());
@@ -46,6 +58,8 @@ export default function WarehouseIncomingPage() {
   const paymentStatusValues = useMemo(() => paymentStatusOptions.map((option) => option.value), [paymentStatusOptions]);
 
   useEffect(() => {
+    // Đồng bộ các lựa chọn khi API trả thêm/bớt nhà cung cấp.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEnabledVendors((previous) => {
       const next = new Set(previous);
       let changed = false;
@@ -66,6 +80,8 @@ export default function WarehouseIncomingPage() {
   }, [vendorOptions]);
 
   useEffect(() => {
+    // Đồng bộ các lựa chọn khi API trả thêm/bớt biển số.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEnabledPlates((previous) => {
       const next = new Set(previous);
       let changed = false;
@@ -86,6 +102,8 @@ export default function WarehouseIncomingPage() {
   }, [plateOptions]);
 
   useEffect(() => {
+    // Đồng bộ các lựa chọn khi API trả thêm/bớt trạng thái chuyến.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEnabledStatuses((previous) => {
       const next = new Set(previous);
       let changed = false;
@@ -106,6 +124,8 @@ export default function WarehouseIncomingPage() {
   }, [statusValues]);
 
   useEffect(() => {
+    // Đồng bộ các lựa chọn khi API trả thêm/bớt trạng thái thanh toán.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEnabledPaymentStatuses((previous) => {
       const next = new Set(previous);
       let changed = false;
@@ -202,21 +222,23 @@ export default function WarehouseIncomingPage() {
         enabledPaymentStatuses.size !== paymentStatusValues.length ? `${enabledPaymentStatuses.size}/${paymentStatusValues.length} trạng thái thanh toán` : '',
         enabledVendors.size !== vendorOptions.length ? `${enabledVendors.size}/${vendorOptions.length} nhà cung cấp` : '',
       ].filter(Boolean).join(' · ');
-      if (!downloadIncomingTripsExcel(displayTrips, filterSummary)) {
-        setExportError('Không có dữ liệu để xuất Excel.');
-      }
+      const success = downloadIncomingTripsExcel(displayTrips, filterSummary, {
+        title: title.toLocaleUpperCase('vi-VN'),
+        filePrefix: mode === 'overview' ? 'tat-ca-chuyen-xe' : 'xe-dang-den',
+      });
+      if (!success) setExportError('Không có dữ liệu để xuất Excel.');
     } catch {
       setExportError('Không thể tạo file Excel danh sách chuyến xe.');
     } finally {
       setIsExporting(false);
     }
-  }, [displayTrips, filterFromDate, filterToDate, enabledPlates, plateOptions.length, enabledStatuses, statusValues.length, enabledPaymentStatuses, paymentStatusValues.length, enabledVendors, vendorOptions.length]);
+  }, [displayTrips, enabledPaymentStatuses, enabledPlates, enabledStatuses, enabledVendors, filterFromDate, filterToDate, mode, paymentStatusValues.length, plateOptions.length, statusValues.length, title, vendorOptions.length]);
 
   return (
     <>
       <IncomingTripsPageLayout
-        title="Tất cả chuyến xe"
-        subtitle="Theo dõi chuyến xe, ngày đến, BKS, tài xế và nhà cung cấp."
+        title={title}
+        subtitle={subtitle}
         isLoading={isLoading}
         error={exportError || error}
         updatedAt={updatedAt}
@@ -252,7 +274,7 @@ export default function WarehouseIncomingPage() {
       >
         <IncomingTripTable
           trips={displayTrips}
-          emptyText={emptyHint || 'Chưa có chuyến xe.'}
+          emptyText={emptyHint || emptyText}
           showOriginColumn
           canDelete={actions.canDelete}
           canPay={actions.canPay}

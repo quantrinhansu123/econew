@@ -5,8 +5,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { clsx } from 'clsx';
 
 import { ApiError, apiRequest } from '../lib/api';
-import { joinWaybillImages, parseWaybillImages } from '../lib/waybillImages';
-import WaybillImagePicker from '../components/WaybillImagePicker';
 import WaybillReceiveConfirmDialog from './warehouse/orders/dialogs/WaybillReceiveConfirmDialog';
 import WaybillPackageSplitEditor from './warehouse/inventory/WaybillPackageSplitEditor';
 import type { BadgeConfig, HubSummary, ReceiveFormState, ReceiveWaybillPayload, UserSummary, WaybillDetail } from './warehouse/orders/types';
@@ -81,7 +79,6 @@ export default function WarehouseOrderReceivePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isPhotoUploading, setIsPhotoUploading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -108,8 +105,7 @@ export default function WarehouseOrderReceivePage() {
           ? 'Vận đơn không thuộc hub được phân quyền.'
           : undefined;
   const alreadyInWarehouse = status === 'IN_WAREHOUSE';
-  const photoPickerDisabled = !waybill || !hasReceiveRole || !isReceived || isTerminal || hasManifestOrTrip || !hubAllowed || alreadyInWarehouse || isSubmitting;
-  const receiveDisabled = photoPickerDisabled || isPhotoUploading;
+  const receiveDisabled = !waybill || !hasReceiveRole || !isReceived || isTerminal || hasManifestOrTrip || !hubAllowed || alreadyInWarehouse || isSubmitting;
 
   const warnings = useMemo(() => {
     const items: string[] = [];
@@ -139,7 +135,6 @@ export default function WarehouseOrderReceivePage() {
     setFormState(prev => ({
       ...prev,
       waybillCode: displayCode(response),
-      deliveryPhotoUrl: '',
     }));
   };
 
@@ -163,10 +158,6 @@ export default function WarehouseOrderReceivePage() {
 
   const searchByCode = async (event?: FormEvent) => {
     event?.preventDefault();
-    if (isPhotoUploading || isSubmitting) {
-      setError('Vui lòng chờ thao tác hiện tại hoàn tất trước khi quét vận đơn khác.');
-      return;
-    }
     const code = formState.waybillCode.trim();
     if (!code) {
       setError('Vui lòng nhập hoặc quét mã vận đơn.');
@@ -181,7 +172,6 @@ export default function WarehouseOrderReceivePage() {
       setFormState(prev => ({
         ...prev,
         waybillCode: displayCode(response) || code,
-        deliveryPhotoUrl: '',
       }));
     } catch (searchError) {
       setWaybill(null);
@@ -192,7 +182,6 @@ export default function WarehouseOrderReceivePage() {
   };
 
   const validateReceive = () => {
-    if (isPhotoUploading) return 'Vui lòng chờ ảnh upload hoàn tất.';
     if (!formState.deliveryPhotoUrl.trim()) return 'Vui lòng upload ảnh tiếp nhận trước khi xác nhận.';
     if (warnings.length > 0) return warnings[0];
     return '';
@@ -272,9 +261,9 @@ export default function WarehouseOrderReceivePage() {
               <div className="flex flex-col gap-3 sm:flex-row">
                 <div className="relative flex-1">
                   <Package className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={17} />
-                  <input value={formState.waybillCode} onChange={(event) => setFormField('waybillCode', event.target.value)} disabled={isPhotoUploading || isSubmitting} className="h-11 w-full rounded-xl border border-border bg-card pl-10 pr-4 text-[14px] font-bold uppercase outline-none transition-all placeholder:font-medium placeholder:normal-case placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60" placeholder="Nhập hoặc scan mã vận đơn" />
+                  <input value={formState.waybillCode} onChange={(event) => setFormField('waybillCode', event.target.value)} className="h-11 w-full rounded-xl border border-border bg-card pl-10 pr-4 text-[14px] font-bold uppercase outline-none transition-all placeholder:font-medium placeholder:normal-case placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Nhập hoặc scan mã vận đơn" />
                 </div>
-                <button type="submit" disabled={isSearching || isPhotoUploading || isSubmitting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-[13px] font-bold text-white shadow-sm shadow-primary/20 transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60">
+                <button type="submit" disabled={isSearching} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-[13px] font-bold text-white shadow-sm shadow-primary/20 transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60">
                   {isSearching ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />} Kiểm tra
                 </button>
               </div>
@@ -292,16 +281,9 @@ export default function WarehouseOrderReceivePage() {
                 <Field label="Mã vận đơn">
                   <input value={formState.waybillCode} onChange={(event) => setFormField('waybillCode', event.target.value)} className="h-10 w-full rounded-xl border border-border bg-card px-4 text-[13px] font-bold uppercase outline-none transition-all placeholder:font-medium placeholder:normal-case placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="WB000001" />
                 </Field>
-                <WaybillImagePicker
-                  key={waybill ? String(waybill.id) : 'no-waybill'}
-                  value={parseWaybillImages(formState.deliveryPhotoUrl)}
-                  onChange={(urls) => setFormField('deliveryPhotoUrl', joinWaybillImages(urls))}
-                  onUploadingChange={setIsPhotoUploading}
-                  disabled={photoPickerDisabled || isPhotoUploading}
-                  title="Ảnh tiếp nhận"
-                  description="Chụp bằng camera sau hoặc chọn ảnh từ thư viện. Bắt buộc ít nhất 1 ảnh, tối đa 4 ảnh."
-                  emptyMessage="Chưa có ảnh tiếp nhận."
-                />
+                <Field label="URL ảnh upload">
+                  <input value={formState.deliveryPhotoUrl} onChange={(event) => setFormField('deliveryPhotoUrl', event.target.value)} className="h-10 w-full rounded-xl border border-border bg-card px-4 text-[13px] font-medium outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="https://.../receive-photo.jpg" />
+                </Field>
               </div>
 
               {infoMessages.length > 0 && (
@@ -322,8 +304,8 @@ export default function WarehouseOrderReceivePage() {
               {successMessage && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] font-bold text-emerald-700 flex items-center gap-2"><CheckCircle2 size={16} />{successMessage}</div>}
 
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <button type="button" onClick={resetForNextScan} disabled={isSubmitting || isPhotoUploading} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"><RotateCcw size={16} /> Quét đơn khác</button>
-                <button type="submit" disabled={receiveDisabled} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-bold text-white shadow-sm shadow-primary/20 transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50">{isPhotoUploading ? <Loader2 className="animate-spin" size={16} /> : <PackageCheck size={16} />} {isPhotoUploading ? 'Đang upload ảnh' : 'Xác nhận tiếp nhận'}</button>
+                <button type="button" onClick={resetForNextScan} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted"><RotateCcw size={16} /> Quét đơn khác</button>
+                <button type="submit" disabled={receiveDisabled} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-bold text-white shadow-sm shadow-primary/20 transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"><PackageCheck size={16} /> Xác nhận tiếp nhận</button>
               </div>
             </form>
 

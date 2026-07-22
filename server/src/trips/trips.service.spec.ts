@@ -214,41 +214,57 @@ describe('TripsService', () => {
   });
 
   describe('getExpectedArrivals', () => {
-    it('includes PLANNED trips and ranks them after active arrivals but before completed trips', async () => {
+    it('only queries in-transit trips whose destination is the selected hub', async () => {
       const qb = new MockQb();
       qb.getMany.mockResolvedValue([
-        { id: 'completed', status: TripStatus.COMPLETED, manifest_id: null, departure_time: new Date('2026-07-20T01:00:00Z') },
-        { id: 'planned', status: TripStatus.PLANNED, manifest_id: null, departure_time: new Date('2026-07-20T04:00:00Z') },
         { id: 'transit', status: TripStatus.IN_TRANSIT, manifest_id: null, departure_time: new Date('2026-07-20T03:00:00Z') },
-        { id: 'arrived', status: TripStatus.ARRIVED, manifest_id: null, departure_time: new Date('2026-07-20T02:00:00Z') },
       ]);
       trips.createQueryBuilder.mockReturnValue(qb);
 
       const result = await service.getExpectedArrivals({ end_hub_id: 2 }, manager);
 
-      expect(qb.where).toHaveBeenCalledWith('trip.status IN (:...statuses)', {
-        statuses: [TripStatus.PLANNED, TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED],
-      });
-      expect(result.data.map((trip) => trip.id)).toEqual(['arrived', 'transit', 'planned', 'completed']);
-      expect(result.data).toContainEqual(expect.objectContaining({ id: 'planned', status: TripStatus.PLANNED }));
-      expect(result.total).toBe(4);
+      expect(qb.where).toHaveBeenCalledWith('trip.status = :status', { status: TripStatus.IN_TRANSIT });
+      expect(qb.andWhere).toHaveBeenCalledWith('trip.end_hub_id = :endHubId', { endHubId: '2' });
+      expect(result.data.map((trip) => trip.id)).toEqual(['transit']);
+      expect(result.total).toBe(1);
     });
 
-    it('paginates without losing the total used by full Excel export', async () => {
+    it('uses the assigned hub for branch staff even when another hub is requested', async () => {
       const qb = new MockQb();
-      qb.getMany.mockResolvedValue([
-        { id: '1', status: TripStatus.IN_TRANSIT, manifest_id: null, departure_time: new Date('2026-07-20T03:00:00Z') },
-        { id: '2', status: TripStatus.IN_TRANSIT, manifest_id: null, departure_time: new Date('2026-07-20T02:00:00Z') },
-        { id: '3', status: TripStatus.IN_TRANSIT, manifest_id: null, departure_time: new Date('2026-07-20T01:00:00Z') },
-      ]);
+      qb.getMany.mockResolvedValue([]);
       trips.createQueryBuilder.mockReturnValue(qb);
 
-      const result = await service.getExpectedArrivals({ end_hub_id: 2, page: 2, limit: 2 }, manager);
+      await service.getExpectedArrivals({ end_hub_id: 2 }, dispatcher);
 
-      expect(result.total).toBe(3);
-      expect(result.page).toBe(2);
-      expect(result.limit).toBe(2);
-      expect(result.data.map((trip) => trip.id)).toEqual(['3']);
+      expect(waybillsService.backfillInTransitTripsForHub).toHaveBeenCalledWith('1');
+      expect(qb.andWhere).toHaveBeenCalledWith('trip.end_hub_id = :endHubId', { endHubId: '1' });
+    });
+  });
+
+  describe('getIncomingOverview', () => {
+    it('returns all trip statuses for the all-trips screen', async () => {
+      const qb = new MockQb();
+      qb.getManyAndCount.mockResolvedValue([[
+        { id: 'planned', status: TripStatus.PLANNED, manifest_id: null },
+        { id: 'arrived', status: TripStatus.ARRIVED, manifest_id: null },
+      ], 2]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+
+      const result = await service.getIncomingOverview({ page: 1, limit: 100 }, manager);
+
+      expect(qb.where).not.toHaveBeenCalledWith('trip.status = :status', expect.anything());
+      expect(result.data.map((trip) => trip.id)).toEqual(['planned', 'arrived']);
+      expect(result.total).toBe(2);
+    });
+
+    it('scopes branch staff to trips related to their assigned hub', async () => {
+      const qb = new MockQb();
+      qb.getManyAndCount.mockResolvedValue([[], 0]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+
+      await service.getIncomingOverview({}, dispatcher);
+
+      expect(qb.andWhere).toHaveBeenCalledWith(expect.any(Object));
     });
   });
 

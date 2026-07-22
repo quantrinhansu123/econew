@@ -1,9 +1,5 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
-import {
-  fitWaybillInvoiceElement,
-  normalizeWaybillPrintCode,
-  type WaybillPrintData,
-} from './waybillPrintUtils';
+import type { ReactNode } from 'react';
+import type { WaybillPrintData } from './waybillPrintUtils';
 
 export const WAYBILL_PRINT_LOGO_SRC = '/z7901426682318_7c6139835f49e94fff8a3f239aaea0b8.jpg';
 
@@ -32,19 +28,13 @@ function StatCell({ label, value }: { label: string; value: string }) {
 }
 
 export default function WaybillInvoiceTemplate({ data }: Props) {
-  const invoiceRef = useRef<HTMLElement>(null);
-  const displayWaybillCode = normalizeWaybillPrintCode(data.waybillCode);
+  const displayWaybillCode = data.waybillCode.replace(/[\s-]+/g, '');
   const barcodeUrl = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(displayWaybillCode)}&scale=2&height=10&includetext=false`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(displayWaybillCode)}`;
   const hasPricing = data.showPricing;
 
-  useLayoutEffect(() => {
-    if (invoiceRef.current) fitWaybillInvoiceElement(invoiceRef.current);
-  }, [data]);
-
   return (
-    <div className="waybill-invoice-frame">
-      <section ref={invoiceRef} className="waybill-invoice eco-a5-template">
+    <section className="waybill-invoice eco-a5-template">
       <header className="eco-a5-header">
         <div className="eco-a5-brand">
           <img src={WAYBILL_PRINT_LOGO_SRC} alt="" className="eco-logo" />
@@ -61,7 +51,6 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           <img src={barcodeUrl} alt="" className="eco-barcode-img" />
           <div className="eco-code">{displayWaybillCode}</div>
           <div className="eco-code-meta">
-            <span>Mã KH nhận:</span>
             <span>Mã BC nhận: <b>{value(data.maBcNhan)}</b></span>
           </div>
         </div>
@@ -73,7 +62,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           <MiniLine label="Mã BC gửi:" strong>{value(data.maBcGui)}</MiniLine>
         </div>
         <div className="eco-band">
-          <MiniLine label="Tên khách nhận:" strong>{value(data.tenKhNhan)}</MiniLine>
+          <MiniLine label="Tên công ty nhận:" strong>{value(data.tenCongTyNhan)}</MiniLine>
         </div>
         <div className="eco-band">
           <MiniLine label="Tên khách gửi:" strong>{value(data.tenKhGui)}</MiniLine>
@@ -90,8 +79,8 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         </div>
         <div className="eco-band">
           <div className="eco-two-col-line eco-two-col-line--dest">
-            <MiniLine label="Quận/Huyện:" strong>{value(data.tinhNhan)}</MiniLine>
-            <MiniLine label="Tỉnh/TP:" strong>{value(data.maBcNhan)}</MiniLine>
+            <MiniLine label="Quận/Huyện:" strong>{value(data.quanHuyenNhan)}</MiniLine>
+            <MiniLine label="Tỉnh/TP:" strong>{value(data.tinhNhan)}</MiniLine>
           </div>
         </div>
         <div className="eco-band">
@@ -103,7 +92,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         <div className="eco-band">
           <div className="eco-two-col-line">
             <MiniLine label="Số điện thoại:" strong>{value(data.sdtNhan)}</MiniLine>
-            <MiniLine label="Tên liên hệ:">{' '}</MiniLine>
+            <MiniLine label="Tên liên hệ:" strong>{value(data.tenLienHeNhan)}</MiniLine>
           </div>
         </div>
       </div>
@@ -174,7 +163,6 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           <label><span /> Huỷ</label>
         </div>
       </footer>
-      </section>
-    </div>
+    </section>
   );
 }
