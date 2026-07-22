@@ -5,7 +5,19 @@ import { extractProvinceFromAddress } from '../../../lib/vietnamProvince';
 import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
 import { joinWaybillImages, parseWaybillImages } from '../../../lib/waybillImages';
 
-const parseNumber = (value: string) => Number(String(value).replace(/[^\d.-]/g, ''));
+/** Đọc số thập phân nhập tay với cả dấu chấm hoặc dấu phẩy. */
+export function parseDecimalNumber(value: unknown): number {
+  const compact = String(value ?? '').trim().replace(/\s/g, '').replace(/[^\d,.\-+]/g, '');
+  if (!compact) return 0;
+
+  const negative = compact.startsWith('-');
+  const unsigned = compact.replace(/[+-]/g, '');
+  const decimalIndex = Math.max(unsigned.lastIndexOf('.'), unsigned.lastIndexOf(','));
+  const integerPart = (decimalIndex >= 0 ? unsigned.slice(0, decimalIndex) : unsigned).replace(/[.,]/g, '') || '0';
+  const fractionPart = decimalIndex >= 0 ? unsigned.slice(decimalIndex + 1).replace(/[.,]/g, '') : '';
+  const parsed = Number(`${negative ? '-' : ''}${integerPart}${fractionPart ? `.${fractionPart}` : ''}`);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 /** Tiền VN: chỉ lấy chữ số, bỏ dấu chấm ngàn */
 export function parseMoneyAmount(value: string): number {
@@ -30,17 +42,17 @@ export function formatDonGia(value: string): string {
 }
 
 export function calcVolumetricWeight(length: string, width: string, height: string): string {
-  const l = parseNumber(length);
-  const w = parseNumber(width);
-  const h = parseNumber(height);
+  const l = parseDecimalNumber(length);
+  const w = parseDecimalNumber(width);
+  const h = parseDecimalNumber(height);
   if (!l || !w || !h) return '';
   return formatDisplayNumber((l * w * h) / 5000, 3);
 }
 
 export function calcM3(length: string, width: string, height: string): string {
-  const l = parseNumber(length);
-  const w = parseNumber(width);
-  const h = parseNumber(height);
+  const l = parseDecimalNumber(length);
+  const w = parseDecimalNumber(width);
+  const h = parseDecimalNumber(height);
   if (!l || !w || !h) return '';
   return formatDisplayNumber((l * w * h) / 1_000_000, 3);
 }
@@ -63,10 +75,10 @@ export function normalizeBillingUnit(unit?: string | null): string {
 /** Số lượng tính cước theo ĐVT: Kg | Khối/m3 | Trọn gói | Chuyến | Lô */
 export function getBillingQuantity(form: NewOrderFormState): number {
   const unit = normalizeBillingUnit(form.donGiaDonVi).toLowerCase();
-  if (isVolumeBillingUnit(unit)) return parseNumber(form.m3);
+  if (isVolumeBillingUnit(unit)) return parseDecimalNumber(form.m3);
   if (unit === 'trọn gói' || unit === 'tron goi' || unit === 'chuyến' || unit === 'chuyen' || unit === 'lô' || unit === 'lo') return 1;
-  const kg = parseNumber(form.klKg);
-  const volKg = parseNumber(form.klQuyDoi);
+  const kg = parseDecimalNumber(form.klKg);
+  const volKg = parseDecimalNumber(form.klQuyDoi);
   return Math.max(kg, volKg, kg || volKg || 0);
 }
 
@@ -428,11 +440,11 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
   const cod = parseMoneyAmount(form.cod);
   const surcharge = parseMoneyAmount(form.giamGia);
   const thanhToan = Math.max(0, parseMoneyAmount(form.thanhToan) || freight - surcharge);
-  const weight = parseNumber(form.klKg);
-  const volumeM3 = parseNumber(form.m3);
-  const length = Math.max(0, parseNumber(form.chieuDai));
-  const width = Math.max(0, parseNumber(form.chieuRong));
-  const height = Math.max(0, parseNumber(form.chieuCao));
+  const weight = parseDecimalNumber(form.klKg);
+  const volumeM3 = parseDecimalNumber(form.m3);
+  const length = Math.max(0, parseDecimalNumber(form.chieuDai));
+  const width = Math.max(0, parseDecimalNumber(form.chieuRong));
+  const height = Math.max(0, parseDecimalNumber(form.chieuCao));
   const receiverProvince = form.huyen.trim() || extractProvinceFromAddress(form.diaChiNhan.trim());
 
   return {
@@ -447,7 +459,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     noi_den: receiverProvince || undefined,
     origin_hub_id: form.originHubId,
     dest_hub_id: form.destHubId,
-    weight: weight || parseNumber(form.klQuyDoi) || 1,
+    weight: weight || parseDecimalNumber(form.klQuyDoi) || 1,
     length,
     width,
     height,

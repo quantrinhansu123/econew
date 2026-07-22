@@ -263,7 +263,7 @@ export default function NewOrderWorkbench({
                   <CompactInput
                     value={form.m3}
                     onChange={(e) => setField('m3', e.target.value)}
-                    placeholder="Nhập m³"
+                    placeholder="VD: 4.6 hoặc 4,6"
                     inputMode="decimal"
                   />
                 </CompactField>

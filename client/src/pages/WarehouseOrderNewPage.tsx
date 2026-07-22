@@ -18,6 +18,7 @@ import {
   buildCreatePayload,
   calcVolumetricWeight,
   isPricingField,
+  parseDecimalNumber,
   validateNewOrderForm,
   waybillToBillItem,
   waybillToOrderForm,
@@ -114,7 +115,7 @@ export default function WarehouseOrderNewPage() {
 
   const volumetricWeight = useMemo(() => {
     const v = calcVolumetricWeight(form.chieuDai, form.chieuRong, form.chieuCao);
-    return Number(String(v).replace(/[^\d.-]/g, '')) || 0;
+    return parseDecimalNumber(v);
   }, [form.chieuDai, form.chieuRong, form.chieuCao]);
 
   const loadBills = useCallback(async (dateFilter = '', limit = INITIAL_BILL_LIST_LIMIT) => {

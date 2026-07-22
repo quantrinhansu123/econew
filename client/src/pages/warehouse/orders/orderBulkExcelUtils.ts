@@ -8,6 +8,7 @@ import {
   hubIdFromCode,
   isValidVnPhone,
   normalizeVnPhone,
+  parseDecimalNumber,
 } from './orderFormUtils';
 import type { HubSummary } from './types';
 import {
@@ -108,11 +109,11 @@ function resolveHubId(hubs: HubSummary[], raw: string) {
 }
 
 function hasWeightInput(values: OrderBulkRow) {
-  const kg = Number(String(values.klKg).replace(/[^\d.-]/g, ''));
-  const m3 = Number(String(values.m3).replace(/[^\d.-]/g, ''));
-  const l = Number(String(values.chieuDai).replace(/[^\d.-]/g, ''));
-  const w = Number(String(values.chieuRong).replace(/[^\d.-]/g, ''));
-  const h = Number(String(values.chieuCao).replace(/[^\d.-]/g, ''));
+  const kg = parseDecimalNumber(values.klKg);
+  const m3 = parseDecimalNumber(values.m3);
+  const l = parseDecimalNumber(values.chieuDai);
+  const w = parseDecimalNumber(values.chieuRong);
+  const h = parseDecimalNumber(values.chieuCao);
   if (kg > 0) return true;
   if (m3 > 0) return true;
   return l > 0 && w > 0 && h > 0;
@@ -233,7 +234,7 @@ export function assignBulkWaybillCodes(
 }
 
 export function buildBulkCreatePayload(form: NewOrderFormState) {
-  const volumetricWeight = Number(String(calcVolumetricWeight(form.chieuDai, form.chieuRong, form.chieuCao)).replace(/[^\d.-]/g, '')) || 0;
+  const volumetricWeight = parseDecimalNumber(calcVolumetricWeight(form.chieuDai, form.chieuRong, form.chieuCao));
   return buildCreatePayload(form, volumetricWeight);
 }
 

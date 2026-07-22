@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { emptyOrderForm } from './orderFormData';
-import { normalizeBillingUnit, validateNewOrderForm } from './orderFormUtils';
+import {
+  calcCuocChinhAmount,
+  normalizeBillingUnit,
+  parseDecimalNumber,
+  validateNewOrderForm,
+} from './orderFormUtils';
 
 const validOrderForm = () => ({
   ...emptyOrderForm(),
@@ -24,6 +29,21 @@ describe('new order defaults', () => {
   it('normalizes legacy Cân values to Kg', () => {
     expect(normalizeBillingUnit('Cân')).toBe('Kg');
     expect(normalizeBillingUnit('kg')).toBe('Kg');
+  });
+
+  it.each(['4.6', '4,6'])('reads %s as the same decimal volume', (value) => {
+    expect(parseDecimalNumber(value)).toBe(4.6);
+  });
+
+  it('calculates the same freight for dot and comma volume input', () => {
+    const base = {
+      ...emptyOrderForm(),
+      donGiaDonVi: 'Khối',
+      donGia: '1000',
+    };
+
+    expect(calcCuocChinhAmount({ ...base, m3: '4.6' })).toBe(4600);
+    expect(calcCuocChinhAmount({ ...base, m3: '4,6' })).toBe(4600);
   });
 
   it('allows an order without a customer phone', () => {
