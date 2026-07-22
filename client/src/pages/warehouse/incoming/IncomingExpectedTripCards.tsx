@@ -13,7 +13,6 @@ import {
   getTripStatusLabel,
   getTripStatusTone,
   getVehicleType,
-  getVendorName,
 } from './incomingTripUtils';
 
 const formatDateTime = (value?: string | null) => {
@@ -56,7 +55,7 @@ export function IncomingExpectedTripCards({
           {emptyText}
         </div>
       ) : (
-        <div className="custom-scrollbar grid min-h-0 flex-1 auto-rows-max gap-3 overflow-y-auto p-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="custom-scrollbar flex min-h-0 flex-1 flex-wrap content-start items-start gap-2.5 overflow-y-auto p-2.5">
           {trips.map((trip) => (
             <IncomingExpectedTripCard
               key={trip.id}
@@ -83,22 +82,19 @@ function IncomingExpectedTripCard({
   const manifestId = getManifestId(trip);
   const driverPhone = getDriverPhone(trip);
   const vehicleType = getVehicleType(trip);
-  const vendorName = getVendorName(trip);
-  const vehicleInfo = [vehicleType, vendorName].filter((value) => value !== '—').join(' · ') || '—';
 
   return (
-    <article className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
-      <div className="flex items-start justify-between gap-3 px-3.5 pb-2.5 pt-3.5">
+    <article className="flex w-full max-w-[300px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-start justify-between gap-3 px-3 pb-2 pt-3">
         <div className="min-w-0">
           <h2 className="truncate text-[14px] font-black text-primary">Chuyến #{trip.id}</h2>
-          <p className="mt-1 truncate text-[11px] font-bold text-muted-foreground">Bảng kê: {getManifestCode(trip)}</p>
         </div>
         <span className={clsx('inline-flex shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black', getTripStatusTone(trip))}>
           {getTripStatusLabel(trip)}
         </span>
       </div>
 
-      <div className="mx-3.5 grid grid-cols-2 gap-x-3 gap-y-3 rounded-xl bg-slate-50 p-3">
+      <div className="mx-3 grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-xl bg-slate-50 p-2.5">
         <TripInfo icon={<Truck size={13} />} label="BKS" value={getPlateLabel(trip)} />
         <TripInfo icon={<UserRound size={13} />} label="Tài xế" value={getDriverName(trip)} />
         <TripInfo
@@ -108,23 +104,23 @@ function IncomingExpectedTripCard({
             ? <a href={`tel:${driverPhone.replace(/[^\d+]/g, '')}`} className="text-primary hover:underline">{driverPhone}</a>
             : '—'}
         />
-        <TripInfo icon={<Truck size={13} />} label="Xe / Nhà xe" value={vehicleInfo} />
+        <TripInfo icon={<Truck size={13} />} label="Loại xe" value={vehicleType} />
         <TripInfo className="col-span-2" icon={<MapPinned size={13} />} label="Tuyến" value={getRouteLabel(trip)} />
         <TripInfo icon={<CalendarClock size={13} />} label="Khởi hành" value={formatDateTime(trip.departure_time)} />
         <TripInfo icon={<CalendarClock size={13} />} label="Dự kiến đến" value={formatDateTime(getTripScheduleTime(trip))} />
       </div>
 
-      <div className="mt-3 flex items-center gap-2 border-t border-slate-100 px-3.5 py-3">
+      <div className="mt-2.5 flex items-center gap-2 border-t border-slate-100 px-3 py-2.5">
         <button
           type="button"
           aria-label={`Xem bảng kê chuyến ${trip.id}`}
           title={manifestId ? 'Xem bảng kê' : 'Chuyến chưa có bảng kê'}
           disabled={!manifestId}
           onClick={() => onViewManifest(trip)}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Eye size={14} />
-          Xem bảng kê
+          <span className="sr-only">Xem bảng kê</span>
         </button>
         <button
           type="button"
@@ -132,11 +128,14 @@ function IncomingExpectedTripCard({
           title={manifestId ? 'In bảng kê' : 'Chuyến chưa có bảng kê'}
           disabled={!manifestId}
           onClick={() => onPrintManifest(trip)}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[11px] font-black text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Printer size={14} />
-          In bảng kê
+          <span className="sr-only">In bảng kê</span>
         </button>
+        <span className="ml-auto max-w-[165px] truncate text-[10px] font-bold text-muted-foreground" title={getManifestCode(trip)}>
+          BK: {getManifestCode(trip)}
+        </span>
       </div>
     </article>
   );

@@ -259,6 +259,7 @@ export default function WarehouseIncomingPage({
         isLoading={isLoading}
         error={exportError || error}
         updatedAt={updatedAt}
+        compact={mode === 'expected-arrivals'}
         filterFromDate={filterFromDate}
         filterToDate={filterToDate}
         onFilterFromDateChange={setFilterFromDate}
@@ -277,7 +278,7 @@ export default function WarehouseIncomingPage({
         onPaymentStatusesChange={handlePaymentStatusesChange}
         onClearFilters={handleClearFilters}
         summary={summary}
-        headerActions={
+        headerActions={mode === 'overview' ? (
           <button
             type="button"
             onClick={handleDownloadExcel}
@@ -287,7 +288,7 @@ export default function WarehouseIncomingPage({
             {isExporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
             <span className="hidden sm:inline">Xuất Excel</span>
           </button>
-        }
+        ) : undefined}
       >
         {mode === 'expected-arrivals' ? (
           <IncomingExpectedTripCards

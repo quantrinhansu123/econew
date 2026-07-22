@@ -36,6 +36,7 @@ export function IncomingTripsPageLayout({
   onClearFilters,
   summary,
   headerActions,
+  compact = false,
   children,
 }: {
   title: string;
@@ -62,9 +63,10 @@ export function IncomingTripsPageLayout({
   onClearFilters?: () => void;
   summary?: IncomingTripSummary;
   headerActions?: ReactNode;
+  compact?: boolean;
   children: ReactNode;
 }) {
-  const showFilters = summary && onFilterFromDateChange && onFilterToDateChange && enabledVendors && onVendorToggle && enabledPlates && onPlatesChange && enabledStatuses && onStatusesChange && enabledPaymentStatuses && onPaymentStatusesChange;
+  const showFilters = !compact && summary && onFilterFromDateChange && onFilterToDateChange && enabledVendors && onVendorToggle && enabledPlates && onPlatesChange && enabledStatuses && onStatusesChange && enabledPaymentStatuses && onPaymentStatusesChange;
   const hasDateFilter = Boolean(filterFromDate || filterToDate);
   const hasVendorFilter = vendorOptions.length > 0 && enabledVendors && enabledVendors.size !== vendorOptions.length;
   const hasPlateFilter = plateOptions.length > 0 && enabledPlates && enabledPlates.size !== plateOptions.length;
@@ -80,7 +82,7 @@ export function IncomingTripsPageLayout({
         </div>
       )}
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
-        <div className="border-b border-border bg-card p-3 shrink-0 space-y-2">
+        <div className={`border-b border-border bg-card shrink-0 space-y-2 ${compact ? 'p-2' : 'p-3'}`}>
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => window.history.back()}
@@ -95,7 +97,7 @@ export function IncomingTripsPageLayout({
               </div>
               <div className="min-w-0">
                 <h1 className="truncate text-[15px] font-extrabold text-foreground md:text-[17px]">{title}</h1>
-                <p className="hidden text-[12px] font-medium text-muted-foreground md:block">{subtitle}</p>
+                {!compact && <p className="hidden text-[12px] font-medium text-muted-foreground md:block">{subtitle}</p>}
               </div>
             </div>
             <div className="ml-auto flex items-center gap-2">
@@ -228,7 +230,7 @@ export function IncomingTripsPageLayout({
         {isLoading ? (
           <IncomingStateBlock icon={<Loader2 className="animate-spin" size={22} />} title="Đang tải danh sách xe" />
         ) : (
-          <div className="flex flex-1 min-h-0 w-full flex-col overflow-auto custom-scrollbar p-3 md:p-4">
+          <div className={`flex flex-1 min-h-0 w-full flex-col overflow-auto custom-scrollbar ${compact ? 'p-2' : 'p-3 md:p-4'}`}>
             {children}
           </div>
         )}
