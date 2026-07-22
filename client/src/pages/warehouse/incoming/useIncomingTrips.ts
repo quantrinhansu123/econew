@@ -19,6 +19,12 @@ const normalizeTotal = (response: IncomingTripListResponse | IncomingTrip[], fal
   Array.isArray(response) ? fallback : response.total ?? response.meta?.total ?? fallback
 );
 
+const isLegacyExpectedArrivalsQueryError = (error: unknown) => (
+  error instanceof ApiError
+  && error.status === 400
+  && /property\s+(page|limit)\s+should\s+not\s+exist/i.test(error.message)
+);
+
 export function useIncomingTrips(options?: { queryHubCode?: HubCode }) {
   const user = useMemo(getStoredAuthUser, []);
   const userHubId = user?.hub_id;
@@ -65,16 +71,32 @@ export function useIncomingTrips(options?: { queryHubCode?: HubCode }) {
     if (showLoading) setIsLoading(true);
     setError('');
     try {
+      const loadLegacy = () => {
+        const query = new URLSearchParams();
+        if (hubId) query.set('end_hub_id', hubId);
+        const suffix = query.toString();
+        return apiRequest<IncomingTripListResponse | IncomingTrip[]>(
+          `/trips/expected-arrivals${suffix ? `?${suffix}` : ''}`,
+        );
+      };
       const loadPage = async (page: number) => {
         const query = new URLSearchParams({ page: String(page), limit: '100' });
         if (hubId) query.set('end_hub_id', hubId);
         return apiRequest<IncomingTripListResponse | IncomingTrip[]>(`/trips/expected-arrivals?${query.toString()}`);
       };
-      const firstResponse = await loadPage(1);
+      let firstResponse: IncomingTripListResponse | IncomingTrip[];
+      let usesLegacyResponse = false;
+      try {
+        firstResponse = await loadPage(1);
+      } catch (err) {
+        if (!isLegacyExpectedArrivalsQueryError(err)) throw err;
+        firstResponse = await loadLegacy();
+        usesLegacyResponse = true;
+      }
       const firstPage = normalizeList(firstResponse);
       const total = normalizeTotal(firstResponse, firstPage.length);
       const pageCount = Math.max(1, Math.ceil(total / 100));
-      const remainingResponses = pageCount > 1
+      const remainingResponses = !usesLegacyResponse && pageCount > 1
         ? await Promise.all(Array.from({ length: pageCount - 1 }, (_, index) => loadPage(index + 2)))
         : [];
       setTrips([
