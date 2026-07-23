@@ -84,6 +84,17 @@
   border-bottom: var(--eco-line-strong);
 }
 
+.eco-a5-people-row,
+.eco-a5-main-row,
+.eco-a5-footer {
+  border-left: var(--eco-line-strong);
+  border-right: var(--eco-line-strong);
+}
+
+.eco-a5-footer {
+  border-bottom: var(--eco-line-strong);
+}
+
 /* Header */
 .eco-a5-header {
   min-height: 25mm;
@@ -205,19 +216,11 @@
 
 .eco-recipient-summary {
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 1.5mm;
-  align-items: baseline;
+  display: block;
 }
 
 .eco-recipient-summary .eco-mini-line {
   grid-template-columns: max-content minmax(0, 1fr);
-}
-
-.eco-recipient-summary .eco-recipient-phone {
-  grid-template-columns: max-content max-content;
-  white-space: nowrap;
 }
 
 .eco-band--left {
@@ -336,7 +339,12 @@
 }
 
 .eco-two-col-line--receiver-contact {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr) 43mm;
+}
+
+.eco-two-col-line--receiver-contact .eco-recipient-phone {
+  grid-template-columns: max-content minmax(0, 1fr);
+  white-space: nowrap;
 }
 
 .eco-two-col-line .eco-mini-line {

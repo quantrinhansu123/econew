@@ -49,10 +49,12 @@ describe('waybill invoice layout', () => {
     expect(html.match(/0969 444 816/g)).toHaveLength(1);
     expect(html.match(/0946 936 999/g)).toHaveLength(1);
     expect(html).toContain('eco-band--receiver-summary');
-    expect(html).toContain('eco-recipient-phone');
     expect(html).toContain('Tên công ty nhận:');
     expect(html).toContain('CÔNG TY NHẬN HÀNG');
+    expect(html).toContain('eco-two-col-line--receiver-contact');
+    expect(html).toContain('eco-recipient-phone');
     expect(html).toContain('Tên liên hệ:');
+    expect(html.indexOf('Số điện thoại:')).toBeGreaterThan(html.indexOf('Tên liên hệ:'));
     expect(html).toContain('Nguyễn Văn Nhận');
     expect(html.match(/0938938112/g)).toHaveLength(1);
     expect(html).not.toContain('Mã KH nhận:');

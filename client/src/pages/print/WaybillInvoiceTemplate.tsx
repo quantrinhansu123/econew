@@ -67,7 +67,6 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         <div className="eco-band eco-band--receiver-summary eco-band--top">
           <div className="eco-recipient-summary">
             <MiniLine label="Tên công ty nhận:" strong>{value(data.tenCongTyNhan)}</MiniLine>
-            <MiniLine label="Số điện thoại:" strong className="eco-recipient-phone">{value(data.sdtNhan)}</MiniLine>
           </div>
         </div>
         <div className="eco-band eco-band--sender-details eco-band--left">
@@ -97,6 +96,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         <div className="eco-band eco-band--receiver-contact">
           <div className="eco-two-col-line eco-two-col-line--receiver-contact">
             <MiniLine label="Tên liên hệ:" strong>{value(data.tenLienHeNhan)}</MiniLine>
+            <MiniLine label="Số điện thoại:" strong className="eco-recipient-phone">{value(data.sdtNhan)}</MiniLine>
           </div>
         </div>
       </div>
