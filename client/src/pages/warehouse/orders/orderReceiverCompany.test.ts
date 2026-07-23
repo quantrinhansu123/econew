@@ -3,14 +3,18 @@ import { emptyOrderForm } from './orderFormData';
 import { buildCreatePayload, waybillToOrderForm } from './orderFormUtils';
 
 describe('receiver company on order form', () => {
-  it('allows the customer sender phone to remain visually empty on legacy APIs', () => {
+  it('allows sender phone and address to remain visually empty on legacy APIs', () => {
     const payload = buildCreatePayload({
       ...emptyOrderForm(),
       dienThoaiKh: '',
+      diaChiGui: '',
+      nguoiGui: 'Tên người gửi',
     }, 0);
 
     expect(payload.sender_phone).toBeTruthy();
     expect(payload.sender_phone.trim()).toBe('');
+    expect(payload.sender_address).toBeTruthy();
+    expect(payload.sender_address.trim()).toBe('');
   });
 
   it('saves the manually entered receiver company separately from the contact', () => {
@@ -26,7 +30,7 @@ describe('receiver company on order form', () => {
     expect(payload.receiver_company_name).toBe('Công ty ABC');
     expect(payload.receiver_name).toBe('Chị Lan');
     expect(payload.receiver_phone).toBe('0938938112');
-    expect(payload.note).toContain('receiver_company_name=Công ty ABC');
+    expect(payload.note).not.toContain('receiver_company_name=');
   });
 
   it('loads the saved receiver company when editing an existing bill', () => {
@@ -41,6 +45,34 @@ describe('receiver company on order form', () => {
     expect(form.tenCongTyNhan).toBe('Công ty XYZ');
     expect(form.nguoiNhan).toBe('Anh Nam');
     expect(form.dienThoaiNhan).toBe('0901234567');
+  });
+
+  it('restores the exact user note without exposing technical metadata', () => {
+    const userNote = 'Giữ nguyên | mã=ABC\nDòng 2';
+    const payload = buildCreatePayload({
+      ...emptyOrderForm(),
+      maKh: 'ABC',
+      tenCongTyNhan: 'Công ty XYZ',
+      ghiChu: userNote,
+    }, 0);
+    const form = waybillToOrderForm({
+      id: '1',
+      receiver_company_name: 'Công ty XYZ',
+      note: payload.note,
+    }, []);
+
+    expect(form.ghiChu).toBe(userNote);
+    expect(form.ghiChu).not.toContain('receiver_company_name=');
+  });
+
+  it('hides receiver company metadata from legacy bill notes', () => {
+    const form = waybillToOrderForm({
+      id: '1',
+      note: 'receiver_company_name=Công ty cũ | Giao giờ hành chính',
+    }, []);
+
+    expect(form.tenCongTyNhan).toBe('Công ty cũ');
+    expect(form.ghiChu).toBe('Giao giờ hành chính');
   });
 
   it('stores the final delivery province separately from the destination HUB', () => {

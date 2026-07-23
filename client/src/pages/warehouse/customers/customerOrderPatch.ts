@@ -51,7 +51,15 @@ export function customerPhone(customer: CustomerRecord) {
 
 /** Địa chỉ gửi lấy riêng từ cột address, không dùng địa chỉ kho nhận. */
 export function customerSenderAddress(customer: CustomerRecord) {
-  return str(customer.address);
+  const address = str(customer.address);
+  const normalizedAddress = address.toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ');
+  const customerNames = [customer.name, customer.short_name]
+    .map((name) => str(name).toLocaleLowerCase('vi-VN').replace(/\s+/g, ' '))
+    .filter(Boolean);
+
+  // Một số hồ sơ cũ ghi nhầm tên khách vào cột địa chỉ. Coi đó là chưa có
+  // địa chỉ để nhân viên nhập tay trên đơn.
+  return customerNames.includes(normalizedAddress) ? '' : address;
 }
 
 /** Địa chỉ nhận chung chỉ gồm dữ liệu kho nhận, không dùng địa chỉ gửi. */
@@ -62,21 +70,6 @@ export function customerReceiverAddress(customer: CustomerRecord) {
 /** @deprecated Dùng customerSenderAddress hoặc customerReceiverAddress */
 export function customerAddress(customer: CustomerRecord) {
   return customerSenderAddress(customer);
-}
-
-function buildGhiChu(customer: CustomerRecord): string {
-  return [
-    customer.price_table && `Bảng giá: ${customer.price_table}`,
-    customer.mechanism && `Cơ chế: ${customer.mechanism}`,
-    customer.contract_code && customer.contract_code !== customer.code && `Mã CT: ${customer.contract_code}`,
-    customer.email && `Email: ${customer.email}`,
-    customer.tax_id && `MST: ${customer.tax_id}`,
-    customer.english_name && `Tên TA: ${customer.english_name}`,
-    customer.contact_address && `ĐChi LH: ${customer.contact_address}`,
-    customer.is_suspended || customer.status === 'SUSPENDED' ? 'KH tạm dừng' : '',
-  ]
-    .filter(Boolean)
-    .join(' | ');
 }
 
 /** Tỉnh đến là Hồ Chí Minh (HCM) */
@@ -151,7 +144,6 @@ export function customerToOrderPatch(customer: CustomerRecord): Partial<NewOrder
     nvgn: str(customer.delivery_handler) || undefined,
     buuTaLay: str(customer.manager_name) || undefined,
     giamGia: customer.discount_percent != null ? String(customer.discount_percent) : undefined,
-    ghiChu: buildGhiChu(customer) || undefined,
   };
 
   const phuongThuc = mapPhuongThuc(customer.credit_type);

@@ -91,6 +91,7 @@ function parseNoteField(note: string, key: string) {
 const NOTE_METADATA_KEYS = new Set([
   'ma_kh',
   'receiver_company_name',
+  'user_note',
   'content',
   'loai_bp',
   'dich_vu',
@@ -135,6 +136,16 @@ function stripNoteMetadata(note: string) {
     .join(' | ');
 }
 
+function userNoteFromStoredNote(note: string) {
+  const encodedUserNote = parseNoteField(note, 'user_note');
+  if (!encodedUserNote) return stripNoteMetadata(note);
+  try {
+    return decodeURIComponent(encodedUserNote);
+  } catch {
+    return encodedUserNote;
+  }
+}
+
 function formatNum(v: unknown, digits = 0) {
   const n = Number(v);
   if (!Number.isFinite(n)) return '';
@@ -169,7 +180,7 @@ export function buildWaybillPrintData(
   const receiver = parseContact(waybill.receiver_info);
   const maKh = parseNoteField(note, 'ma_kh');
   const noiDung = parseNoteField(note, 'content');
-  const ghiChu = stripNoteMetadata(note);
+  const ghiChu = userNoteFromStoredNote(note);
   const dichVu = parseNoteField(note, 'dich_vu');
   const loaiBp = parseNoteField(note, 'loai_bp');
 

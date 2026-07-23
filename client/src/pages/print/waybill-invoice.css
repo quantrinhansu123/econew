@@ -444,6 +444,7 @@
 .eco-note-cell p {
   padding: 0 1.5mm;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .eco-note-cell--contents p {

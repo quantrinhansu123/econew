@@ -182,6 +182,8 @@ function parseContactInfo(info?: string | null) {
 
 const NOTE_METADATA_KEYS = new Set([
   'ma_kh',
+  'receiver_company_name',
+  'user_note',
   'content',
   'loai_bp',
   'dich_vu',
@@ -223,6 +225,16 @@ function stripNoteMetadata(note: string) {
       return !NOTE_METADATA_KEYS.has(key);
     })
     .join(' | ');
+}
+
+function userNoteFromStoredNote(note: string) {
+  const encodedUserNote = parseNoteField(note, 'user_note');
+  if (!encodedUserNote) return stripNoteMetadata(note);
+  try {
+    return decodeURIComponent(encodedUserNote);
+  } catch {
+    return encodedUserNote;
+  }
 }
 
 const hubCodeLabel = (hub?: HubSummary | null, fallbackId?: string | number | null) =>
@@ -331,7 +343,7 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     giamGia: formatDonGia(String(parseNoteField(note, 'phu_phi') || parseNoteField(note, 'giamGia') || '0')),
     phuongThuc: phuongThucFromWaybill(waybill),
     noiDung: parseNoteField(note, 'content'),
-    ghiChu: stripNoteMetadata(note),
+    ghiChu: userNoteFromStoredNote(note),
     billImages: parseWaybillImages(waybill.delivery_photo_url),
     xeLay: String((waybill as { xe_lay?: string }).xe_lay ?? ''),
     buuTaLay: parseNoteField(note, 'buu_ta_lay'),
@@ -453,7 +465,9 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     // API Render cũ còn IsNotEmpty; một khoảng trắng giữ tương thích và được
     // backend mới trim thành null. Khi đọc lại form cũng trim nên ô vẫn trống.
     sender_phone: normalizeVnPhone(form.dienThoaiKh.trim()) || ' ',
-    sender_address: form.diaChiGui.trim() || form.nguoiGui.trim(),
+    // Giữ trống khi hồ sơ khách không có địa chỉ. Khoảng trắng giúp API Render
+    // cũ vượt IsNotEmpty; backend mới trim thành null và form/in bill vẫn trống.
+    sender_address: form.diaChiGui.trim() || ' ',
     receiver_name: form.nguoiNhan.trim(),
     receiver_company_name: form.tenCongTyNhan.trim() || undefined,
     receiver_phone: normalizeVnPhone(form.dienThoaiNhan.trim()),
@@ -477,7 +491,6 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     noi_dung: form.noiDung.trim() || undefined,
     note: [
       form.maKh && `ma_kh=${form.maKh}`,
-      form.tenCongTyNhan.trim() && `receiver_company_name=${form.tenCongTyNhan.trim()}`,
       form.noiDung && `content=${form.noiDung}`,
       form.loaiBp && `loai_bp=${form.loaiBp}`,
       form.dichVu && `dich_vu=${form.dichVu}`,
@@ -508,7 +521,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
       `dimensions_cm=${length}x${width}x${height}`,
       `volumetric_weight=${volumetricWeight}`,
       `the_tich_m3=${volumeM3}`,
-      form.ghiChu,
+      form.ghiChu && `user_note=${encodeURIComponent(form.ghiChu)}`,
     ]
       .filter(Boolean)
       .join(' | '),

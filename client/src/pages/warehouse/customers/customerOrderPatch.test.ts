@@ -71,6 +71,30 @@ describe('customer order autofill', () => {
     expect(patch.dienThoaiNhan).toBeUndefined();
   });
 
+  it('leaves sender address blank when a legacy profile repeats the customer name', () => {
+    const patch = customerToOrderPatch({
+      ...customer,
+      name: 'A Đào',
+      short_name: 'A Đào',
+      address: '  A Đào  ',
+    });
+
+    expect(patch.nguoiGui).toBe('A Đào');
+    expect(patch.diaChiGui).toBe('');
+  });
+
+  it('uses a real sender address and never writes customer metadata into order notes', () => {
+    const patch = customerToOrderPatch({
+      ...customer,
+      address: '10 Nguyễn Huệ, Hà Nội',
+      price_table: 'Tiêu chuẩn 72h',
+      email: 'khach@example.com',
+    });
+
+    expect(patch.diaChiGui).toBe('10 Nguyễn Huệ, Hà Nội');
+    expect(patch.ghiChu).toBeUndefined();
+  });
+
   it('does not derive order province or HUB destination from the customer profile', () => {
     const patch = customerToOrderPatch(customer);
 

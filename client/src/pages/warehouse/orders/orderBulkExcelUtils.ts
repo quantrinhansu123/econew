@@ -258,7 +258,7 @@ export function bulkRowToOrderForm(
     maKh: values.maKh || defaults.maKh || '',
     dienThoaiKh: values.dienThoaiKh || defaults.dienThoaiKh || '',
     nguoiGui: values.nguoiGui,
-    diaChiGui: values.diaChiGui || values.nguoiGui,
+    diaChiGui: values.diaChiGui || defaults.diaChiGui || '',
     nguoiNhan: values.nguoiNhan,
     dienThoaiNhan: values.dienThoaiNhan ? normalizeVnPhone(values.dienThoaiNhan) : '',
     diaChiNhan: values.diaChiNhan,

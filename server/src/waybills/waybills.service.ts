@@ -140,7 +140,7 @@ export class WaybillsService {
     Object.assign(record, {
       sender_name: dto.sender_name,
       sender_phone: dto.sender_phone?.trim() || null,
-      sender_address: dto.sender_address,
+      sender_address: dto.sender_address?.trim() || null,
       receiver_company_name: dto.receiver_company_name?.trim() || null,
       receiver_name: dto.receiver_name,
       receiver_phone: dto.receiver_phone,

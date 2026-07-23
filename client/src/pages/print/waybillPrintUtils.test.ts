@@ -58,4 +58,26 @@ describe('buildWaybillPrintData receiver fields', () => {
     expect(data.quanHuyenNhan).toBe('');
     expect(data.tinhNhan).toBe('Hồ Chí Minh');
   });
+
+  it('prints the exact user note and hides technical metadata', () => {
+    const userNote = 'Gọi trước | mã=ABC\nGiao cửa sau';
+    const data = buildWaybillPrintData(waybill({
+      note: [
+        'ma_kh=ABC',
+        'receiver_company_name=Công ty cũ',
+        `user_note=${encodeURIComponent(userNote)}`,
+      ].join(' | '),
+    }));
+
+    expect(data.ghiChu).toBe(userNote);
+    expect(data.ghiChu).not.toContain('receiver_company_name=');
+  });
+
+  it('keeps handwritten notes on legacy bills while stripping company metadata', () => {
+    const data = buildWaybillPrintData(waybill({
+      note: 'receiver_company_name=Công ty cũ | Giao giờ hành chính',
+    }));
+
+    expect(data.ghiChu).toBe('Giao giờ hành chính');
+  });
 });
