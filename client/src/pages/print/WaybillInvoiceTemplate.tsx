@@ -64,7 +64,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           <MiniLine label="Mã KH gửi:" strong>{value(data.maKhGui)}</MiniLine>
           <MiniLine label="Mã BC gửi:" strong>{value(data.maBcGui)}</MiniLine>
         </div>
-        <div className="eco-band eco-band--receiver-summary eco-band--top">
+        <div className="eco-band eco-band--receiver-summary">
           <div className="eco-recipient-summary">
             <MiniLine label="Tên công ty nhận:" strong>{value(data.tenCongTyNhan)}</MiniLine>
           </div>
