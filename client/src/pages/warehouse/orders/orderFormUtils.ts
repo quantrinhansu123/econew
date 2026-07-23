@@ -450,7 +450,9 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
   return {
     waybill_code: form.soBill.trim().toUpperCase(),
     sender_name: form.nguoiGui.trim(),
-    sender_phone: normalizeVnPhone(form.dienThoaiKh.trim()),
+    // API Render cũ còn IsNotEmpty; một khoảng trắng giữ tương thích và được
+    // backend mới trim thành null. Khi đọc lại form cũng trim nên ô vẫn trống.
+    sender_phone: normalizeVnPhone(form.dienThoaiKh.trim()) || ' ',
     sender_address: form.diaChiGui.trim() || form.nguoiGui.trim(),
     receiver_name: form.nguoiNhan.trim(),
     receiver_company_name: form.tenCongTyNhan.trim() || undefined,

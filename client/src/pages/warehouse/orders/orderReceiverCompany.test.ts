@@ -3,6 +3,16 @@ import { emptyOrderForm } from './orderFormData';
 import { buildCreatePayload, waybillToOrderForm } from './orderFormUtils';
 
 describe('receiver company on order form', () => {
+  it('allows the customer sender phone to remain visually empty on legacy APIs', () => {
+    const payload = buildCreatePayload({
+      ...emptyOrderForm(),
+      dienThoaiKh: '',
+    }, 0);
+
+    expect(payload.sender_phone).toBeTruthy();
+    expect(payload.sender_phone.trim()).toBe('');
+  });
+
   it('saves the manually entered receiver company separately from the contact', () => {
     const form = {
       ...emptyOrderForm(),
