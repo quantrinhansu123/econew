@@ -7,10 +7,11 @@ interface Props {
 
 export default function InventoryStockListTemplate({ data }: Props) {
   const { columns, rows, totals } = data;
-  const numericCols = new Set(['package_count', 'weight', 'volume', 'cod_amount', 'unit_price', 'transit_fee', 'thu_ho_khach', 'surcharge', 'total_amount']);
+  const numericCols = new Set(['package_count', 'weight', 'volume', 'cod_amount', 'unit_price', 'transit_fee', 'thu_ho_khach', 'surcharge', 'total_amount', 'freight']);
   const visibleIds = new Set(columns.map((col) => col.id));
   const totalLabelCol =
-    columns.find((col) => col.id === 'order_code')?.id
+    columns.find((col) => col.id === 'customer_name')?.id
+    ?? columns.find((col) => col.id === 'order_code')?.id
     ?? columns.find((col) => col.id === 'waybill_code')?.id
     ?? columns.find((col) => col.id !== 'stack_position')?.id;
 

@@ -4,6 +4,7 @@ import {
   ALL_ORDERS_DISALLOWED_COLUMN_IDS,
   ALL_ORDERS_FINANCIAL_COLUMN_IDS,
   ALL_ORDERS_SENDER_COLUMN_IDS,
+  INVENTORY_FIXED_COLUMN_IDS,
   INVENTORY_COLUMNS,
   resolveAllOrdersColumnLabel,
 } from './inventoryColumns';
@@ -21,14 +22,25 @@ export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPrici
   if (!isOpen) return null;
 
   const toggle = (id: InventoryColumnId) => {
-    if (id === 'waybill_code' || id === 'actions' || id === 'stt') return;
+    if (
+      id === 'actions'
+      || id === 'stt'
+      || (mode === 'inventory' && INVENTORY_FIXED_COLUMN_IDS.includes(id))
+      || (mode === 'all-orders' && id === 'waybill_code')
+    ) return;
     const set = new Set(visibleIds);
     if (set.has(id)) set.delete(id);
     else set.add(id);
     onChange(Array.from(set));
   };
 
-  const options = INVENTORY_COLUMNS.filter((col) => {
+  const orderedInventoryColumns = [
+    ...INVENTORY_FIXED_COLUMN_IDS
+      .map((id) => INVENTORY_COLUMNS.find((column) => column.id === id))
+      .filter((column): column is (typeof INVENTORY_COLUMNS)[number] => Boolean(column)),
+    ...INVENTORY_COLUMNS.filter((column) => !INVENTORY_FIXED_COLUMN_IDS.includes(column.id)),
+  ];
+  const options = orderedInventoryColumns.filter((col) => {
     if (col.id === 'actions' || col.id === 'stt') return false;
     if (mode === 'all-orders') {
       if (ALL_ORDERS_DISALLOWED_COLUMN_IDS.includes(col.id)) return false;
@@ -54,7 +66,8 @@ export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPrici
           </button>
         </div>
         <p className="mb-3 text-[12px] font-medium text-muted-foreground">
-          Tick chọn cột cần hiện trên bảng và bản in A4. Cột cước chỉ hiện với quyền quản lý.
+          Cột cố định luôn hiển thị. Các cột khác chỉ hiện trên bảng và bản in A4 khi được tick.
+          Cột cước chỉ hiện với quyền quản lý.
         </p>
         <div className="max-h-[50vh] space-y-2 overflow-y-auto custom-scrollbar">
           {options.map((col) => (
@@ -65,13 +78,22 @@ export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPrici
               <input
                 type="checkbox"
                 checked={visibleIds.includes(col.id)}
-                disabled={col.id === 'waybill_code'}
+                disabled={
+                  mode === 'inventory'
+                    ? INVENTORY_FIXED_COLUMN_IDS.includes(col.id)
+                    : col.id === 'waybill_code'
+                }
                 onChange={() => toggle(col.id)}
                 className="h-4 w-4 rounded border-border text-primary"
               />
-              <span className="text-[13px] font-bold text-foreground">
+              <span className="min-w-0 flex-1 text-[13px] font-bold text-foreground">
                 {mode === 'all-orders' ? resolveAllOrdersColumnLabel(col.id) : col.label}
               </span>
+              {mode === 'inventory' && INVENTORY_FIXED_COLUMN_IDS.includes(col.id) && (
+                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                  Cố định
+                </span>
+              )}
             </label>
           ))}
         </div>

@@ -3,7 +3,6 @@ import {
   INVENTORY_COLUMNS,
   computeGrandTotals,
   formatInventoryDate,
-  loadVisibleColumnIds,
   resolveBillingQtyDetail,
   resolveCompletionDate,
   resolveCongSg,
@@ -25,6 +24,7 @@ import {
   resolvePrintColumnIds,
   resolveOrderStatusBadge,
   resolveSurcharge,
+  resolveUserNote,
   resolveVolumeM3,
   resolveWeightKg,
 } from '../warehouse/inventory/inventoryColumns';
@@ -121,6 +121,8 @@ export function inventoryPrintCellValue(
           : '';
     case 'customer_payment_note':
       return waybill.customer_payment_note || '';
+    case 'user_note':
+      return resolveUserNote(waybill);
     case 'route': {
       const route = resolveRoute(waybill);
       return route === '—' ? '' : route;
@@ -158,7 +160,7 @@ export function inventoryPrintCellValue(
     case 'payment_type':
       return String(waybill.payment_type || '');
     case 'cod_amount':
-      return formatMoney(Number(waybill.cod_amount || 0));
+      return formatMoney(Number(waybill.allocated_cod ?? waybill.cod_amount ?? 0));
     case 'priority':
       return String(waybill.priority || '');
     default:
@@ -202,11 +204,12 @@ export function mapWaybillsToPrintRows(
   waybills: WaybillInventoryItem[],
   showPricing: boolean,
   visibleColumnIds: InventoryColumnId[],
+  columnLabels?: Partial<Record<InventoryColumnId, string>>,
 ): InventoryPrintPayload {
   const printColumnIds = resolvePrintColumnIds(visibleColumnIds);
   const columns: InventoryPrintColumn[] = printColumnIds.map((id) => ({
     id,
-    label: INVENTORY_COLUMNS.find((c) => c.id === id)?.label ?? id,
+    label: columnLabels?.[id] ?? INVENTORY_COLUMNS.find((c) => c.id === id)?.label ?? id,
   }));
 
   const rows = waybills.map((waybill, index) => {
@@ -257,10 +260,9 @@ export function loadInventoryPrintPayload(): InventoryPrintPayload | null {
   }
 }
 
-/** Áp lại bộ cột đang ẩn/hiện từ localStorage — tránh bản in còn cột đã tắt. */
+/** Chỉ lọc các cột hợp lệ trong chính payload; không tự thêm lại cột người dùng đã ẩn. */
 export function reconcilePrintPayload(payload: InventoryPrintPayload): InventoryPrintPayload {
-  const printColumnIds = resolvePrintColumnIds(loadVisibleColumnIds(payload.showPricing));
-  if (!printColumnIds.length) return payload;
+  const printColumnIds = resolvePrintColumnIds(payload.columns.map((column) => column.id));
 
   const columns: InventoryPrintColumn[] = printColumnIds.map((id) => ({
     id,

@@ -115,6 +115,7 @@ const EXCEL_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>> = {
   payment_method: 22,
   customer_payment_status: 19,
   customer_payment_note: 30,
+  user_note: 30,
   route: 16,
   ma_kh: 16,
   receiver_address: 42,
@@ -468,7 +469,11 @@ function inventoryExcelCellValue(
     case 'freight':
       return showPricing ? resolveFreight(waybill) : '';
     case 'cod_amount':
-      return finiteNumber(waybill.cod_amount);
+      return finiteNumber(
+        variant === 'all-orders'
+          ? waybill.cod_amount
+          : waybill.allocated_cod ?? waybill.cod_amount,
+      );
     default:
       return inventoryPrintCellValue(waybill, colId, showPricing, rowIndex);
   }
@@ -490,7 +495,8 @@ function makeTotalRow(
     ? computeBillTotals(waybills)
     : computeGrandTotals(waybills, false);
   const totalLabelCol =
-    printColumnIds.find((id) => id === 'waybill_code')
+    printColumnIds.find((id) => id === 'customer_name')
+    ?? printColumnIds.find((id) => id === 'waybill_code')
     ?? printColumnIds.find((id) => id === 'order_code')
     ?? printColumnIds[0];
   const totalAmount = waybills.reduce((sum, waybill) => sum + resolveTotalAmount(waybill), 0);

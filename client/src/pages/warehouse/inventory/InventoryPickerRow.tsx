@@ -4,6 +4,7 @@ import type { InventoryColumnDef, InventoryColumnId } from './inventoryColumns';
 import {
   getStorageAgeRowClass,
   formatInventoryDate,
+  resolveCongSg,
   resolveFreight,
   resolveCustomerName,
   resolveServiceType,
@@ -15,8 +16,11 @@ import {
   resolveMaKh,
   resolveNoiDen,
   resolveReceiverAddress,
+  resolveReceiverDistrict,
   resolveReceiverPhone,
+  resolveReceiverWard,
   resolveRoute,
+  resolveUserNote,
   resolveVolumeM3,
   resolveWeightKg,
 } from './inventoryColumns';
@@ -51,6 +55,8 @@ function renderCell(
       return <td className={`${cellClass} font-extrabold text-primary`}>{displayCode(waybill)}</td>;
     case 'customer_name':
       return <td className={cellClass}>{resolveCustomerName(waybill)}</td>;
+    case 'cong_sg':
+      return <td className={cellClass}>{resolveCongSg(waybill)}</td>;
     case 'bill_info':
       return <td className={cellClass}>{waybill.noi_dung || waybill.mat_hang || '—'}</td>;
     case 'service_type':
@@ -107,12 +113,18 @@ function renderCell(
       return <td className={cellClass}>{waybill.customer_payment_status === 'PAID' ? 'Đã TT' : waybill.customer_payment_status === 'SENT_STATEMENT' ? 'Đã gửi bảng kê' : '—'}</td>;
     case 'customer_payment_note':
       return <td className={cellClass}>{waybill.customer_payment_note || '—'}</td>;
+    case 'user_note':
+      return <td className={cellClass}>{resolveUserNote(waybill) || '—'}</td>;
     case 'route':
       return <td className={cellClass}>{resolveRoute(waybill)}</td>;
     case 'ma_kh':
       return <td className={cellClass}>{resolveMaKh(waybill)}</td>;
     case 'receiver_address':
       return <td className={cellClass}>{resolveReceiverAddress(waybill)}</td>;
+    case 'receiver_district':
+      return <td className={cellClass}>{resolveReceiverDistrict(waybill) || '—'}</td>;
+    case 'receiver_ward':
+      return <td className={cellClass}>{resolveReceiverWard(waybill) || '—'}</td>;
     case 'package_count':
       return (
         <td className={`${cellClass} font-medium`}>

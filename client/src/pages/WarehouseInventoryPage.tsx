@@ -27,6 +27,7 @@ import {
   getStorageAgeRowClass,
   loadVisibleColumnIds,
   loadAllOrdersVisibleColumnIds,
+  normalizeInventoryVisibleColumnIds,
   resolveVisibleColumnViews,
   resolveCongSg,
   resolvePackageCountSl,
@@ -50,6 +51,7 @@ import {
   resolveTotalAmount,
   resolveBillingQtyDetail,
   resolveOrderStatusBadge,
+  resolveUserNote,
   saveVisibleColumnIds,
   type InventoryColumnId,
   type InventoryColumnView,
@@ -469,6 +471,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       waybills,
       canViewPricing,
       visibleColumns.map((col) => col.id),
+      Object.fromEntries(visibleColumns.map((col) => [col.id, col.label])),
     );
     const pageNote =
       total > waybills.length
@@ -814,7 +817,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                     {selectionEnabled && <td className="border-t border-border px-2 py-2.5 border-r" />}
                     {visibleColumns.map((col) => (
                       <td key={col.id} className="border-t border-border px-4 py-2.5 border-r last:border-r-0">
-                        {col.id === 'order_code' ? 'Tổng cộng' : ''}
+                        {col.id === 'customer_name' ? 'Tổng cộng' : ''}
                         {col.id === 'package_count' ? grandTotals.package_count : ''}
                         {col.id === 'weight' ? `${grandTotals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg` : ''}
                         {col.id === 'volume' ? `${grandTotals.volume_m3.toFixed(2)} m³` : ''}
@@ -860,8 +863,9 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         visibleIds={visibleColumnIds}
         canViewPricing={canViewPricing}
         onChange={(ids) => {
-          setVisibleColumnIds(ids);
-          saveVisibleColumnIds(ids);
+          const normalizedIds = normalizeInventoryVisibleColumnIds(ids, canViewPricing);
+          setVisibleColumnIds(normalizedIds);
+          saveVisibleColumnIds(normalizedIds);
         }}
         onClose={() => setIsColumnPickerOpen(false)}
       />
@@ -985,7 +989,11 @@ function InventoryRow({
       case 'cong_sg':
         return <td className={cellClass}>{resolveCongSg(waybill)}</td>;
       case 'stack_position':
-        return <td className={`${cellClass} min-w-[72px] text-muted-foreground`}>&nbsp;</td>;
+        return (
+          <td className={`${cellClass} min-w-[72px] text-muted-foreground`}>
+            {waybill.loading_position ? String(waybill.loading_position) : '—'}
+          </td>
+        );
       case 'order_code':
         return <td className={`${cellClass} font-bold text-violet-800`}>{waybill.order_code || '—'}</td>;
       case 'waybill_code':
@@ -1127,6 +1135,8 @@ function InventoryRow({
       }
       case 'customer_payment_note':
         return <td className={clsx(cellClass, isAllOrders && 'max-w-[120px]')}>{waybill.customer_payment_note || '—'}</td>;
+      case 'user_note':
+        return <td className={cellClass}>{resolveUserNote(waybill) || '—'}</td>;
       case 'route':
         return (
           <td className="overflow-visible px-4 py-3 border-r border-border">
@@ -1336,7 +1346,7 @@ function InventoryCard({ waybill, isAllOrders, canUpdate, canEdit, canDelete, op
             compact
           />
         } />
-        <MobileInfo label="COD" value={displayValue(waybill.cod_amount, ' đ')} />
+        <MobileInfo label="COD" value={displayValue(waybill.allocated_cod ?? waybill.cod_amount, ' đ')} />
         <MobileInfo label="Số kiện" value={
           waybill.remaining_packages != null
             ? `${waybill.remaining_packages} / ${waybill.order_total_packages ?? waybill.package_count ?? waybill.remaining_packages} (còn chia)`

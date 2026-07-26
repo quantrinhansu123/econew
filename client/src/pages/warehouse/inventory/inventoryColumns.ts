@@ -90,6 +90,7 @@ export const INVENTORY_PRINT_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, nu
   payment_method: 5.5,
   customer_payment_status: 5.5,
   customer_payment_note: 6,
+  user_note: 8,
   route: 5,
   ma_kh: 5,
   receiver_address: 17,
@@ -139,6 +140,7 @@ export type InventoryColumnId =
   | 'payment_method'
   | 'customer_payment_status'
   | 'customer_payment_note'
+  | 'user_note'
   | 'route'
   | 'ma_kh'
   | 'receiver_address'
@@ -169,50 +171,70 @@ export interface InventoryColumnDef {
 
 export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'stt', label: 'STT', defaultVisible: false },
-  { id: 'cong_sg', label: 'Cộng SG', defaultVisible: false },
-  { id: 'stack_position', label: 'Vị trí Xếp hàng', defaultVisible: true },
-  { id: 'order_code', label: 'Mã đơn hàng', defaultVisible: true },
+  { id: 'cong_sg', label: 'Nội dung hàng', defaultVisible: true },
+  { id: 'stack_position', label: 'Vị trí', defaultVisible: true },
+  { id: 'order_code', label: 'Mã đơn hàng', defaultVisible: false },
   { id: 'customer_name', label: 'Tên khách', defaultVisible: true },
-  { id: 'waybill_code', label: 'Mã vận đơn', defaultVisible: true },
-  { id: 'bill_info', label: 'Bill / Cộng SG', defaultVisible: true },
-  { id: 'service_type', label: 'Dịch vụ', defaultVisible: true },
-  { id: 'trip_label', label: 'Phân xe', defaultVisible: true },
-  { id: 'loaded_at', label: 'Ngày bốc hàng', defaultVisible: true },
+  { id: 'waybill_code', label: 'Mã bill', defaultVisible: true },
+  { id: 'bill_info', label: 'Bill / Nội dung hàng', defaultVisible: false },
+  { id: 'service_type', label: 'Dịch vụ', defaultVisible: false },
+  { id: 'trip_label', label: 'Phân xe', defaultVisible: false },
+  { id: 'loaded_at', label: 'Ngày bốc', defaultVisible: true },
   { id: 'received_at', label: 'Ngày nhận đơn', defaultVisible: false },
-  { id: 'noi_den', label: 'Nơi đến', defaultVisible: true },
-  { id: 'order_status', label: 'Trạng thái đơn', defaultVisible: true },
-  { id: 'billing_unit', label: 'ĐVT', defaultVisible: true },
-  { id: 'billing_qty_detail', label: 'Kg / khối', defaultVisible: true, align: 'right' },
-  { id: 'unit_price', label: 'Đơn giá', defaultVisible: true, align: 'right' },
-  { id: 'surcharge', label: 'Phụ phí', defaultVisible: true, managerOnly: true, align: 'right' },
-  { id: 'transit_fee', label: 'Trung chuyển', defaultVisible: true, align: 'right' },
-  { id: 'total_amount', label: 'Thành tiền', defaultVisible: true, managerOnly: true, align: 'right' },
-  { id: 'thu_ho_khach', label: 'Thu hộ khách', defaultVisible: true, align: 'right' },
-  { id: 'payment_method', label: 'Hình thức TT', defaultVisible: true },
-  { id: 'customer_payment_status', label: 'Tình trạng TT', defaultVisible: true },
+  { id: 'noi_den', label: 'Tỉnh đến', defaultVisible: true },
+  { id: 'order_status', label: 'Trạng thái đơn', defaultVisible: false },
+  { id: 'billing_unit', label: 'ĐVT', defaultVisible: false },
+  { id: 'billing_qty_detail', label: 'Kg / khối', defaultVisible: false, align: 'right' },
+  { id: 'unit_price', label: 'Đơn giá', defaultVisible: false, align: 'right' },
+  { id: 'surcharge', label: 'Phụ phí', defaultVisible: false, managerOnly: true, align: 'right' },
+  { id: 'transit_fee', label: 'Trung chuyển', defaultVisible: false, align: 'right' },
+  { id: 'total_amount', label: 'Thành tiền', defaultVisible: false, managerOnly: true, align: 'right' },
+  { id: 'thu_ho_khach', label: 'Thu hộ khách', defaultVisible: false, align: 'right' },
+  { id: 'payment_method', label: 'Hình thức TT', defaultVisible: false },
+  { id: 'customer_payment_status', label: 'Tình trạng TT', defaultVisible: false },
   { id: 'customer_payment_note', label: 'Ghi chú TT', defaultVisible: false },
-  { id: 'route', label: 'Tuyến', defaultVisible: true },
-  { id: 'ma_kh', label: 'Mã KH', defaultVisible: true },
-  { id: 'receiver_address', label: 'Địa chỉ nhận', defaultVisible: true },
-  { id: 'bill_images', label: 'Ảnh bill', defaultVisible: true },
-  { id: 'receiver_district', label: 'Quận/Huyện', defaultVisible: true },
-  { id: 'receiver_ward', label: 'Phường/Xã', defaultVisible: true },
-  { id: 'receiver_phone', label: 'SĐT người nhận', defaultVisible: true },
-  { id: 'package_count', label: 'Kiện còn / đơn', defaultVisible: true, align: 'right' },
-  { id: 'weight', label: 'Trọng lượng (kg)', defaultVisible: true, align: 'right' },
-  { id: 'volume', label: 'Thể tích (m³)', defaultVisible: true, align: 'right' },
+  { id: 'user_note', label: 'Ghi chú', defaultVisible: true },
+  { id: 'route', label: 'Tuyến', defaultVisible: false },
+  { id: 'ma_kh', label: 'Mã KH', defaultVisible: false },
+  { id: 'receiver_address', label: 'Địa chỉ nhận', defaultVisible: false },
+  { id: 'bill_images', label: 'Ảnh bill', defaultVisible: false },
+  { id: 'receiver_district', label: 'Quận', defaultVisible: true },
+  { id: 'receiver_ward', label: 'Phường', defaultVisible: true },
+  { id: 'receiver_phone', label: 'SĐT người nhận', defaultVisible: false },
+  { id: 'package_count', label: 'SL', defaultVisible: true, align: 'right' },
+  { id: 'weight', label: 'Số kg', defaultVisible: true, align: 'right' },
+  { id: 'volume', label: 'Số m3', defaultVisible: true, align: 'right' },
   { id: 'freight', label: 'Cước phí', defaultVisible: false, managerOnly: true, align: 'right' },
   { id: 'sender_info', label: 'Người gửi', defaultVisible: false },
-  { id: 'receiver_info', label: 'Người nhận', defaultVisible: false },
+  { id: 'receiver_info', label: 'Ng nhận', defaultVisible: true },
   { id: 'current_hub', label: 'Hub hiện tại', defaultVisible: false },
-  { id: 'dest_hub', label: 'Hub đến', defaultVisible: false },
+  { id: 'dest_hub', label: 'Hub đến', defaultVisible: true },
   { id: 'payment_type', label: 'TT', defaultVisible: false },
   { id: 'cod_amount', label: 'COD', defaultVisible: true, align: 'right' },
-  { id: 'priority', label: 'Ưu tiên', defaultVisible: true },
+  { id: 'priority', label: 'Ưu tiên', defaultVisible: false },
   { id: 'actions', label: 'Thao tác', defaultVisible: true },
 ];
 
-export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v7';
+export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v8';
+
+/** Các cột luôn hiện trên danh sách tồn, theo đúng thứ tự biểu mẫu vận hành. */
+export const INVENTORY_FIXED_COLUMN_IDS: InventoryColumnId[] = [
+  'stack_position',
+  'loaded_at',
+  'noi_den',
+  'customer_name',
+  'cong_sg',
+  'dest_hub',
+  'package_count',
+  'receiver_info',
+  'receiver_ward',
+  'receiver_district',
+  'cod_amount',
+  'waybill_code',
+  'user_note',
+  'weight',
+  'volume',
+];
 
 /** Không dùng trên danh sách đơn — thay bằng Bill + Cộng SG riêng */
 export const ALL_ORDERS_DISALLOWED_COLUMN_IDS: InventoryColumnId[] = [
@@ -305,13 +327,14 @@ export function resolveVisibleColumnViews(
   variant: 'split-pending' | 'all-orders',
   canViewPricing: boolean,
 ): InventoryColumnView[] {
-  const ids = variant === 'all-orders' ? getAllOrdersFixedColumnIds() : visibleColumnIds;
+  const ids = variant === 'all-orders'
+    ? getAllOrdersFixedColumnIds()
+    : normalizeInventoryVisibleColumnIds(visibleColumnIds, canViewPricing);
   return ids
     .map((id) => {
       const base = INVENTORY_COLUMNS.find((col) => col.id === id);
       if (!base) return null;
       if (base.managerOnly && !canViewPricing && variant !== 'all-orders') return null;
-      if (variant === 'split-pending' && base.id === 'freight') return null;
       if (variant !== 'all-orders') return base;
       const headerClass =
         id === 'total_amount'
@@ -344,11 +367,32 @@ export function saveAllOrdersVisibleColumnIds(ids: InventoryColumnId[]) {
 }
 
 export function getDefaultVisibleColumnIds(canViewPricing: boolean): InventoryColumnId[] {
-  return INVENTORY_COLUMNS.filter((col) => {
-    if (col.id === 'actions') return true;
-    if (col.managerOnly && !canViewPricing) return false;
-    return col.defaultVisible;
-  }).map((col) => col.id);
+  return normalizeInventoryVisibleColumnIds([], canViewPricing);
+}
+
+export function normalizeInventoryVisibleColumnIds(
+  ids: InventoryColumnId[],
+  canViewPricing: boolean,
+): InventoryColumnId[] {
+  const allowed = new Set(
+    INVENTORY_COLUMNS
+      .filter((column) => !column.managerOnly || canViewPricing)
+      .map((column) => column.id),
+  );
+  const selected = new Set(ids.filter((id) => allowed.has(id)));
+  const fixed = INVENTORY_FIXED_COLUMN_IDS.filter((id) => allowed.has(id));
+  const fixedSet = new Set(fixed);
+  const optional = INVENTORY_COLUMNS
+    .filter((column) => (
+      column.id !== 'actions'
+      && column.id !== 'stt'
+      && !fixedSet.has(column.id)
+      && selected.has(column.id)
+      && allowed.has(column.id)
+    ))
+    .map((column) => column.id);
+
+  return [...fixed, ...optional, 'actions'];
 }
 
 export function loadVisibleColumnIds(canViewPricing: boolean): InventoryColumnId[] {
@@ -357,25 +401,7 @@ export function loadVisibleColumnIds(canViewPricing: boolean): InventoryColumnId
   if (!raw) return getDefaultVisibleColumnIds(canViewPricing);
   try {
     const parsed = JSON.parse(raw) as InventoryColumnId[];
-    const allowed = new Set(
-      INVENTORY_COLUMNS.filter((c) => !c.managerOnly || canViewPricing).map((c) => c.id),
-    );
-    const filtered = parsed.filter((id) => allowed.has(id));
-    if (!filtered.includes('stack_position')) filtered.unshift('stack_position');
-    if (!filtered.includes('order_code')) {
-      const stackIdx = filtered.indexOf('stack_position');
-      filtered.splice(stackIdx >= 0 ? stackIdx + 1 : 0, 0, 'order_code');
-    }
-    if (!filtered.includes('waybill_code')) {
-      const orderIdx = filtered.indexOf('order_code');
-      filtered.splice(orderIdx + 1, 0, 'waybill_code');
-    }
-    if (!filtered.includes('actions')) filtered.push('actions');
-    if (!filtered.includes('priority')) {
-      const actionsIdx = filtered.indexOf('actions');
-      filtered.splice(actionsIdx >= 0 ? actionsIdx : filtered.length, 0, 'priority');
-    }
-    return filtered.length ? filtered : getDefaultVisibleColumnIds(canViewPricing);
+    return normalizeInventoryVisibleColumnIds(parsed, canViewPricing);
   } catch {
     return getDefaultVisibleColumnIds(canViewPricing);
   }
@@ -385,11 +411,11 @@ export function saveVisibleColumnIds(ids: InventoryColumnId[]) {
   localStorage.setItem(INVENTORY_COLUMN_STORAGE_KEY, JSON.stringify(ids));
 }
 
-/** Cột in A4 — cùng thứ tự & bộ cột như bảng màn hình (trừ Thao tác, Cước phí). */
+/** Cột in A4 — cùng thứ tự & bộ cột như bảng màn hình, trừ cột thao tác. */
 export function resolvePrintColumnIds(visibleColumnIds: InventoryColumnId[]): InventoryColumnId[] {
   const printable = new Set(
     INVENTORY_COLUMNS
-      .filter((col) => col.id !== 'actions' && col.id !== 'freight')
+      .filter((col) => col.id !== 'actions')
       .map((col) => col.id),
   );
   return visibleColumnIds.filter(
@@ -404,10 +430,19 @@ const parseNote = (note: string | null | undefined, key: string) => {
 
 /**
  * Trường note đang lưu chung ghi chú người dùng và metadata nội bộ dạng key=value.
- * Chỉ phần văn bản tự do mới được phép hiển thị ở cột "Ghi chú".
+ * Ưu tiên metadata user_note của đơn mới; đơn cũ vẫn dùng phần văn bản tự do.
  */
 export function resolveUserNote(waybill: Pick<WaybillInventoryItem, 'note' | 'notes'>): string {
-  return String(waybill.note || waybill.notes || '')
+  const note = String(waybill.note || waybill.notes || '');
+  const encodedUserNote = parseNote(note, 'user_note');
+  if (encodedUserNote) {
+    try {
+      return decodeURIComponent(encodedUserNote);
+    } catch {
+      return encodedUserNote;
+    }
+  }
+  return note
     .split('|')
     .map((part) => part.trim())
     .filter((part) => part && !/^[a-z][a-z0-9_]*\s*=/i.test(part))
@@ -471,7 +506,14 @@ export function resolvePaymentMethod(waybill: WaybillInventoryItem): string {
 }
 
 export function resolveNoiDen(waybill: WaybillInventoryItem): string {
-  return waybill.dest_hub?.code?.trim().toUpperCase() || '';
+  return (
+    waybill.noi_den?.trim()
+    || waybill.customer_destination_province?.trim()
+    || parseNote(waybill.note || waybill.notes, 'tinh_den')
+    || parseNote(waybill.note || waybill.notes, 'huyen')
+    || waybill.dest_hub?.code?.trim().toUpperCase()
+    || ''
+  );
 }
 
 export function resolveReceiverAddress(waybill: WaybillInventoryItem): string {
