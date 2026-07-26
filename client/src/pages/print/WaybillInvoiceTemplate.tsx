@@ -128,22 +128,29 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
             <strong>{value(data.hinhThucThanhToan)}</strong>
           </div>
           <div className="eco-charge-box">
-            <div className="eco-charge-line"><span>Cước chính:</span><b>{hasPricing ? value(data.cuocChinh) : ' '}</b></div>
-            <div className="eco-charge-line"><span>Dịch vụ cộng thêm:</span><b>{hasPricing ? value(data.dichVuCongThem) : ' '}</b></div>
-            <div className="eco-charge-line"><span>Tổng cước:</span><b>{hasPricing ? value(data.tongCuoc) : ' '}</b></div>
+            <div className="eco-charge-lines">
+              <div className="eco-charge-line"><span>Cước chính:</span><b>{hasPricing ? value(data.cuocChinh) : ' '}</b></div>
+              <div className="eco-charge-line"><span>Dịch vụ cộng thêm:</span><b>{hasPricing ? value(data.dichVuCongThem) : ' '}</b></div>
+              <div className="eco-charge-line"><span>Tổng cước:</span><b>{hasPricing ? value(data.tongCuoc) : ' '}</b></div>
+            </div>
             <div className="eco-total">
               <span className="eco-total-label">Tổng phải thu khi phát thư</span>
-              <strong>{value(data.tongPhaiThuPhat)}</strong>
+              <strong className="eco-total-value">{value(data.tongPhaiThuPhat)}</strong>
             </div>
           </div>
-          <div className="eco-extra-info-box"><p><span className="eco-extra-label">Thu hộ:</span><b>{data.thuHo || '0'}</b></p></div>
-          <div className="eco-extra-info-box"><p><span className="eco-extra-label">Khai giá:</span><b>{data.khaiGia}</b></p></div>
+          <div className="eco-extra-info-box eco-extra-info-box--cod"><p><span className="eco-extra-label">Thu hộ:</span><b>{data.thuHo || '0'}</b></p></div>
+          <div className="eco-extra-info-box eco-extra-info-box--declared-value"><p><span className="eco-extra-label">Khai giá:</span><b>{data.khaiGia}</b></p></div>
           <div className="eco-sign-box eco-sign-sender">
-            <b>Ngày giờ gửi&nbsp;&nbsp;{value(data.ngayGuiDon)}</b>
+            <div className="eco-sign-date">
+              <b>Ngày giờ gửi</b>
+              <strong>{value(data.ngayGuiDon)}</strong>
+            </div>
             <p>Họ tên và chữ ký người gửi</p>
           </div>
           <div className="eco-sign-box eco-sign-receiver">
-            <b>Ngày giờ nhận</b>
+            <div className="eco-sign-date">
+              <b>Ngày giờ nhận</b>
+            </div>
             <p>Họ tên và chữ ký người nhận</p>
           </div>
         </div>

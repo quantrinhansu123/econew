@@ -61,4 +61,16 @@ describe('waybill invoice layout', () => {
     expect(html).not.toContain('Mã KH nhận:');
     expect(html).not.toContain('0901111222');
   });
+
+  it('separates charge details, total amount and the send-date row into stable layout blocks', () => {
+    const html = renderToStaticMarkup(<WaybillInvoiceTemplate data={printData} />);
+
+    expect(html).toContain('eco-charge-lines');
+    expect(html).toContain('eco-total-label');
+    expect(html).toContain('eco-total-value');
+    expect(html).toContain('eco-extra-info-box--cod');
+    expect(html).toContain('eco-extra-info-box--declared-value');
+    expect(html).toContain('eco-sign-date');
+    expect(html).not.toContain('Ngày giờ gửi&nbsp;');
+  });
 });

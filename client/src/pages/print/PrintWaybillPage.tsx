@@ -106,7 +106,7 @@ export default function PrintWaybillPage() {
 
   const printData = useMemo(() => {
     if (!waybill) return null;
-    const base = buildWaybillPrintData(waybill, showPricing);
+    const base = buildWaybillPrintData(waybill, showPricing, canViewPricing);
     if (!customer) return base;
     const phone = customerPhone(customer);
     const address = customerAddress(customer);
@@ -118,7 +118,7 @@ export default function PrintWaybillPage() {
       sdtGui: phone || base.sdtGui,
       dichVu: customer.price_table?.toUpperCase().includes('BỘ') ? 'ĐƯỜNG BỘ' : base.dichVu,
     };
-  }, [waybill, customer, showPricing]);
+  }, [waybill, customer, showPricing, canViewPricing]);
 
   const wrapClassName = `waybill-invoice-wrap waybill-invoice-wrap--${printFormat}`;
 
@@ -164,7 +164,7 @@ export default function PrintWaybillPage() {
         )}
         <span className="w-full text-[12px] text-muted-foreground">{printFormatHint[printFormat]}</span>
         <span className="text-[12px] text-muted-foreground">
-          {showPricing
+          {printData?.showPricing
             ? 'Phiếu đang hiển thị cước phí.'
             : canViewPricing
               ? 'Cước phí đang ẩn — bật “Hiện cước khi in” tại màn hình nhập đơn nếu cần.'

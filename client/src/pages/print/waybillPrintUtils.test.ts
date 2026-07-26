@@ -80,4 +80,97 @@ describe('buildWaybillPrintData receiver fields', () => {
 
     expect(data.ghiChu).toBe('Giao giờ hành chính');
   });
+
+  it('prints normalized goods content even when legacy note metadata is absent', () => {
+    const data = buildWaybillPrintData(waybill({
+      noi_dung: 'TZ-10-2; TZ-15-2',
+      note: '',
+    }));
+
+    expect(data.noiDungHang).toBe('TZ-10-2; TZ-15-2');
+    expect(data.moTaHang).toBe('TZ-10-2; TZ-15-2');
+  });
+
+  it('prints the selected send date instead of the record creation timestamp', () => {
+    const data = buildWaybillPrintData(waybill({
+      created_at: '2026-07-26T10:00:00+07:00',
+      note: 'ngay_gui=2026-07-22',
+    }));
+
+    expect(data.ngayGuiDon).toBe('22/07/2026');
+  });
+
+  it('shows freight and collects COD plus freight when the pricing toggle is enabled', () => {
+    const data = buildWaybillPrintData(waybill({
+      payment_type: 'CC',
+      freight_amount: 532_000,
+      cod_amount: 500_000,
+      note: 'phuong_thuc=Người nhận thanh toán | thanh_toan=999',
+    }), true);
+
+    expect(data.showPricing).toBe(true);
+    expect(data.cuocChinh).toBe('532.000 đ');
+    expect(data.tongCuoc).toBe('532.000 đ');
+    expect(data.tongPhaiThuPhat).toBe('1,032,000');
+  });
+
+  it('automatically shows freight for receiver-paid bills when the user has pricing access', () => {
+    const data = buildWaybillPrintData(waybill({
+      payment_type: 'CC',
+      freight_amount: 532_000,
+      cod_amount: 500_000,
+      note: 'phuong_thuc=Người nhận thanh toán',
+    }), false, true);
+
+    expect(data.showPricing).toBe(true);
+    expect(data.cuocChinh).toBe('532.000 đ');
+    expect(data.tongCuoc).toBe('532.000 đ');
+    expect(data.tongPhaiThuPhat).toBe('1,032,000');
+  });
+
+  it('uses COD plus freight when a receiver-paid legacy bill has no stored total', () => {
+    const data = buildWaybillPrintData(waybill({
+      payment_type: 'CC',
+      freight_amount: 532_000,
+      cod_amount: 500_000,
+      note: 'phuong_thuc=Người nhận thanh toán',
+    }));
+
+    expect(data.tongPhaiThuPhat).toBe('1,032,000');
+  });
+
+  it('keeps freight hidden from receiver-paid bills when the pricing toggle is off', () => {
+    const data = buildWaybillPrintData(waybill({
+      payment_type: 'CC',
+      freight_amount: 532_000,
+      cod_amount: 500_000,
+      note: 'phuong_thuc=Người nhận thanh toán | thanh_toan=1032000',
+    }));
+
+    expect(data.showPricing).toBe(false);
+    expect(data.cuocChinh).toBe('');
+    expect(data.tongCuoc).toBe('');
+    expect(data.tongPhaiThuPhat).toBe('1,032,000');
+  });
+
+  it('falls back to the stored collection total when protected amount columns are absent', () => {
+    const data = buildWaybillPrintData(waybill({
+      payment_type: 'CC',
+      note: 'phuong_thuc=Người nhận thanh toán | thanh_toan=1032000',
+    }));
+
+    expect(data.tongPhaiThuPhat).toBe('1,032,000');
+  });
+
+  it('does not treat a note-backed cash payment as receiver-paid', () => {
+    const data = buildWaybillPrintData(waybill({
+      payment_type: 'CC',
+      freight_amount: 532_000,
+      cod_amount: 500_000,
+      note: 'phuong_thuc=Tiền mặt | thanh_toan=532000',
+    }), false, true);
+
+    expect(data.showPricing).toBe(false);
+    expect(data.tongPhaiThuPhat).toBe('500,000');
+  });
 });
