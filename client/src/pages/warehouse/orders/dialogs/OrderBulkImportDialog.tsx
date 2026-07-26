@@ -5,14 +5,16 @@ import { ApiError, apiRequest } from '../../../../lib/api';
 import type { CreatedWaybill, HubSummary } from '../types';
 import {
   annotateBulkRows,
+  applyServerNextCodesToBulkRows,
   assignBulkWaybillCodes,
-  buildBulkCreatePayload,
   bulkRowToOrderForm,
   downloadOrderBulkTemplate,
   enrichOrderBulkRowsWithCustomers,
   parseOrderBulkWorkbook,
+  resolveBulkHubId,
   type ParsedOrderBulkRow,
 } from '../orderBulkExcelUtils';
+import { createBulkWaybillWithFreshCode } from '../orderBulkCreate';
 import type { CustomerRecord } from '../../customers/customerFormTypes';
 import type { CustomerListItem, CustomerListResponse } from '../../customers/types';
 
@@ -32,8 +34,32 @@ type ImportResult = {
   message: string;
 };
 
+type NextWaybillCodeResponse = { waybill_code?: string; code?: string };
+
 const customerList = (payload: CustomerListResponse | CustomerListItem[]) =>
   Array.isArray(payload) ? payload : payload.items || [];
+
+async function loadNextWaybillCode(originHubId: string) {
+  const response = await apiRequest<NextWaybillCodeResponse>(
+    `/waybills/next-code?origin_hub_id=${encodeURIComponent(originHubId)}`,
+  );
+  const code = (response.waybill_code || response.code || '').trim().toUpperCase();
+  if (!code) throw new Error('API không trả về số bill mới.');
+  return code;
+}
+
+async function refreshAutoAssignedPreviewCodes(rows: ParsedOrderBulkRow[], hubs: HubSummary[]) {
+  const originHubIds = [...new Set(
+    rows
+      .filter((row) => row.autoAssignedWaybillCode)
+      .map((row) => resolveBulkHubId(hubs, row.values.bcGui))
+      .filter(Boolean),
+  )];
+  const nextCodes = await Promise.all(
+    originHubIds.map(async (originHubId) => [originHubId, await loadNextWaybillCode(originHubId)] as const),
+  );
+  applyServerNextCodesToBulkRows(rows, hubs, new Map(nextCodes));
+}
 
 async function loadCustomersByCodes(codes: string[]): Promise<CustomerRecord[]> {
   const uniqueCodes = [...new Set(codes.map((code) => code.trim().toUpperCase()).filter(Boolean))];
@@ -76,6 +102,12 @@ export default function OrderBulkImportDialog({
 
   const validCount = rows.filter((row) => row.errors.length === 0).length;
   const invalidCount = rows.length - validCount;
+  const successfulRowNumbers = new Set(
+    results.filter((item) => item.ok).map((item) => item.rowNumber),
+  );
+  const pendingValidCount = rows.filter(
+    (row) => row.errors.length === 0 && !successfulRowNumbers.has(row.rowNumber),
+  ).length;
 
   const resetFileState = () => {
     setRows([]);
@@ -109,6 +141,11 @@ export default function OrderBulkImportDialog({
       const enriched = enrichOrderBulkRowsWithCustomers(parsed, customers);
       const annotated = annotateBulkRows(enriched, hubs);
       assignBulkWaybillCodes(annotated, hubs, existingWaybillCodes);
+      try {
+        await refreshAutoAssignedPreviewCodes(annotated, hubs);
+      } catch {
+        // Mã sẽ tiếp tục được lấy lại ngay trước từng POST khi người dùng bấm Nhập.
+      }
       setRows(annotateBulkRows(annotated, hubs));
     } catch (error) {
       setRows([]);
@@ -121,21 +158,33 @@ export default function OrderBulkImportDialog({
   };
 
   const handleImport = async () => {
-    const readyRows = rows.filter((row) => row.errors.length === 0);
+    const completedRowNumbers = new Set(
+      results.filter((item) => item.ok).map((item) => item.rowNumber),
+    );
+    const readyRows = rows.filter(
+      (row) => row.errors.length === 0 && !completedRowNumbers.has(row.rowNumber),
+    );
     if (!readyRows.length || isImporting) return;
 
     setIsImporting(true);
-    setResults([]);
     const importResults: ImportResult[] = [];
-    const usedCodes = [...existingWaybillCodes];
+    const resolvedCodes = new Map<number, string>();
 
     for (const row of readyRows) {
       try {
         const form = bulkRowToOrderForm(row.values, hubs, { nvgn: defaultNvgn });
-        const body = buildBulkCreatePayload(form);
-        const response = await apiRequest<CreatedWaybill>('/waybills', { method: 'POST', body });
-        const code = (response.waybill_code || response.code || form.soBill).toUpperCase();
-        usedCodes.push(code);
+        const created = await createBulkWaybillWithFreshCode({
+          form,
+          autoAssignedWaybillCode: row.autoAssignedWaybillCode === true,
+          getNextWaybillCode: loadNextWaybillCode,
+          createWaybill: (body) => apiRequest<CreatedWaybill>('/waybills', { method: 'POST', body }),
+        });
+        const code = (
+          created.response.waybill_code
+          || created.response.code
+          || created.form.soBill
+        ).toUpperCase();
+        resolvedCodes.set(row.rowNumber, code);
         importResults.push({
           rowNumber: row.rowNumber,
           waybillCode: code,
@@ -147,12 +196,22 @@ export default function OrderBulkImportDialog({
           rowNumber: row.rowNumber,
           waybillCode: row.values.soBill,
           ok: false,
-          message: error instanceof ApiError ? error.message : 'Không thể tạo đơn.',
+          message: error instanceof Error ? error.message : 'Không thể tạo đơn.',
         });
       }
     }
 
-    setResults(importResults);
+    if (resolvedCodes.size) {
+      setRows((currentRows) => currentRows.map((row) => {
+        const code = resolvedCodes.get(row.rowNumber);
+        return code ? { ...row, values: { ...row.values, soBill: code } } : row;
+      }));
+    }
+    const attemptedRows = new Set(importResults.map((item) => item.rowNumber));
+    setResults([
+      ...results.filter((item) => !attemptedRows.has(item.rowNumber)),
+      ...importResults,
+    ].sort((a, b) => a.rowNumber - b.rowNumber));
     setIsImporting(false);
     await onImported();
   };
@@ -230,6 +289,9 @@ export default function OrderBulkImportDialog({
           {rows.length > 0 && (
             <div className="rounded-lg border border-border bg-muted/10 px-3 py-2 text-[12px] font-semibold text-foreground">
               Đã đọc {rows.length} dòng · Hợp lệ {validCount} · Lỗi {invalidCount}
+              <span className="ml-1 text-muted-foreground">
+                · Số bill tự cấp sẽ được kiểm tra lại khi bấm Nhập
+              </span>
             </div>
           )}
 
@@ -306,11 +368,11 @@ export default function OrderBulkImportDialog({
           <button
             type="button"
             onClick={() => void handleImport()}
-            disabled={isImporting || isReadingFile || validCount === 0}
+            disabled={isImporting || isReadingFile || pendingValidCount === 0}
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-primary bg-primary px-4 text-[12px] font-extrabold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isImporting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-            Nhập {validCount > 0 ? `${validCount} đơn` : 'loạt'}
+            Nhập {pendingValidCount > 0 ? `${pendingValidCount} đơn` : 'loạt'}
           </button>
         </div>
       </div>

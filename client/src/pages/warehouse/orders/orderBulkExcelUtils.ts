@@ -31,6 +31,7 @@ export interface ParsedOrderBulkRow {
   values: OrderBulkRow;
   errors: string[];
   customerMatched?: boolean;
+  autoAssignedWaybillCode?: boolean;
 }
 
 const normalizeHeader = (value: unknown) => String(value ?? '')
@@ -172,7 +173,7 @@ export function enrichOrderBulkRowsWithCustomers(
   });
 }
 
-function resolveHubId(hubs: HubSummary[], raw: string) {
+export function resolveBulkHubId(hubs: HubSummary[], raw: string) {
   const normalized = raw.trim().toUpperCase();
   if (!normalized) return '';
   const byCode = hubIdFromCode(hubs, normalized);
@@ -198,8 +199,8 @@ export function validateOrderBulkRow(
   customerMatched?: boolean,
 ): string[] {
   const errors: string[] = [];
-  const originHubId = resolveHubId(hubs, values.bcGui);
-  const destHubId = resolveHubId(hubs, values.bcDen);
+  const originHubId = resolveBulkHubId(hubs, values.bcGui);
+  const destHubId = resolveBulkHubId(hubs, values.bcDen);
 
   if (!values.bcGui.trim()) errors.push('Thiếu BC gửi.');
   else if (!originHubId) errors.push(`Không tìm thấy bưu cục gửi "${values.bcGui}".`);
@@ -243,8 +244,8 @@ export function bulkRowToOrderForm(
   hubs: HubSummary[],
   defaults: Partial<NewOrderFormState>,
 ): NewOrderFormState {
-  const originHubId = resolveHubId(hubs, values.bcGui);
-  const destHubId = resolveHubId(hubs, values.bcDen);
+  const originHubId = resolveBulkHubId(hubs, values.bcGui);
+  const destHubId = resolveBulkHubId(hubs, values.bcDen);
   const destHub = hubs.find((hub) => String(hub.id) === destHubId);
   const destCode = destHub?.code?.trim().toUpperCase() || values.bcDen.trim().toUpperCase();
   const addressParts = extractVietnamAddressParts(values.diaChiNhan);
@@ -303,10 +304,11 @@ export function assignBulkWaybillCodes(
 
   for (const row of rows) {
     if (row.values.soBill.trim()) {
+      row.autoAssignedWaybillCode ??= false;
       usedCodes.add(row.values.soBill.trim().toUpperCase());
       continue;
     }
-    const originHubId = resolveHubId(hubs, row.values.bcGui);
+    const originHubId = resolveBulkHubId(hubs, row.values.bcGui);
     const hubCode = hubs.find((hub) => String(hub.id) === originHubId)?.code || row.values.bcGui;
     const normalizedHubCode = hubCode.trim().toUpperCase();
     const currentMax = sequences.get(normalizedHubCode) ?? maxEcoBillSequence([...usedCodes], normalizedHubCode);
@@ -314,7 +316,34 @@ export function assignBulkWaybillCodes(
     sequences.set(normalizedHubCode, next);
     const generated = formatEcoBillCode(normalizedHubCode, next);
     row.values.soBill = generated;
+    row.autoAssignedWaybillCode = true;
     usedCodes.add(generated);
+  }
+}
+
+/**
+ * Thay dãy mã tạm bằng dãy mới nhất do server trả về. Mỗi HUB chỉ cần gọi
+ * /waybills/next-code một lần; các dòng kế tiếp tăng tuần tự từ mã đó.
+ */
+export function applyServerNextCodesToBulkRows(
+  rows: ParsedOrderBulkRow[],
+  hubs: HubSummary[],
+  nextCodeByOriginHubId: ReadonlyMap<string, string>,
+) {
+  const nextSequenceByOriginHubId = new Map<string, number>();
+
+  for (const row of rows) {
+    if (!row.autoAssignedWaybillCode) continue;
+
+    const originHubId = resolveBulkHubId(hubs, row.values.bcGui);
+    const hubCode = hubs.find((hub) => String(hub.id) === originHubId)?.code || row.values.bcGui;
+    const serverNextCode = nextCodeByOriginHubId.get(originHubId) || '';
+    const firstSequence = maxEcoBillSequence([serverNextCode], hubCode);
+    if (!originHubId || firstSequence <= 0) continue;
+
+    const sequence = nextSequenceByOriginHubId.get(originHubId) ?? firstSequence;
+    row.values.soBill = formatEcoBillCode(hubCode, sequence);
+    nextSequenceByOriginHubId.set(originHubId, sequence + 1);
   }
 }
 

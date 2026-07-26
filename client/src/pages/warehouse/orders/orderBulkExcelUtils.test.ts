@@ -3,6 +3,8 @@ import { utils, write } from 'xlsx';
 import type { CustomerRecord } from '../customers/customerFormTypes';
 import {
   annotateBulkRows,
+  applyServerNextCodesToBulkRows,
+  assignBulkWaybillCodes,
   enrichOrderBulkRowsWithCustomers,
   parseOrderBulkWorkbook,
 } from './orderBulkExcelUtils';
@@ -85,5 +87,42 @@ describe('order bulk Excel template', () => {
       diaChiNhan: '215 Nguyễn Trãi, Quận 1, TP.HCM',
     });
     expect(annotated[0].errors).toEqual([]);
+  });
+
+  it('replaces locally predicted bill codes with the latest server sequence', () => {
+    const headers = ORDER_BULK_COLUMNS.map(orderBulkHeaderLabel);
+    const makeData = (receiver: string) => {
+      const values: Partial<Record<(typeof ORDER_BULK_COLUMNS)[number]['key'], string>> = {
+        bcGui: 'HAN',
+        bcDen: 'HCM',
+        maKh: 'ALPHATIC',
+        nguoiGui: 'A Đào',
+        nguoiNhan: receiver,
+        dienThoaiNhan: '0888727897',
+        diaChiNhan: 'TP.HCM',
+        huyen: 'HỒ CHÍ MINH',
+        klKg: '50',
+        dichVu: 'Tiêu chuẩn 72h',
+        giaoHang: 'Văn phòng',
+        phuongThuc: 'Công nợ tháng',
+      };
+      return ORDER_BULK_COLUMNS.map((column) => values[column.key] ?? '');
+    };
+    const rows = parseOrderBulkWorkbook(workbookBuffer([
+      headers,
+      makeData('Hoa'),
+      makeData('Thanh'),
+    ]));
+    const hubs = [
+      { id: '1', code: 'HAN', name: 'Bưu cục Hà Nội' },
+      { id: '2', code: 'HCM', name: 'Bưu cục Hồ Chí Minh' },
+    ];
+
+    assignBulkWaybillCodes(rows, hubs, ['ECOHAN10']);
+    expect(rows.map((row) => row.values.soBill)).toEqual(['ECOHAN11', 'ECOHAN12']);
+    expect(rows.every((row) => row.autoAssignedWaybillCode)).toBe(true);
+
+    applyServerNextCodesToBulkRows(rows, hubs, new Map([['1', 'ECOHAN108971']]));
+    expect(rows.map((row) => row.values.soBill)).toEqual(['ECOHAN108971', 'ECOHAN108972']);
   });
 });
