@@ -92,9 +92,13 @@ export function calcCuocChinhAmount(form: NewOrderFormState): number {
 
 export function calcOrderPricing(form: NewOrderFormState) {
   const cuocChinhAmount = calcCuocChinhAmount(form);
+  const cod = parseMoneyAmount(form.cod);
   const giamGia = parseMoneyAmount(form.giamGia);
   const tongCuoc = cuocChinhAmount;
-  const thanhToan = Math.max(0, tongCuoc - giamGia);
+  const receiverPays = form.phuongThuc.trim() === 'Người nhận thanh toán';
+  const thanhToan = receiverPays
+    ? tongCuoc + cod
+    : Math.max(0, tongCuoc - giamGia);
 
   return {
     cuocChinh: formatDisplayNumber(cuocChinhAmount, 0),
@@ -112,6 +116,7 @@ const PRICING_TRIGGER_FIELDS: (keyof NewOrderFormState)[] = [
   'klQuyDoi',
   'm3',
   'donGiaDonVi',
+  'phuongThuc',
 ];
 
 export function isPricingField(key: keyof NewOrderFormState) {
@@ -451,7 +456,9 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
   const freight = calcCuocChinhAmount(form);
   const cod = parseMoneyAmount(form.cod);
   const surcharge = parseMoneyAmount(form.giamGia);
-  const thanhToan = Math.max(0, parseMoneyAmount(form.thanhToan) || freight - surcharge);
+  const receiverPays = form.phuongThuc.trim() === 'Người nhận thanh toán';
+  const freightToCollect = receiverPays ? freight : Math.max(0, freight - surcharge);
+  const thanhToan = freightToCollect + (receiverPays ? cod : 0);
   const weight = parseDecimalNumber(form.klKg);
   const volumeM3 = parseDecimalNumber(form.m3);
   const length = Math.max(0, parseDecimalNumber(form.chieuDai));
@@ -484,7 +491,8 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     package_count: Math.max(1, parseInt(form.soKien, 10) || 1),
     freight_amount: freight,
     cod_amount: cod,
-    cc_amount: paymentType === 'CC' ? thanhToan : 0,
+    // CC chỉ lưu phần cước; COD có cột riêng. Tổng phải thu = CC + COD.
+    cc_amount: paymentType === 'CC' ? freightToCollect : 0,
     xe_lay: form.xeLay.trim() || undefined,
     xe_phat: form.xePhat.trim() || undefined,
     delivery_photo_url: joinWaybillImages(form.billImages) || undefined,

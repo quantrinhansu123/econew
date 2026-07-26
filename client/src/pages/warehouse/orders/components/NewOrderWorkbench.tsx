@@ -317,7 +317,7 @@ export default function NewOrderWorkbench({
                     value={pricing.tongCuoc}
                     readOnly
                     className="bg-slate-50 text-right font-bold tabular-nums"
-                    title="Thành tiền + COD"
+                    title="Tổng cước vận chuyển"
                   />
                 </CompactField>
                 <CompactField label="Phụ phí (công)" className="col-span-6 sm:col-span-4 xl:col-span-2">
@@ -334,7 +334,11 @@ export default function NewOrderWorkbench({
                     value={pricing.thanhToan}
                     readOnly
                     className="bg-slate-50 text-right font-bold tabular-nums"
-                    title="Tổng cước - Phụ phí (công)"
+                    title={
+                      form.phuongThuc === 'Người nhận thanh toán'
+                        ? 'COD + Tổng cước'
+                        : 'Tổng cước - Phụ phí (công)'
+                    }
                   />
                 </CompactField>
               </div>
