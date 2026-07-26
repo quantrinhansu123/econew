@@ -8,6 +8,7 @@ import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/Confirm
 import { DayPicker } from '../components/ui/DayPicker';
 import { DateRangePicker } from '../components/ui/DateRangePicker';
 import { FilterSelect } from '../components/ui/FilterSelect';
+import { ImagePreviewModal } from '../components/ImagePreviewModal';
 import type { AuthUserProfile } from './login/types';
 import WaybillPackageSplitDialog from './warehouse/inventory/dialogs/WaybillPackageSplitDialog';
 import WaybillInventoryDetailDialog from './warehouse/inventory/dialogs/WaybillInventoryDetailDialog';
@@ -1061,24 +1062,7 @@ function InventoryRow({
           </td>
         );
       case 'bill_images': {
-        const images = parseWaybillImages(waybill.delivery_photo_url);
-        return (
-          <td className={clsx(cellClass, 'min-w-[92px]')}>
-            {images.length ? (
-              <div className="flex items-center gap-1" title={`${images.length} ảnh bill / hàng hóa`}>
-                {images.slice(0, 3).map((url, index) => (
-                  <img
-                    key={url}
-                    src={url}
-                    alt={`Ảnh bill ${index + 1}`}
-                    className="h-8 w-8 rounded-md border border-slate-200 object-cover"
-                  />
-                ))}
-                {images.length > 3 && <span className="text-[11px] font-black text-primary">+{images.length - 3}</span>}
-              </div>
-            ) : '—'}
-          </td>
-        );
+        return <BillImagesCell waybill={waybill} cellClass={cellClass} />;
       }
       case 'receiver_district':
         return <td className={clsx(cellClass, 'font-semibold')}>{resolveReceiverDistrict(waybill) || '—'}</td>;
@@ -1302,6 +1286,50 @@ function AllOrdersActions({
         </button>
       )}
     </div>
+  );
+}
+
+function BillImagesCell({ waybill, cellClass }: { waybill: WaybillInventoryItem; cellClass: string }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const images = parseWaybillImages(waybill.delivery_photo_url);
+
+  return (
+    <td className={clsx(cellClass, 'min-w-[92px]')} onClick={(event) => event.stopPropagation()}>
+      {images.length ? (
+        <div className="flex items-center gap-1" title={`${images.length} hình ảnh bill / hàng hóa`}>
+          {images.slice(0, 3).map((url, index) => (
+            <button
+              key={url}
+              type="button"
+              onClick={() => setPreviewUrl(url)}
+              className="shrink-0 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/30"
+              aria-label={`Xem hình ảnh ${index + 1} của ${displayCode(waybill)}`}
+            >
+              <img
+                src={url}
+                alt={`Hình ảnh ${index + 1}`}
+                className="h-8 w-8 rounded-md border border-slate-200 object-cover transition-transform hover:scale-105"
+              />
+            </button>
+          ))}
+          {images.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setPreviewUrl(images[3])}
+              className="text-[11px] font-black text-primary hover:underline"
+              aria-label={`Xem hình ảnh 4 của ${displayCode(waybill)}`}
+            >
+              +{images.length - 3}
+            </button>
+          )}
+        </div>
+      ) : '—'}
+      <ImagePreviewModal
+        imageUrl={previewUrl}
+        title={`Hình ảnh bill / hàng hóa ${displayCode(waybill)}`}
+        onClose={() => setPreviewUrl(null)}
+      />
+    </td>
   );
 }
 

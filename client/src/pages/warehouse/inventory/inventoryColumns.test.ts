@@ -36,15 +36,17 @@ describe('inventory visible columns', () => {
     ]);
   });
 
-  it('does not show optional order and priority columns until they are selected', () => {
+  it('does not show optional order, priority, and image columns until they are selected', () => {
     const defaults = normalizeInventoryVisibleColumnIds([], true);
 
     expect(defaults).not.toContain('order_code');
     expect(defaults).not.toContain('priority');
+    expect(defaults).not.toContain('bill_images');
 
-    const selected = normalizeInventoryVisibleColumnIds(['priority', 'order_code'], true);
+    const selected = normalizeInventoryVisibleColumnIds(['priority', 'order_code', 'bill_images'], true);
     expect(selected).toContain('order_code');
     expect(selected).toContain('priority');
+    expect(selected).toContain('bill_images');
     expect(selected.filter((id) => EXPECTED_FIXED_COLUMN_IDS.includes(id))).toEqual(
       EXPECTED_FIXED_COLUMN_IDS,
     );
@@ -66,6 +68,16 @@ describe('inventory visible columns', () => {
       'actions',
     ]);
     expect(views.find((column) => column.id === 'cong_sg')?.label).toBe('Nội dung hàng');
+  });
+
+  it('labels the optional bill image column as Hình ảnh', () => {
+    const views = resolveVisibleColumnViews(
+      normalizeInventoryVisibleColumnIds(['bill_images'], true),
+      'split-pending',
+      true,
+    );
+
+    expect(views.find((column) => column.id === 'bill_images')?.label).toBe('Hình ảnh');
   });
 });
 
