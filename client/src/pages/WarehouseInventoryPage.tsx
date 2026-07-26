@@ -129,7 +129,8 @@ const displayCode = (waybill: WaybillInventoryItem) => waybill.waybill_code || w
 const displayValue = (value: unknown, suffix = '') => value === null || value === undefined || value === '' ? '—' : `${value}${suffix}`;
 const normalizeStatus = (waybill: WaybillInventoryItem) => String(waybill.current_state || waybill.status || '').toUpperCase();
 const isMutableWaybill = (waybill: WaybillInventoryItem) => MUTABLE_WAYBILL_STATUSES.includes(normalizeStatus(waybill));
-const actionMenuId = (waybill: WaybillInventoryItem) => `${waybill.id}-${waybill.split_id ?? 'base'}`;
+const actionMenuId = (waybill: WaybillInventoryItem, surface: 'table' | 'card') =>
+  `${waybill.id}-${waybill.split_id ?? 'base'}-${surface}`;
 const formatHub = (hub: HubSummary | null | undefined, fallback?: string | number | null) => hub ? [hub.code?.toUpperCase(), hub.name].filter(Boolean).join(' · ') || `Hub #${hub.id}` : fallback ? `Hub #${fallback}` : '—';
 
 const buildQuery = (filters: InventoryFilters, variant: InventoryPageVariant) =>
@@ -1207,8 +1208,8 @@ function InventoryRow({
                 waybill={waybill}
                 canEdit={canEdit}
                 isMutable={isMutableWaybill(waybill)}
-                isOpen={openActionMenuId === actionMenuId(waybill)}
-                onToggle={() => onToggleActionMenu(actionMenuId(waybill))}
+                isOpen={openActionMenuId === actionMenuId(waybill, 'table')}
+                onToggle={() => onToggleActionMenu(actionMenuId(waybill, 'table'))}
                 onClose={onCloseActionMenu}
                 onDetail={onDetail}
                 onEdit={onEdit}
@@ -1364,8 +1365,8 @@ function InventoryCard({ waybill, isAllOrders, canUpdate, canEdit, canDelete, op
             waybill={waybill}
             canEdit={canEdit}
             isMutable={isMutableWaybill(waybill)}
-            isOpen={openActionMenuId === actionMenuId(waybill)}
-            onToggle={() => onToggleActionMenu(actionMenuId(waybill))}
+            isOpen={openActionMenuId === actionMenuId(waybill, 'card')}
+            onToggle={() => onToggleActionMenu(actionMenuId(waybill, 'card'))}
             onClose={onCloseActionMenu}
             onDetail={onDetail}
             onEdit={onEdit}
