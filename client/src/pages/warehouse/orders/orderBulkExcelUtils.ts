@@ -112,6 +112,12 @@ function isBlankRow(values: OrderBulkRow) {
   return ORDER_BULK_COLUMNS.every((column) => !values[column.key]);
 }
 
+function isUnchangedTemplateSampleRow(values: OrderBulkRow) {
+  return ORDER_BULK_COLUMNS.every(
+    (column) => values[column.key] === cellText(column.sample ?? ''),
+  );
+}
+
 export function parseOrderBulkWorkbook(file: ArrayBuffer): ParsedOrderBulkRow[] {
   const workbook = read(file, { type: 'array', cellDates: true });
   const sheetName = workbook.SheetNames.find((name) => name.toLowerCase().includes('don')) || workbook.SheetNames[0];
@@ -127,6 +133,7 @@ export function parseOrderBulkWorkbook(file: ArrayBuffer): ParsedOrderBulkRow[] 
   const columnIndexes = headerRow.map((header) => headerToKey.get(normalizeHeader(header)) || null);
 
   const parsed: ParsedOrderBulkRow[] = [];
+  let foundFirstDataRow = false;
   for (let index = headerRowIndex + 1; index < matrix.length; index += 1) {
     const raw = matrix[index] || [];
     const values = emptyBulkRow();
@@ -135,6 +142,10 @@ export function parseOrderBulkWorkbook(file: ArrayBuffer): ParsedOrderBulkRow[] 
       values[key] = cellText(raw[colIndex]);
     });
     if (isBlankRow(values)) continue;
+    if (!foundFirstDataRow) {
+      foundFirstDataRow = true;
+      if (isUnchangedTemplateSampleRow(values)) continue;
+    }
     parsed.push({ rowNumber: index + 1, values, errors: [] });
   }
   return parsed;
