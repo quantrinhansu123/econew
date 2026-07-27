@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
-import { CalendarClock, Images, MapPin, Package, Route, Scale, User, X } from 'lucide-react';
+import { CalendarClock, Eye, Images, MapPin, Package, Printer, Route, Scale, User, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { BadgeConfig, WaybillInventoryDetail } from '../types';
 import { resolveUserNote } from '../inventoryColumns';
@@ -11,6 +11,7 @@ interface Props {
   isOpen: boolean;
   isClosing: boolean;
   isLoading: boolean;
+  canViewPricing: boolean;
   waybill: WaybillInventoryDetail | null;
   statusConfig: Record<string, BadgeConfig>;
   paymentConfig: Record<string, BadgeConfig>;
@@ -24,8 +25,9 @@ const displayValue = (value: unknown, suffix = '') => value === null || value ==
 const formatDate = (value?: string | null) => value ? new Date(value).toLocaleString('vi-VN') : '—';
 const formatHub = (hub: WaybillInventoryDetail['current_hub'], fallback?: string | number | null) => hub ? [hub.code?.toUpperCase(), hub.name].filter(Boolean).join(' · ') || `Hub #${hub.id}` : fallback ? `Hub #${fallback}` : '—';
 
-export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoading, waybill, statusConfig, paymentConfig, priorityConfig, onClose }: Props) {
+export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoading, canViewPricing, waybill, statusConfig, paymentConfig, priorityConfig, onClose }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [showPricingOnPrint, setShowPricingOnPrint] = useState(false);
   if (!isOpen && !isClosing) return null;
 
   const status = normalizeStatus(waybill);
@@ -33,17 +35,35 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
   const paymentBadge = paymentConfig[String(waybill?.payment_type || '')] || { label: waybill?.payment_type || '—', className: 'bg-muted text-muted-foreground border-border' };
   const priorityBadge = priorityConfig[String(waybill?.priority || 'NORMAL').toUpperCase()] || priorityConfig.NORMAL;
   const billImages = parseWaybillImages(waybill?.delivery_photo_url);
+  const printDisabled = isLoading || !waybill?.id;
+
+  const closeDialog = () => {
+    setShowPricingOnPrint(false);
+    onClose();
+  };
+
+  const openPrint = (params: Record<string, string>) => {
+    if (!waybill?.id) return;
+    const query = new URLSearchParams(params);
+    if (canViewPricing && showPricingOnPrint) query.set('pricing', 'show');
+    const search = query.toString();
+    window.open(
+      `/print/waybill/${encodeURIComponent(String(waybill.id))}${search ? `?${search}` : ''}`,
+      '_blank',
+      'noopener',
+    );
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-      <div className={clsx('absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity', isClosing ? 'opacity-0' : 'opacity-100')} onClick={onClose} />
+      <div className={clsx('absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity', isClosing ? 'opacity-0' : 'opacity-100')} onClick={closeDialog} />
       <div className={clsx('relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[28px] border border-border bg-background shadow-2xl transition-all duration-200 sm:rounded-[28px]', isClosing ? 'translate-y-6 opacity-0 sm:scale-95' : 'translate-y-0 opacity-100 sm:scale-100')}>
         <div className="flex items-start justify-between gap-4 border-b border-border bg-card p-5">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-primary">Chi tiết vận đơn tồn kho</p>
             <h2 className="mt-1 text-xl font-black text-foreground">{displayCode(waybill)}</h2>
           </div>
-          <button onClick={onClose} className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><X size={18} /></button>
+          <button onClick={closeDialog} className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><X size={18} /></button>
         </div>
 
         <div className="custom-scrollbar flex-1 overflow-y-auto p-5">
@@ -108,8 +128,52 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
           )}
         </div>
 
-        <div className="border-t border-border bg-card p-5">
-          <button onClick={onClose} className="w-full rounded-xl bg-primary px-5 py-3 text-[13px] font-bold text-white shadow-sm shadow-primary/20">Đóng</button>
+        <div className="flex flex-wrap items-center gap-2 border-t border-border bg-card p-4">
+          {canViewPricing && (
+            <label className="mr-auto inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-[12px] font-bold text-foreground">
+              <input
+                type="checkbox"
+                checked={showPricingOnPrint}
+                onChange={(event) => setShowPricingOnPrint(event.target.checked)}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
+              />
+              Hiện cước khi in
+            </label>
+          )}
+          <button
+            type="button"
+            disabled={printDisabled}
+            onClick={() => openPrint({ preview: '1' })}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-[12px] font-bold text-foreground hover:bg-muted disabled:opacity-50"
+          >
+            <Eye size={15} />
+            Xem bản in
+          </button>
+          <button
+            type="button"
+            disabled={printDisabled}
+            onClick={() => openPrint({ print: '1' })}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-3 text-[12px] font-bold text-white shadow-sm shadow-primary/20 disabled:opacity-50"
+          >
+            <Printer size={15} />
+            In A4
+          </button>
+          <button
+            type="button"
+            disabled={printDisabled}
+            onClick={() => openPrint({ print: '1', format: 'a5' })}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 px-3 text-[12px] font-bold text-primary hover:bg-primary/10 disabled:opacity-50"
+          >
+            <Printer size={15} />
+            In A5
+          </button>
+          <button
+            type="button"
+            onClick={closeDialog}
+            className="h-10 rounded-xl border border-border bg-white px-4 text-[12px] font-bold text-muted-foreground hover:bg-muted"
+          >
+            Đóng
+          </button>
         </div>
         <ImagePreviewModal
           imageUrl={previewUrl}

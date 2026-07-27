@@ -848,7 +848,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       </div>
 
       {!isAllOrders && <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />}
-      <WaybillInventoryDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} waybill={detailWaybill} statusConfig={statusConfig} paymentConfig={paymentConfig} priorityConfig={priorityConfig} onClose={closeDetail} />
+      <WaybillInventoryDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} canViewPricing={canViewPricing} waybill={detailWaybill} statusConfig={statusConfig} paymentConfig={paymentConfig} priorityConfig={priorityConfig} onClose={closeDetail} />
       {splitWaybill && (
         <WaybillPackageSplitDialog
           isOpen={isSplitOpen}
