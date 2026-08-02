@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   INVENTORY_FIXED_COLUMN_IDS,
   normalizeInventoryVisibleColumnIds,
+  resolvePrintColumnIds,
   resolveNoiDen,
   resolveUserNote,
   resolveVisibleColumnViews,
@@ -17,9 +18,6 @@ const EXPECTED_FIXED_COLUMN_IDS: InventoryColumnId[] = [
   'cong_sg',
   'dest_hub',
   'package_count',
-  'receiver_info',
-  'receiver_ward',
-  'receiver_district',
   'cod_amount',
   'waybill_code',
   'user_note',
@@ -50,6 +48,21 @@ describe('inventory visible columns', () => {
     expect(selected.filter((id) => EXPECTED_FIXED_COLUMN_IDS.includes(id))).toEqual(
       EXPECTED_FIXED_COLUMN_IDS,
     );
+  });
+
+  it('keeps receiver, ward, and district columns optional', () => {
+    const optionalReceiverColumns: InventoryColumnId[] = [
+      'receiver_info',
+      'receiver_ward',
+      'receiver_district',
+    ];
+    const defaults = normalizeInventoryVisibleColumnIds([], true);
+    optionalReceiverColumns.forEach((id) => expect(defaults).not.toContain(id));
+    optionalReceiverColumns.forEach((id) => expect(resolvePrintColumnIds(defaults)).not.toContain(id));
+
+    const selected = normalizeInventoryVisibleColumnIds(optionalReceiverColumns, true);
+    optionalReceiverColumns.forEach((id) => expect(selected).toContain(id));
+    optionalReceiverColumns.forEach((id) => expect(resolvePrintColumnIds(selected)).toContain(id));
   });
 
   it('removes unauthorized pricing columns even when they were previously selected', () => {
