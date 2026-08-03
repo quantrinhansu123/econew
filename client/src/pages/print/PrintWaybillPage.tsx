@@ -40,8 +40,8 @@ export default function PrintWaybillPage() {
   const canViewPricing = canViewWaybillPricing(roleMask);
   const showPricing = shouldShowWaybillPricing(roleMask, searchParams.get('pricing'));
   const pageSizeRule = printFormat === 'a4'
-    ? '@media print { @page { size: A4 portrait; margin: 0; } }'
-    : '@media print { @page { size: A5 landscape; margin: 0; } }';
+    ? '@media print { @page { size: A4 portrait; margin: 5mm; } }'
+    : '@media print { @page { size: A5 landscape; margin: 5mm; } }';
 
   const setPrintFormat = useCallback((format: PrintFormat) => {
     const next = new URLSearchParams(searchParams);

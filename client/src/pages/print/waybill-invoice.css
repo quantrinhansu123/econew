@@ -1,11 +1,11 @@
 /* Phiếu vận chuyển ECO:
    - A5: một phiếu trên A5 ngang.
    - A4: cùng một phiếu ở nửa trên, nửa dưới để trắng.
-   @page không chừa lề để trình duyệt không tách chân phiếu sang trang 2.
-   Phiếu tự chừa vùng an toàn tối thiểu 5mm bên trong khổ giấy. */
+   @page chừa lề an toàn 5mm; nội dung in thu 94% để không mất viền phải.
+   Khung in chỉ cao 128mm để không phát sinh trang trắng thứ hai. */
 @page {
   size: A5 landscape;
-  margin: 0;
+  margin: 5mm;
 }
 
 .waybill-invoice-wrap {
@@ -46,12 +46,12 @@
   --fs-sm: calc(10.5pt * var(--eco-a5-scale));
   --fs-base: calc(13pt * var(--eco-a5-scale));
   --fs-md: calc(15pt * var(--eco-a5-scale));
-  --fs-title: calc(12.5pt * var(--eco-a5-scale));
-  --fs-subtitle: calc(22pt * var(--eco-a5-scale));
+  --fs-title: calc(18pt * var(--eco-a5-scale));
+  --fs-subtitle: calc(17pt * var(--eco-a5-scale));
   --fs-code: calc(22pt * var(--eco-a5-scale));
   --fs-row: calc(13.5pt * var(--eco-a5-scale));
   --fs-body: calc(14pt * var(--eco-a5-scale));
-  --fs-phone: calc(15.5pt * var(--eco-a5-scale));
+  --fs-phone: calc(14pt * var(--eco-a5-scale));
   --fs-money: calc(24pt * var(--eco-a5-scale));
   --fs-stat: calc(18pt * var(--eco-a5-scale));
   --fs-note: calc(11.6pt * var(--eco-a5-scale));
@@ -129,7 +129,7 @@
 .eco-a5-header {
   min-height: 25mm;
   display: grid;
-  grid-template-columns: 47mm minmax(0, 1fr) 57mm;
+  grid-template-columns: 55mm minmax(0, 1fr) 57mm;
   border-bottom: var(--eco-line-strong);
 }
 
@@ -146,15 +146,15 @@
 }
 
 .eco-a5-template .eco-logo {
-  width: 23mm;
-  height: 13.5mm;
+  width: 26mm;
+  height: 16mm;
   margin: 0;
   display: block;
   object-fit: contain;
 }
 
 .eco-a5-template .eco-phone {
-  margin-top: 0.8mm;
+  margin-top: 0.2mm;
   font-size: var(--fs-phone);
   font-weight: 700;
   line-height: 1.08;
@@ -163,24 +163,17 @@
 }
 
 .eco-a5-template .eco-phone-label {
-  display: block;
-  margin-bottom: 0.2mm;
-  font-size: calc(13pt * var(--eco-a5-scale));
+  display: inline;
+  margin: 0;
+  font-size: var(--fs-phone);
   font-weight: 700;
 }
 
 .eco-a5-template .eco-phone-numbers {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1mm;
+  display: inline;
   font-size: var(--fs-phone);
   font-weight: 700;
   line-height: 1;
-  white-space: nowrap;
-}
-
-.eco-a5-template .eco-phone-numbers > span {
   white-space: nowrap;
 }
 
@@ -196,6 +189,7 @@
   font-size: var(--fs-subtitle);
   font-weight: 700;
   line-height: 1.1;
+  white-space: nowrap;
 }
 
 .eco-a5-template .eco-barcode-img {
@@ -371,7 +365,7 @@
 }
 
 .eco-two-col-line--receiver-contact {
-  grid-template-columns: minmax(0, 1fr) 43mm;
+  grid-template-columns: 54mm minmax(0, 1fr);
 }
 
 .eco-two-col-line--receiver-contact .eco-recipient-phone {
@@ -498,7 +492,7 @@
 }
 
 .eco-note-cell--contents p {
-  font-size: calc(18pt * var(--eco-a5-scale));
+  font-size: calc(16pt * var(--eco-a5-scale));
   font-weight: 500;
   line-height: 1.2;
 }
@@ -571,6 +565,10 @@
   display: flex;
   align-items: center;
   border-bottom: var(--eco-line);
+}
+
+.eco-charge-value {
+  font-weight: 400;
 }
 
 .eco-extra-info-box--cod {
@@ -785,20 +783,23 @@
 
   .waybill-paper-preview {
     box-sizing: border-box !important;
-    width: 210mm !important;
-    margin: 0 !important;
-    padding: 5mm !important;
+    width: 189mm !important;
+    height: 128mm !important;
+    min-height: 0 !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    position: relative !important;
     overflow: hidden !important;
     box-shadow: none !important;
     background: #fff !important;
   }
 
   .waybill-paper-preview--a5 {
-    height: 148mm !important;
+    height: 128mm !important;
   }
 
   .waybill-paper-preview--a4 {
-    height: 297mm !important;
+    height: 128mm !important;
   }
 
   .waybill-invoice {
@@ -810,6 +811,8 @@
     margin: 0 !important;
     overflow: hidden !important;
     box-shadow: none !important;
+    transform: scale(0.94);
+    transform-origin: top left;
     break-inside: avoid;
     page-break-inside: avoid;
   }

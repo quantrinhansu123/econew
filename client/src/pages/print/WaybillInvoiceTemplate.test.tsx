@@ -40,14 +40,15 @@ const printData: WaybillPrintData = {
 };
 
 describe('waybill invoice layout', () => {
-  it('keeps the barcode code, moves the two hotline numbers beside each other, and removes sender phone', () => {
+  it('keeps the barcode code, uses the requested hotline, and removes sender phone', () => {
     const html = renderToStaticMarkup(<WaybillInvoiceTemplate data={printData} />);
 
     expect(html).toContain('ECOHAN108964');
     expect(html).toContain('text=ECOHAN108964');
     expect(html).toContain('eco-phone-numbers');
-    expect(html.match(/0969 444 816/g)).toHaveLength(1);
     expect(html.match(/0946 936 999/g)).toHaveLength(1);
+    expect(html.match(/0888\.805\.625/g)).toHaveLength(1);
+    expect(html).not.toContain('0969 444 816');
     expect(html).toContain('eco-band--receiver-summary');
     expect(html).not.toContain('eco-band--receiver-summary eco-band--top');
     expect(html).toContain('Tên công ty nhận:');
@@ -55,7 +56,8 @@ describe('waybill invoice layout', () => {
     expect(html).toContain('eco-two-col-line--receiver-contact');
     expect(html).toContain('eco-recipient-phone');
     expect(html).toContain('Tên liên hệ:');
-    expect(html.indexOf('Số điện thoại:')).toBeGreaterThan(html.indexOf('Tên liên hệ:'));
+    const receiverContact = html.match(/eco-two-col-line--receiver-contact[\s\S]*?<\/div><\/div>/)?.[0] || '';
+    expect(receiverContact.indexOf('Số điện thoại:')).toBeLessThan(receiverContact.indexOf('Tên liên hệ:'));
     expect(html).toContain('Nguyễn Văn Nhận');
     expect(html.match(/0938938112/g)).toHaveLength(1);
     expect(html).not.toContain('Mã KH nhận:');
@@ -72,5 +74,6 @@ describe('waybill invoice layout', () => {
     expect(html).toContain('eco-extra-info-box--declared-value');
     expect(html).toContain('eco-sign-date');
     expect(html).not.toContain('Ngày giờ gửi&nbsp;');
+    expect(html.match(/eco-charge-value/g)).toHaveLength(2);
   });
 });

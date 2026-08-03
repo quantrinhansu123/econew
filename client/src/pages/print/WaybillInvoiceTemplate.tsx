@@ -39,11 +39,8 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         <div className="eco-a5-brand">
           <img src={WAYBILL_PRINT_LOGO_SRC} alt="" className="eco-logo" />
           <div className="eco-phone">
-            <span className="eco-phone-label">Hotline</span>
-            <span className="eco-phone-numbers">
-              <span>0969 444 816</span>
-              <span>0946 936 999</span>
-            </span>
+            <span className="eco-phone-label">Hotline</span>{' '}
+            <span className="eco-phone-numbers">0946 936 999 - 0888.805.625</span>
           </div>
         </div>
         <div className="eco-a5-title">
@@ -95,8 +92,8 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         </div>
         <div className="eco-band eco-band--receiver-contact">
           <div className="eco-two-col-line eco-two-col-line--receiver-contact">
-            <MiniLine label="Tên liên hệ:" strong>{value(data.tenLienHeNhan)}</MiniLine>
             <MiniLine label="Số điện thoại:" strong className="eco-recipient-phone">{value(data.sdtNhan)}</MiniLine>
+            <MiniLine label="Tên liên hệ:" strong>{value(data.tenLienHeNhan)}</MiniLine>
           </div>
         </div>
       </div>
@@ -129,9 +126,9 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           </div>
           <div className="eco-charge-box">
             <div className="eco-charge-lines">
-              <div className="eco-charge-line"><span>Cước chính:</span><b>{hasPricing ? value(data.cuocChinh) : ' '}</b></div>
+              <div className="eco-charge-line"><span>Cước chính:</span><span className="eco-charge-value">{hasPricing ? value(data.cuocChinh) : ' '}</span></div>
               <div className="eco-charge-line"><span>Dịch vụ cộng thêm:</span><b>{hasPricing ? value(data.dichVuCongThem) : ' '}</b></div>
-              <div className="eco-charge-line"><span>Tổng cước:</span><b>{hasPricing ? value(data.tongCuoc) : ' '}</b></div>
+              <div className="eco-charge-line"><span>Tổng cước:</span><span className="eco-charge-value">{hasPricing ? value(data.tongCuoc) : ' '}</span></div>
             </div>
             <div className="eco-total">
               <span className="eco-total-label">Tổng phải thu khi phát thư</span>

@@ -21,8 +21,8 @@ export default function PrintWaybillsBulkPage() {
   const showPricing = shouldShowWaybillPricing(roleMask, searchParams.get('pricing'));
   const printFormat = searchParams.get('format') === 'a5' ? 'a5' : 'a4';
   const pageSizeRule = printFormat === 'a5'
-    ? '@media print { @page { size: A5 landscape; margin: 0; } }'
-    : '@media print { @page { size: A4 portrait; margin: 0; } }';
+    ? '@media print { @page { size: A5 landscape; margin: 5mm; } }'
+    : '@media print { @page { size: A4 portrait; margin: 5mm; } }';
 
   const [waybills, setWaybills] = useState<WaybillDetail[]>([]);
   const [loading, setLoading] = useState(ids.length > 0);

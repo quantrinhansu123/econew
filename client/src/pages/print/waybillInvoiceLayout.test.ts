@@ -12,7 +12,7 @@ describe('waybill invoice marked layout', () => {
     expect(css).toMatch(/\.eco-recipient-summary\s*\{[^}]*display:\s*block;/s);
     expect(css).toMatch(/\.eco-band--sender-contact\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*4;/s);
     expect(css).toMatch(/\.eco-band--receiver-contact\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*4;/s);
-    expect(css).toMatch(/\.eco-phone-numbers\s*\{[^}]*display:\s*inline-flex;/s);
+    expect(css).toMatch(/\.eco-phone-numbers\s*\{[^}]*display:\s*inline;/s);
   });
 
   it('uses Arial throughout and fixes the marked cells to matching grid tracks', () => {
@@ -20,8 +20,10 @@ describe('waybill invoice marked layout', () => {
       /\.waybill-invoice,\s*\.waybill-invoice \*\s*\{[^}]*font-family:\s*Arial,\s*sans-serif\s*!important;/s,
     );
     expect(css).toMatch(
-      /\.eco-a5-header\s*\{[^}]*grid-template-columns:\s*47mm minmax\(0,\s*1fr\) 57mm;/s,
+      /\.eco-a5-header\s*\{[^}]*grid-template-columns:\s*55mm minmax\(0,\s*1fr\) 57mm;/s,
     );
+    expect(css).toMatch(/--fs-subtitle:\s*calc\(17pt \* var\(--eco-a5-scale\)\);/s);
+    expect(css).toMatch(/\.eco-a5-title h2\s*\{[^}]*white-space:\s*nowrap;/s);
     expect(css).toMatch(
       /\.eco-a5-left-panel\s*\{[^}]*grid-template-rows:\s*6mm 11mm minmax\(0,\s*1fr\);/s,
     );
@@ -38,6 +40,19 @@ describe('waybill invoice marked layout', () => {
     );
     expect(css).toMatch(/\.eco-total-label\s*\{[^}]*display:\s*block;/s);
     expect(css).toMatch(/\.eco-total-value\s*\{[^}]*display:\s*block;/s);
+    expect(css).toMatch(
+      /\.eco-note-cell--contents p\s*\{[^}]*font-size:\s*calc\(16pt \* var\(--eco-a5-scale\)\);/s,
+    );
+  });
+
+  it('fits the printed invoice inside safe printer margins on one page', () => {
+    expect(css).toMatch(/@page\s*\{[^}]*margin:\s*5mm;/s);
+    expect(css).toMatch(
+      /@media print\s*\{[\s\S]*?\.waybill-paper-preview\s*\{[^}]*width:\s*189mm\s*!important;[^}]*height:\s*128mm\s*!important;/s,
+    );
+    expect(css).toMatch(
+      /@media print\s*\{[\s\S]*?\.waybill-invoice\s*\{[^}]*transform:\s*scale\(0\.94\);[^}]*transform-origin:\s*top left;/s,
+    );
   });
 
   it('removes the note heading separator and draws both vertical splits as continuous lines', () => {
