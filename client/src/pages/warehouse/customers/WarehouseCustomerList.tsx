@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   Building2,
   Edit,
   Eye,
+  FileSpreadsheet,
   Loader2,
   PackagePlus,
   PauseCircle,
@@ -22,6 +23,8 @@ import type { CustomerRecord } from './customerFormTypes';
 import type { CustomerFormState } from './customerFormTypes';
 import { customerToForm, formToPayload, validateCustomerForm } from './customerFormUtils';
 import type { CustomerListItem, CustomerListResponse } from './types';
+
+const CustomerBulkImportDialog = lazy(() => import('./dialogs/CustomerBulkImportDialog'));
 
 interface Props {
   keyword?: string;
@@ -52,6 +55,7 @@ export default function WarehouseCustomerList({
   const [form, setForm] = useState<CustomerFormState>(emptyCustomerForm);
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   const [detailCustomer, setDetailCustomer] = useState<CustomerRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -88,7 +92,8 @@ export default function WarehouseCustomerList({
   }, [search]);
 
   useEffect(() => {
-    void loadCustomers();
+    const timer = window.setTimeout(() => void loadCustomers(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadCustomers, reloadTick]);
 
   const setFormField = <K extends keyof CustomerFormState>(key: K, value: CustomerFormState[K]) => {
@@ -186,20 +191,38 @@ export default function WarehouseCustomerList({
             <p className="text-[13px] text-muted-foreground">Quản lý mã KH, kho nhận HCM và thông tin liên hệ</p>
           </div>
           {manageable && (
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-bold text-white shadow-sm hover:bg-primary/90"
-            >
-              <Plus size={16} />
-              Thêm khách hàng mới
-            </button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBulkImportOpen(true)}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-[13px] font-bold text-emerald-800 hover:bg-emerald-100"
+              >
+                <FileSpreadsheet size={16} />
+                Nhập loạt Excel
+              </button>
+              <button
+                type="button"
+                onClick={openCreate}
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-bold text-white shadow-sm hover:bg-primary/90"
+              >
+                <Plus size={16} />
+                Thêm khách hàng mới
+              </button>
+            </div>
           )}
         </div>
       )}
 
       {manageable && embedded && (
-        <div className="mb-2 shrink-0 flex justify-end">
+        <div className="mb-2 flex shrink-0 justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setBulkImportOpen(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-[12px] font-bold text-emerald-800 hover:bg-emerald-100"
+          >
+            <FileSpreadsheet size={14} />
+            Nhập Excel
+          </button>
           <button
             type="button"
             onClick={openCreate}
@@ -341,6 +364,16 @@ export default function WarehouseCustomerList({
           if (detailCustomer) void openEdit(detailCustomer);
         }}
       />
+
+      {bulkImportOpen && (
+        <Suspense fallback={null}>
+          <CustomerBulkImportDialog
+            isOpen
+            onClose={() => setBulkImportOpen(false)}
+            onImported={refreshList}
+          />
+        </Suspense>
+      )}
 
       <ConfirmDialog dialog={confirmDialog} isSubmitting={isSubmitting} onClose={() => setConfirmDialog(null)} />
     </div>
