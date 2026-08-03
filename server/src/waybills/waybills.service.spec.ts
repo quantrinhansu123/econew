@@ -768,6 +768,26 @@ describe('WaybillsService', () => {
     expect(inner.orWhere.mock.calls.some(([condition]) => String(condition).includes('REGEXP_REPLACE'))).toBe(false);
   });
 
+  it('findAll searches contact, customer, and goods data across the whole bill', async () => {
+    const qb = createQueryBuilder();
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.findAll({ keyword: '0934 455-122' }, manager);
+
+    const inner = evaluateFirstBrackets(qb);
+    const keyword = { keyword: '%0934 455-122%' };
+    expect(inner.orWhere).toHaveBeenCalledWith('waybill.sender_phone ILIKE :keyword', keyword);
+    expect(inner.orWhere).toHaveBeenCalledWith('waybill.receiver_phone ILIKE :keyword', keyword);
+    expect(inner.orWhere).toHaveBeenCalledWith('waybill.noi_dung ILIKE :keyword', keyword);
+    expect(inner.orWhere).toHaveBeenCalledWith('waybill.ma_kh ILIKE :keyword', keyword);
+    expect(inner.orWhere).toHaveBeenCalledWith('"order".sender_name ILIKE :keyword', keyword);
+    expect(inner.orWhere).toHaveBeenCalledWith('"order".receiver_company_name ILIKE :keyword', keyword);
+    expect(inner.orWhere).toHaveBeenCalledWith(
+      `REGEXP_REPLACE(CONCAT_WS('', waybill.sender_phone, waybill.receiver_phone, waybill.sender_info, waybill.receiver_info, "order".sender_phone, "order".receiver_phone), '[^0-9]+', '', 'g') LIKE :normalizedPhoneKeyword`,
+      { normalizedPhoneKeyword: '%0934455122%' },
+    );
+  });
+
   it('cash voucher search matches bill codes across legacy and contiguous formats', async () => {
     const qb = createQueryBuilder();
     cashVouchersRepository.createQueryBuilder.mockReturnValue(qb);

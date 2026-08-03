@@ -1316,6 +1316,7 @@ export class WaybillsService {
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .leftJoinAndSelect('waybill.dest_hub', 'dest_hub')
       .leftJoinAndSelect('waybill.origin_hub', 'origin_hub')
+      .leftJoinAndSelect('waybill.order', 'order')
       .where('waybill.deleted_at IS NULL')
       .andWhere('waybill.current_state IN (:...waybillLoadStatuses)', { waybillLoadStatuses });
 
@@ -1887,11 +1888,42 @@ export class WaybillsService {
           .where('waybill.waybill_code ILIKE :keyword', { keyword })
           .orWhere('waybill.sender_info ILIKE :keyword', { keyword })
           .orWhere('waybill.receiver_info ILIKE :keyword', { keyword })
-          .orWhere('waybill.ma_kh ILIKE :keyword', { keyword });
+          .orWhere('waybill.sender_name ILIKE :keyword', { keyword })
+          .orWhere('waybill.sender_phone ILIKE :keyword', { keyword })
+          .orWhere('waybill.sender_address ILIKE :keyword', { keyword })
+          .orWhere('waybill.receiver_company_name ILIKE :keyword', { keyword })
+          .orWhere('waybill.receiver_name ILIKE :keyword', { keyword })
+          .orWhere('waybill.receiver_phone ILIKE :keyword', { keyword })
+          .orWhere('waybill.receiver_address ILIKE :keyword', { keyword })
+          .orWhere('waybill.ma_kh ILIKE :keyword', { keyword })
+          .orWhere('waybill.noi_dung ILIKE :keyword', { keyword })
+          .orWhere('waybill.noi_den ILIKE :keyword', { keyword })
+          .orWhere('waybill.note ILIKE :keyword', { keyword })
+          .orWhere('"order".order_code ILIKE :keyword', { keyword })
+          .orWhere('"order".ma_kh ILIKE :keyword', { keyword })
+          .orWhere('"order".sender_name ILIKE :keyword', { keyword })
+          .orWhere('"order".sender_phone ILIKE :keyword', { keyword })
+          .orWhere('"order".sender_address ILIKE :keyword', { keyword })
+          .orWhere('"order".receiver_company_name ILIKE :keyword', { keyword })
+          .orWhere('"order".receiver_name ILIKE :keyword', { keyword })
+          .orWhere('"order".receiver_phone ILIKE :keyword', { keyword })
+          .orWhere('"order".receiver_address ILIKE :keyword', { keyword })
+          .orWhere('"order".note ILIKE :keyword', { keyword })
+          .orWhere('origin_hub.code ILIKE :keyword', { keyword })
+          .orWhere('origin_hub.name ILIKE :keyword', { keyword })
+          .orWhere('dest_hub.code ILIKE :keyword', { keyword })
+          .orWhere('dest_hub.name ILIKE :keyword', { keyword });
         if (normalizedWaybillKeyword) {
           builder.orWhere(
             `REGEXP_REPLACE(UPPER(waybill.waybill_code), '[-[:space:]]+', '', 'g') ILIKE :normalizedWaybillKeyword`,
             { normalizedWaybillKeyword },
+          );
+        }
+        const phoneDigits = rawKeyword.replace(/\D/g, '');
+        if (phoneDigits.length >= 7) {
+          builder.orWhere(
+            `REGEXP_REPLACE(CONCAT_WS('', waybill.sender_phone, waybill.receiver_phone, waybill.sender_info, waybill.receiver_info, "order".sender_phone, "order".receiver_phone), '[^0-9]+', '', 'g') LIKE :normalizedPhoneKeyword`,
+            { normalizedPhoneKeyword: `%${phoneDigits}%` },
           );
         }
       }));
