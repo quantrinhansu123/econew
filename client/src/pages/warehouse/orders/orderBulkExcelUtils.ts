@@ -1,4 +1,4 @@
-import { read, utils, writeFile } from 'xlsx';
+import { read, SSF, utils, writeFile } from 'xlsx';
 import { emptyOrderForm } from './orderFormData';
 import type { NewOrderFormState } from './orderFormTypes';
 import {
@@ -45,9 +45,57 @@ const normalizeHeader = (value: unknown) => String(value ?? '')
 
 const cellText = (value: unknown) => {
   if (value == null) return '';
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
   return String(value).trim();
 };
+
+const padDatePart = (value: number) => String(value).padStart(2, '0');
+
+function validDateParts(year: number, month: number, day: number) {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return false;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
+function datePartsToInput(year: number, month: number, day: number) {
+  if (!validDateParts(year, month, day)) return '';
+  return `${year}-${padDatePart(month)}-${padDatePart(day)}`;
+}
+
+/**
+ * Đọc ngày Excel theo phần ngày trong ô, không chuyển qua UTC/ISO vì thao tác đó
+ * làm ngày ở múi giờ Việt Nam bị lùi một ngày.
+ */
+export function normalizeOrderBulkDate(value: unknown, date1904 = false) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const parsed = SSF.parse_date_code(value, { date1904 });
+    if (!parsed) return cellText(value);
+    return datePartsToInput(parsed.y, parsed.m, parsed.d) || cellText(value);
+  }
+
+  const text = cellText(value);
+  if (!text) return '';
+
+  const isoMatch = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (isoMatch) {
+    return datePartsToInput(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3])) || text;
+  }
+
+  const vietnameseMatch = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})$/);
+  if (vietnameseMatch) {
+    const rawYear = Number(vietnameseMatch[3]);
+    const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+    return datePartsToInput(year, Number(vietnameseMatch[2]), Number(vietnameseMatch[1])) || text;
+  }
+
+  return text;
+}
+
+function isValidOrderBulkDate(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return Boolean(match && validDateParts(Number(match[1]), Number(match[2]), Number(match[3])));
+}
 
 const headerToKey = (() => {
   const map = new Map<string, OrderBulkFieldKey>();
@@ -114,12 +162,16 @@ function isBlankRow(values: OrderBulkRow) {
 
 function isUnchangedTemplateSampleRow(values: OrderBulkRow) {
   return ORDER_BULK_COLUMNS.every(
-    (column) => values[column.key] === cellText(column.sample ?? ''),
+    (column) => values[column.key] === (
+      column.key === 'ngayDi'
+        ? normalizeOrderBulkDate(column.sample ?? '')
+        : cellText(column.sample ?? '')
+    ),
   );
 }
 
 export function parseOrderBulkWorkbook(file: ArrayBuffer): ParsedOrderBulkRow[] {
-  const workbook = read(file, { type: 'array', cellDates: true });
+  const workbook = read(file, { type: 'array', cellDates: false });
   const sheetName = workbook.SheetNames.find((name) => name.toLowerCase().includes('don')) || workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   if (!sheet) return [];
@@ -131,6 +183,7 @@ export function parseOrderBulkWorkbook(file: ArrayBuffer): ParsedOrderBulkRow[] 
   if (headerRowIndex < 0) return [];
   const headerRow = matrix[headerRowIndex] || [];
   const columnIndexes = headerRow.map((header) => headerToKey.get(normalizeHeader(header)) || null);
+  const date1904 = workbook.Workbook?.WBProps?.date1904 === true;
 
   const parsed: ParsedOrderBulkRow[] = [];
   let foundFirstDataRow = false;
@@ -139,7 +192,9 @@ export function parseOrderBulkWorkbook(file: ArrayBuffer): ParsedOrderBulkRow[] 
     const values = emptyBulkRow();
     columnIndexes.forEach((key, colIndex) => {
       if (!key) return;
-      values[key] = cellText(raw[colIndex]);
+      values[key] = key === 'ngayDi'
+        ? normalizeOrderBulkDate(raw[colIndex], date1904)
+        : cellText(raw[colIndex]);
     });
     if (isBlankRow(values)) continue;
     if (!foundFirstDataRow) {
@@ -241,6 +296,10 @@ export function validateOrderBulkRow(
 
   if (!values.dichVu.trim()) errors.push('Thiếu dịch vụ.');
   if (!values.giaoHang.trim()) errors.push('Thiếu hình thức giao hàng.');
+  if (!values.ngayDi.trim()) errors.push('Thiếu ngày gửi.');
+  else if (!isValidOrderBulkDate(values.ngayDi)) {
+    errors.push('Ngày gửi không hợp lệ; nhập theo dd/mm/yyyy.');
+  }
   if (!values.phuongThuc.trim()) errors.push('Thiếu phương thức thanh toán.');
 
   [values.anh1, values.anh2, values.anh3, values.anh4].filter(Boolean).forEach((url, index) => {
@@ -281,7 +340,7 @@ export function bulkRowToOrderForm(
     soKien: values.soKien || defaults.soKien || '1',
     dichVu: values.dichVu || defaults.dichVu || 'Tiêu chuẩn 72h',
     giaoHang: values.giaoHang || defaults.giaoHang || 'Văn phòng',
-    ngayDi: values.ngayDi || defaults.ngayDi || emptyOrderForm().ngayDi,
+    ngayDi: values.ngayDi,
     donGiaDonVi: values.donGiaDonVi || defaults.donGiaDonVi || 'Kg',
     klKg: values.klKg,
     chieuDai: values.chieuDai || '0',

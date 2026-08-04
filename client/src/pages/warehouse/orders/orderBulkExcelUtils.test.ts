@@ -7,6 +7,7 @@ import {
   assignBulkWaybillCodes,
   enrichOrderBulkRowsWithCustomers,
   parseOrderBulkWorkbook,
+  validateOrderBulkRow,
 } from './orderBulkExcelUtils';
 import {
   ORDER_BULK_COLUMNS,
@@ -34,6 +35,41 @@ const customer = {
 } as CustomerRecord;
 
 describe('order bulk Excel template', () => {
+  it('marks sent date as required and documents manual dd/mm/yyyy entry', () => {
+    const sentDateColumn = ORDER_BULK_COLUMNS.find((column) => column.key === 'ngayDi');
+
+    expect(sentDateColumn).toBeDefined();
+    expect(orderBulkHeaderLabel(sentDateColumn!)).toBe('Ngày gửi*');
+    expect(ORDER_BULK_TEMPLATE_NOTES.ngayDi).toContain('bắt buộc');
+  });
+
+  it('keeps the exact calendar date stored as an Excel serial number', () => {
+    const headers = ORDER_BULK_COLUMNS.map(orderBulkHeaderLabel);
+    const data = ORDER_BULK_COLUMNS.map((column) => {
+      if (column.key === 'ngayDi') return 46228;
+      if (column.key === 'noiDung') return 'Kiểm tra ngày Excel';
+      return column.sample ?? '';
+    });
+
+    const parsed = parseOrderBulkWorkbook(workbookBuffer([headers, data]));
+
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].values.ngayDi).toBe('2026-07-25');
+  });
+
+  it('normalizes a manually typed Vietnamese sent date without using UTC', () => {
+    const headers = ORDER_BULK_COLUMNS.map(orderBulkHeaderLabel);
+    const data = ORDER_BULK_COLUMNS.map((column) => {
+      if (column.key === 'ngayDi') return '25/07/2026';
+      if (column.key === 'noiDung') return 'Kiểm tra ngày nhập tay';
+      return column.sample ?? '';
+    });
+
+    const parsed = parseOrderBulkWorkbook(workbookBuffer([headers, data]));
+
+    expect(parsed[0].values.ngayDi).toBe('2026-07-25');
+  });
+
   it('marks receiver phone as required for non-HCM orders', () => {
     const receiverPhoneColumn = ORDER_BULK_COLUMNS.find(
       (column) => column.key === 'dienThoaiNhan',
@@ -95,6 +131,7 @@ describe('order bulk Excel template', () => {
       klKg: '50',
       dichVu: 'Tiêu chuẩn 72h',
       giaoHang: 'Văn phòng',
+      ngayDi: '25/07/2026',
       phuongThuc: 'Công nợ tháng',
     };
     const data = ORDER_BULK_COLUMNS.map((column) => valuesByKey[column.key] ?? '');
@@ -122,6 +159,7 @@ describe('order bulk Excel template', () => {
       klKg: '50',
       dichVu: 'Tiêu chuẩn 72h',
       giaoHang: 'Văn phòng',
+      ngayDi: '25/07/2026',
       phuongThuc: 'Công nợ tháng',
     };
     const data = ORDER_BULK_COLUMNS.map((column) => valuesByKey[column.key] ?? '');
@@ -156,6 +194,7 @@ describe('order bulk Excel template', () => {
       klKg: '1',
       dichVu: 'Tiêu chuẩn 72h',
       giaoHang: 'Văn phòng',
+      ngayDi: '25/07/2026',
       phuongThuc: 'Công nợ tháng',
     };
     const makeData = (phone: string) => ORDER_BULK_COLUMNS.map((column) => (
@@ -180,6 +219,21 @@ describe('order bulk Excel template', () => {
     expect(validPhone[0].errors).not.toContain('SĐT người nhận không hợp lệ.');
   });
 
+  it('rejects an empty or invalid sent date', () => {
+    const values = Object.fromEntries(
+      ORDER_BULK_COLUMNS.map((column) => [column.key, column.sample ?? '']),
+    ) as Record<(typeof ORDER_BULK_COLUMNS)[number]['key'], string>;
+    const hubs = [
+      { id: '1', code: 'HAN', name: 'Bưu cục Hà Nội' },
+      { id: '2', code: 'HCM', name: 'Bưu cục Hồ Chí Minh' },
+    ];
+
+    expect(validateOrderBulkRow({ ...values, ngayDi: '' }, hubs)).toContain('Thiếu ngày gửi.');
+    expect(validateOrderBulkRow({ ...values, ngayDi: '31/02/2026' }, hubs)).toContain(
+      'Ngày gửi không hợp lệ; nhập theo dd/mm/yyyy.',
+    );
+  });
+
   it('replaces locally predicted bill codes with the latest server sequence', () => {
     const headers = ORDER_BULK_COLUMNS.map(orderBulkHeaderLabel);
     const makeData = (receiver: string) => {
@@ -195,6 +249,7 @@ describe('order bulk Excel template', () => {
         klKg: '50',
         dichVu: 'Tiêu chuẩn 72h',
         giaoHang: 'Văn phòng',
+        ngayDi: '25/07/2026',
         phuongThuc: 'Công nợ tháng',
       };
       return ORDER_BULK_COLUMNS.map((column) => values[column.key] ?? '');
