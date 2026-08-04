@@ -32,12 +32,23 @@ describe('buildWaybillPrintData receiver fields', () => {
     const data = buildWaybillPrintData(waybill({
       noi_den: 'Khánh Hòa',
       receiver_address: '12 Lê Hồng Phong, Nha Trang, Khánh Hòa',
-      note: 'tinh_den=Khánh Hòa | quan_huyen=Nha Trang',
+      note: 'tinh_den=Khánh Hòa | quan_huyen=Nha Trang | phuong_xa=Phước Hải',
     }));
 
     expect(data.maBcNhan).toBe('HCM');
     expect(data.quanHuyenNhan).toBe('Nha Trang');
+    expect(data.phuongXaNhan).toBe('Phước Hải');
     expect(data.tinhNhan).toBe('Khánh Hòa');
+  });
+
+  it('extracts the ward from an old address and formats a compact province code', () => {
+    const data = buildWaybillPrintData(waybill({
+      receiver_address: 'Thửa đất số 1537, Phường Tân Định, Thị Xã Bến Cát, Tỉnh Bình Dương',
+      note: 'tinh_den=BINHDUONG',
+    }));
+
+    expect(data.phuongXaNhan).toBe('Phường Tân Định');
+    expect(data.tinhNhan).toBe('Bình Dương');
   });
 
   it('does not put the receiver phone into the company-name field for legacy bills', () => {

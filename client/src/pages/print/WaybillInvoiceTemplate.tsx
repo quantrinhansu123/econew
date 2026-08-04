@@ -81,7 +81,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         </div>
         <div className="eco-band eco-band--receiver-region">
           <div className="eco-two-col-line eco-two-col-line--dest">
-            <MiniLine label="Quận/Huyện:" strong>{value(data.quanHuyenNhan)}</MiniLine>
+            <MiniLine label="Phường/Xã:" strong>{value(data.phuongXaNhan)}</MiniLine>
             <MiniLine label="Tỉnh/TP:" strong>{value(data.tinhNhan)}</MiniLine>
           </div>
         </div>

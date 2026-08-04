@@ -17,6 +17,7 @@ const printData: WaybillPrintData = {
   tenLienHeNhan: 'Nguyễn Văn Nhận',
   diaChiNhan: '129 Trần Đại Nghĩa',
   quanHuyenNhan: 'Bình Chánh',
+  phuongXaNhan: 'Xã Tân Kiên',
   tinhNhan: 'HCM',
   sdtNhan: '0938938112',
   moTaHang: 'Mã PK',
@@ -56,6 +57,8 @@ describe('waybill invoice layout', () => {
     expect(html).toContain('eco-two-col-line--receiver-contact');
     expect(html).toContain('eco-recipient-phone');
     expect(html).toContain('Tên liên hệ:');
+    expect(html).toContain('Phường/Xã:');
+    expect(html).toContain('Xã Tân Kiên');
     const receiverContact = html.match(/eco-two-col-line--receiver-contact[\s\S]*?<\/div><\/div>/)?.[0] || '';
     expect(receiverContact.indexOf('Số điện thoại:')).toBeLessThan(receiverContact.indexOf('Tên liên hệ:'));
     expect(html).toContain('Nguyễn Văn Nhận');

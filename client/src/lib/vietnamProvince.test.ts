@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractProvinceFromAddress } from './vietnamProvince';
+import { canonicalProvinceLabel, extractProvinceFromAddress } from './vietnamProvince';
 
 describe('extractProvinceFromAddress', () => {
   it('extracts a known province without an administrative prefix', () => {
@@ -16,5 +16,10 @@ describe('extractProvinceFromAddress', () => {
 
   it('does not mistake a district-level city for a province', () => {
     expect(extractProvinceFromAddress('12 Võ Văn Ngân, TP. Thủ Đức')).toBe('');
+  });
+
+  it('restores a readable province label from compact legacy data', () => {
+    expect(canonicalProvinceLabel('BINHDUONG')).toBe('Bình Dương');
+    expect(canonicalProvinceLabel('TP. Hồ Chí Minh')).toBe('Hồ Chí Minh');
   });
 });

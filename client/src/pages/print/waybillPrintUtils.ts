@@ -1,7 +1,7 @@
 import { phuongThucToPrintLabel } from '../warehouse/orders/orderFormUtils';
 import type { WaybillDetail } from '../warehouse/orders/types';
 import { formatMoney, parseAmountInput } from '../../lib/formatMoney';
-import { extractProvinceFromAddress } from '../../lib/vietnamProvince';
+import { canonicalProvinceLabel, extractProvinceFromAddress } from '../../lib/vietnamProvince';
 import { extractVietnamAddressParts } from '../../lib/vietnamAddressParts';
 
 export interface WaybillPrintData {
@@ -18,6 +18,7 @@ export interface WaybillPrintData {
   tenLienHeNhan: string;
   diaChiNhan: string;
   quanHuyenNhan: string;
+  phuongXaNhan: string;
   tinhNhan: string;
   sdtNhan: string;
   moTaHang: string;
@@ -191,6 +192,15 @@ export function buildWaybillPrintData(
     || parseNoteField(note, 'receiver_company_name');
   const receiverAddress = waybill.receiver_address || receiver.address || '';
   const receiverAddressParts = extractVietnamAddressParts(receiverAddress);
+  const receiverProvince =
+    parseNoteField(note, 'tinh_den')
+    || parseNoteField(note, 'huyen')
+    || waybill.noi_den?.trim()
+    || extractProvinceFromAddress(receiverAddress)
+    || waybill.dest_hub?.province?.trim()
+    || waybill.dest_hub?.name
+    || waybill.dest_hub?.code?.toUpperCase()
+    || '';
 
   const weight = Number(waybill.weight) || 0;
   const m3 =
@@ -235,15 +245,11 @@ export function buildWaybillPrintData(
     quanHuyenNhan:
       parseNoteField(note, 'quan_huyen')
       || receiverAddressParts.district,
-    tinhNhan:
-      parseNoteField(note, 'tinh_den')
-      || parseNoteField(note, 'huyen')
-      || waybill.noi_den?.trim()
-      || extractProvinceFromAddress(receiverAddress)
-      || waybill.dest_hub?.province?.trim()
-      || waybill.dest_hub?.name
-      || waybill.dest_hub?.code?.toUpperCase()
-      || '',
+    phuongXaNhan:
+      waybill.receiver_ward?.trim()
+      || parseNoteField(note, 'phuong_xa')
+      || receiverAddressParts.ward,
+    tinhNhan: canonicalProvinceLabel(receiverProvince),
     sdtNhan: (waybill as { receiver_phone?: string }).receiver_phone || receiver.phone,
     moTaHang: noiDung,
     soKien: String(waybill.package_count ?? 1),

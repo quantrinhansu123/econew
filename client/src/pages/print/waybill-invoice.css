@@ -299,14 +299,17 @@
 }
 
 .eco-a5-people-row .eco-mini-line--address {
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 1.2mm;
   align-items: start;
 }
 
 .eco-a5-people-row .eco-mini-line--address .eco-mini-value {
   display: -webkit-box;
   overflow: hidden;
+  overflow-wrap: break-word;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
 }
 
 .eco-two-col-line {
@@ -332,8 +335,8 @@
   grid-row: 2;
   padding-top: 0.35mm;
   padding-bottom: 0.35mm;
-  font-size: calc(14.5pt * var(--eco-a5-scale));
-  line-height: 1.12;
+  font-size: calc(13.5pt * var(--eco-a5-scale));
+  line-height: 1.05;
 }
 
 .eco-band--sender-region {
@@ -344,7 +347,10 @@
 .eco-band--receiver-region {
   grid-column: 2;
   grid-row: 3;
-  font-size: calc(15pt * var(--eco-a5-scale));
+  padding-top: 0.35mm;
+  padding-bottom: 0.35mm;
+  font-size: calc(14pt * var(--eco-a5-scale));
+  line-height: 1.1;
 }
 
 .eco-band--sender-contact {
@@ -380,7 +386,12 @@
 }
 
 .eco-two-col-line--dest {
-  grid-template-columns: 1fr 29mm;
+  grid-template-columns: minmax(0, 1fr) 38mm;
+  column-gap: 1mm;
+}
+
+.eco-two-col-line--dest .eco-mini-line:last-child {
+  white-space: nowrap;
 }
 
 /* Hàng hoá / thanh toán */
@@ -488,7 +499,7 @@
   padding: 1mm 1.5mm 0;
   overflow: hidden;
   overflow-wrap: anywhere;
-  font-size: calc(17pt * var(--eco-a5-scale));
+  font-size: calc(14.5pt * var(--eco-a5-scale));
   line-height: 1.2;
   white-space: pre-wrap;
 }

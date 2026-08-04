@@ -122,6 +122,27 @@ export function normalizeProvinceLabel(value: string): string {
     .trim();
 }
 
+/** Hiển thị tên tỉnh có dấu kể cả khi dữ liệu cũ lưu dạng mã liền như BINHDUONG. */
+export function canonicalProvinceLabel(value?: string | null): string {
+  const normalized = normalizeProvinceLabel(String(value ?? ''));
+  if (!normalized) return '';
+
+  const aliases: Record<string, string> = {
+    hcm: 'Hồ Chí Minh',
+    tphcm: 'Hồ Chí Minh',
+    sg: 'Hồ Chí Minh',
+    saigon: 'Hồ Chí Minh',
+    han: 'Hà Nội',
+    hanoi: 'Hà Nội',
+    dng: 'Đà Nẵng',
+    danang: 'Đà Nẵng',
+  };
+  const key = provinceLookupKey(normalized);
+  return aliases[key]
+    || PROVINCE_NAMES.find((province) => provinceLookupKey(province) === key)
+    || normalized;
+}
+
 export function isHubCode(value?: string | null): boolean {
   const normalized = String(value ?? '').trim().toUpperCase();
   return Boolean(normalized) && HUB_CODES.has(normalized);
