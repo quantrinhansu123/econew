@@ -6,9 +6,9 @@ import { getStoredAuthUser } from '../../lib/authUser';
 import type { CustomerListItem, CustomerListResponse } from '../warehouse/customers/types';
 import type { WaybillDetail } from '../warehouse/orders/types';
 import WaybillInvoiceTemplate from './WaybillInvoiceTemplate';
-import { customerAddress, customerPhone } from '../warehouse/customers/customerOrderPatch';
 import { buildWaybillPrintData, printWaybillWhenReady } from './waybillPrintUtils';
 import { canViewWaybillPricing, shouldShowWaybillPricing } from './waybillPricingAccess';
+import { mergeCustomerIntoPrintData } from './customerPrintData';
 import './waybill-invoice.css';
 
 export default function PrintWaybillPage() {
@@ -79,16 +79,7 @@ export default function PrintWaybillPage() {
     if (!waybill) return null;
     const base = buildWaybillPrintData(waybill, showPricing, canViewPricing);
     if (!customer) return base;
-    const phone = customerPhone(customer);
-    const address = customerAddress(customer);
-    return {
-      ...base,
-      maKhGui: customer.code,
-      tenKhGui: customer.name,
-      diaChiGui: address || base.diaChiGui,
-      sdtGui: phone || base.sdtGui,
-      dichVu: customer.price_table?.toUpperCase().includes('BỘ') ? 'ĐƯỜNG BỘ' : base.dichVu,
-    };
+    return mergeCustomerIntoPrintData(base, customer);
   }, [waybill, customer, showPricing, canViewPricing]);
 
   return (
