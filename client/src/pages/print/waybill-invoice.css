@@ -305,11 +305,9 @@
 }
 
 .eco-a5-people-row .eco-mini-line--address .eco-mini-value {
-  display: -webkit-box;
-  overflow: hidden;
+  display: block;
   overflow-wrap: break-word;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  white-space: normal;
 }
 
 .eco-two-col-line {

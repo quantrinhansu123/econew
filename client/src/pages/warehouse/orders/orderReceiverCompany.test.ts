@@ -121,4 +121,13 @@ describe('receiver company on order form', () => {
     expect(form.huyen).toBe('Hồ Chí Minh');
     expect(form.quanHuyen).toBe('');
   });
+
+  it('normalizes a compact legacy province value for the province select', () => {
+    const form = waybillToOrderForm({
+      id: '60',
+      note: 'tinh_den=BINHDUONG',
+    }, []);
+
+    expect(form.huyen).toBe('Bình Dương');
+  });
 });

@@ -9,6 +9,7 @@ import {
 } from '../orderFormData';
 import type { BillListItem, NewOrderFormState } from '../orderFormTypes';
 import type { CustomerRecord } from '../../customers/customerFormTypes';
+import { VIETNAM_PROVINCES_63 } from '../../../../lib/vietnamProvince';
 import { CompactField, CompactInput, CompactSelect, FormSection } from './CompactField';
 import BillListSidebar from './BillListSidebar';
 import CustomerMaKhCombobox from './CustomerMaKhCombobox';
@@ -185,7 +186,12 @@ export default function NewOrderWorkbench({
                   <CompactInput value={form.diaChiNhan} onChange={(e) => setField('diaChiNhan', e.target.value)} />
                 </CompactField>
                 <CompactField label="Tỉnh/Thành nhận" className="col-span-12 sm:col-span-4 xl:col-span-4">
-                  <CompactInput value={form.huyen} onChange={(e) => setField('huyen', e.target.value)} />
+                  <CompactSelect value={form.huyen} onChange={(e) => setField('huyen', e.target.value)}>
+                    <option value="">Chọn Tỉnh/Thành</option>
+                    {VIETNAM_PROVINCES_63.map((province) => (
+                      <option key={province} value={province}>{province}</option>
+                    ))}
+                  </CompactSelect>
                 </CompactField>
                 <CompactField label="Quận/Huyện nhận" className="col-span-6 sm:col-span-4 xl:col-span-4">
                   <CompactInput value={form.quanHuyen} onChange={(e) => setField('quanHuyen', e.target.value)} />

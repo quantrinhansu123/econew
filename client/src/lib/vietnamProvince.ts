@@ -1,6 +1,7 @@
 const HUB_CODES = new Set(['HAN', 'HCM', 'DNG', 'SGN', 'SG']);
 
-const PROVINCE_NAMES = [
+/** Danh sách 63 tỉnh/thành trước đợt sắp xếp hành chính năm 2025. */
+export const VIETNAM_PROVINCES_63 = [
   'An Giang',
   'Bà Rịa - Vũng Tàu',
   'Bạc Liêu',
@@ -31,7 +32,6 @@ const PROVINCE_NAMES = [
   'Hậu Giang',
   'Hòa Bình',
   'Hồ Chí Minh',
-  'Huế',
   'Hưng Yên',
   'Khánh Hòa',
   'Kiên Giang',
@@ -65,7 +65,7 @@ const PROVINCE_NAMES = [
   'Vĩnh Long',
   'Vĩnh Phúc',
   'Yên Bái',
-];
+] as const;
 
 const EXPLICIT_PROVINCE_PREFIX = /^(?:tỉnh|tinh|thành phố|thanh pho|tp)\.?\s*/i;
 
@@ -79,7 +79,7 @@ function provinceLookupKey(value: string): string {
 }
 
 const PROVINCE_KEYS = new Set([
-  ...PROVINCE_NAMES.map(provinceLookupKey),
+  ...VIETNAM_PROVINCES_63.map(provinceLookupKey),
   'hcm',
   'tphcm',
   'sg',
@@ -136,10 +136,11 @@ export function canonicalProvinceLabel(value?: string | null): string {
     hanoi: 'Hà Nội',
     dng: 'Đà Nẵng',
     danang: 'Đà Nẵng',
+    hue: 'Thừa Thiên Huế',
   };
   const key = provinceLookupKey(normalized);
   return aliases[key]
-    || PROVINCE_NAMES.find((province) => provinceLookupKey(province) === key)
+    || VIETNAM_PROVINCES_63.find((province) => provinceLookupKey(province) === key)
     || normalized;
 }
 

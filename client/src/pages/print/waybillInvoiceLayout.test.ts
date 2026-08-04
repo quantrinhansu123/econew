@@ -55,7 +55,10 @@ describe('waybill invoice marked layout', () => {
     expect(css).toMatch(
       /\.eco-a5-people-row \.eco-mini-line--address\s*\{[^}]*grid-template-columns:\s*max-content minmax\(0,\s*1fr\);/s,
     );
-    expect(css).toMatch(/-webkit-line-clamp:\s*4;/s);
+    expect(css).not.toContain('-webkit-line-clamp');
+    expect(css).toMatch(
+      /\.eco-a5-people-row \.eco-mini-line--address \.eco-mini-value\s*\{[^}]*display:\s*block;[^}]*white-space:\s*normal;/s,
+    );
     expect(css).toMatch(
       /\.eco-two-col-line--dest\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) 38mm;/s,
     );

@@ -1,7 +1,7 @@
 import type { HubSummary, PaymentType, WaybillDetail } from './types';
 import { emptyOrderForm } from './orderFormData';
 import type { BillListItem, NewOrderFormState } from './orderFormTypes';
-import { extractProvinceFromAddress } from '../../../lib/vietnamProvince';
+import { canonicalProvinceLabel, extractProvinceFromAddress } from '../../../lib/vietnamProvince';
 import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
 import { joinWaybillImages, parseWaybillImages } from '../../../lib/waybillImages';
 
@@ -311,13 +311,14 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     noiDen: destCode || 'HCM',
     originHubId: originId,
     destHubId: destId,
-    huyen:
+    huyen: canonicalProvinceLabel(
       (waybill as { noi_den?: string }).noi_den?.trim()
       || parseNoteField(note, 'tinh_den')
       || parseNoteField(note, 'huyen')
       || waybill.dest_hub?.province?.trim()
       || waybill.dest_hub?.name
       || '',
+    ),
     quanHuyen:
       (waybill as { receiver_district?: string }).receiver_district?.trim()
       || parseNoteField(note, 'quan_huyen')

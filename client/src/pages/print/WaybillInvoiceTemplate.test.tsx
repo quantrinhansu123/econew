@@ -59,6 +59,9 @@ describe('waybill invoice layout', () => {
     expect(html).toContain('Tên liên hệ:');
     expect(html).toContain('Phường/Xã:');
     expect(html).toContain('Xã Tân Kiên');
+    expect(html).toContain('Quận/Huyện:');
+    expect(html).toContain('Bình Chánh');
+    expect(html.indexOf('Phường/Xã:')).toBeLessThan(html.indexOf('Quận/Huyện:'));
     const receiverContact = html.match(/eco-two-col-line--receiver-contact[\s\S]*?<\/div><\/div>/)?.[0] || '';
     expect(receiverContact.indexOf('Số điện thoại:')).toBeLessThan(receiverContact.indexOf('Tên liên hệ:'));
     expect(html).toContain('Nguyễn Văn Nhận');

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalProvinceLabel, extractProvinceFromAddress } from './vietnamProvince';
+import {
+  canonicalProvinceLabel,
+  extractProvinceFromAddress,
+  VIETNAM_PROVINCES_63,
+} from './vietnamProvince';
 
 describe('extractProvinceFromAddress', () => {
   it('extracts a known province without an administrative prefix', () => {
@@ -21,5 +25,13 @@ describe('extractProvinceFromAddress', () => {
   it('restores a readable province label from compact legacy data', () => {
     expect(canonicalProvinceLabel('BINHDUONG')).toBe('Bình Dương');
     expect(canonicalProvinceLabel('TP. Hồ Chí Minh')).toBe('Hồ Chí Minh');
+    expect(canonicalProvinceLabel('Huế')).toBe('Thừa Thiên Huế');
+  });
+
+  it('provides exactly the old 63-province list without duplicates', () => {
+    expect(VIETNAM_PROVINCES_63).toHaveLength(63);
+    expect(new Set(VIETNAM_PROVINCES_63).size).toBe(63);
+    expect(VIETNAM_PROVINCES_63).toContain('Thừa Thiên Huế');
+    expect(VIETNAM_PROVINCES_63).not.toContain('Huế');
   });
 });
