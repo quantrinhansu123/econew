@@ -552,7 +552,6 @@ export default function WarehouseOrderNewPage() {
             onNew={() => void handleNew()}
             onPreviewRegular={() => openPrintBill()}
             onPrintRegular={() => openPrintBill({ print: '1' })}
-            onPrintA5={() => openPrintBill({ print: '1', format: 'a5' })}
             printableBillId={printableBillId}
             canViewPricing={canViewPricing}
             showPricingOnPrint={showPricingOnPrint}

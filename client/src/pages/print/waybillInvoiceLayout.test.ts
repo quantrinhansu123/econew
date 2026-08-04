@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(new URL('./waybill-invoice.css', import.meta.url), 'utf8');
+const singlePrintPage = readFileSync(new URL('./PrintWaybillPage.tsx', import.meta.url), 'utf8');
+const bulkPrintPage = readFileSync(new URL('./PrintWaybillsBulkPage.tsx', import.meta.url), 'utf8');
 
 describe('waybill invoice marked layout', () => {
   it('removes only the outer frame and keeps explicit receiver/sender grid placement', () => {
@@ -46,13 +48,21 @@ describe('waybill invoice marked layout', () => {
   });
 
   it('fits the printed invoice inside safe printer margins on one page', () => {
-    expect(css).toMatch(/@page\s*\{[^}]*margin:\s*5mm;/s);
+    expect(css).toMatch(/@page\s*\{[^}]*size:\s*A4 portrait;[^}]*margin:\s*5mm;/s);
     expect(css).toMatch(
       /@media print\s*\{[\s\S]*?\.waybill-paper-preview\s*\{[^}]*width:\s*189mm\s*!important;[^}]*height:\s*128mm\s*!important;/s,
     );
     expect(css).toMatch(
       /@media print\s*\{[\s\S]*?\.waybill-invoice\s*\{[^}]*transform:\s*scale\(0\.94\);[^}]*transform-origin:\s*top left;/s,
     );
+  });
+
+  it('only exposes A4 portrait printing and ignores the retired A5 mode', () => {
+    expect(css).not.toMatch(/size:\s*A5 landscape;/);
+    expect(singlePrintPage).not.toContain('A5 ngang');
+    expect(singlePrintPage).not.toContain("format === 'a5'");
+    expect(bulkPrintPage).not.toContain('A5 ngang');
+    expect(bulkPrintPage).not.toContain("format === 'a5'");
   });
 
   it('removes the note heading separator and draws both vertical splits as continuous lines', () => {

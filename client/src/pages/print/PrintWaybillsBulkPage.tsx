@@ -19,10 +19,7 @@ export default function PrintWaybillsBulkPage() {
   const roleMask = getStoredAuthUser()?.role_mask;
   const canViewPricing = canViewWaybillPricing(roleMask);
   const showPricing = shouldShowWaybillPricing(roleMask, searchParams.get('pricing'));
-  const printFormat = searchParams.get('format') === 'a5' ? 'a5' : 'a4';
-  const pageSizeRule = printFormat === 'a5'
-    ? '@media print { @page { size: A5 landscape; margin: 5mm; } }'
-    : '@media print { @page { size: A4 portrait; margin: 5mm; } }';
+  const pageSizeRule = '@media print { @page { size: A4 portrait; margin: 5mm; } }';
 
   const [waybills, setWaybills] = useState<WaybillDetail[]>([]);
   const [loading, setLoading] = useState(ids.length > 0);
@@ -74,7 +71,7 @@ export default function PrintWaybillsBulkPage() {
   const displayError = ids.length ? error : 'Chưa chọn vận đơn để in.';
 
   return (
-    <div className={`waybill-invoice-wrap waybill-invoice-wrap--${printFormat}`}>
+    <div className="waybill-invoice-wrap waybill-invoice-wrap--a4">
       <style>{pageSizeRule}</style>
       <div className="print-toolbar mb-4 flex w-full max-w-[210mm] flex-wrap items-center gap-2">
         <button
@@ -87,12 +84,10 @@ export default function PrintWaybillsBulkPage() {
           In {printItems.length} phiếu
         </button>
         <span className="text-[12px] text-muted-foreground">
-          {printItems.length} phiếu · mỗi đơn trên một trang {printFormat === 'a5' ? 'A5 ngang' : 'A4 dọc'}.
+          {printItems.length} phiếu · mỗi đơn trên một trang A4 dọc.
         </span>
         <span className="w-full text-[12px] text-muted-foreground">
-          {printFormat === 'a5'
-            ? 'Đã chọn A5: đặt giấy ngang và chọn đúng khay A5 trên máy in.'
-            : 'Mặc định A4: để giấy dọc như bình thường, không cần chỉnh khay.'}
+          Để giấy A4 dọc như bình thường, không cần chỉnh khay.
         </span>
       </div>
 
@@ -113,7 +108,7 @@ export default function PrintWaybillsBulkPage() {
       <div className="waybill-bulk-print-stack">
         {printItems.map((data) => (
           <div key={data.waybillCode} className="waybill-bulk-print-item">
-            <div className={`waybill-paper-preview waybill-paper-preview--${printFormat}`}>
+            <div className="waybill-paper-preview waybill-paper-preview--a4">
               <WaybillInvoiceTemplate data={data} />
             </div>
           </div>

@@ -1,10 +1,9 @@
 /* Phiếu vận chuyển ECO:
-   - A5: một phiếu trên A5 ngang.
-   - A4: cùng một phiếu ở nửa trên, nửa dưới để trắng.
+   - In trên A4 dọc, phiếu nằm ở nửa trên và nửa dưới để trắng.
    @page chừa lề an toàn 5mm; nội dung in thu 94% để không mất viền phải.
    Khung in chỉ cao 128mm để không phát sinh trang trắng thứ hai. */
 @page {
-  size: A5 landscape;
+  size: A4 portrait;
   margin: 5mm;
 }
 
@@ -23,10 +22,6 @@
   padding: 5mm;
   background: #fff;
   box-shadow: 0 8px 24px rgb(15 23 42 / 10%);
-}
-
-.waybill-paper-preview--a5 {
-  height: 148mm;
 }
 
 .waybill-paper-preview--a4 {
@@ -792,10 +787,6 @@
     overflow: hidden !important;
     box-shadow: none !important;
     background: #fff !important;
-  }
-
-  .waybill-paper-preview--a5 {
-    height: 128mm !important;
   }
 
   .waybill-paper-preview--a4 {

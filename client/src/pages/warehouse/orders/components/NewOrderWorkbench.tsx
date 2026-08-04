@@ -30,7 +30,6 @@ interface Props {
   onNew: () => void;
   onPreviewRegular: () => void;
   onPrintRegular: () => void;
-  onPrintA5: () => void;
   printableBillId: string | null;
   canViewPricing: boolean;
   showPricingOnPrint: boolean;
@@ -62,7 +61,6 @@ export default function NewOrderWorkbench({
   onNew,
   onPreviewRegular,
   onPrintRegular,
-  onPrintA5,
   printableBillId,
   canViewPricing,
   showPricingOnPrint,
@@ -350,7 +348,6 @@ export default function NewOrderWorkbench({
             <ActionButton label="Mới" onClick={onNew} disabled={isBusy} />
             <ActionButton label="Xem bản in A4" onClick={onPreviewRegular} disabled={!printableBillId} />
             <ActionButton label="In A4 thường" onClick={onPrintRegular} disabled={!printableBillId} primary />
-            <ActionButton label="In A5 (chọn khay)" onClick={onPrintA5} disabled={!printableBillId} />
             {canViewPricing && (
               <label className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-[12px] font-extrabold text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50">
                 <input

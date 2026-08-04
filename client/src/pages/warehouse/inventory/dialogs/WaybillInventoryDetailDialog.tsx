@@ -160,15 +160,6 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
           </button>
           <button
             type="button"
-            disabled={printDisabled}
-            onClick={() => openPrint({ print: '1', format: 'a5' })}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 px-3 text-[12px] font-bold text-primary hover:bg-primary/10 disabled:opacity-50"
-          >
-            <Printer size={15} />
-            In A5
-          </button>
-          <button
-            type="button"
             onClick={closeDialog}
             className="h-10 rounded-xl border border-border bg-white px-4 text-[12px] font-bold text-muted-foreground hover:bg-muted"
           >
