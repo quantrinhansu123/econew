@@ -112,7 +112,7 @@ export interface CreateWaybillPayload {
   sender_phone: string;
   sender_address: string;
   receiver_info: string;
-  receiver_name: string;
+  receiver_name?: string;
   receiver_phone: string;
   receiver_address: string;
   origin_hub_id: string;

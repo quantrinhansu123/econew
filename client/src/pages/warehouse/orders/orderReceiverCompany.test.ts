@@ -33,6 +33,17 @@ describe('receiver company on order form', () => {
     expect(payload.note).not.toContain('receiver_company_name=');
   });
 
+  it('omits an empty receiver name from the API payload', () => {
+    const payload = buildCreatePayload({
+      ...emptyOrderForm(),
+      nguoiNhan: '',
+      dienThoaiNhan: '0938938112',
+      diaChiNhan: 'Thủ Đức, Hồ Chí Minh',
+    }, 0);
+
+    expect(payload.receiver_name).toBeUndefined();
+  });
+
   it('loads the saved receiver company when editing an existing bill', () => {
     const form = waybillToOrderForm({
       id: '1',

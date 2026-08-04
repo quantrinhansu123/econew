@@ -282,7 +282,6 @@ export function validateOrderBulkRow(
   else if (customerMatched === false) errors.push(`Không tìm thấy Mã KH "${values.maKh}".`);
 
   if (!values.nguoiGui.trim()) errors.push('Thiếu người gửi.');
-  if (!values.nguoiNhan.trim()) errors.push('Thiếu người nhận.');
   if (!values.dienThoaiNhan.trim()) errors.push('Thiếu SĐT người nhận.');
   if (!values.diaChiNhan.trim()) errors.push('Thiếu địa chỉ nhận.');
 

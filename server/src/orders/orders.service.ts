@@ -23,7 +23,7 @@ export class OrdersService {
       sender_phone: dto.sender_phone?.trim() || null,
       sender_address: dto.sender_address?.trim() || null,
       receiver_company_name: dto.receiver_company_name?.trim() || null,
-      receiver_name: dto.receiver_name,
+      receiver_name: dto.receiver_name?.trim() || null,
       receiver_phone: dto.receiver_phone,
       receiver_address: dto.receiver_address,
       origin_hub_id: dto.origin_hub_id,

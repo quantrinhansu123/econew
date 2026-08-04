@@ -33,4 +33,18 @@ describe('CreateWaybillDto', () => {
 
     await expect(validate(dto)).resolves.toEqual([]);
   });
+
+  it('accepts a waybill without a receiver name', async () => {
+    const dto = Object.assign(new CreateWaybillDto(), {
+      waybill_code: 'ECOHAN1',
+      sender_name: 'Khách gửi',
+      receiver_phone: '0901234567',
+      receiver_address: 'TP.HCM',
+      origin_hub_id: '1',
+      dest_hub_id: '2',
+      weight: 1,
+    });
+
+    await expect(validate(dto)).resolves.toEqual([]);
+  });
 });

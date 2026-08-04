@@ -106,7 +106,7 @@ export default function ReceiverPhoneCombobox({
       >
         <div className="border-b border-border bg-slate-50 px-3 py-2">
           <p className="text-[11px] font-black uppercase tracking-wide text-slate-700">Danh bạ người nhận</p>
-          <p className="mt-0.5 text-[10px] font-medium text-slate-500">Chọn số để điền địa chỉ đã lưu gần nhất</p>
+          <p className="mt-0.5 text-[10px] font-medium text-slate-500">Một số có thể lưu nhiều địa chỉ; chọn đúng địa chỉ cần dùng</p>
         </div>
 
         <div className="custom-scrollbar max-h-64 overflow-y-auto p-1.5">
@@ -124,7 +124,7 @@ export default function ReceiverPhoneCombobox({
           ) : (
             suggestions.map((contact) => (
               <button
-                key={contact.phone}
+                key={`${contact.phone}:${contact.receiver_address}`}
                 type="button"
                 onClick={() => chooseContact(contact)}
                 className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"

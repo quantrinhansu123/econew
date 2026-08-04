@@ -77,6 +77,12 @@ const normalizeReceiverPhone = (value: string | null | undefined) => {
   return digits;
 };
 
+const normalizeReceiverAddressKey = (value: string | null | undefined) => String(value || '')
+  .trim()
+  .toLocaleLowerCase('vi-VN')
+  .replace(/\s+/g, ' ')
+  .replace(/\s*([,;])\s*/g, '$1');
+
 const plainGoodsNote = (note: string | null | undefined) => {
   const text = (note || '').trim();
   if (!text || /(^|\|)\s*[a-z_]+\s*=/i.test(text)) return '';
@@ -120,7 +126,7 @@ export class WaybillsService {
     const record = this.waybillsRepository.create({
       waybill_code: waybillCode,
       sender_info: this.packContact(dto.sender_name, dto.sender_phone, dto.sender_address),
-      receiver_info: this.packContact(dto.receiver_name, dto.receiver_phone, dto.receiver_address),
+      receiver_info: this.packReceiverContact(dto.receiver_name, dto.receiver_phone, dto.receiver_address),
       weight: dto.weight,
       length: dto.length ?? 0,
       width: dto.width ?? 0,
@@ -142,7 +148,7 @@ export class WaybillsService {
       sender_phone: dto.sender_phone?.trim() || null,
       sender_address: dto.sender_address?.trim() || null,
       receiver_company_name: dto.receiver_company_name?.trim() || null,
-      receiver_name: dto.receiver_name,
+      receiver_name: dto.receiver_name?.trim() || null,
       receiver_phone: dto.receiver_phone,
       receiver_address: dto.receiver_address,
       current_hub_id: dto.origin_hub_id,
@@ -173,11 +179,7 @@ export class WaybillsService {
     }
   }
 
-  /**
-   * Danh bạ người nhận được suy ra từ vận đơn: với mỗi SĐT chuẩn hóa, bản ghi
-   * được lưu/cập nhật gần nhất là địa chỉ hiện hành. Vì vậy lưu lại cùng SĐT
-   * với địa chỉ mới sẽ tự ghi đè kết quả gợi ý mà không nhân đôi dữ liệu.
-   */
+  /** Danh bạ suy ra từ vận đơn, giữ mọi cặp SĐT + địa chỉ khác nhau. */
   async findReceiverContacts(query: QueryReceiverContactsDto): Promise<ReceiverContactSuggestion[]> {
     const searchedPhone = normalizeReceiverPhone(query.phone);
     const limit = Math.min(query.limit ?? 12, 20);
@@ -218,16 +220,17 @@ export class WaybillsService {
       receiver_company_name?: string | null;
       last_used_at?: string | Date | null;
     }>();
-    const seenPhones = new Set<string>();
+    const seenPhoneAddresses = new Set<string>();
     const suggestions: ReceiverContactSuggestion[] = [];
 
     for (const row of rows) {
       const phone = normalizeReceiverPhone(row.normalized_phone);
       const receiverAddress = row.receiver_address?.trim() || '';
-      if (!phone || !receiverAddress || seenPhones.has(phone)) continue;
+      const contactKey = `${phone}\u0000${normalizeReceiverAddressKey(receiverAddress)}`;
+      if (!phone || !receiverAddress || seenPhoneAddresses.has(contactKey)) continue;
       if (searchedPhone && !phone.includes(searchedPhone)) continue;
 
-      seenPhones.add(phone);
+      seenPhoneAddresses.add(contactKey);
       suggestions.push({
         phone,
         receiver_address: receiverAddress,
@@ -313,8 +316,8 @@ export class WaybillsService {
     if (patch.sender_name !== undefined || patch.sender_phone !== undefined || patch.sender_address !== undefined) {
       waybill.sender_info = this.packContact(waybill.sender_name, waybill.sender_phone, waybill.sender_address);
     }
-    if (patch.receiver_name || patch.receiver_phone || patch.receiver_address) {
-      waybill.receiver_info = this.packContact(waybill.receiver_name, waybill.receiver_phone, waybill.receiver_address);
+    if (patch.receiver_name !== undefined || patch.receiver_phone !== undefined || patch.receiver_address !== undefined) {
+      waybill.receiver_info = this.packReceiverContact(waybill.receiver_name, waybill.receiver_phone, waybill.receiver_address);
     }
     if (patch.note !== undefined) {
       waybill.ma_kh = parseNoteField(patch.note, 'ma_kh') || waybill.ma_kh;
@@ -2174,6 +2177,10 @@ export class WaybillsService {
 
   private packContact(name?: string | null, phone?: string | null, address?: string | null) {
     return [name, phone, address].filter(Boolean).join(' | ');
+  }
+
+  private packReceiverContact(name?: string | null, phone?: string | null, address?: string | null) {
+    return [name?.trim() || '', phone?.trim() || '', address?.trim() || ''].join(' | ');
   }
 
   private resolvePaymentType(dto: Pick<CreateWaybillDto, 'note' | 'cc_amount'>): PaymentType {

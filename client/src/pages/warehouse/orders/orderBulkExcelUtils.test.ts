@@ -188,7 +188,6 @@ describe('order bulk Excel template', () => {
       bcDen: 'DAN',
       maKh: 'CUSTOMER2',
       nguoiGui: 'Người gửi',
-      nguoiNhan: 'Người nhận',
       diaChiNhan: 'Đà Nẵng',
       huyen: 'ĐÀ NẴNG',
       klKg: '1',
@@ -217,6 +216,7 @@ describe('order bulk Excel template', () => {
     expect(missingPhone[0].errors).toContain('Thiếu SĐT người nhận.');
     expect(validPhone[0].errors).not.toContain('Thiếu SĐT người nhận.');
     expect(validPhone[0].errors).not.toContain('SĐT người nhận không hợp lệ.');
+    expect(validPhone[0].errors).not.toContain('Thiếu người nhận.');
   });
 
   it('rejects an empty or invalid sent date', () => {

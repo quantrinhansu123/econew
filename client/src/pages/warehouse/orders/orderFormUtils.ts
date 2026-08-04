@@ -165,7 +165,6 @@ export function validateNewOrderForm(form: NewOrderFormState, volumetricWeight: 
   if (form.dienThoaiKh.trim() && !isValidVnPhone(form.dienThoaiKh)) {
     return 'Điện thoại khách hàng không hợp lệ.';
   }
-  if (!form.nguoiNhan.trim()) return 'Người nhận là bắt buộc.';
   if (!form.dienThoaiNhan.trim()) return 'Điện thoại người nhận là bắt buộc.';
   if (!form.diaChiNhan.trim()) return 'Địa chỉ nhận là bắt buộc.';
   if (!isValidVnPhone(form.dienThoaiNhan)) return 'Số điện thoại người nhận không hợp lệ.';
@@ -476,7 +475,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     // Giữ trống khi hồ sơ khách không có địa chỉ. Khoảng trắng giúp API Render
     // cũ vượt IsNotEmpty; backend mới trim thành null và form/in bill vẫn trống.
     sender_address: form.diaChiGui.trim() || ' ',
-    receiver_name: form.nguoiNhan.trim(),
+    receiver_name: form.nguoiNhan.trim() || undefined,
     receiver_company_name: form.tenCongTyNhan.trim() || undefined,
     receiver_phone: normalizeVnPhone(form.dienThoaiNhan.trim()),
     receiver_address: form.diaChiNhan.trim(),

@@ -72,7 +72,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         </div>
         <div className="eco-band eco-band--receiver-details">
           <MiniLine label="Địa chỉ:" className="eco-mini-line--address">{value(data.diaChiNhan)}</MiniLine>
-          <MiniLine label="Phường/Xã:" strong>{value(data.phuongXaNhan)}</MiniLine>
+          <MiniLine label="Phường/Xã:" strong className="eco-mini-line--ward">{value(data.phuongXaNhan)}</MiniLine>
         </div>
         <div className="eco-band eco-band--sender-region eco-band--left">
           <div className="eco-two-col-line">

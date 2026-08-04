@@ -11,7 +11,11 @@ export class CreateWaybillDto {
   @IsString()
   @MaxLength(255)
   receiver_company_name?: string;
-  @ApiProperty() @IsString() @IsNotEmpty() receiver_name: string;
+  @ApiPropertyOptional({ description: 'Tên người nhận, có thể để trống' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  receiver_name?: string;
   @ApiProperty() @IsString() @IsNotEmpty() receiver_phone: string;
   @ApiProperty() @IsString() @IsNotEmpty() receiver_address: string;
   @ApiProperty() @IsString() @IsNotEmpty() origin_hub_id: string;

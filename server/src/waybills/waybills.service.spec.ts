@@ -222,7 +222,23 @@ describe('WaybillsService', () => {
     expect(result.sender_info).toBe('A | HN');
   });
 
-  it('suggests the latest receiver address and matches formatted phone input by digits', async () => {
+  it('create stores an empty receiver name without shifting phone and address fields', async () => {
+    waybillsRepository.findOne.mockResolvedValue(null);
+    const result = await service.create({
+      waybill_code: 'ECOHAN1',
+      sender_name: 'A',
+      receiver_phone: '0901234567',
+      receiver_address: 'TP.HCM',
+      origin_hub_id: '1',
+      dest_hub_id: '2',
+      weight: 3,
+    }, manager);
+
+    expect(result.receiver_name).toBeNull();
+    expect(result.receiver_info).toBe(' | 0901234567 | TP.HCM');
+  });
+
+  it('suggests every distinct address for a phone and matches formatted phone input by digits', async () => {
     const qb = createQueryBuilder();
     qb.getRawMany.mockResolvedValue([
       {
@@ -239,6 +255,13 @@ describe('WaybillsService', () => {
         receiver_company_name: null,
         last_used_at: '2026-07-22T10:00:00.000Z',
       },
+      {
+        normalized_phone: '0934455122',
+        receiver_address: '  ĐỊA CHỈ MỚI  ',
+        receiver_name: 'Bản ghi trùng',
+        receiver_company_name: null,
+        last_used_at: '2026-07-21T10:00:00.000Z',
+      },
     ]);
     waybillsRepository.createQueryBuilder.mockReturnValue(qb);
 
@@ -249,6 +272,13 @@ describe('WaybillsService', () => {
         receiver_name: 'Người nhận mới',
         receiver_company_name: null,
         last_used_at: '2026-07-23T10:00:00.000Z',
+      },
+      {
+        phone: '0934455122',
+        receiver_address: 'Địa chỉ cũ',
+        receiver_name: 'Người nhận cũ',
+        receiver_company_name: null,
+        last_used_at: '2026-07-22T10:00:00.000Z',
       },
     ]);
     expect(qb.andWhere).toHaveBeenCalledWith(expect.stringContaining('LIKE :receiverPhone'), {

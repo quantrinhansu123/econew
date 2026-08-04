@@ -47,7 +47,10 @@ describe('waybill invoice marked layout', () => {
     );
     expect(css).toMatch(/\.eco-a5-people-row\s*\{[^}]*align-content:\s*start;/s);
     expect(css).toMatch(
-      /\.eco-band--receiver-details\s*\{[^}]*font-size:\s*calc\(13\.5pt \* var\(--eco-a5-scale\)\);[^}]*line-height:\s*1\.05;/s,
+      /\.eco-band--receiver-details\s*\{[^}]*justify-content:\s*flex-start;[^}]*gap:\s*0\.15mm;[^}]*font-size:\s*calc\(13\.5pt \* var\(--eco-a5-scale\)\);[^}]*line-height:\s*1\.08;/s,
+    );
+    expect(css).toMatch(
+      /\.eco-band--receiver-details \.eco-mini-line--ward\s*\{[^}]*grid-template-columns:\s*max-content minmax\(0,\s*1fr\);[^}]*column-gap:\s*1\.2mm;/s,
     );
     expect(css).toMatch(
       /\.eco-two-col-line--receiver-contact\s*\{[^}]*grid-template-columns:\s*42mm minmax\(0,\s*1fr\);[^}]*column-gap:\s*0\.8mm;/s,

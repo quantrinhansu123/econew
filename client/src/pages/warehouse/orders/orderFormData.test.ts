@@ -50,6 +50,10 @@ describe('new order defaults', () => {
     expect(validateNewOrderForm(validOrderForm(), 0)).toBe('');
   });
 
+  it('allows an order without a receiver name', () => {
+    expect(validateNewOrderForm({ ...validOrderForm(), nguoiNhan: '' }, 0)).toBe('');
+  });
+
   it('still rejects an invalid customer phone when one is entered', () => {
     expect(validateNewOrderForm({ ...validOrderForm(), dienThoaiKh: '123' }, 0))
       .toBe('Điện thoại khách hàng không hợp lệ.');
