@@ -370,7 +370,7 @@
 .eco-band--receiver-contact {
   grid-column: 2;
   grid-row: 4;
-  padding-top: 0.35mm;
+  padding-top: 1mm;
   padding-bottom: 0.35mm;
   font-size: calc(14.5pt * var(--eco-a5-scale));
   line-height: 1.12;

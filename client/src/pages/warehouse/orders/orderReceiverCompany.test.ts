@@ -33,7 +33,7 @@ describe('receiver company on order form', () => {
     expect(payload.note).not.toContain('receiver_company_name=');
   });
 
-  it('omits an empty receiver name from the API payload', () => {
+  it('keeps an empty receiver name compatible with legacy APIs', () => {
     const payload = buildCreatePayload({
       ...emptyOrderForm(),
       nguoiNhan: '',
@@ -41,7 +41,7 @@ describe('receiver company on order form', () => {
       diaChiNhan: 'Thủ Đức, Hồ Chí Minh',
     }, 0);
 
-    expect(payload.receiver_name).toBeUndefined();
+    expect(payload.receiver_name.trim()).toBe('');
   });
 
   it('keeps all empty receiver fields visually blank while remaining compatible with legacy APIs', () => {
@@ -53,7 +53,7 @@ describe('receiver company on order form', () => {
       huyen: '',
     }, 0);
 
-    expect(payload.receiver_name).toBeUndefined();
+    expect(payload.receiver_name.trim()).toBe('');
     expect(payload.receiver_phone.trim()).toBe('');
     expect(payload.receiver_address.trim()).toBe('');
     expect(payload.noi_den).toBeUndefined();

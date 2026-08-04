@@ -481,10 +481,10 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     // Giữ trống khi hồ sơ khách không có địa chỉ. Khoảng trắng giúp API Render
     // cũ vượt IsNotEmpty; backend mới trim thành null và form/in bill vẫn trống.
     sender_address: form.diaChiGui.trim() || ' ',
-    receiver_name: form.nguoiNhan.trim() || undefined,
-    receiver_company_name: form.tenCongTyNhan.trim() || undefined,
     // Khoảng trắng giúp frontend mới vẫn tạo/sửa được đơn trong lúc backend cũ
-    // trên Render còn dùng IsNotEmpty. Backend mới sẽ trim các ô này thành null.
+    // trên Render còn dùng IsNotEmpty cho các trường người nhận.
+    receiver_name: form.nguoiNhan.trim() || ' ',
+    receiver_company_name: form.tenCongTyNhan.trim() || undefined,
     receiver_phone: normalizeVnPhone(form.dienThoaiNhan.trim()) || ' ',
     receiver_address: form.diaChiNhan.trim() || ' ',
     noi_den: receiverProvince || undefined,
