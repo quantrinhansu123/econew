@@ -70,16 +70,14 @@ describe('order bulk Excel template', () => {
     expect(parsed[0].values.ngayDi).toBe('2026-07-25');
   });
 
-  it('marks receiver phone as required for non-HCM orders', () => {
+  it('marks receiver phone as optional in the Excel template', () => {
     const receiverPhoneColumn = ORDER_BULK_COLUMNS.find(
       (column) => column.key === 'dienThoaiNhan',
     );
 
     expect(receiverPhoneColumn).toBeDefined();
-    expect(orderBulkHeaderLabel(receiverPhoneColumn!)).toBe('ĐT người nhận*');
-    expect(ORDER_BULK_TEMPLATE_NOTES.dienThoaiNhan).toContain(
-      'tỉnh khác bắt buộc nhập',
-    );
+    expect(orderBulkHeaderLabel(receiverPhoneColumn!)).toBe('ĐT người nhận');
+    expect(ORDER_BULK_TEMPLATE_NOTES.dienThoaiNhan).toContain('không bắt buộc');
   });
 
   it('skips only the unchanged built-in sample row', () => {
@@ -181,15 +179,13 @@ describe('order bulk Excel template', () => {
     expect(annotated[0].errors).toEqual([]);
   });
 
-  it('requires receiver phone for a non-HCM order', () => {
+  it('allows all receiver information to be empty and validates a phone only when entered', () => {
     const headers = ORDER_BULK_COLUMNS.map(orderBulkHeaderLabel);
     const valuesByKey: Partial<Record<(typeof ORDER_BULK_COLUMNS)[number]['key'], string>> = {
       bcGui: 'HAN',
       bcDen: 'DAN',
       maKh: 'CUSTOMER2',
       nguoiGui: 'Người gửi',
-      diaChiNhan: 'Đà Nẵng',
-      huyen: 'ĐÀ NẴNG',
       klKg: '1',
       dichVu: 'Tiêu chuẩn 72h',
       giaoHang: 'Văn phòng',
@@ -208,13 +204,18 @@ describe('order bulk Excel template', () => {
       parseOrderBulkWorkbook(workbookBuffer([headers, makeData('')])),
       hubs,
     );
+    const invalidPhone = annotateBulkRows(
+      parseOrderBulkWorkbook(workbookBuffer([headers, makeData('123')])),
+      hubs,
+    );
     const validPhone = annotateBulkRows(
       parseOrderBulkWorkbook(workbookBuffer([headers, makeData('0912 345 678')])),
       hubs,
     );
 
-    expect(missingPhone[0].errors).toContain('Thiếu SĐT người nhận.');
-    expect(validPhone[0].errors).not.toContain('Thiếu SĐT người nhận.');
+    expect(missingPhone[0].errors).not.toContain('Thiếu SĐT người nhận.');
+    expect(missingPhone[0].errors).not.toContain('Thiếu địa chỉ nhận.');
+    expect(invalidPhone[0].errors).toContain('SĐT người nhận không hợp lệ.');
     expect(validPhone[0].errors).not.toContain('SĐT người nhận không hợp lệ.');
     expect(validPhone[0].errors).not.toContain('Thiếu người nhận.');
   });

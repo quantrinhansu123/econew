@@ -165,9 +165,9 @@ export function validateNewOrderForm(form: NewOrderFormState, volumetricWeight: 
   if (form.dienThoaiKh.trim() && !isValidVnPhone(form.dienThoaiKh)) {
     return 'Điện thoại khách hàng không hợp lệ.';
   }
-  if (!form.dienThoaiNhan.trim()) return 'Điện thoại người nhận là bắt buộc.';
-  if (!form.diaChiNhan.trim()) return 'Địa chỉ nhận là bắt buộc.';
-  if (!isValidVnPhone(form.dienThoaiNhan)) return 'Số điện thoại người nhận không hợp lệ.';
+  if (form.dienThoaiNhan.trim() && !isValidVnPhone(form.dienThoaiNhan)) {
+    return 'Số điện thoại người nhận không hợp lệ.';
+  }
   if (!form.originHubId) return 'Chọn HUB gửi.';
   if (!form.destHubId) return 'Chọn HUB đến.';
   if (form.originHubId === form.destHubId) return 'HUB gửi và HUB đến không được trùng.';
@@ -287,7 +287,7 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
   const unitPrice = resolveUnitPrice(waybill, billingUnit);
   const note = waybill.note || waybill.notes || '';
   const [length, width, height] = parseDimensions(waybill, note);
-  const receiverAddress = waybill.receiver_address?.trim() || receiver.address || waybill.receiver_info || '';
+  const receiverAddress = waybill.receiver_address?.trim() || receiver.address || '';
   const addressParts = extractVietnamAddressParts(receiverAddress);
   const volumeM3 = Number(
     (waybill as { the_tich_m3?: number }).the_tich_m3
@@ -305,7 +305,7 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     tenCongTyNhan:
       waybill.receiver_company_name?.trim()
       || parseNoteField(note, 'receiver_company_name'),
-    nguoiNhan: waybill.receiver_name?.trim() || receiver.name || waybill.receiver_info || '',
+    nguoiNhan: waybill.receiver_name?.trim() || receiver.name || '',
     diaChiNhan: receiverAddress,
     noiDen: destCode || 'HCM',
     originHubId: originId,
@@ -379,6 +379,12 @@ export function waybillToBillItem(waybill: WaybillDetail): BillListItem {
     waybill_code: waybill.waybill_code || waybill.code || `#${waybill.id}`,
     package_count: Number(waybill.package_count) || 1,
     destination: hubCodeLabel(waybill.dest_hub, waybill.dest_hub_id),
+    destinationProvince: canonicalProvinceLabel(
+      waybill.noi_den?.trim()
+      || parseNoteField(note, 'tinh_den')
+      || parseNoteField(note, 'huyen')
+      || '',
+    ),
     senderName: waybill.sender_name?.trim() || sender.name || waybill.sender_info || '',
     customerCode: waybill.ma_kh?.trim() || parseNoteField(note, 'ma_kh'),
     collectOnDelivery: collectOnDeliveryAmount(waybill),
@@ -477,8 +483,10 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     sender_address: form.diaChiGui.trim() || ' ',
     receiver_name: form.nguoiNhan.trim() || undefined,
     receiver_company_name: form.tenCongTyNhan.trim() || undefined,
-    receiver_phone: normalizeVnPhone(form.dienThoaiNhan.trim()),
-    receiver_address: form.diaChiNhan.trim(),
+    // Khoảng trắng giúp frontend mới vẫn tạo/sửa được đơn trong lúc backend cũ
+    // trên Render còn dùng IsNotEmpty. Backend mới sẽ trim các ô này thành null.
+    receiver_phone: normalizeVnPhone(form.dienThoaiNhan.trim()) || ' ',
+    receiver_address: form.diaChiNhan.trim() || ' ',
     noi_den: receiverProvince || undefined,
     origin_hub_id: form.originHubId,
     dest_hub_id: form.destHubId,

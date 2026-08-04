@@ -98,7 +98,7 @@ export default function BillListSidebar({
     onBulkPrint(ids);
   };
 
-  const columnCount = 7;
+  const columnCount = 8;
 
   return (
     <aside className="flex min-h-[360px] w-full shrink-0 flex-col border-t border-slate-300 bg-slate-50/90 lg:min-h-0 lg:w-[700px] lg:border-l lg:border-t-0">
@@ -136,7 +136,7 @@ export default function BillListSidebar({
         </div>
       </div>
       <div className="flex-1 overflow-auto custom-scrollbar">
-        <table className="w-full min-w-[700px] border-collapse text-[11px]">
+        <table className="w-full min-w-[700px] table-fixed border-collapse text-[11px]">
           <thead className="sticky top-0 z-10 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-600">
             <tr>
               <th className="w-8 border-b border-r border-slate-300 px-1 py-1.5 text-center font-black">
@@ -150,7 +150,8 @@ export default function BillListSidebar({
               </th>
               <th className="w-[118px] border-b border-r border-slate-300 px-2 py-1.5 text-left font-black">Số bill</th>
               <th className="w-12 border-b border-r border-slate-300 px-1.5 py-1.5 text-right font-black">Kiện</th>
-              <th className="w-16 border-b border-r border-slate-300 px-2 py-1.5 text-left font-black">Nơi đến</th>
+              <th className="w-14 border-b border-r border-slate-300 px-1.5 py-1.5 text-left font-black">HUB đến</th>
+              <th className="w-20 border-b border-r border-slate-300 px-1.5 py-1.5 text-left font-black">Tỉnh đến</th>
               <th className="w-[190px] border-b border-r border-slate-300 px-2 py-1.5 text-left font-black">Khách gửi / Mã KH</th>
               <th className="w-24 border-b border-r border-slate-300 px-2 py-1.5 text-right font-black">Phải thu</th>
               <th className="w-8 border-b border-r border-slate-300 px-1 py-1.5 text-center font-black" title="In bill">In</th>
@@ -220,8 +221,11 @@ export default function BillListSidebar({
                       <td className="border-b border-r border-slate-300 px-1.5 py-1.5 text-right font-black tabular-nums">
                         {bill.package_count}
                       </td>
-                      <td className="border-b border-r border-slate-300 px-2 py-1.5 font-bold">
-                        <span className="block max-w-14 truncate" title={bill.destination}>{bill.destination || '—'}</span>
+                      <td className="border-b border-r border-slate-300 px-1.5 py-1.5 font-bold">
+                        <span className="block truncate" title={bill.destination}>{bill.destination || '—'}</span>
+                      </td>
+                      <td className="border-b border-r border-slate-300 px-1.5 py-1.5 font-bold">
+                        <span className="block truncate" title={bill.destinationProvince}>{bill.destinationProvince || '—'}</span>
                       </td>
                       <td className="border-b border-r border-slate-300 px-2 py-1.5 font-bold">
                         <span className="block max-w-[182px] truncate" title={[bill.senderName, bill.customerCode].filter(Boolean).join(' / ')}>

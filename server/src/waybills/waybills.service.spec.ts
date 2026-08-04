@@ -238,6 +238,22 @@ describe('WaybillsService', () => {
     expect(result.receiver_info).toBe(' | 0901234567 | TP.HCM');
   });
 
+  it('create accepts missing receiver information and stores nullable detail fields', async () => {
+    waybillsRepository.findOne.mockResolvedValue(null);
+    const result = await service.create({
+      waybill_code: 'ECOHAN1',
+      sender_name: 'A',
+      origin_hub_id: '1',
+      dest_hub_id: '2',
+      weight: 3,
+    }, manager);
+
+    expect(result.receiver_name).toBeNull();
+    expect(result.receiver_phone).toBeNull();
+    expect(result.receiver_address).toBeNull();
+    expect(result.receiver_info).toBe(' |  | ');
+  });
+
   it('suggests every distinct address for a phone and matches formatted phone input by digits', async () => {
     const qb = createQueryBuilder();
     qb.getRawMany.mockResolvedValue([
@@ -299,6 +315,25 @@ describe('WaybillsService', () => {
   it('create detects a legacy code as duplicate of its contiguous equivalent', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ id: 'legacy', waybill_code: 'ECO-HAN-109602' }));
     await expect(service.create({ waybill_code: 'ECOHAN109602', sender_name: 'A', sender_phone: '1', sender_address: 'HN', receiver_name: 'B', receiver_phone: '2', receiver_address: 'HCM', origin_hub_id: '1', dest_hub_id: '2', weight: 3 }, manager)).rejects.toThrow(ConflictException);
+  });
+
+  it('update clears all receiver information when the form sends blank values', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      receiver_name: 'B',
+      receiver_phone: '2',
+      receiver_address: 'HCM',
+    }));
+
+    const result = await service.update('1', {
+      receiver_name: ' ',
+      receiver_phone: ' ',
+      receiver_address: ' ',
+    }, manager);
+
+    expect(result.receiver_name).toBeNull();
+    expect(result.receiver_phone).toBeNull();
+    expect(result.receiver_address).toBeNull();
+    expect(result.receiver_info).toBe(' |  | ');
   });
 
   it('update normalizes a legacy waybill code and ignores the same record in duplicate checks', async () => {

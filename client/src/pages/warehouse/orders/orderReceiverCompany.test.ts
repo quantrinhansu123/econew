@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyOrderForm } from './orderFormData';
-import { buildCreatePayload, waybillToOrderForm } from './orderFormUtils';
+import { buildCreatePayload, waybillToBillItem, waybillToOrderForm } from './orderFormUtils';
 
 describe('receiver company on order form', () => {
   it('allows sender phone and address to remain visually empty on legacy APIs', () => {
@@ -42,6 +42,21 @@ describe('receiver company on order form', () => {
     }, 0);
 
     expect(payload.receiver_name).toBeUndefined();
+  });
+
+  it('keeps all empty receiver fields visually blank while remaining compatible with legacy APIs', () => {
+    const payload = buildCreatePayload({
+      ...emptyOrderForm(),
+      nguoiNhan: '',
+      dienThoaiNhan: '',
+      diaChiNhan: '',
+      huyen: '',
+    }, 0);
+
+    expect(payload.receiver_name).toBeUndefined();
+    expect(payload.receiver_phone.trim()).toBe('');
+    expect(payload.receiver_address.trim()).toBe('');
+    expect(payload.noi_den).toBeUndefined();
   });
 
   it('loads the saved receiver company when editing an existing bill', () => {
@@ -140,5 +155,17 @@ describe('receiver company on order form', () => {
     }, []);
 
     expect(form.huyen).toBe('Bình Dương');
+  });
+
+  it('keeps destination HUB and receiver province in separate bill-list columns', () => {
+    const item = waybillToBillItem({
+      id: '61',
+      waybill_code: 'ECOHAN61',
+      dest_hub: { id: '2', code: 'HCM', name: 'Bưu cục Hồ Chí Minh' },
+      noi_den: 'PHUYEN',
+    });
+
+    expect(item.destination).toBe('HCM');
+    expect(item.destinationProvince).toBe('Phú Yên');
   });
 });

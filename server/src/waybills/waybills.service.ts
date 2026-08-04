@@ -149,8 +149,8 @@ export class WaybillsService {
       sender_address: dto.sender_address?.trim() || null,
       receiver_company_name: dto.receiver_company_name?.trim() || null,
       receiver_name: dto.receiver_name?.trim() || null,
-      receiver_phone: dto.receiver_phone,
-      receiver_address: dto.receiver_address,
+      receiver_phone: dto.receiver_phone?.trim() || null,
+      receiver_address: dto.receiver_address?.trim() || null,
       current_hub_id: dto.origin_hub_id,
       priority: WaybillPriority.NORMAL,
       cod_amount: dto.cod_amount ?? 0,
@@ -264,6 +264,15 @@ export class WaybillsService {
   async update(id: string, dto: UpdateWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
     const patch: UpdateWaybillDto = { ...dto };
+    const nullableReceiverPatch = patch as unknown as Record<
+      'receiver_name' | 'receiver_phone' | 'receiver_address',
+      string | null | undefined
+    >;
+    (['receiver_name', 'receiver_phone', 'receiver_address'] as const).forEach((field) => {
+      if (nullableReceiverPatch[field] !== undefined) {
+        nullableReceiverPatch[field] = nullableReceiverPatch[field]?.trim() || null;
+      }
+    });
     const requestedOriginHubId = patch.origin_hub_id !== undefined ? String(patch.origin_hub_id) : null;
     const requestedDestHubId = patch.dest_hub_id !== undefined ? String(patch.dest_hub_id) : null;
     const originChanged = requestedOriginHubId !== null && requestedOriginHubId !== String(waybill.origin_hub_id);

@@ -54,6 +54,24 @@ describe('new order defaults', () => {
     expect(validateNewOrderForm({ ...validOrderForm(), nguoiNhan: '' }, 0)).toBe('');
   });
 
+  it('allows an order without any receiver information', () => {
+    expect(validateNewOrderForm({
+      ...validOrderForm(),
+      tenCongTyNhan: '',
+      nguoiNhan: '',
+      dienThoaiNhan: '',
+      diaChiNhan: '',
+      huyen: '',
+      quanHuyen: '',
+      phuongXa: '',
+    }, 0)).toBe('');
+  });
+
+  it('still rejects an invalid receiver phone when one is entered', () => {
+    expect(validateNewOrderForm({ ...validOrderForm(), dienThoaiNhan: '123' }, 0))
+      .toBe('Số điện thoại người nhận không hợp lệ.');
+  });
+
   it('still rejects an invalid customer phone when one is entered', () => {
     expect(validateNewOrderForm({ ...validOrderForm(), dienThoaiKh: '123' }, 0))
       .toBe('Điện thoại khách hàng không hợp lệ.');

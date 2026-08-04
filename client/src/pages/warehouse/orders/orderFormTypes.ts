@@ -7,6 +7,7 @@ export interface BillListItem {
   waybill_code: string;
   package_count: number;
   destination: string;
+  destinationProvince: string;
   senderName: string;
   customerCode: string;
   collectOnDelivery: number;
