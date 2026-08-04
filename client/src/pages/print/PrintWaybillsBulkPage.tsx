@@ -89,6 +89,9 @@ export default function PrintWaybillsBulkPage() {
         <span className="w-full text-[12px] text-muted-foreground">
           Để giấy A4 dọc như bình thường, không cần chỉnh khay.
         </span>
+        <span className="w-full text-[12px] font-semibold text-amber-700">
+          Máy Canon LBP3050 nếu in ra giấy trắng: trong cửa sổ in nhấn Ctrl+Shift+P, chọn Canon rồi bấm In.
+        </span>
       </div>
 
       {loading && (

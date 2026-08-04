@@ -220,8 +220,8 @@
   min-height: 31mm;
   display: grid;
   grid-template-columns: var(--eco-a5-split) 1fr;
-  grid-template-rows: auto minmax(9mm, auto) auto auto;
-  align-content: space-between;
+  grid-template-rows: auto minmax(8mm, auto) auto auto;
+  align-content: start;
   font-size: var(--fs-body);
   line-height: 1.25;
 }
@@ -306,7 +306,7 @@
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
 }
 
 .eco-two-col-line {
@@ -330,7 +330,10 @@
 .eco-band--receiver-details {
   grid-column: 2;
   grid-row: 2;
-  font-size: calc(15pt * var(--eco-a5-scale));
+  padding-top: 0.35mm;
+  padding-bottom: 0.35mm;
+  font-size: calc(14.5pt * var(--eco-a5-scale));
+  line-height: 1.12;
 }
 
 .eco-band--sender-region {
@@ -352,7 +355,10 @@
 .eco-band--receiver-contact {
   grid-column: 2;
   grid-row: 4;
-  font-size: calc(15pt * var(--eco-a5-scale));
+  padding-top: 0.35mm;
+  padding-bottom: 0.35mm;
+  font-size: calc(14.5pt * var(--eco-a5-scale));
+  line-height: 1.12;
 }
 
 .eco-two-col-line--sender-contact {
@@ -360,7 +366,8 @@
 }
 
 .eco-two-col-line--receiver-contact {
-  grid-template-columns: 54mm minmax(0, 1fr);
+  grid-template-columns: 42mm minmax(0, 1fr);
+  column-gap: 0.8mm;
 }
 
 .eco-two-col-line--receiver-contact .eco-recipient-phone {

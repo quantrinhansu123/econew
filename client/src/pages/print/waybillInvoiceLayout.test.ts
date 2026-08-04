@@ -45,6 +45,13 @@ describe('waybill invoice marked layout', () => {
     expect(css).toMatch(
       /\.eco-note-cell--contents p\s*\{[^}]*font-size:\s*calc\(16pt \* var\(--eco-a5-scale\)\);/s,
     );
+    expect(css).toMatch(/\.eco-a5-people-row\s*\{[^}]*align-content:\s*start;/s);
+    expect(css).toMatch(
+      /\.eco-band--receiver-details\s*\{[^}]*font-size:\s*calc\(14\.5pt \* var\(--eco-a5-scale\)\);[^}]*line-height:\s*1\.12;/s,
+    );
+    expect(css).toMatch(
+      /\.eco-two-col-line--receiver-contact\s*\{[^}]*grid-template-columns:\s*42mm minmax\(0,\s*1fr\);[^}]*column-gap:\s*0\.8mm;/s,
+    );
   });
 
   it('fits the printed invoice inside safe printer margins on one page', () => {

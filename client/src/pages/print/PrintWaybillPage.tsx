@@ -118,6 +118,9 @@ export default function PrintWaybillPage() {
         <span className="w-full text-[12px] text-muted-foreground">
           In trên giấy A4 dọc như bình thường, không cần chỉnh khay; phiếu nằm ở nửa trên trang.
         </span>
+        <span className="w-full text-[12px] font-semibold text-amber-700">
+          Máy Canon LBP3050 nếu in ra giấy trắng: trong cửa sổ in nhấn Ctrl+Shift+P, chọn Canon rồi bấm In.
+        </span>
         <span className="text-[12px] text-muted-foreground">
           {printData?.showPricing
             ? 'Phiếu đang hiển thị cước phí.'
