@@ -29,8 +29,10 @@ describe('customer bill defaults form', () => {
       id: '1',
       code: 'ABC',
       name: 'Khách ABC',
+      destination_province: 'HCM',
       default_special_goods: 'HIGH_VALUE,FRAGILE',
     } as any);
+    expect(form.destination_province).toBe('Hồ Chí Minh');
     expect(form.default_special_goods).toEqual(['HIGH_VALUE', 'FRAGILE']);
 
     const cleared = formToPayload({

@@ -51,7 +51,7 @@ export function specialGoodsLabels(value: unknown): string[] {
 
 export function formatSpecialGoodsNote(value: unknown): string {
   const labels = specialGoodsLabels(value);
-  return labels.length ? `Tính chất HH đặc biệt: ${labels.join(', ')}` : '';
+  return labels.join(', ');
 }
 
 export function userNoteFromWaybillNote(note: string | null | undefined): string {

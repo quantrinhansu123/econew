@@ -9,6 +9,7 @@ import {
   PHUONG_THUC_OPTIONS,
 } from '../../orders/orderFormData';
 import { WAYBILL_SPECIAL_GOODS_OPTIONS } from '../../../../lib/waybillSpecialGoods';
+import { VIETNAM_PROVINCES_63 } from '../../../../lib/vietnamProvince';
 
 interface Props {
   isOpen: boolean;
@@ -101,13 +102,6 @@ export default function CustomerFormDialog({
                   <option value="SUSPENDED">Tạm dừng</option>
                 </select>
               </Field>
-              <Field label="Tỉnh đến">
-                <input
-                  value={form.destination_province}
-                  onChange={(e) => onChange('destination_province', e.target.value)}
-                  className={inputClass}
-                />
-              </Field>
               <Field label="Chiết khấu %">
                 <input
                   type="number"
@@ -159,6 +153,12 @@ export default function CustomerFormDialog({
             <p className="mb-1 text-[12px] font-extrabold uppercase tracking-wide text-emerald-700">Mặc định khi tạo bill</p>
             <p className="mb-3 text-[12px] font-medium text-muted-foreground">Khi chọn mã khách, các giá trị này tự điền và vẫn có thể sửa riêng trên từng bill.</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Tỉnh đến mặc định">
+                <select value={form.destination_province} onChange={(e) => onChange('destination_province', e.target.value)} className={inputClass}>
+                  <option value="">Chưa đặt mặc định</option>
+                  {VIETNAM_PROVINCES_63.map((province) => <option key={province} value={province}>{province}</option>)}
+                </select>
+              </Field>
               <Field label="Dịch vụ mặc định">
                 <select value={form.default_service} onChange={(e) => onChange('default_service', e.target.value)} className={inputClass}>
                   <option value="">Mặc định hệ thống</option>

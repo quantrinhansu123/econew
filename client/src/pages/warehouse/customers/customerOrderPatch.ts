@@ -2,6 +2,7 @@ import type { CustomerRecord } from './customerFormTypes';
 import type { NewOrderFormState } from '../orders/orderFormTypes';
 import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
 import { normalizeWaybillSpecialGoods } from '../../../lib/waybillSpecialGoods';
+import { canonicalProvinceLabel } from '../../../lib/vietnamProvince';
 
 const str = (v: string | null | undefined) => (v ?? '').trim();
 
@@ -135,6 +136,7 @@ export function receiverPatchForProvinceChange(
 /** Điền form nhập đơn từ bản ghi bảng customers */
 export function customerToOrderPatch(customer: CustomerRecord): Partial<NewOrderFormState> {
   const phoneKh = customerPhone(customer);
+  const destinationProvince = canonicalProvinceLabel(customer.destination_province);
 
   const patch: Partial<NewOrderFormState> = {
     maKh: customer.code,
@@ -146,6 +148,7 @@ export function customerToOrderPatch(customer: CustomerRecord): Partial<NewOrder
     buuTaLay: str(customer.manager_name) || undefined,
     giamGia: customer.discount_percent != null ? String(customer.discount_percent) : undefined,
     specialGoods: normalizeWaybillSpecialGoods(customer.default_special_goods),
+    huyen: destinationProvince || undefined,
   };
 
   patch.phuongThuc = str(customer.default_payment_method)

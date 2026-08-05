@@ -425,7 +425,6 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
 
             <DetailSection title="Giao nhận & kho">
               <Row label="Giao nhận" value={customer.delivery_handler} />
-              <Row label="Tỉnh đến" value={customer.destination_province} />
               <Row label="Người nhận HAN" value={customer.receiver_han} />
               <Row label="ĐC kho HAN" value={customer.address_han} />
               <Row label="ĐT nhận HAN" value={customer.phone_han} />
@@ -443,6 +442,7 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
 
             <DetailSection title="Bill & giá">
               <Row label="Bảng giá" value={customer.price_table} />
+              <Row label="Tỉnh đến mặc định" value={customer.destination_province} />
               <Row label="Dịch vụ mặc định" value={customer.default_service} />
               <Row label="Giao hàng mặc định" value={customer.default_delivery_method} />
               <Row label="Tính cước theo" value={customer.default_billing_unit} />

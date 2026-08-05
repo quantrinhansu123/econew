@@ -95,10 +95,10 @@ describe('customer order autofill', () => {
     expect(patch.ghiChu).toBeUndefined();
   });
 
-  it('does not derive order province or HUB destination from the customer profile', () => {
+  it('autofills the saved default province without changing the destination HUB', () => {
     const patch = customerToOrderPatch(customer);
 
-    expect(patch.huyen).toBeUndefined();
+    expect(patch.huyen).toBe('Hồ Chí Minh');
     expect(patch.destHubId).toBeUndefined();
     expect(patch.noiDen).toBeUndefined();
   });

@@ -23,7 +23,7 @@ describe('waybill special goods', () => {
   it('combines the user note and readable special goods labels', () => {
     const note = `user_note=${encodeURIComponent('Gọi trước khi giao')} | special_goods=RETURN_DOCUMENTS,MAGNETIC_BATTERY`;
     expect(resolveWaybillDisplayNote(note)).toBe(
-      'Gọi trước khi giao · Tính chất HH đặc biệt: Hoàn chứng từ gốc đi kèm, Từ tính, Pin',
+      'Gọi trước khi giao · Hoàn chứng từ gốc đi kèm, Từ tính, Pin',
     );
   });
 });

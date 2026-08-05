@@ -264,14 +264,18 @@ export default function WarehouseOrderNewPage() {
           const full = await apiRequest<Partial<CustomerListItem>>(`/customers/${match.id}`);
           const record = { ...match, ...full } as CustomerRecord;
           selectedCustomerRef.current = record;
-          setForm((prev) => applyPricingToForm({
-            ...prev,
-            ...customerToOrderPatch(record),
-            ...applyReceiverByDestination(record, prev.huyen),
-            huyen: prev.huyen,
-            destHubId: prev.destHubId,
-            noiDen: prev.noiDen,
-          }));
+          setForm((prev) => {
+            const customerPatch = customerToOrderPatch(record);
+            const destinationProvince = customerPatch.huyen || prev.huyen;
+            return applyPricingToForm({
+              ...prev,
+              ...customerPatch,
+              ...applyReceiverByDestination(record, destinationProvince),
+              huyen: destinationProvince,
+              destHubId: prev.destHubId,
+              noiDen: prev.noiDen,
+            });
+          });
           return;
         }
       } catch {
@@ -331,15 +335,20 @@ export default function WarehouseOrderNewPage() {
   };
 
   const handleCustomerSelect = (patch: Partial<NewOrderFormState>, customer: CustomerRecord) => {
+    const previousCustomer = selectedCustomerRef.current;
     selectedCustomerRef.current = customer;
     setForm((prev) => {
-      const receiverPatch = applyReceiverByDestination(customer, prev.huyen);
+      const destinationProvince = patch.huyen || prev.huyen;
+      const previousReceiverCleanup = previousCustomer
+        ? receiverPatchForProvinceChange(previousCustomer, prev, destinationProvince)
+        : {};
+      const receiverPatch = applyReceiverByDestination(customer, destinationProvince);
       return applyPricingToForm({
         ...prev,
         ...patch,
+        ...previousReceiverCleanup,
         ...receiverPatch,
-        // Tỉnh nhận là dữ liệu theo từng đơn, không lấy từ hồ sơ khách hàng.
-        huyen: prev.huyen,
+        huyen: destinationProvince,
         // HUB đến giữ nguyên khi chọn/đổi khách hàng.
         destHubId: prev.destHubId,
         noiDen: prev.noiDen,

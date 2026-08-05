@@ -2048,6 +2048,14 @@ export class WaybillsService {
     if (query.current_hub_id?.trim() || query.hub_id?.trim()) {
       return query.current_hub_id ?? query.hub_id;
     }
+    if (
+      query.list_scope === 'all_orders'
+      && (isManager(currentUser.role_mask)
+        || hasRole(currentUser.role_mask, Roles.ACCOUNTANT)
+        || !currentUser.hub_id)
+    ) {
+      return undefined;
+    }
     if (query.ma_kh?.trim() || query.vendor_id?.trim()) {
       return undefined;
     }

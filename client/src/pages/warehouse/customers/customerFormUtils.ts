@@ -1,6 +1,7 @@
 import type { CustomerFormState, CustomerRecord } from './customerFormTypes';
 import type { CustomerListItem } from './types';
 import { normalizeWaybillSpecialGoods, serializeWaybillSpecialGoods } from '../../../lib/waybillSpecialGoods';
+import { canonicalProvinceLabel } from '../../../lib/vietnamProvince';
 
 const str = (v: string | null | undefined) => v ?? '';
 
@@ -9,7 +10,7 @@ export function customerToForm(source: CustomerListItem | CustomerRecord): Custo
     code: str(source.code),
     name: str(source.name),
     short_name: str(source.short_name),
-    destination_province: str(source.destination_province),
+    destination_province: canonicalProvinceLabel(source.destination_province),
     receiver_han: str('receiver_han' in source ? source.receiver_han : null),
     address_han: str('address_han' in source ? source.address_han : null),
     phone_han: str('phone_han' in source ? source.phone_han : null),

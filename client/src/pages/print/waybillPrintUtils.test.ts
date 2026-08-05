@@ -98,7 +98,7 @@ describe('buildWaybillPrintData receiver fields', () => {
     }));
 
     expect(data.ghiChu).toBe(
-      'Tính chất HH đặc biệt: Hoàn chứng từ gốc đi kèm, Quá khổ, Chất lỏng',
+      'Hoàn chứng từ gốc đi kèm, Quá khổ, Chất lỏng',
     );
   });
 

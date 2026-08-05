@@ -959,6 +959,30 @@ describe('WaybillsService', () => {
     expect(result.items[0]).toMatchObject({ remaining_packages: 2, trip_package_count: 2 });
   });
 
+  it('all-orders does not silently limit a manager to the assigned hub', async () => {
+    const qb = createQueryBuilder();
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.getInventoryTripLines({ list_scope: 'all_orders' }, manager);
+
+    expect(qb.andWhere).not.toHaveBeenCalledWith(
+      'COALESCE(waybill.current_hub_id, waybill.origin_hub_id) IN (:...hubIds)',
+      { hubIds: ['1'] },
+    );
+  });
+
+  it('all-orders keeps warehouse staff limited to their assigned hub', async () => {
+    const qb = createQueryBuilder();
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.getInventoryTripLines({ list_scope: 'all_orders' }, warehouse);
+
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'COALESCE(waybill.current_hub_id, waybill.origin_hub_id) IN (:...hubIds)',
+      { hubIds: ['1'] },
+    );
+  });
+
   it('receive transitions RECEIVED to IN_WAREHOUSE', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
     const result = await service.receive('1', { delivery_photo_url: 'https://example.com/receive.jpg' }, warehouse);
