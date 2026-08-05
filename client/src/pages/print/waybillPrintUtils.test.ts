@@ -112,6 +112,18 @@ describe('buildWaybillPrintData receiver fields', () => {
     expect(data.moTaHang).toBe('TZ-10-2; TZ-15-2');
   });
 
+  it('prints converted weight and CBM instead of actual loading weight', () => {
+    const data = buildWaybillPrintData(waybill({
+      weight: 800,
+      volumetric_weight: 3.37,
+      the_tich_m3: 0.1,
+    }));
+
+    expect(data.trongLuongQuyDoi).toBe('3.37');
+    expect(data.cbm).toBe('0.10');
+    expect(JSON.stringify(data)).not.toContain('800');
+  });
+
   it('prints the selected send date instead of the record creation timestamp', () => {
     const data = buildWaybillPrintData(waybill({
       created_at: '2026-07-26T10:00:00+07:00',

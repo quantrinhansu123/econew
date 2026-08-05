@@ -22,8 +22,8 @@ const printData: WaybillPrintData = {
   sdtNhan: '0938938112',
   moTaHang: 'Mã PK',
   soKien: '1',
-  trongLuong: '10',
-  tongLuong: '2.00',
+  trongLuongQuyDoi: '10.00',
+  cbm: '2.00',
   ghiChu: '',
   noiDungHang: 'Mã PK',
   hinhThucThanhToan: 'CÔNG NỢ THÁNG',
@@ -69,6 +69,9 @@ describe('waybill invoice layout', () => {
     expect(html.match(/0938938112/g)).toHaveLength(1);
     expect(html).not.toContain('Mã KH nhận:');
     expect(html).not.toContain('0901111222');
+    expect(html).not.toContain('Trọng lượng thực');
+    expect(html).toContain('Trọng lượng quy đổi');
+    expect(html).toContain('CBM');
   });
 
   it('separates charge details, total amount and the send-date row into stable layout blocks', () => {

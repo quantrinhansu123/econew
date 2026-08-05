@@ -39,6 +39,7 @@ import {
   resolveUnitPrice,
   resolveUserNote,
   resolveVolumeM3,
+  resolveVolumetricWeightKg,
   resolveWeightKg,
 } from './inventoryColumns';
 import type { WaybillInventoryItem } from './types';
@@ -88,6 +89,7 @@ const NUMBER_FORMAT_BY_COLUMN: Partial<Record<InventoryColumnId, string>> = {
   freight: '#,##0 "đ"',
   cod_amount: '#,##0 "đ"',
   weight: '#,##0.0',
+  volumetric_weight: '#,##0.0',
   volume: '0.00',
 };
 
@@ -125,6 +127,7 @@ const EXCEL_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>> = {
   receiver_phone: 18,
   package_count: 14,
   weight: 17,
+  volumetric_weight: 20,
   volume: 16,
   sender_info: 34,
   receiver_info: 34,
@@ -462,6 +465,10 @@ function inventoryExcelCellValue(
       return variant === 'all-orders'
         ? billWeight(waybill)
         : resolveWeightKg(waybill) || '';
+    case 'volumetric_weight':
+      return variant === 'all-orders'
+        ? billVolumetricWeight(waybill)
+        : resolveVolumetricWeightKg(waybill) || '';
     case 'volume':
       return variant === 'all-orders'
         ? billVolumeM3(waybill)
@@ -511,6 +518,7 @@ function makeTotalRow(
     if (id === totalLabelCol) return 'TỔNG CỘNG';
     if (id === 'package_count') return totals.package_count;
     if (id === 'weight') return totals.weight_kg;
+    if (id === 'volumetric_weight') return totals.volumetric_weight_kg;
     if (id === 'volume') return totals.volume_m3;
     if (id === 'total_amount') return showPricing ? totalAmount : '';
     if (id === 'surcharge') return showPricing ? surcharge : '';
@@ -525,10 +533,11 @@ function computeBillTotals(waybills: WaybillInventoryItem[]) {
     (total, waybill) => ({
       package_count: total.package_count + Number(billPackageCount(waybill) || 0),
       weight_kg: total.weight_kg + Number(billWeight(waybill) || 0),
+      volumetric_weight_kg: total.volumetric_weight_kg + Number(billVolumetricWeight(waybill) || 0),
       volume_m3: total.volume_m3 + Number(billVolumeM3(waybill) || 0),
       freight: 0,
     }),
-    { package_count: 0, weight_kg: 0, volume_m3: 0, freight: 0 },
+    { package_count: 0, weight_kg: 0, volumetric_weight_kg: 0, volume_m3: 0, freight: 0 },
   );
 }
 

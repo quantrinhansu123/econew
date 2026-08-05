@@ -24,8 +24,8 @@ export interface WaybillPrintData {
   sdtNhan: string;
   moTaHang: string;
   soKien: string;
-  trongLuong: string;
-  tongLuong: string;
+  trongLuongQuyDoi: string;
+  cbm: string;
   ghiChu: string;
   noiDungHang: string;
   hinhThucThanhToan: string;
@@ -149,7 +149,7 @@ export function buildWaybillPrintData(
     || waybill.dest_hub?.code?.toUpperCase()
     || '';
 
-  const weight = Number(waybill.weight) || 0;
+  const volumetricWeight = Number(waybill.volumetric_weight) || 0;
   const m3 =
     Number((waybill as { the_tich_m3?: number }).the_tich_m3) ||
     parseM3FromNote(note) ||
@@ -200,8 +200,8 @@ export function buildWaybillPrintData(
     sdtNhan: (waybill as { receiver_phone?: string }).receiver_phone || receiver.phone,
     moTaHang: noiDung,
     soKien: String(waybill.package_count ?? 1),
-    trongLuong: formatNum(weight, 0) || '0',
-    tongLuong: formatNum(m3, 2) || '0.00',
+    trongLuongQuyDoi: formatNum(volumetricWeight, 2) || '0.00',
+    cbm: formatNum(m3, 2) || '0.00',
     ghiChu,
     noiDungHang: noiDung,
     hinhThucThanhToan: phuongThucToPrintLabel(phuongThuc, waybill.payment_type),

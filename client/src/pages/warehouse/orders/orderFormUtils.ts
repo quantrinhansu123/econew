@@ -81,9 +81,8 @@ export function getBillingQuantity(form: NewOrderFormState): number {
   const unit = normalizeBillingUnit(form.donGiaDonVi).toLowerCase();
   if (isVolumeBillingUnit(unit)) return parseDecimalNumber(form.m3);
   if (unit === 'trọn gói' || unit === 'tron goi' || unit === 'chuyến' || unit === 'chuyen' || unit === 'lô' || unit === 'lo') return 1;
-  const kg = parseDecimalNumber(form.klKg);
-  const volKg = parseDecimalNumber(form.klQuyDoi);
-  return Math.max(kg, volKg, kg || volKg || 0);
+  // Cước theo Kg luôn dùng trọng lượng quy đổi. Trọng lượng thực chỉ phục vụ xếp xe.
+  return parseDecimalNumber(form.klQuyDoi);
 }
 
 /** Cước chính = đơn giá × số lượng (theo ĐVT) */
@@ -175,7 +174,9 @@ export function validateNewOrderForm(form: NewOrderFormState, volumetricWeight: 
   if (!form.originHubId) return 'Chọn HUB gửi.';
   if (!form.destHubId) return 'Chọn HUB đến.';
   if (form.originHubId === form.destHubId) return 'HUB gửi và HUB đến không được trùng.';
-  if (!Number(form.klKg) && !volumetricWeight) return 'Nhập khối lượng hoặc kích thước.';
+  if (!parseDecimalNumber(form.klKg) && !volumetricWeight && !parseDecimalNumber(form.m3)) {
+    return 'Nhập trọng lượng thực, trọng lượng quy đổi hoặc CBM.';
+  }
   return '';
 }
 
@@ -450,14 +451,13 @@ function resolveUnitPrice(waybill: WaybillDetail, billingUnit: string): number {
   if (!Number.isFinite(totalFreight) || totalFreight <= 0) return 0;
 
   const unit = billingUnit.trim().toLowerCase();
-  const weight = Number(waybill.weight ?? 0);
   const volumetricWeight = Number(waybill.volumetric_weight ?? 0);
   const volumeM3 = Number((waybill as { the_tich_m3?: number }).the_tich_m3 ?? 0);
   const quantity = isVolumeBillingUnit(unit)
     ? volumeM3
     : unit === 'trọn gói' || unit === 'tron goi' || unit === 'chuyến' || unit === 'chuyen' || unit === 'lô' || unit === 'lo'
       ? 1
-      : Math.max(weight, volumetricWeight, weight || volumetricWeight || 0);
+      : volumetricWeight;
 
   if (!quantity) return 0;
   return Math.round(totalFreight / quantity);
@@ -496,7 +496,8 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     noi_den: receiverProvince || undefined,
     origin_hub_id: form.originHubId,
     dest_hub_id: form.destHubId,
-    weight: weight || parseDecimalNumber(form.klQuyDoi) || 1,
+    // Không gộp trọng lượng thực với trọng lượng quy đổi: đây là hai số liệu độc lập.
+    weight,
     length,
     width,
     height,

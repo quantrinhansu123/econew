@@ -8,6 +8,13 @@ const imageFile = {
   size: 11,
 } as Express.Multer.File;
 
+const priceListFile = {
+  buffer: Buffer.from('excel-bytes'),
+  mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  originalname: 'bao-gia.xlsx',
+  size: 11,
+} as Express.Multer.File;
+
 const jsonResponse = (status: number, body: unknown) => new Response(
   JSON.stringify(body),
   { status, headers: { 'Content-Type': 'application/json' } },
@@ -132,5 +139,27 @@ describe('StorageService', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.every(([url]) => !String(url).endsWith('/storage/v1/bucket'))).toBe(true);
+  });
+
+  it('uploads an Excel customer price list to its own folder', async () => {
+    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { Key: 'customer-price-lists/bao-gia.xlsx' }));
+
+    const url = await createService().uploadCustomerPriceList(priceListFile);
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/customer-price-lists/');
+    expect(url).toMatch(/\/customer-price-lists\/.+\.xlsx$/);
+  });
+
+  it('rejects unsupported customer price-list files', async () => {
+    const unsupported = {
+      ...priceListFile,
+      mimetype: 'application/javascript',
+      originalname: 'bao-gia.js',
+    } as Express.Multer.File;
+
+    await expect(createService().uploadCustomerPriceList(unsupported)).rejects.toThrow(
+      'Chỉ chấp nhận bảng giá PDF, XLS, XLSX, CSV hoặc file ảnh.',
+    );
   });
 });

@@ -50,4 +50,19 @@ export class UploadsController {
   uploadWaybillImage(@UploadedFile() file: Express.Multer.File) {
     return this.storageService.uploadWaybillImage(file).then((url) => ({ url }));
   }
+
+  @Post('customer-price-lists')
+  @HttpCode(HttpStatus.OK)
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Upload file bảng giá gắn với khách hàng' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  uploadCustomerPriceList(@UploadedFile() file: Express.Multer.File) {
+    return this.storageService.uploadCustomerPriceList(file).then((url) => ({ url }));
+  }
 }

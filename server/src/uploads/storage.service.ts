@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 
 const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_PRICE_LIST_BYTES = 10 * 1024 * 1024;
 const STORAGE_TIMEOUT_MS = 12_000;
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
@@ -12,6 +13,15 @@ const MIME_EXT: Record<string, string> = {
   'image/webp': 'webp',
   'image/gif': 'gif',
 };
+
+const PRICE_LIST_MIME_EXT: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'text/csv': 'csv',
+  ...MIME_EXT,
+};
+const PRICE_LIST_EXTENSIONS = new Set(Object.values(PRICE_LIST_MIME_EXT));
 
 @Injectable()
 export class StorageService {
@@ -97,6 +107,10 @@ export class StorageService {
     }
 
     const ext = MIME_EXT[file.mimetype] ?? 'jpg';
+    return this.storeObject(file, folder, ext);
+  }
+
+  private async storeObject(file: Express.Multer.File, folder: string, ext: string): Promise<string> {
     const objectPath = `${folder}/${Date.now()}-${randomBytes(8).toString('hex')}.${ext}`;
     const uploadUrl = `${this.supabaseUrl}/storage/v1/object/${this.bucket}/${objectPath}`;
     const serverKeys = this.serverKeys;
@@ -144,5 +158,19 @@ export class StorageService {
 
   uploadWaybillImage(file: Express.Multer.File): Promise<string> {
     return this.uploadImage(file, 'waybills');
+  }
+
+  async uploadCustomerPriceList(file: Express.Multer.File): Promise<string> {
+    if (!file?.buffer?.length) throw new BadRequestException('Thiếu file bảng giá.');
+    if (file.size > MAX_PRICE_LIST_BYTES) throw new BadRequestException('File bảng giá tối đa 10 MB.');
+
+    const nameExt = file.originalname?.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase() || '';
+    const mimeExt = PRICE_LIST_MIME_EXT[file.mimetype];
+    const ext = mimeExt || (PRICE_LIST_EXTENSIONS.has(nameExt) ? nameExt : '');
+    if (!ext) {
+      throw new BadRequestException('Chỉ chấp nhận bảng giá PDF, XLS, XLSX, CSV hoặc file ảnh.');
+    }
+
+    return this.storeObject(file, 'customer-price-lists', ext);
   }
 }

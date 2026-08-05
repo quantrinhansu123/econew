@@ -101,6 +101,7 @@ export const INVENTORY_PRINT_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, nu
   receiver_phone: 6.5,
   package_count: 4,
   weight: 4.5,
+  volumetric_weight: 5.5,
   volume: 4.5,
   cod_amount: 5,
   priority: 4,
@@ -151,6 +152,7 @@ export type InventoryColumnId =
   | 'receiver_phone'
   | 'package_count'
   | 'weight'
+  | 'volumetric_weight'
   | 'volume'
   | 'freight'
   | 'sender_info'
@@ -203,8 +205,9 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'receiver_ward', label: 'Phường', defaultVisible: false },
   { id: 'receiver_phone', label: 'SĐT người nhận', defaultVisible: false },
   { id: 'package_count', label: 'SL', defaultVisible: true, align: 'right' },
-  { id: 'weight', label: 'Số kg', defaultVisible: true, align: 'right' },
-  { id: 'volume', label: 'Số m3', defaultVisible: true, align: 'right' },
+  { id: 'weight', label: 'Trọng lượng thực', defaultVisible: true, align: 'right' },
+  { id: 'volumetric_weight', label: 'Trọng lượng quy đổi', defaultVisible: true, align: 'right' },
+  { id: 'volume', label: 'CBM', defaultVisible: true, align: 'right' },
   { id: 'freight', label: 'Cước phí', defaultVisible: false, managerOnly: true, align: 'right' },
   { id: 'sender_info', label: 'Người gửi', defaultVisible: false },
   { id: 'receiver_info', label: 'Ng nhận', defaultVisible: false },
@@ -231,6 +234,7 @@ export const INVENTORY_FIXED_COLUMN_IDS: InventoryColumnId[] = [
   'waybill_code',
   'user_note',
   'weight',
+  'volumetric_weight',
   'volume',
 ];
 
@@ -554,13 +558,13 @@ export function resolveTotalAmount(waybill: WaybillInventoryItem): number {
 
 export function resolveBillingQtyDetail(waybill: WaybillInventoryItem): string {
   const kg = resolveWeightKg(waybill);
-  const volKg = Number(waybill.volumetric_weight ?? 0);
+  const volKg = resolveVolumetricWeightKg(waybill);
   const m3 = resolveVolumeM3(waybill);
   const unit = resolveBillingUnit(waybill);
   const parts: string[] = [];
-  if (kg > 0) parts.push(`${kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg`);
-  if (volKg > 0) parts.push(`${volKg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg khối`);
-  if (m3 > 0) parts.push(`${m3.toFixed(2)} m³`);
+  if (kg > 0) parts.push(`TT ${kg.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg`);
+  if (volKg > 0) parts.push(`QĐ ${volKg.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg`);
+  if (m3 > 0) parts.push(`${m3.toFixed(2)} CBM`);
   if (!parts.length) return '—';
   return unit ? `${parts.join(' · ')} (${unit})` : parts.join(' · ');
 }
@@ -577,6 +581,14 @@ export function resolveRoute(waybill: WaybillInventoryItem): string {
 export function resolveWeightKg(waybill: WaybillInventoryItem): number {
   const n = Number(waybill.actual_weight ?? waybill.weight ?? 0);
   return Number.isFinite(n) ? n : 0;
+}
+
+export function resolveVolumetricWeightKg(waybill: WaybillInventoryItem): number {
+  const direct = Number(waybill.volumetric_weight ?? 0);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const note = waybill.note || waybill.notes || '';
+  const fromNote = Number(parseNote(note, 'volumetric_weight'));
+  return Number.isFinite(fromNote) ? fromNote : 0;
 }
 
 export function resolveVolumeM3(waybill: WaybillInventoryItem): number {
@@ -601,6 +613,7 @@ export function resolveFreight(waybill: WaybillInventoryItem): number {
 export interface InventoryGrandTotals {
   package_count: number;
   weight_kg: number;
+  volumetric_weight_kg: number;
   volume_m3: number;
   freight: number;
 }
@@ -648,11 +661,12 @@ export function computeGrandTotals(waybills: WaybillInventoryItem[], includeFrei
       return {
         package_count: acc.package_count + packages,
         weight_kg: acc.weight_kg + resolveWeightKg(w) * ratio,
+        volumetric_weight_kg: acc.volumetric_weight_kg + resolveVolumetricWeightKg(w) * ratio,
         volume_m3: acc.volume_m3 + resolveVolumeM3(w) * ratio,
         freight: acc.freight + (includeFreight ? (Number(w.allocated_freight ?? resolveFreight(w)) || 0) : 0),
       };
     },
-    { package_count: 0, weight_kg: 0, volume_m3: 0, freight: 0 },
+    { package_count: 0, weight_kg: 0, volumetric_weight_kg: 0, volume_m3: 0, freight: 0 },
   );
 }
 

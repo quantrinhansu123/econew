@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { clsx } from 'clsx';
-import { PackageCheck } from 'lucide-react';
+import { ExternalLink, FileText, PackageCheck } from 'lucide-react';
 import { calcOrderPricing } from '../orderFormUtils';
 import {
   DICH_VU_OPTIONS,
@@ -22,6 +22,7 @@ interface Props {
   form: NewOrderFormState;
   setField: <K extends keyof NewOrderFormState>(key: K, value: NewOrderFormState[K]) => void;
   onCustomerSelect: (patch: Partial<NewOrderFormState>, customer: CustomerRecord) => void;
+  customerPriceList: { url: string; name: string } | null;
   onDestinationChange: (destHubId: string, hubCode: string) => void;
   onCreateHub: () => void;
   canCreateHub: boolean;
@@ -53,6 +54,7 @@ export default function NewOrderWorkbench({
   form,
   setField,
   onCustomerSelect,
+  customerPriceList,
   onDestinationChange,
   onCreateHub,
   canCreateHub,
@@ -155,6 +157,18 @@ export default function NewOrderWorkbench({
                     onCustomerSelect={onCustomerSelect}
                     disabled={isSubmitting}
                   />
+                  {customerPriceList && (
+                    <button
+                      type="button"
+                      title={customerPriceList.name}
+                      onClick={() => window.open(customerPriceList.url, '_blank', 'noopener,noreferrer')}
+                      className="mt-1 inline-flex max-w-full items-center gap-1 text-[11px] font-extrabold text-primary hover:underline"
+                    >
+                      <FileText size={12} className="shrink-0" />
+                      <span className="truncate">Bảng giá</span>
+                      <ExternalLink size={11} className="shrink-0" />
+                    </button>
+                  )}
                 </CompactField>
                 <CompactField label="Điện thoại KH" className="col-span-6 sm:col-span-4 xl:col-span-2">
                   <CompactInput value={form.dienThoaiKh} onChange={(e) => setField('dienThoaiKh', e.target.value)} />
@@ -238,7 +252,7 @@ export default function NewOrderWorkbench({
                   <CompactInput type="date" value={form.ngayDi} onChange={(e) => setField('ngayDi', e.target.value)} />
                 </CompactField>
 
-                <CompactField label="Tính cước theo" className="col-span-6 sm:col-span-4 xl:col-span-2">
+                <CompactField label="Tính cước theo" className="col-span-6 sm:col-span-3 xl:col-span-3">
                   <CompactSelect value={form.donGiaDonVi} onChange={(e) => setField('donGiaDonVi', e.target.value)}>
                     {DON_GIA_DON_VI_OPTIONS.map((o) => (
                       <option key={o} value={o}>
@@ -248,8 +262,8 @@ export default function NewOrderWorkbench({
                   </CompactSelect>
                 </CompactField>
                 <CompactField
-                  label="Số cân"
-                  className="col-span-6 sm:col-span-4 xl:col-span-2"
+                  label="Trọng lượng thực"
+                  className="col-span-6 sm:col-span-3 xl:col-span-3"
                 >
                   <CompactInput
                     value={form.klKg}
@@ -259,13 +273,24 @@ export default function NewOrderWorkbench({
                   />
                 </CompactField>
                 <CompactField
-                  label="Số khối"
-                  className="col-span-6 sm:col-span-4 xl:col-span-2"
+                  label="CBM"
+                  className="col-span-6 sm:col-span-3 xl:col-span-3"
                 >
                   <CompactInput
                     value={form.m3}
                     onChange={(e) => setField('m3', e.target.value)}
                     placeholder="VD: 4.6 hoặc 4,6"
+                    inputMode="decimal"
+                  />
+                </CompactField>
+                <CompactField
+                  label="Trọng lượng quy đổi"
+                  className="col-span-6 sm:col-span-3 xl:col-span-3"
+                >
+                  <CompactInput
+                    value={form.klQuyDoi}
+                    onChange={(e) => setField('klQuyDoi', e.target.value)}
+                    placeholder="Nhập kg quy đổi"
                     inputMode="decimal"
                   />
                 </CompactField>

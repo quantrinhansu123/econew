@@ -104,8 +104,8 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           <div className="eco-a5-goods-code"><b>Mô tả hàng hoá:</b> {value(data.noiDungHang)}</div>
           <div className="eco-stats-grid">
             <StatCell label="Số kiện" value={data.soKien} />
-            <StatCell label="Trọng lượng thực" value={data.trongLuong} />
-            <StatCell label="Trọng lượng quy đổi" value={data.tongLuong} />
+            <StatCell label="Trọng lượng quy đổi" value={data.trongLuongQuyDoi} />
+            <StatCell label="CBM" value={data.cbm} />
           </div>
           <div className="eco-note-grid">
             <div className="eco-note-cell">

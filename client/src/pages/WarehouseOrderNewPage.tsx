@@ -92,6 +92,7 @@ export default function WarehouseOrderNewPage() {
   const [bills, setBills] = useState<BillListItem[]>([]);
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
   const [form, setForm] = useState<NewOrderFormState>(() => emptyOrderForm());
+  const [customerPriceList, setCustomerPriceList] = useState<{ url: string; name: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hubError, setHubError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -113,10 +114,10 @@ export default function WarehouseOrderNewPage() {
     [hubs],
   );
 
-  const volumetricWeight = useMemo(() => {
-    const v = calcVolumetricWeight(form.chieuDai, form.chieuRong, form.chieuCao);
-    return parseDecimalNumber(v);
-  }, [form.chieuDai, form.chieuRong, form.chieuCao]);
+  const volumetricWeight = useMemo(
+    () => parseDecimalNumber(form.klQuyDoi),
+    [form.klQuyDoi],
+  );
 
   const loadBills = useCallback(async (dateFilter = '', limit = INITIAL_BILL_LIST_LIMIT) => {
     const requestId = ++billRequestIdRef.current;
@@ -264,6 +265,10 @@ export default function WarehouseOrderNewPage() {
           const full = await apiRequest<Partial<CustomerListItem>>(`/customers/${match.id}`);
           const record = { ...match, ...full } as CustomerRecord;
           selectedCustomerRef.current = record;
+          setCustomerPriceList(record.price_list_url ? {
+            url: record.price_list_url,
+            name: record.price_list_name || 'Bảng giá khách hàng',
+          } : null);
           setForm((prev) => {
             const customerPatch = customerToOrderPatch(record);
             const destinationProvince = customerPatch.huyen || prev.huyen;
@@ -292,7 +297,10 @@ export default function WarehouseOrderNewPage() {
   }, [editWaybillId, location.state, isLoading, hubs, navigate, location.pathname, searchParams, setSearchParams]);
 
   const setField = <K extends keyof NewOrderFormState>(key: K, value: NewOrderFormState[K]) => {
-    if (key === 'maKh') selectedCustomerRef.current = null;
+    if (key === 'maKh') {
+      selectedCustomerRef.current = null;
+      setCustomerPriceList(null);
+    }
     setForm((prev) => {
       let next = { ...prev, [key]: value };
       if (key === 'huyen' && typeof value === 'string' && selectedCustomerRef.current) {
@@ -337,6 +345,10 @@ export default function WarehouseOrderNewPage() {
   const handleCustomerSelect = (patch: Partial<NewOrderFormState>, customer: CustomerRecord) => {
     const previousCustomer = selectedCustomerRef.current;
     selectedCustomerRef.current = customer;
+    setCustomerPriceList(customer.price_list_url ? {
+      url: customer.price_list_url,
+      name: customer.price_list_name || 'Bảng giá khách hàng',
+    } : null);
     setForm((prev) => {
       const destinationProvince = patch.huyen || prev.huyen;
       const previousReceiverCleanup = previousCustomer
@@ -369,6 +381,7 @@ export default function WarehouseOrderNewPage() {
 
   const handleSelectBill = async (bill: BillListItem) => {
     selectedCustomerRef.current = null;
+    setCustomerPriceList(null);
     setSelectedBillId(bill.id);
     setActionError('');
     try {
@@ -381,6 +394,7 @@ export default function WarehouseOrderNewPage() {
 
   const handleNew = async () => {
     selectedCustomerRef.current = null;
+    setCustomerPriceList(null);
     skipNewFormInitRef.current = false;
     loadedEditIdRef.current = '';
     const defaultOrigin = getDefaultOriginHubId(hubs, user?.hub_id);
@@ -550,6 +564,7 @@ export default function WarehouseOrderNewPage() {
             form={form}
             setField={setField}
             onCustomerSelect={handleCustomerSelect}
+            customerPriceList={customerPriceList}
             onDestinationChange={handleDestinationChange}
             onCreateHub={() => window.open('/admin/hubs', '_blank', 'noopener')}
             canCreateHub={((user?.role_mask ?? 0) & (32 | 64)) !== 0}

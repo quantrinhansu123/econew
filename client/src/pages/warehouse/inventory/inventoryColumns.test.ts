@@ -22,6 +22,7 @@ const EXPECTED_FIXED_COLUMN_IDS: InventoryColumnId[] = [
   'waybill_code',
   'user_note',
   'weight',
+  'volumetric_weight',
   'volume',
 ];
 

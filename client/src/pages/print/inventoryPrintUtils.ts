@@ -26,6 +26,7 @@ import {
   resolveSurcharge,
   resolveUserNote,
   resolveVolumeM3,
+  resolveVolumetricWeightKg,
   resolveWeightKg,
 } from '../warehouse/inventory/inventoryColumns';
 import type { InventoryFilters, WaybillInventoryItem } from '../warehouse/inventory/types';
@@ -47,6 +48,7 @@ export interface InventoryPrintPayload {
   totals: {
     package_count: string;
     weight_kg: string;
+    volumetric_weight_kg: string;
     volume_m3: string;
     freight: string;
   };
@@ -145,6 +147,8 @@ export function inventoryPrintCellValue(
       return packageLabel(waybill);
     case 'weight':
       return resolveWeightKg(waybill) ? String(Math.round(resolveWeightKg(waybill) * 10) / 10) : '';
+    case 'volumetric_weight':
+      return resolveVolumetricWeightKg(waybill) ? String(Math.round(resolveVolumetricWeightKg(waybill) * 100) / 100) : '';
     case 'volume':
       return resolveVolumeM3(waybill) ? resolveVolumeM3(waybill).toFixed(2) : '';
     case 'freight':
@@ -231,6 +235,9 @@ export function mapWaybillsToPrintRows(
     totals: {
       package_count: String(totalsRaw.package_count),
       weight_kg: totalsRaw.weight_kg ? totalsRaw.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) : '0',
+      volumetric_weight_kg: totalsRaw.volumetric_weight_kg
+        ? totalsRaw.volumetric_weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 2 })
+        : '0',
       volume_m3: totalsRaw.volume_m3 ? totalsRaw.volume_m3.toFixed(2) : '0',
       freight: '',
     },
@@ -277,5 +284,13 @@ export function reconcilePrintPayload(payload: InventoryPrintPayload): Inventory
     return next;
   });
 
-  return { ...payload, columns, rows };
+  return {
+    ...payload,
+    columns,
+    rows,
+    totals: {
+      ...payload.totals,
+      volumetric_weight_kg: payload.totals.volumetric_weight_kg ?? '0',
+    },
+  };
 }

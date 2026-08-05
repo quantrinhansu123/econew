@@ -77,6 +77,12 @@ export class CustomerEntity {
   @Column({ type: 'varchar', length: 128, nullable: true })
   price_table: string | null;
 
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  price_list_url: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  price_list_name: string | null;
+
   @Column({ type: 'varchar', length: 64, nullable: true })
   default_service: string | null;
 

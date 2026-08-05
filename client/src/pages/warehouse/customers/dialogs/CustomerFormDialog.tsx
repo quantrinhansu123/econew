@@ -1,6 +1,8 @@
 import { createPortal } from 'react-dom';
-import type { ReactNode } from 'react';
-import { AlertTriangle, Loader2, Save, X } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { AlertTriangle, ExternalLink, FileText, Loader2, Save, Trash2, Upload, X } from 'lucide-react';
+import { ApiError } from '../../../../lib/api';
+import { CUSTOMER_PRICE_LIST_ACCEPT, uploadCustomerPriceList } from '../../../../lib/uploadImage';
 import type { CustomerFormState } from '../customerFormTypes';
 import {
   DICH_VU_OPTIONS,
@@ -57,7 +59,24 @@ export default function CustomerFormDialog({
   onSubmit,
   onChange,
 }: Props) {
+  const [isPriceFileUploading, setIsPriceFileUploading] = useState(false);
+  const [priceFileError, setPriceFileError] = useState('');
   if (!isOpen) return null;
+
+  const handlePriceFile = async (file?: File) => {
+    if (!file || isPriceFileUploading) return;
+    setIsPriceFileUploading(true);
+    setPriceFileError('');
+    try {
+      const url = await uploadCustomerPriceList(file);
+      onChange('price_list_url', url);
+      onChange('price_list_name', file.name);
+    } catch (uploadError) {
+      setPriceFileError(uploadError instanceof ApiError ? uploadError.message : 'Không upload được file bảng giá.');
+    } finally {
+      setIsPriceFileUploading(false);
+    }
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex justify-end">
@@ -143,6 +162,55 @@ export default function CustomerFormDialog({
               <Field label="Bảng giá">
                 <input value={form.price_table} onChange={(e) => onChange('price_table', e.target.value)} className={inputClass} />
               </Field>
+              <div className="sm:col-span-2">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                  File bảng giá đính kèm
+                </span>
+                {form.price_list_url ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/50 p-3">
+                    <FileText size={18} className="shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-700">
+                      {form.price_list_name || 'Bảng giá khách hàng'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => window.open(form.price_list_url, '_blank', 'noopener,noreferrer')}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 text-[12px] font-bold text-primary hover:bg-blue-50"
+                    >
+                      <ExternalLink size={14} /> Xem
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange('price_list_url', '');
+                        onChange('price_list_name', '');
+                      }}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-[12px] font-bold text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 size={14} /> Bỏ file
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-blue-300 bg-blue-50/40 px-3 text-[13px] font-bold text-primary hover:bg-blue-50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+                    {isPriceFileUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                    {isPriceFileUploading ? 'Đang tải bảng giá...' : 'Chọn file PDF / Excel / ảnh'}
+                    <input
+                      type="file"
+                      accept={CUSTOMER_PRICE_LIST_ACCEPT}
+                      disabled={isPriceFileUploading || isSubmitting}
+                      className="hidden"
+                      onChange={(event) => {
+                        void handlePriceFile(event.target.files?.[0]);
+                        event.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+                {priceFileError && <p className="mt-1.5 text-[12px] font-bold text-red-600">{priceFileError}</p>}
+                <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+                  Chỉ dùng để mở xem khi nhập bill; hệ thống không tự thay đổi đơn giá.
+                </p>
+              </div>
               <Field label="Giao nhận">
                 <input value={form.delivery_handler} onChange={(e) => onChange('delivery_handler', e.target.value)} className={inputClass} />
               </Field>
@@ -275,13 +343,13 @@ export default function CustomerFormDialog({
         </div>
 
         <div className="flex shrink-0 justify-end gap-2 border-t border-border bg-white p-4">
-          <button type="button" onClick={onClose} disabled={isSubmitting} className="h-10 rounded-xl border border-border px-4 text-[13px] font-bold text-muted-foreground hover:bg-muted disabled:opacity-60">
+          <button type="button" onClick={onClose} disabled={isSubmitting || isPriceFileUploading} className="h-10 rounded-xl border border-border px-4 text-[13px] font-bold text-muted-foreground hover:bg-muted disabled:opacity-60">
             Hủy
           </button>
           <button
             type="button"
             onClick={onSubmit}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isPriceFileUploading}
             className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-bold text-white hover:bg-primary/90 disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}

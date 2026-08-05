@@ -58,6 +58,7 @@ describe('inventory stock-list print columns', () => {
       totals: {
         package_count: '1',
         weight_kg: '50',
+        volumetric_weight_kg: '65',
         volume_m3: '1.20',
         freight: '',
       },

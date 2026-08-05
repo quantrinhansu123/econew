@@ -5,6 +5,7 @@ const API_BASE_URL = resolveApiBaseUrl();
 
 const ACCESS_TOKEN_KEY = 'eco_access_token';
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_PRICE_LIST_BYTES = 10 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
 const MAX_IMAGE_EDGE = 2_000;
 const OPTIMIZE_THRESHOLD_BYTES = 1_500_000;
@@ -24,6 +25,16 @@ export const IMAGE_UPLOAD_ACCEPT = [
   'image/heic',
   'image/heif',
   'image/avif',
+].join(',');
+
+export const CUSTOMER_PRICE_LIST_ACCEPT = [
+  '.pdf',
+  '.xls',
+  '.xlsx',
+  '.csv',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
 ].join(',');
 
 const getStoredAccessToken = () => {
@@ -148,12 +159,12 @@ const sendUploadAttempt = async (
     if (controller.signal.aborted) {
       throw new ApiError(
         408,
-        'Upload ảnh quá thời gian chờ 55 giây. Vui lòng kiểm tra mạng và thử lại.',
+        'Upload tệp quá thời gian chờ 55 giây. Vui lòng kiểm tra mạng và thử lại.',
         null,
       );
     }
     if (error instanceof ApiError) throw error;
-    throw new ApiError(0, 'Không kết nối được server để upload ảnh.', null);
+    throw new ApiError(0, 'Không kết nối được server để upload tệp.', null);
   } finally {
     clearTimeout(timeout);
   }
@@ -178,6 +189,36 @@ const refreshTokenForUpload = async () => {
   }
 };
 
+async function uploadStoredFile(file: File, endpoint: string, fallbackError: string): Promise<string> {
+  let attempt = await sendUploadAttempt(file, endpoint, getStoredAccessToken());
+  if (attempt.response.status === 401) {
+    const refreshed = await refreshTokenForUpload();
+    if (refreshed.token) {
+      attempt = await sendUploadAttempt(file, endpoint, refreshed.token);
+    }
+  }
+
+  const { response, payload } = attempt;
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new ApiError(
+        401,
+        'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại rồi thử upload.',
+        payload,
+      );
+    }
+    throw new ApiError(response.status, getErrorMessage(payload, fallbackError), payload);
+  }
+
+  const url = payload && typeof payload === 'object' && 'url' in payload
+    ? String((payload as { url: unknown }).url)
+    : '';
+  if (!url.trim()) {
+    throw new ApiError(502, 'Server không trả về URL tệp.', payload);
+  }
+  return url.trim();
+}
+
 async function uploadImage(file: File, endpoint: string): Promise<string> {
   const hasImageMime = file.type.toLowerCase().startsWith('image/');
   const hasKnownImageExtension = /\.(?:avif|gif|heic|heif|jpe?g|png|webp)$/i.test(file.name);
@@ -193,33 +234,7 @@ async function uploadImage(file: File, endpoint: string): Promise<string> {
     throw new ApiError(400, 'Không thể nén ảnh xuống dưới 5 MB. Vui lòng chọn ảnh nhỏ hơn.', null);
   }
 
-  let attempt = await sendUploadAttempt(uploadFile, endpoint, getStoredAccessToken());
-  if (attempt.response.status === 401) {
-    const refreshed = await refreshTokenForUpload();
-    if (refreshed.token) {
-      attempt = await sendUploadAttempt(uploadFile, endpoint, refreshed.token);
-    }
-  }
-
-  const { response, payload } = attempt;
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new ApiError(
-        401,
-        'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại rồi thử upload ảnh.',
-        payload,
-      );
-    }
-    throw new ApiError(response.status, getErrorMessage(payload, 'Không upload được ảnh.'), payload);
-  }
-
-  const url = payload && typeof payload === 'object' && 'url' in payload
-    ? String((payload as { url: unknown }).url)
-    : '';
-  if (!url.trim()) {
-    throw new ApiError(502, 'Server không trả về URL ảnh.', payload);
-  }
-  return url.trim();
+  return uploadStoredFile(uploadFile, endpoint, 'Không upload được ảnh.');
 }
 
 export function uploadPaymentProof(file: File): Promise<string> {
@@ -228,4 +243,15 @@ export function uploadPaymentProof(file: File): Promise<string> {
 
 export function uploadWaybillImage(file: File): Promise<string> {
   return uploadImage(file, '/uploads/waybill-images');
+}
+
+export function uploadCustomerPriceList(file: File): Promise<string> {
+  const supported = /\.(?:csv|pdf|xlsx?|jpe?g|png|webp)$/i.test(file.name);
+  if (!supported) {
+    throw new ApiError(400, 'Chỉ chấp nhận bảng giá PDF, XLS, XLSX, CSV hoặc file ảnh.', null);
+  }
+  if (file.size > MAX_PRICE_LIST_BYTES) {
+    throw new ApiError(400, 'File bảng giá tối đa 10 MB.', null);
+  }
+  return uploadStoredFile(file, '/uploads/customer-price-lists', 'Không upload được file bảng giá.');
 }

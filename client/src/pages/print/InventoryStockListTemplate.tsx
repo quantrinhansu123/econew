@@ -7,7 +7,7 @@ interface Props {
 
 export default function InventoryStockListTemplate({ data }: Props) {
   const { columns, rows, totals } = data;
-  const numericCols = new Set(['package_count', 'weight', 'volume', 'cod_amount', 'unit_price', 'transit_fee', 'thu_ho_khach', 'surcharge', 'total_amount', 'freight']);
+  const numericCols = new Set(['package_count', 'weight', 'volumetric_weight', 'volume', 'cod_amount', 'unit_price', 'transit_fee', 'thu_ho_khach', 'surcharge', 'total_amount', 'freight']);
   const visibleIds = new Set(columns.map((col) => col.id));
   const totalLabelCol =
     columns.find((col) => col.id === 'customer_name')?.id
@@ -18,7 +18,8 @@ export default function InventoryStockListTemplate({ data }: Props) {
   const footerParts: string[] = [];
   if (visibleIds.has('package_count')) footerParts.push(`Tổng kiện: ${totals.package_count}`);
   if (visibleIds.has('weight')) footerParts.push(`Tổng cân: ${totals.weight_kg} kg`);
-  if (visibleIds.has('volume')) footerParts.push(`Tổng khối: ${totals.volume_m3} m³`);
+  if (visibleIds.has('volumetric_weight')) footerParts.push(`Tổng quy đổi: ${totals.volumetric_weight_kg} kg`);
+  if (visibleIds.has('volume')) footerParts.push(`Tổng CBM: ${totals.volume_m3}`);
 
   return (
     <div className="inventory-stock-sheet">
@@ -63,7 +64,7 @@ export default function InventoryStockListTemplate({ data }: Props) {
         <tfoot>
           <tr className="inventory-total-row">
             {columns.map((col) => {
-              if (col.id === totalLabelCol && !['package_count', 'weight', 'volume'].includes(col.id)) {
+              if (col.id === totalLabelCol && !['package_count', 'weight', 'volumetric_weight', 'volume'].includes(col.id)) {
                 return (
                   <td key={col.id} className="font-bold">
                     Tổng cộng
@@ -81,6 +82,13 @@ export default function InventoryStockListTemplate({ data }: Props) {
                 return (
                   <td key={col.id} className="col-right font-bold">
                     {totals.weight_kg}
+                  </td>
+                );
+              }
+              if (col.id === 'volumetric_weight') {
+                return (
+                  <td key={col.id} className="col-right font-bold">
+                    {totals.volumetric_weight_kg}
                   </td>
                 );
               }

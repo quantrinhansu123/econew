@@ -34,6 +34,8 @@ export type CustomerFormState = {
   contact_person: string;
   manager_name: string;
   price_table: string;
+  price_list_url: string;
+  price_list_name: string;
   default_service: string;
   default_delivery_method: string;
   default_billing_unit: string;
@@ -69,6 +71,8 @@ export const emptyCustomerForm = (): CustomerFormState => ({
   contact_person: '',
   manager_name: '',
   price_table: '',
+  price_list_url: '',
+  price_list_name: '',
   default_service: '',
   default_delivery_method: '',
   default_billing_unit: '',

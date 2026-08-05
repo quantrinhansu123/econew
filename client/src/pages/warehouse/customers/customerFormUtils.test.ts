@@ -13,6 +13,8 @@ describe('customer bill defaults form', () => {
       default_billing_unit: 'Khối',
       default_payment_method: 'Công nợ tháng',
       default_special_goods: ['OVERSIZED', 'LIQUID'],
+      price_list_url: 'https://example.com/bao-gia.xlsx',
+      price_list_name: 'bao-gia.xlsx',
     }, false);
 
     expect(payload).toMatchObject({
@@ -21,6 +23,8 @@ describe('customer bill defaults form', () => {
       default_billing_unit: 'Khối',
       default_payment_method: 'Công nợ tháng',
       default_special_goods: 'OVERSIZED,LIQUID',
+      price_list_url: 'https://example.com/bao-gia.xlsx',
+      price_list_name: 'bao-gia.xlsx',
     });
   });
 

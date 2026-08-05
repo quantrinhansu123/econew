@@ -57,6 +57,24 @@ function Row({ label, value, className }: { label: string; value?: string | null
   );
 }
 
+function PriceListRow({ name, url }: { name?: string | null; url?: string | null }) {
+  return (
+    <div className="grid grid-cols-[140px_1fr] gap-2 border-b border-border/60 py-2.5 text-[13px]">
+      <span className="font-bold text-muted-foreground">File bảng giá</span>
+      {url ? (
+        <button
+          type="button"
+          onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+          className="inline-flex min-w-0 items-center gap-1.5 text-left font-bold text-primary hover:underline"
+        >
+          <span className="truncate">{name || 'Bảng giá khách hàng'}</span>
+          <ExternalLink size={13} className="shrink-0" />
+        </button>
+      ) : <span className="font-medium text-foreground">—</span>}
+    </div>
+  );
+}
+
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-2xl border border-border bg-white p-4 shadow-sm">
@@ -442,6 +460,7 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
 
             <DetailSection title="Bill & giá">
               <Row label="Bảng giá" value={customer.price_table} />
+              <PriceListRow name={customer.price_list_name} url={customer.price_list_url} />
               <Row label="Tỉnh đến mặc định" value={customer.destination_province} />
               <Row label="Dịch vụ mặc định" value={customer.default_service} />
               <Row label="Giao hàng mặc định" value={customer.default_delivery_method} />

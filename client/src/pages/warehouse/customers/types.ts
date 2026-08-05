@@ -26,6 +26,8 @@ export interface CustomerListItem {
   phone_dng?: string | null;
   credit_type: string | null;
   price_table: string | null;
+  price_list_url?: string | null;
+  price_list_name?: string | null;
   default_service?: string | null;
   default_delivery_method?: string | null;
   default_billing_unit?: string | null;

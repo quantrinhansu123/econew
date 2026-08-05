@@ -135,8 +135,10 @@ function renderCell(
       );
     case 'weight':
       return <td className={`${cellClass} font-medium`}>{displayValue(resolveWeightKg(waybill) || null, ' kg')}</td>;
+    case 'volumetric_weight':
+      return <td className={`${cellClass} font-medium`}>{displayValue(waybill.volumetric_weight || null, ' kg')}</td>;
     case 'volume':
-      return <td className={`${cellClass} font-medium`}>{resolveVolumeM3(waybill) ? `${resolveVolumeM3(waybill).toFixed(2)} m³` : '—'}</td>;
+      return <td className={`${cellClass} font-medium`}>{resolveVolumeM3(waybill) ? `${resolveVolumeM3(waybill).toFixed(2)} CBM` : '—'}</td>;
     case 'freight':
       return (
         <td className={`${cellClass} font-bold`}>

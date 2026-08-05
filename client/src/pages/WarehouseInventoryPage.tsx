@@ -823,7 +823,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                         {col.id === 'customer_name' ? 'Tổng cộng' : ''}
                         {col.id === 'package_count' ? grandTotals.package_count : ''}
                         {col.id === 'weight' ? `${grandTotals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg` : ''}
-                        {col.id === 'volume' ? `${grandTotals.volume_m3.toFixed(2)} m³` : ''}
+                        {col.id === 'volumetric_weight' ? `${grandTotals.volumetric_weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg` : ''}
+                        {col.id === 'volume' ? `${grandTotals.volume_m3.toFixed(2)} CBM` : ''}
                       </td>
                     ))}
                   </tr>
@@ -1150,8 +1151,10 @@ function InventoryRow({
         );
       case 'weight':
         return <td className={`${cellClass} font-medium`}>{displayValue(resolveWeightKg(waybill) || null, ' kg')}</td>;
+      case 'volumetric_weight':
+        return <td className={`${cellClass} font-medium`}>{displayValue(waybill.volumetric_weight || null, ' kg')}</td>;
       case 'volume':
-        return <td className={`${cellClass} font-medium`}>{resolveVolumeM3(waybill) ? `${resolveVolumeM3(waybill).toFixed(2)} m³` : '—'}</td>;
+        return <td className={`${cellClass} font-medium`}>{resolveVolumeM3(waybill) ? `${resolveVolumeM3(waybill).toFixed(2)} CBM` : '—'}</td>;
       case 'freight':
         return (
           <td className={`${cellClass} font-bold`}>
