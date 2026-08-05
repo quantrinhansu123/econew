@@ -77,6 +77,7 @@ const evaluateFirstBrackets = (qb: ReturnType<typeof createQueryBuilder>) => {
 describe('WaybillsService', () => {
   let service: WaybillsService;
   let waybillsRepository: any;
+  let changeLogsRepository: any;
   let hubsRepository: any;
   let splitsRepository: any;
   let tripsRepository: any;
@@ -96,6 +97,11 @@ describe('WaybillsService', () => {
       findOne: jest.fn(),
       count: jest.fn().mockResolvedValue(0),
       createQueryBuilder: jest.fn(createQueryBuilder),
+    };
+    changeLogsRepository = {
+      create: jest.fn((value) => value),
+      save: jest.fn(async (value) => value),
+      find: jest.fn().mockResolvedValue([]),
     };
     hubsRepository = {
       findOne: jest.fn(async ({ where }: any) => ({ id: where.id, code: where.id === '2' ? 'HCM' : 'HAN', is_active: true })),
@@ -168,6 +174,7 @@ describe('WaybillsService', () => {
     };
     service = new WaybillsService(
       waybillsRepository,
+      changeLogsRepository,
       hubsRepository,
       splitsRepository,
       tripsRepository,
@@ -252,6 +259,11 @@ describe('WaybillsService', () => {
     expect(result.receiver_phone).toBeNull();
     expect(result.receiver_address).toBeNull();
     expect(result.receiver_info).toBe(' |  | ');
+    expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'CREATED',
+      changes: {},
+      changed_by_id: manager.id,
+    }));
   });
 
   it('suggests every distinct address for a phone and matches formatted phone input by digits', async () => {
@@ -334,6 +346,34 @@ describe('WaybillsService', () => {
     expect(result.receiver_phone).toBeNull();
     expect(result.receiver_address).toBeNull();
     expect(result.receiver_info).toBe(' |  | ');
+    expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'UPDATED',
+      changes: expect.objectContaining({
+        receiver_name: { old_value: 'B', new_value: null },
+        receiver_phone: { old_value: '2', new_value: null },
+        receiver_address: { old_value: 'HCM', new_value: null },
+      }),
+    }));
+  });
+
+  it('returns the newest field-level edit history for a manager', async () => {
+    const history = [{
+      id: '9',
+      waybill_id: '1',
+      action: 'UPDATED',
+      changes: { cod_amount: { old_value: 0, new_value: 500000 } },
+      changed_by_name: 'Quản trị viên',
+      created_at: new Date('2026-08-05T08:00:00.000Z'),
+    }];
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill());
+    changeLogsRepository.find.mockResolvedValue(history);
+
+    await expect(service.findHistory('1', manager)).resolves.toEqual(history);
+    expect(changeLogsRepository.find).toHaveBeenCalledWith({
+      where: { waybill_id: '1' },
+      order: { created_at: 'DESC' },
+      take: 100,
+    });
   });
 
   it('update normalizes a legacy waybill code and ignores the same record in duplicate checks', async () => {
@@ -983,6 +1023,12 @@ describe('WaybillsService', () => {
   it('ACCOUNTANT can update COD after MANIFEST_CLOSED and WAREHOUSE cannot', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.MANIFEST_CLOSED, current_state: WaybillStatus.MANIFEST_CLOSED }));
     await expect(service.updateCodFee('1', { cod_amount: 100 }, accountant)).resolves.toMatchObject({ status: WaybillStatus.MANIFEST_CLOSED });
+    expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'COD_FEE_UPDATED',
+      changes: expect.objectContaining({
+        cod_amount: { old_value: 0, new_value: 100 },
+      }),
+    }));
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.MANIFEST_CLOSED, current_state: WaybillStatus.MANIFEST_CLOSED }));
     await expect(service.updateCodFee('1', { cod_amount: 100 }, warehouse)).rejects.toThrow(ForbiddenException);
   });

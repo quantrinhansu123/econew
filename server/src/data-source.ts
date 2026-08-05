@@ -25,6 +25,7 @@ import { VendorEntity } from './vendors/vendor.entity';
 import { VehicleCostEntity } from './vehicle-costs/vehicle-cost.entity';
 import { VehicleDirectoryEntity } from './vehicle-directory/vehicle-directory.entity';
 import { WaybillEntity } from './waybills/waybill.entity';
+import { WaybillChangeLogEntity } from './waybills/waybill-change-log.entity';
 import { WarehouseEntity } from './warehouses/warehouse.entity';
 import { AttendanceLocationEntity } from './attendance/attendance-location.entity';
 import { AttendanceLogEntity } from './attendance/attendance-log.entity';
@@ -48,6 +49,7 @@ export default new DataSource({
     UserEntity,
     UserHubEntity,
     WaybillEntity,
+    WaybillChangeLogEntity,
     ManifestEntity,
     ManifestWaybillEntity,
     TruckEntity,

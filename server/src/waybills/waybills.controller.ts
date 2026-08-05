@@ -163,6 +163,13 @@ export class WaybillsController {
     return this.waybillsService.createCashVoucher(id, dto, currentUser);
   }
 
+  @Get(':id/history')
+  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Get field-level waybill edit history (manager only)' })
+  findHistory(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.findHistory(id, currentUser);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get waybill detail' })
   findOne(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {

@@ -11,6 +11,7 @@ import { extractVietnamAddressParts } from '../common/vietnam-address';
 import { Roles, hasRole, isManager } from '../common/roles';
 import { UserEntity } from '../users/user.entity';
 import { WaybillEntity } from './waybill.entity';
+import { WaybillChangeLogEntity, WaybillFieldChange } from './waybill-change-log.entity';
 import { AssignWaybillPriorityDto } from './dto/assign-waybill-priority.dto';
 import { AssignWaybillRouteDto } from './dto/assign-waybill-route.dto';
 import { CancelWaybillDto } from './dto/cancel-waybill.dto';
@@ -41,6 +42,8 @@ import { normalizeWaybillPhotos } from '../common/waybill-photos';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
 
 type WaybillRecord = WaybillEntity & Record<string, any>;
+type WaybillAuditValue = string | number | boolean | null;
+type WaybillAuditSnapshot = Record<string, WaybillAuditValue>;
 
 export interface ReceiverContactSuggestion {
   phone: string;
@@ -103,6 +106,7 @@ const STATE_TRANSITIONS: Record<string, WaybillStatus[]> = {
 export class WaybillsService {
   constructor(
     @InjectRepository(WaybillEntity) private readonly waybillsRepository: Repository<WaybillEntity>,
+    @InjectRepository(WaybillChangeLogEntity) private readonly changeLogsRepository: Repository<WaybillChangeLogEntity>,
     @InjectRepository(HubEntity) private readonly hubsRepository: Repository<HubEntity>,
     @InjectRepository(WaybillSplitEntity) private readonly splitsRepository: Repository<WaybillSplitEntity>,
     @InjectRepository(TripEntity) private readonly tripsRepository: Repository<TripEntity>,
@@ -172,6 +176,7 @@ export class WaybillsService {
 
     try {
       const saved = await this.waybillsRepository.save(record);
+      await this.recordWaybillChange(String(saved.id), 'CREATED', currentUser);
       return this.sanitize({ ...saved, order } as WaybillRecord, currentUser);
     } catch (error) {
       if ((error as { code?: string }).code === '23505') throw new ConflictException('Waybill code already exists');
@@ -261,8 +266,18 @@ export class WaybillsService {
     return this.sanitize(waybill, currentUser);
   }
 
+  async findHistory(id: string, currentUser: UserEntity): Promise<WaybillChangeLogEntity[]> {
+    await this.findOne(id, currentUser);
+    return this.changeLogsRepository.find({
+      where: { waybill_id: id },
+      order: { created_at: 'DESC' },
+      take: 100,
+    });
+  }
+
   async update(id: string, dto: UpdateWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
+    const auditBefore = this.buildAuditSnapshot(waybill);
     const patch: UpdateWaybillDto = { ...dto };
     const nullableReceiverPatch = patch as unknown as Record<
       'receiver_name' | 'receiver_phone' | 'receiver_address',
@@ -356,6 +371,7 @@ export class WaybillsService {
         origin_hub_id: String(saved.origin_hub_id),
       });
     }
+    await this.recordWaybillChange(String(saved.id), 'UPDATED', currentUser, auditBefore, saved);
     return this.sanitize(saved, currentUser);
   }
 
@@ -384,9 +400,12 @@ export class WaybillsService {
 
   async updatePhotos(id: string, dto: UpdateWaybillPhotosDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
+    const auditBefore = this.buildAuditSnapshot(waybill);
     waybill.delivery_photo_url = normalizeWaybillPhotos(dto.delivery_photo_url);
     waybill.updated_by = currentUser.id;
-    return this.sanitize(await this.waybillsRepository.save(waybill), currentUser);
+    const saved = await this.waybillsRepository.save(waybill);
+    await this.recordWaybillChange(String(saved.id), 'PHOTOS_UPDATED', currentUser, auditBefore, saved);
+    return this.sanitize(saved, currentUser);
   }
 
   async assignPriority(id: string, dto: AssignWaybillPriorityDto, currentUser: UserEntity): Promise<WaybillRecord> {
@@ -418,10 +437,13 @@ export class WaybillsService {
 
   async updateCodFee(id: string, dto: UpdateCodFeeDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findMutable(id, currentUser);
+    const auditBefore = this.buildAuditSnapshot(waybill);
     if ([dto.cod_amount, dto.freight_amount, dto.cc_amount].some((value) => value !== undefined && value < 0)) throw new BadRequestException('COD and fee amounts cannot be negative');
     if (!MUTABLE_STATUSES.includes(this.getStatus(waybill)) && !this.hasAnyRole(currentUser, [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR])) throw new ForbiddenException('Insufficient role permissions to update locked fees');
     Object.assign(waybill, { ...dto, updated_by: currentUser.id });
-    return this.sanitize(await this.waybillsRepository.save(waybill), currentUser);
+    const saved = await this.waybillsRepository.save(waybill);
+    await this.recordWaybillChange(String(saved.id), 'COD_FEE_UPDATED', currentUser, auditBefore, saved);
+    return this.sanitize(saved, currentUser);
   }
 
   async cancel(id: string, dto: CancelWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
@@ -1885,7 +1907,7 @@ export class WaybillsService {
   }
 
   private async findMutable(id: string, currentUser: UserEntity): Promise<WaybillRecord> {
-    const waybill = await this.findOne(id, currentUser);
+    const waybill = await this.findEditable(id, currentUser);
     if (waybill.manifest_id || waybill.trip_id) throw new ConflictException('Waybill is locked by manifest or trip');
     return waybill;
   }
@@ -2182,6 +2204,118 @@ export class WaybillsService {
 
   private hasAnyRole(user: UserEntity, roles: number[]) {
     return roles.some((role) => hasRole(user.role_mask, role));
+  }
+
+  private auditText(value: unknown): string | null {
+    const text = String(value ?? '').trim();
+    return text || null;
+  }
+
+  private auditNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private auditNoteField(note: string | null | undefined, key: string): string | null {
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = String(note || '').match(new RegExp(`(?:^|\\|)\\s*${escapedKey}=([^|]*)`, 'i'));
+    return this.auditText(match?.[1]);
+  }
+
+  private auditUserNote(note: string | null | undefined): string | null {
+    const encoded = this.auditNoteField(note, 'user_note');
+    if (encoded) {
+      try {
+        return decodeURIComponent(encoded);
+      } catch {
+        return encoded;
+      }
+    }
+    return this.auditText(plainGoodsNote(note));
+  }
+
+  private buildAuditSnapshot(waybill: WaybillRecord): WaybillAuditSnapshot {
+    const note = waybill.note || '';
+    const photoCount = String(waybill.delivery_photo_url || '')
+      .split('|')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .length;
+
+    return {
+      waybill_code: this.auditText(waybill.waybill_code),
+      ma_kh: this.auditText(waybill.ma_kh || this.auditNoteField(note, 'ma_kh')),
+      sender_name: this.auditText(waybill.sender_name),
+      sender_phone: this.auditText(waybill.sender_phone),
+      sender_address: this.auditText(waybill.sender_address),
+      receiver_company_name: this.auditText(waybill.receiver_company_name),
+      receiver_name: this.auditText(waybill.receiver_name),
+      receiver_phone: this.auditText(waybill.receiver_phone),
+      receiver_address: this.auditText(waybill.receiver_address),
+      noi_den: this.auditText(waybill.noi_den || this.auditNoteField(note, 'tinh_den')),
+      quan_huyen: this.auditNoteField(note, 'quan_huyen'),
+      phuong_xa: this.auditNoteField(note, 'phuong_xa'),
+      origin_hub_id: this.auditText(waybill.origin_hub_id),
+      dest_hub_id: this.auditText(waybill.dest_hub_id),
+      package_count: this.auditNumber(waybill.package_count),
+      weight: this.auditNumber(waybill.weight),
+      length: this.auditNumber(waybill.length),
+      width: this.auditNumber(waybill.width),
+      height: this.auditNumber(waybill.height),
+      volumetric_weight: this.auditNumber(waybill.volumetric_weight),
+      the_tich_m3: this.auditNumber(waybill.the_tich_m3),
+      cod_amount: this.auditNumber(waybill.cod_amount),
+      freight_amount: this.auditNumber(waybill.freight_amount ?? waybill.cost_amount),
+      cc_amount: this.auditNumber(waybill.cc_amount),
+      noi_dung: this.auditText(waybill.noi_dung || this.auditNoteField(note, 'content')),
+      ghi_chu: this.auditUserNote(note),
+      dich_vu: this.auditNoteField(note, 'dich_vu'),
+      giao_hang: this.auditNoteField(note, 'giao_hang'),
+      ngay_gui: this.auditNoteField(note, 'ngay_gui'),
+      phuong_thuc: this.auditNoteField(note, 'phuong_thuc') || this.auditText(waybill.payment_type),
+      so_anh: photoCount,
+    };
+  }
+
+  private diffAuditSnapshots(
+    before: WaybillAuditSnapshot,
+    after: WaybillAuditSnapshot,
+  ): Record<string, WaybillFieldChange> {
+    return Object.keys(after).reduce<Record<string, WaybillFieldChange>>((changes, field) => {
+      if (before[field] !== after[field]) {
+        changes[field] = {
+          old_value: before[field] ?? null,
+          new_value: after[field] ?? null,
+        };
+      }
+      return changes;
+    }, {});
+  }
+
+  private async recordWaybillChange(
+    waybillId: string,
+    action: string,
+    currentUser: UserEntity,
+    before?: WaybillAuditSnapshot,
+    afterWaybill?: WaybillRecord,
+  ): Promise<void> {
+    const changes = before && afterWaybill
+      ? this.diffAuditSnapshots(before, this.buildAuditSnapshot(afterWaybill))
+      : {};
+    if (action !== 'CREATED' && Object.keys(changes).length === 0) return;
+
+    const changedByName = this.auditText(currentUser.full_name)
+      || this.auditText(currentUser.username)
+      || `User #${currentUser.id}`;
+    const log = this.changeLogsRepository.create({
+      waybill_id: waybillId,
+      action,
+      changes,
+      changed_by_id: currentUser.id || null,
+      changed_by_name: changedByName,
+    });
+    await this.changeLogsRepository.save(log);
   }
 
   private packContact(name?: string | null, phone?: string | null, address?: string | null) {

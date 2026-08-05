@@ -1,11 +1,18 @@
 import { createPortal } from 'react-dom';
-import { useState } from 'react';
-import { CalendarClock, Eye, Images, MapPin, Package, Printer, Route, Scale, User, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CalendarClock, Eye, History, Images, Loader2, MapPin, Package, Printer, Route, Scale, User, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { BadgeConfig, WaybillInventoryDetail } from '../types';
 import { resolveUserNote } from '../inventoryColumns';
 import { parseWaybillImages } from '../../../../lib/waybillImages';
 import { ImagePreviewModal } from '../../../../components/ImagePreviewModal';
+import { ApiError, apiRequest } from '../../../../lib/api';
+import {
+  formatWaybillHistoryValue,
+  type WaybillHistoryEntry,
+  waybillHistoryActionLabel,
+  waybillHistoryFieldLabel,
+} from '../waybillHistory';
 
 interface Props {
   isOpen: boolean;
@@ -28,6 +35,43 @@ const formatHub = (hub: WaybillInventoryDetail['current_hub'], fallback?: string
 export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoading, canViewPricing, waybill, statusConfig, paymentConfig, priorityConfig, onClose }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [showPricingOnPrint, setShowPricingOnPrint] = useState(false);
+  const [history, setHistory] = useState<WaybillHistoryEntry[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+
+  useEffect(() => {
+    if (!isOpen || !waybill?.id || !canViewPricing) {
+      setHistory([]);
+      setHistoryError('');
+      setIsHistoryLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setHistory([]);
+    setHistoryError('');
+    setIsHistoryLoading(true);
+    apiRequest<WaybillHistoryEntry[]>(`/waybills/${waybill.id}/history`)
+      .then((items) => {
+        if (mounted) setHistory(Array.isArray(items) ? items : []);
+      })
+      .catch((error: unknown) => {
+        if (!mounted) return;
+        setHistoryError(error instanceof ApiError && error.status === 404
+          ? 'Backend chưa được cập nhật tính năng lịch sử chỉnh sửa.'
+          : error instanceof ApiError
+            ? error.message
+            : 'Chưa tải được lịch sử chỉnh sửa.');
+      })
+      .finally(() => {
+        if (mounted) setIsHistoryLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [canViewPricing, isOpen, waybill?.id]);
+
   if (!isOpen && !isClosing) return null;
 
   const status = normalizeStatus(waybill);
@@ -124,6 +168,14 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
                   )}
                 </div>
               </Section>
+
+              {canViewPricing && (
+                <HistorySection
+                  entries={history}
+                  isLoading={isHistoryLoading}
+                  error={historyError}
+                />
+              )}
             </div>
           )}
         </div>
@@ -187,4 +239,72 @@ function Info({ label, value, icon: Icon, className }: { label: string; value: R
 
 function Badge({ label, className }: { label: React.ReactNode; className: string }) {
   return <span className={clsx('inline-flex min-h-10 items-center justify-center rounded-xl border px-3 py-2 text-center text-[12px] font-black', className)}>{label}</span>;
+}
+
+function HistorySection({ entries, isLoading, error }: { entries: WaybillHistoryEntry[]; isLoading: boolean; error: string }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
+      <div className="flex items-center gap-2 border-b border-border bg-muted/5 px-5 py-3">
+        <History size={16} className="text-primary" />
+        <span className="text-[12px] font-bold uppercase tracking-wider text-primary">Lịch sử chỉnh sửa</span>
+      </div>
+      <div className="p-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center gap-2 py-6 text-[12px] font-bold text-muted-foreground">
+            <Loader2 size={16} className="animate-spin" /> Đang tải lịch sử...
+          </div>
+        ) : error ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] font-semibold text-amber-800">
+            {error}
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-muted/5 px-3 py-5 text-center text-[12px] font-semibold text-muted-foreground">
+            Bill chưa có lần chỉnh sửa nào được ghi nhận.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {entries.map((entry) => {
+              const changes = Object.entries(entry.changes || {});
+              return (
+                <article key={entry.id} className="rounded-xl border border-border bg-slate-50/60 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-[13px] font-extrabold text-foreground">{waybillHistoryActionLabel(entry.action)}</p>
+                      <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">
+                        Người thao tác: {entry.changed_by_name || 'Hệ thống'}
+                      </p>
+                    </div>
+                    <time className="rounded-lg bg-white px-2 py-1 text-[11px] font-bold text-slate-600 shadow-sm">
+                      {formatDate(entry.created_at)}
+                    </time>
+                  </div>
+
+                  {entry.action === 'LEGACY_UPDATE' && (
+                    <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] font-semibold leading-5 text-amber-800">
+                      Lần sửa này diễn ra trước khi hệ thống lưu chi tiết, nên chỉ xem được thời gian và người thao tác.
+                    </p>
+                  )}
+
+                  {changes.length > 0 && (
+                    <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+                      {changes.map(([field, change]) => (
+                        <div key={field} className="grid gap-1 text-[12px] sm:grid-cols-[145px_minmax(0,1fr)]">
+                          <span className="font-bold text-slate-600">{waybillHistoryFieldLabel(field)}</span>
+                          <div className="min-w-0 break-words font-semibold text-foreground">
+                            <span className="text-red-600 line-through decoration-red-300">{formatWaybillHistoryValue(field, change.old_value)}</span>
+                            <span className="mx-2 text-slate-400">→</span>
+                            <span className="text-emerald-700">{formatWaybillHistoryValue(field, change.new_value)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
