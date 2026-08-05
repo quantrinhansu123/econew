@@ -2,6 +2,13 @@ import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { AlertTriangle, Loader2, Save, X } from 'lucide-react';
 import type { CustomerFormState } from '../customerFormTypes';
+import {
+  DICH_VU_OPTIONS,
+  DON_GIA_DON_VI_OPTIONS,
+  GIAO_HANG_OPTIONS,
+  PHUONG_THUC_OPTIONS,
+} from '../../orders/orderFormData';
+import { WAYBILL_SPECIAL_GOODS_OPTIONS } from '../../../../lib/waybillSpecialGoods';
 
 interface Props {
   isOpen: boolean;
@@ -145,6 +152,61 @@ export default function CustomerFormDialog({
               <Field label="Giao nhận">
                 <input value={form.delivery_handler} onChange={(e) => onChange('delivery_handler', e.target.value)} className={inputClass} />
               </Field>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
+            <p className="mb-1 text-[12px] font-extrabold uppercase tracking-wide text-emerald-700">Mặc định khi tạo bill</p>
+            <p className="mb-3 text-[12px] font-medium text-muted-foreground">Khi chọn mã khách, các giá trị này tự điền và vẫn có thể sửa riêng trên từng bill.</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Dịch vụ mặc định">
+                <select value={form.default_service} onChange={(e) => onChange('default_service', e.target.value)} className={inputClass}>
+                  <option value="">Mặc định hệ thống</option>
+                  {DICH_VU_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </Field>
+              <Field label="Giao hàng mặc định">
+                <select value={form.default_delivery_method} onChange={(e) => onChange('default_delivery_method', e.target.value)} className={inputClass}>
+                  <option value="">Mặc định hệ thống</option>
+                  {GIAO_HANG_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </Field>
+              <Field label="Tính cước theo">
+                <select value={form.default_billing_unit} onChange={(e) => onChange('default_billing_unit', e.target.value)} className={inputClass}>
+                  <option value="">Mặc định hệ thống</option>
+                  {DON_GIA_DON_VI_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </Field>
+              <Field label="Phương thức thanh toán">
+                <select value={form.default_payment_method} onChange={(e) => onChange('default_payment_method', e.target.value)} className={inputClass}>
+                  <option value="">Mặc định hệ thống</option>
+                  {PHUONG_THUC_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </Field>
+              <div className="sm:col-span-2">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Tính chất hàng hóa thường dùng</p>
+                <div className="grid grid-cols-1 gap-x-4 gap-y-2 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 sm:grid-cols-2">
+                  {WAYBILL_SPECIAL_GOODS_OPTIONS.map((option) => {
+                    const checked = form.default_special_goods.includes(option.value);
+                    return (
+                      <label key={option.value} className="flex min-h-7 cursor-pointer items-center gap-2 text-[13px] font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => onChange(
+                            'default_special_goods',
+                            checked
+                              ? form.default_special_goods.filter((value) => value !== option.value)
+                              : [...form.default_special_goods, option.value],
+                          )}
+                          className="h-4 w-4 rounded border-emerald-400 accent-emerald-600"
+                        />
+                        {option.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </section>
 

@@ -123,6 +123,7 @@ export interface LoadPlanningBoardItem {
   allocated_freight?: number;
   allocated_cod?: number | null;
   receiver_phone?: string | null;
+  note?: string | null;
   split_note?: string | null;
   load_status?: string | null;
 }

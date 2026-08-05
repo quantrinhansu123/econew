@@ -3,6 +3,18 @@ import { emptyOrderForm } from './orderFormData';
 import { buildCreatePayload, waybillToBillItem, waybillToOrderForm } from './orderFormUtils';
 
 describe('receiver company on order form', () => {
+  it('stores and restores special goods selections in bill metadata', () => {
+    const form = {
+      ...emptyOrderForm(),
+      specialGoods: ['RETURN_DOCUMENTS', 'LIQUID'],
+    };
+    const payload = buildCreatePayload(form, 0);
+    expect(payload.note).toContain('special_goods=RETURN_DOCUMENTS,LIQUID');
+
+    const restored = waybillToOrderForm({ id: '1', note: payload.note } as any, []);
+    expect(restored.specialGoods).toEqual(['RETURN_DOCUMENTS', 'LIQUID']);
+  });
+
   it('allows sender phone and address to remain visually empty on legacy APIs', () => {
     const payload = buildCreatePayload({
       ...emptyOrderForm(),

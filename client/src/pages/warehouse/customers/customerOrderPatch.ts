@@ -1,6 +1,7 @@
 import type { CustomerRecord } from './customerFormTypes';
 import type { NewOrderFormState } from '../orders/orderFormTypes';
 import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
+import { normalizeWaybillSpecialGoods } from '../../../lib/waybillSpecialGoods';
 
 const str = (v: string | null | undefined) => (v ?? '').trim();
 
@@ -144,19 +145,23 @@ export function customerToOrderPatch(customer: CustomerRecord): Partial<NewOrder
     nvgn: str(customer.delivery_handler) || undefined,
     buuTaLay: str(customer.manager_name) || undefined,
     giamGia: customer.discount_percent != null ? String(customer.discount_percent) : undefined,
+    specialGoods: normalizeWaybillSpecialGoods(customer.default_special_goods),
   };
 
-  const phuongThuc = mapPhuongThuc(customer.credit_type);
-  if (phuongThuc) patch.phuongThuc = phuongThuc;
+  patch.phuongThuc = str(customer.default_payment_method)
+    || mapPhuongThuc(customer.credit_type)
+    || 'Công nợ tháng';
 
-  const dichVu = mapDichVu(customer.price_table);
-  if (dichVu) patch.dichVu = dichVu;
+  const dichVu = str(customer.default_service) || mapDichVu(customer.price_table);
+  patch.dichVu = dichVu || 'Tiêu chuẩn 72h';
 
   const loaiBp = mapLoaiBp(customer.price_table);
   if (loaiBp) patch.loaiBp = loaiBp;
 
-  const giaoHang = mapGiaoHang(customer.address_hcm);
-  if (giaoHang) patch.giaoHang = giaoHang;
+  patch.giaoHang = str(customer.default_delivery_method)
+    || mapGiaoHang(customer.address_hcm)
+    || 'Tận nơi';
+  patch.donGiaDonVi = str(customer.default_billing_unit) || 'Kg';
 
   if (customer.price_table && !dichVu) {
     patch.dichVuGiaTang = customer.price_table;

@@ -50,6 +50,7 @@ describe('waybill invoice layout', () => {
     expect(html.match(/0946 936 999/g)).toHaveLength(1);
     expect(html.match(/0888\.805\.625/g)).toHaveLength(1);
     expect(html).not.toContain('0969 444 816');
+    expect(html).not.toContain('D.vụ GTGT:');
     expect(html).toContain('eco-band--receiver-summary');
     expect(html).not.toContain('eco-band--receiver-summary eco-band--top');
     expect(html).toContain('Tên công ty nhận:');

@@ -4,6 +4,10 @@ import type { BillListItem, NewOrderFormState } from './orderFormTypes';
 import { canonicalProvinceLabel, extractProvinceFromAddress } from '../../../lib/vietnamProvince';
 import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
 import { joinWaybillImages, parseWaybillImages } from '../../../lib/waybillImages';
+import {
+  serializeWaybillSpecialGoods,
+  specialGoodsFromWaybillNote,
+} from '../../../lib/waybillSpecialGoods';
 
 /** Đọc số thập phân nhập tay với cả dấu chấm hoặc dấu phẩy. */
 export function parseDecimalNumber(value: unknown): number {
@@ -188,6 +192,7 @@ const NOTE_METADATA_KEYS = new Set([
   'ma_kh',
   'receiver_company_name',
   'user_note',
+  'special_goods',
   'content',
   'loai_bp',
   'dich_vu',
@@ -349,6 +354,7 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     phuongThuc: phuongThucFromWaybill(waybill),
     noiDung: parseNoteField(note, 'content'),
     ghiChu: userNoteFromStoredNote(note),
+    specialGoods: specialGoodsFromWaybillNote(note),
     billImages: parseWaybillImages(waybill.delivery_photo_url),
     xeLay: String((waybill as { xe_lay?: string }).xe_lay ?? ''),
     buuTaLay: parseNoteField(note, 'buu_ta_lay'),
@@ -538,6 +544,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
       `volumetric_weight=${volumetricWeight}`,
       `the_tich_m3=${volumeM3}`,
       form.ghiChu && `user_note=${encodeURIComponent(form.ghiChu)}`,
+      form.specialGoods.length > 0 && `special_goods=${serializeWaybillSpecialGoods(form.specialGoods)}`,
     ]
       .filter(Boolean)
       .join(' | '),

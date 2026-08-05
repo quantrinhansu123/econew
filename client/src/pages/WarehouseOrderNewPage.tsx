@@ -511,7 +511,7 @@ export default function WarehouseOrderNewPage() {
         </button>
         <div className="min-w-0 flex-1">
           <h1 className="text-[15px] font-extrabold text-foreground">Nhập đơn mới</h1>
-          <p className="text-[12px] font-medium text-muted-foreground">Thông tin đơn hàng · NVGN: {loginName}</p>
+          <p className="text-[12px] font-medium text-muted-foreground">Thông tin đơn hàng</p>
         </div>
         <button
           type="button"

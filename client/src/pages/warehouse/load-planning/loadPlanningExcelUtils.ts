@@ -2,6 +2,7 @@ import { utils, writeFile } from 'xlsx';
 import type { LoadPlanningBoardResponse } from './types';
 import { splitLoadStatusLabel } from '../splits/splitLoadStatus';
 import { resolveVietnamDistrict, resolveVietnamWard } from '../../../lib/vietnamAddressParts';
+import { resolveWaybillDisplayNote } from '../../../lib/waybillSpecialGoods';
 
 const cell = (value?: string | number | null) => (value == null || value === '' ? '' : value);
 const headers = ['Vị trí hàng', 'Ngày bốc', 'Mã Tỉnh', 'Quận/Huyện', 'Phường/Xã', 'Tên CTY', 'DV', 'Mặt Hàng', 'Nơi Trả', 'Số Lượng', '', '', 'Ghi chú', 'kế hoạch', 'Lái xe thu hộ', 'BC thu  hộ', 'Mã Bill', 'Ghi chú'];
@@ -32,7 +33,7 @@ export function buildLoadPlanningExcelRows(
         Number(extra(item, 'allocated_cod') ?? 0) || '',
         showPricing ? Number(item.allocated_freight ?? 0) || '' : '',
         cell(item.waybill_code),
-        cell(extra(item, 'split_note') || extra(item, 'note')),
+        cell(resolveWaybillDisplayNote(item.note) || item.split_note),
       ];
     });
   });

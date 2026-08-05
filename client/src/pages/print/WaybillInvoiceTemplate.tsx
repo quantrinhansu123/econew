@@ -158,7 +158,6 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         <div className="eco-footer-service">
           <div className="eco-footer-text">
             <p><b>Dịch vụ:</b> {value(data.dichVu)}</p>
-            <p><b>D.vụ GTGT:</b> {value(data.dvGtgt)}</p>
             <p><i>Quý khách vui lòng quét mã QR để xem chính sách đền bù và điều kiện chuyển phát</i></p>
           </div>
           <div className="eco-qr"><img src={qrUrl} alt="QR" /></div>

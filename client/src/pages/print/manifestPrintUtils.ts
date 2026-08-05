@@ -13,6 +13,7 @@ import {
 import type { DispatchPrintRow } from './dispatchPrintFormat';
 import { formatDispatchMoney } from './dispatchPrintFormat';
 import type { LoadPlanningPrintGroup, LoadPlanningPrintPayload } from './loadPlanningPrintUtils';
+import { resolveWaybillDisplayNote } from '../../lib/waybillSpecialGoods';
 
 type ManifestLink = DispatchLink & {
   waybill?: ManifestWaybill | null;
@@ -82,7 +83,7 @@ function mapLinkToRow(link: ManifestLink, index: number, showPricing: boolean): 
     laiXeThuHo: dispatchValue(fields, 'lai_xe_thu_ho'),
     bcThuHo: dispatchValue(fields, 'bc_thu_ho'),
     maBill: fieldOrDefault(link, 'ma_bill', fields) || fmt(waybill?.waybill_code),
-    ghiChu: fieldOrDefault(link, 'ghi_chu_bill', fields),
+    ghiChu: resolveWaybillDisplayNote(fieldOrDefault(link, 'ghi_chu_bill', fields)),
     ghiChu1: dispatchValue(fields, 'ghi_chu_1'),
     ghiChu2: dispatchValue(fields, 'ghi_chu_2'),
     kg: fieldOrDefault(link, 'kg', fields),

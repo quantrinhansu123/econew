@@ -47,6 +47,7 @@ export interface NewOrderFormState {
   soKhoang: string;
   noiDung: string;
   ghiChu: string;
+  specialGoods: string[];
   billImages: string[];
   xeLay: string;
   buuTaLay: string;

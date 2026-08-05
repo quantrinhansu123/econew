@@ -92,6 +92,16 @@ describe('buildWaybillPrintData receiver fields', () => {
     expect(data.ghiChu).toBe('Giao giờ hành chính');
   });
 
+  it('prints selected special goods inside the note area', () => {
+    const data = buildWaybillPrintData(waybill({
+      note: 'special_goods=RETURN_DOCUMENTS,OVERSIZED,LIQUID',
+    }));
+
+    expect(data.ghiChu).toBe(
+      'Tính chất HH đặc biệt: Hoàn chứng từ gốc đi kèm, Quá khổ, Chất lỏng',
+    );
+  });
+
   it('prints normalized goods content even when legacy note metadata is absent', () => {
     const data = buildWaybillPrintData(waybill({
       noi_dung: 'TZ-10-2; TZ-15-2',

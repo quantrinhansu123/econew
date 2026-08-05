@@ -1,4 +1,5 @@
 import { formatMoney } from '../../../lib/formatMoney';
+import { specialGoodsLabels } from '../../../lib/waybillSpecialGoods';
 
 export interface WaybillHistoryFieldChange {
   old_value: unknown;
@@ -50,6 +51,7 @@ const FIELD_LABELS: Record<string, string> = {
   cc_amount: 'Cước người nhận trả',
   noi_dung: 'Nội dung hàng',
   ghi_chu: 'Ghi chú',
+  tinh_chat_hang_hoa: 'Tính chất hàng hóa đặc biệt',
   dich_vu: 'Dịch vụ',
   giao_hang: 'Giao hàng',
   ngay_gui: 'Ngày gửi',
@@ -66,6 +68,7 @@ export const waybillHistoryFieldLabel = (field: string) => FIELD_LABELS[field] |
 
 export function formatWaybillHistoryValue(field: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
+  if (field === 'tinh_chat_hang_hoa') return specialGoodsLabels(value).join(', ') || '—';
   if (MONEY_FIELDS.has(field)) return formatMoney(value as number | string);
   if (field === 'weight' || field === 'volumetric_weight') return `${value} kg`;
   if (field === 'the_tich_m3') return `${value} m³`;

@@ -1,5 +1,6 @@
 import type { ManifestDispatchFields } from './types';
 import { resolveVietnamDistrict, resolveVietnamWard } from '../../../lib/vietnamAddressParts';
+import { resolveWaybillDisplayNote } from '../../../lib/waybillSpecialGoods';
 
 export type DispatchLink = {
   waybill_id?: string | number | null;
@@ -165,7 +166,7 @@ export function resolveDispatchDefault(link: DispatchLink, key: DispatchFieldKey
     case 'ma_bill':
       return blank(waybill?.waybill_code);
     case 'ghi_chu_bill':
-      return blank(waybill?.note);
+      return resolveWaybillDisplayNote(waybill?.note);
     case 'cod':
       return blank(waybill?.cod_amount);
     case 'kg':
@@ -184,7 +185,8 @@ export function getDispatchCellValue(
   key: DispatchFieldKey,
 ): string {
   const saved = rows[rowKey]?.[key];
-  return saved == null || saved === '' ? resolveDispatchDefault(link, key) : String(saved);
+  const value = saved == null || saved === '' ? resolveDispatchDefault(link, key) : String(saved);
+  return key === 'ghi_chu_bill' ? resolveWaybillDisplayNote(value) : value;
 }
 
 export function computeDispatchTotals(

@@ -1,5 +1,6 @@
 import type { CustomerFormState, CustomerRecord } from './customerFormTypes';
 import type { CustomerListItem } from './types';
+import { normalizeWaybillSpecialGoods, serializeWaybillSpecialGoods } from '../../../lib/waybillSpecialGoods';
 
 const str = (v: string | null | undefined) => v ?? '';
 
@@ -20,6 +21,11 @@ export function customerToForm(source: CustomerListItem | CustomerRecord): Custo
     contact_person: str(source.contact_person),
     manager_name: str(source.manager_name),
     price_table: str(source.price_table),
+    default_service: str(source.default_service),
+    default_delivery_method: str(source.default_delivery_method),
+    default_billing_unit: str(source.default_billing_unit),
+    default_payment_method: str(source.default_payment_method),
+    default_special_goods: normalizeWaybillSpecialGoods(source.default_special_goods),
     discount_percent: String(source.discount_percent ?? 0),
     delivery_handler: str(source.delivery_handler),
     status: source.is_suspended || source.status === 'SUSPENDED' ? 'SUSPENDED' : source.status || 'ACTIVE',
@@ -41,6 +47,10 @@ export function formToPayload(form: CustomerFormState, isEdit: boolean) {
     const v = trim(s);
     return v || undefined;
   };
+  const optionalDefault = (s: string) => {
+    const value = trim(s);
+    return value || (isEdit ? null : undefined);
+  };
 
   const payload: Record<string, unknown> = {
     name: trim(form.name),
@@ -57,6 +67,11 @@ export function formToPayload(form: CustomerFormState, isEdit: boolean) {
     contact_person: optional(form.contact_person),
     manager_name: optional(form.manager_name),
     price_table: optional(form.price_table),
+    default_service: optionalDefault(form.default_service),
+    default_delivery_method: optionalDefault(form.default_delivery_method),
+    default_billing_unit: optionalDefault(form.default_billing_unit),
+    default_payment_method: optionalDefault(form.default_payment_method),
+    default_special_goods: optionalDefault(serializeWaybillSpecialGoods(form.default_special_goods)),
     discount_percent: Number(form.discount_percent) || 0,
     delivery_handler: optional(form.delivery_handler),
     status: form.status,

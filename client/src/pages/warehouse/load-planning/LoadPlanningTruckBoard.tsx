@@ -3,6 +3,7 @@ import { Truck } from 'lucide-react';
 import SplitLoadStatusControl from '../splits/SplitLoadStatusControl';
 import type { LoadPlanningBoardItem, LoadPlanningTruckGroup } from './types';
 import { resolveVietnamDistrict, resolveVietnamWard } from '../../../lib/vietnamAddressParts';
+import { resolveWaybillDisplayNote } from '../../../lib/waybillSpecialGoods';
 
 interface Props {
   truck: LoadPlanningTruckGroup;
@@ -72,7 +73,7 @@ export default function LoadPlanningTruckBoard({
       )}
 
       <div className="overflow-x-auto overflow-y-visible">
-        <table className="w-full min-w-[1120px] table-fixed border-collapse text-[12px]">
+        <table className="w-full min-w-[1260px] table-fixed border-collapse text-[12px]">
           <thead>
             <tr className="border-b border-border bg-white text-[11px] font-bold uppercase tracking-wide text-slate-700">
               <th className="w-[4%] border-r border-border bg-yellow-300 px-2 py-2 text-center">Vị trí</th>
@@ -93,7 +94,8 @@ export default function LoadPlanningTruckBoard({
               {canViewCost && (
                 <th className="w-[8%] border-r border-border px-2 py-2 text-right">Cước phí</th>
               )}
-              <th className={clsx('px-2 py-2', canViewCost ? (bulkStatusMode ? 'w-[30%]' : 'w-[21%]') : (bulkStatusMode ? 'w-[38%]' : 'w-[29%]'))}>Địa chỉ</th>
+              <th className="w-[14%] border-r border-border px-2 py-2">Ghi chú</th>
+              <th className={clsx('px-2 py-2', canViewCost ? (bulkStatusMode ? 'w-[20%]' : 'w-[15%]') : (bulkStatusMode ? 'w-[27%]' : 'w-[20%]'))}>Địa chỉ</th>
             </tr>
           </thead>
           <tbody>
@@ -125,6 +127,7 @@ function DispatchRow({
   bulkStatusMode?: boolean;
 }) {
   const noteInRed = item.mat_hang_note && item.mat_hang !== item.mat_hang_note;
+  const displayNote = resolveWaybillDisplayNote(item.note);
 
   return (
     <tr className="border-b border-border align-top hover:bg-muted/5">
@@ -166,6 +169,9 @@ function DispatchRow({
           {formatNumber(item.allocated_freight, ' đ')}
         </td>
       )}
+      <td className="border-r border-border px-2 py-2 text-[11px] font-semibold leading-snug text-red-700 break-words">
+        {displayNote || item.split_note || '—'}
+      </td>
       <td className="px-2 py-2 text-[11px] leading-snug break-words">{item.dia_chi || '—'}</td>
     </tr>
   );

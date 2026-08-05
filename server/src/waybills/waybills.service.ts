@@ -1528,6 +1528,7 @@ export class WaybillsService {
       allocated_freight: Math.round(totalFreight * ratio),
       allocated_cod: Math.round(totalCod * ratio),
       receiver_phone: receiverPhone || null,
+      note: waybill.note,
       split_note: split.note?.trim() || null,
       load_status: split.load_status ?? WaybillSplitLoadStatus.WAITING_LOAD,
     };
@@ -2270,6 +2271,7 @@ export class WaybillsService {
       cc_amount: this.auditNumber(waybill.cc_amount),
       noi_dung: this.auditText(waybill.noi_dung || this.auditNoteField(note, 'content')),
       ghi_chu: this.auditUserNote(note),
+      tinh_chat_hang_hoa: this.auditNoteField(note, 'special_goods'),
       dich_vu: this.auditNoteField(note, 'dich_vu'),
       giao_hang: this.auditNoteField(note, 'giao_hang'),
       ngay_gui: this.auditNoteField(note, 'ngay_gui'),

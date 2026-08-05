@@ -1,6 +1,7 @@
 import type { WaybillInventoryItem } from './types';
 import { resolveOrderStatusGroup, orderStatusGroupConfig } from './orderStatusUtils';
 import { resolveVietnamDistrict, resolveVietnamWard } from '../../../lib/vietnamAddressParts';
+import { resolveWaybillDisplayNote } from '../../../lib/waybillSpecialGoods';
 
 const VN_TIMEZONE = 'Asia/Ho_Chi_Minh';
 
@@ -430,20 +431,7 @@ const parseNote = (note: string | null | undefined, key: string) => {
  * Ưu tiên metadata user_note của đơn mới; đơn cũ vẫn dùng phần văn bản tự do.
  */
 export function resolveUserNote(waybill: Pick<WaybillInventoryItem, 'note' | 'notes'>): string {
-  const note = String(waybill.note || waybill.notes || '');
-  const encodedUserNote = parseNote(note, 'user_note');
-  if (encodedUserNote) {
-    try {
-      return decodeURIComponent(encodedUserNote);
-    } catch {
-      return encodedUserNote;
-    }
-  }
-  return note
-    .split('|')
-    .map((part) => part.trim())
-    .filter((part) => part && !/^[a-z][a-z0-9_]*\s*=/i.test(part))
-    .join(' | ');
+  return resolveWaybillDisplayNote(waybill.note || waybill.notes || '');
 }
 
 export function resolveMaKh(waybill: WaybillInventoryItem): string {

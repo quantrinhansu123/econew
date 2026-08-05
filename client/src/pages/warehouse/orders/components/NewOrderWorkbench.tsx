@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { clsx } from 'clsx';
+import { PackageCheck } from 'lucide-react';
 import { calcOrderPricing } from '../orderFormUtils';
 import {
   DICH_VU_OPTIONS,
@@ -10,6 +11,7 @@ import {
 import type { BillListItem, NewOrderFormState } from '../orderFormTypes';
 import type { CustomerRecord } from '../../customers/customerFormTypes';
 import { VIETNAM_PROVINCES_63 } from '../../../../lib/vietnamProvince';
+import { WAYBILL_SPECIAL_GOODS_OPTIONS } from '../../../../lib/waybillSpecialGoods';
 import { CompactField, CompactInput, CompactSelect, FormSection } from './CompactField';
 import BillListSidebar from './BillListSidebar';
 import CustomerMaKhCombobox from './CustomerMaKhCombobox';
@@ -267,12 +269,33 @@ export default function NewOrderWorkbench({
                     inputMode="decimal"
                   />
                 </CompactField>
-                <CompactField label="NVGN" className="col-span-6 sm:col-span-4 xl:col-span-2">
-                  <CompactInput value={form.nvgn} onChange={(e) => setField('nvgn', e.target.value)} />
-                </CompactField>
-                <CompactField label="Dịch vụ GTGT" className="col-span-12 xl:col-span-4">
-                  <CompactInput value={form.dichVuGiaTang} onChange={(e) => setField('dichVuGiaTang', e.target.value)} />
-                </CompactField>
+                <div className="col-span-12 rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-2.5">
+                  <div className="mb-2 flex items-center gap-2 text-[12px] font-extrabold uppercase tracking-wide text-emerald-800">
+                    <PackageCheck size={16} />
+                    Tính chất hàng hóa đặc biệt
+                  </div>
+                  <div className="grid grid-cols-1 gap-x-5 gap-y-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {WAYBILL_SPECIAL_GOODS_OPTIONS.map((option) => {
+                      const checked = form.specialGoods.includes(option.value);
+                      return (
+                        <label key={option.value} className="flex min-h-7 cursor-pointer items-center gap-2 text-[13px] font-semibold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setField(
+                              'specialGoods',
+                              checked
+                                ? form.specialGoods.filter((value) => value !== option.value)
+                                : [...form.specialGoods, option.value],
+                            )}
+                            className="h-4 w-4 rounded border-emerald-400 text-emerald-600 accent-emerald-600"
+                          />
+                          <span>{option.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
                 <CompactField label="Nội dung" className="col-span-12 sm:col-span-6 xl:col-span-6">
                   <CompactInput value={form.noiDung} onChange={(e) => setField('noiDung', e.target.value)} />
                 </CompactField>

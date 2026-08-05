@@ -8,6 +8,7 @@ import { loadVisibleDispatchColumnIds } from './dispatchPrintColumns';
 import type { DispatchPrintRow, DispatchPrintTotals } from './dispatchPrintFormat';
 import { formatDispatchMoney } from './dispatchPrintFormat';
 import { resolveVietnamDistrict, resolveVietnamWard } from '../../lib/vietnamAddressParts';
+import { resolveWaybillDisplayNote } from '../../lib/waybillSpecialGoods';
 
 export const LOAD_PLANNING_PRINT_STORAGE_KEY = 'eco_load_planning_print_v2';
 
@@ -202,7 +203,7 @@ function mapItemToDispatchRow(item: LoadPlanningBoardItem, showPricing: boolean)
     laiXeThuHo: '',
     bcThuHo: '',
     maBill: fmt(item.waybill_code),
-    ghiChu: fmt(extra(item, 'split_note') || item.mat_hang_note),
+    ghiChu: fmt(resolveWaybillDisplayNote(item.note) || extra(item, 'split_note') || item.mat_hang_note),
     ghiChu1: '',
     ghiChu2: '',
     kg: fmt(item.weight),
@@ -357,7 +358,10 @@ export function mapStackOntoTruckToPrintPayload(
         laiXeThuHo: '',
         bcThuHo: '',
         maBill: row.waybill_code,
-        ghiChu: row.expected_arrival_label ? `Dự kiến tới ${row.expected_arrival_label}` : String(waybill?.note || waybill?.notes || '').trim(),
+        ghiChu: [
+          row.expected_arrival_label ? `Dự kiến tới ${row.expected_arrival_label}` : '',
+          resolveWaybillDisplayNote(waybill?.note || waybill?.notes),
+        ].filter(Boolean).join(' · '),
         ghiChu1: '',
         ghiChu2: '',
         kg: String(waybill?.weight ?? ''),

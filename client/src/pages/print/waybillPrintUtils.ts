@@ -3,6 +3,7 @@ import type { WaybillDetail } from '../warehouse/orders/types';
 import { formatMoney, parseAmountInput } from '../../lib/formatMoney';
 import { canonicalProvinceLabel, extractProvinceFromAddress } from '../../lib/vietnamProvince';
 import { extractVietnamAddressParts } from '../../lib/vietnamAddressParts';
+import { resolveWaybillDisplayNote } from '../../lib/waybillSpecialGoods';
 
 export interface WaybillPrintData {
   waybillCode: string;
@@ -89,62 +90,8 @@ function parseNoteField(note: string, key: string) {
   return match?.[1]?.trim() || '';
 }
 
-const NOTE_METADATA_KEYS = new Set([
-  'ma_kh',
-  'receiver_company_name',
-  'user_note',
-  'content',
-  'loai_bp',
-  'dich_vu',
-  'dich_vu_gia_tang',
-  'phuong_thuc',
-  'billing_unit',
-  'unit_price',
-  'gio',
-  'giao_hang',
-  'ngay_gui',
-  'nvgn',
-  'dich_vu_gia_tang',
-  'so_khoang',
-  'buu_ta_lay',
-  'buu_ta_phat',
-  'dvdb',
-  'cuoc_chinh',
-  'tong_cuoc',
-  'thue_suat',
-  'vat',
-  'co_vat',
-  'trang_thai',
-  'dimensions_cm',
-  'volumetric_weight',
-  'the_tich_m3',
-  'phu_phi',
-  'thanh_toan',
-  'tinh_den',
-  'huyen',
-  'quan_huyen',
-  'phuong_xa',
-]);
-
-function stripNoteMetadata(note: string) {
-  return note
-    .split('|')
-    .map((part) => part.trim())
-    .filter((part) => {
-      const key = part.split('=')[0]?.trim();
-      return !NOTE_METADATA_KEYS.has(key);
-    })
-    .join(' | ');
-}
-
 function userNoteFromStoredNote(note: string) {
-  const encodedUserNote = parseNoteField(note, 'user_note');
-  if (!encodedUserNote) return stripNoteMetadata(note);
-  try {
-    return decodeURIComponent(encodedUserNote);
-  } catch {
-    return encodedUserNote;
-  }
+  return resolveWaybillDisplayNote(note);
 }
 
 function formatNum(v: unknown, digits = 0) {

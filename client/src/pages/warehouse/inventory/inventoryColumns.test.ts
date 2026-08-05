@@ -122,4 +122,11 @@ describe('inventory display values', () => {
 
     expect(resolveUserNote({ note, notes: null })).toBe(userNote);
   });
+
+  it('shows selected special goods in the inventory note column', () => {
+    const note = 'user_note=Giao%20bu%E1%BB%95i%20s%C3%A1ng | special_goods=HIGH_VALUE,FRAGILE';
+    expect(resolveUserNote({ note, notes: null })).toBe(
+      'Giao buổi sáng · Tính chất HH đặc biệt: Giá trị cao, Dễ vỡ',
+    );
+  });
 });

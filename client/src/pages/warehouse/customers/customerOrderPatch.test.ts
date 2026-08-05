@@ -35,7 +35,7 @@ describe('customer order autofill', () => {
     expect(patch.dienThoaiKh).toBe('0901111222');
     expect(patch.dienThoaiNhan).toBeUndefined();
     expect(receiverPatch.dienThoaiNhan).toBe('0934455122');
-    expect(patch.giaoHang).toBeUndefined();
+    expect(patch.giaoHang).toBe('Tận nơi');
   });
 
   it('only autofills the fixed receiver when destination province is HCM', () => {
@@ -101,6 +101,25 @@ describe('customer order autofill', () => {
     expect(patch.huyen).toBeUndefined();
     expect(patch.destHubId).toBeUndefined();
     expect(patch.noiDen).toBeUndefined();
+  });
+
+  it('applies editable bill defaults from the customer profile', () => {
+    const patch = customerToOrderPatch({
+      ...customer,
+      default_service: 'Nhanh 48h',
+      default_delivery_method: 'Lấy tại kho',
+      default_billing_unit: 'Khối',
+      default_payment_method: 'Người nhận thanh toán',
+      default_special_goods: 'HIGH_VALUE,FRAGILE',
+    });
+
+    expect(patch).toMatchObject({
+      dichVu: 'Nhanh 48h',
+      giaoHang: 'Lấy tại kho',
+      donGiaDonVi: 'Khối',
+      phuongThuc: 'Người nhận thanh toán',
+      specialGoods: ['HIGH_VALUE', 'FRAGILE'],
+    });
   });
 
   it('clears unchanged HCM autofill when the order province changes', () => {

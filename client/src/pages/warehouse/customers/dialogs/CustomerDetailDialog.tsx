@@ -4,6 +4,7 @@ import { Building2, Edit, ExternalLink, Loader2, Package, Printer, Receipt, Truc
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../../lib/api';
+import { specialGoodsLabels } from '../../../../lib/waybillSpecialGoods';
 import type { AuthUserProfile } from '../../../login/types';
 import { CUSTOMER_DETAIL_TABS, type CustomerDetailTabId } from '../customerDetailTabs';
 import type { InventoryListResponse, WaybillInventoryItem } from '../../inventory/types';
@@ -442,6 +443,11 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
 
             <DetailSection title="Bill & giá">
               <Row label="Bảng giá" value={customer.price_table} />
+              <Row label="Dịch vụ mặc định" value={customer.default_service} />
+              <Row label="Giao hàng mặc định" value={customer.default_delivery_method} />
+              <Row label="Tính cước theo" value={customer.default_billing_unit} />
+              <Row label="Phương thức mặc định" value={customer.default_payment_method} />
+              <Row label="Tính chất HH" value={specialGoodsLabels(customer.default_special_goods).join(', ')} />
               <Row label="Mã hợp đồng" value={customer.contract_code} />
               <Row label="Cơ chế" value={customer.mechanism} />
               <Row label="Chiết khấu %" value={String(customer.discount_percent ?? 0)} />
