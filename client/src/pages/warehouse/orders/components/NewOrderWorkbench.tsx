@@ -319,6 +319,16 @@ export default function NewOrderWorkbench({
                         </label>
                       );
                     })}
+                    <label className="flex min-h-7 cursor-pointer items-center gap-2 text-[13px] font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        name="vatInvoice"
+                        checked={form.coVat}
+                        onChange={(event) => setField('coVat', event.target.checked)}
+                        className="h-4 w-4 rounded border-emerald-400 text-emerald-600 accent-emerald-600"
+                      />
+                      <span>Xuất hóa đơn GTGT</span>
+                    </label>
                   </div>
                 </div>
                 <CompactField label="Nội dung" className="col-span-12 sm:col-span-6 xl:col-span-6">
@@ -372,7 +382,7 @@ export default function NewOrderWorkbench({
                     title="Tổng cước vận chuyển"
                   />
                 </CompactField>
-                <CompactField label="Phụ phí (công)" className="col-span-6 sm:col-span-4 xl:col-span-2">
+                <CompactField label="Dịch vụ cộng thêm" className="col-span-6 sm:col-span-4 xl:col-span-2">
                   <CompactInput
                     value={form.giamGia}
                     onChange={(e) => setField('giamGia', e.target.value)}
@@ -389,7 +399,7 @@ export default function NewOrderWorkbench({
                     title={
                       form.phuongThuc === 'Người nhận thanh toán'
                         ? 'COD + Tổng cước'
-                        : 'Tổng cước - Phụ phí (công)'
+                        : 'Tổng cước'
                     }
                   />
                 </CompactField>

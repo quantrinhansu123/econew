@@ -33,7 +33,6 @@ const printData: WaybillPrintData = {
   cuocChinh: '',
   dichVuCongThem: '',
   tongCuoc: '',
-  tongPhaiThuPhat: '0',
   dichVu: 'TIÊU CHUẨN 72H',
   dvGtgt: 'Tiêu chuẩn',
   codStamp: false,
@@ -46,6 +45,7 @@ describe('waybill invoice layout', () => {
 
     expect(html).toContain('ECOHAN108964');
     expect(html).toContain('text=ECOHAN108964');
+    expect(html).toContain('scale=4');
     expect(html).toContain('eco-phone-numbers');
     expect(html.match(/0946 936 999/g)).toHaveLength(1);
     expect(html.match(/0888\.805\.625/g)).toHaveLength(1);
@@ -55,6 +55,8 @@ describe('waybill invoice layout', () => {
     expect(html).not.toContain('eco-band--receiver-summary eco-band--top');
     expect(html).toContain('Tên công ty nhận:');
     expect(html).toContain('CÔNG TY NHẬN HÀNG');
+    expect(html).toContain('eco-origin-code');
+    expect(html).toContain('<span class="eco-mini-label">Tên khách gửi:</span><span class="eco-mini-value">A Đào</span>');
     expect(html).toContain('eco-two-col-line--receiver-contact');
     expect(html).toContain('eco-recipient-phone');
     expect(html).toContain('Tên liên hệ:');
@@ -66,20 +68,26 @@ describe('waybill invoice layout', () => {
     const receiverContact = html.match(/eco-two-col-line--receiver-contact[\s\S]*?<\/div><\/div>/)?.[0] || '';
     expect(receiverContact.indexOf('Số điện thoại:')).toBeLessThan(receiverContact.indexOf('Tên liên hệ:'));
     expect(html).toContain('Nguyễn Văn Nhận');
+    expect(html).toContain('<span class="eco-mini-label">Tên liên hệ:</span><span class="eco-mini-value">Nguyễn Văn Nhận</span>');
     expect(html.match(/0938938112/g)).toHaveLength(1);
     expect(html).not.toContain('Mã KH nhận:');
     expect(html).not.toContain('0901111222');
     expect(html).not.toContain('Trọng lượng thực');
     expect(html).toContain('Trọng lượng quy đổi');
     expect(html).toContain('CBM');
+    expect(html).toContain('<span class="eco-stat-value">10.00</span>');
+    expect(html).not.toContain('<strong>10.00</strong>');
+    expect(html.match(/Mã BC gửi:/g)).toHaveLength(1);
+    expect(html).toContain('/eco-policy-qr.jpg');
+    expect(html).not.toContain('api.qrserver.com');
   });
 
-  it('separates charge details, total amount and the send-date row into stable layout blocks', () => {
+  it('keeps charge details and removes the crossed-out collection-total bar', () => {
     const html = renderToStaticMarkup(<WaybillInvoiceTemplate data={printData} />);
 
     expect(html).toContain('eco-charge-lines');
-    expect(html).toContain('eco-total-label');
-    expect(html).toContain('eco-total-value');
+    expect(html).not.toContain('eco-total');
+    expect(html).not.toContain('Tổng phải thu khi phát thư');
     expect(html).toContain('eco-extra-info-box--cod');
     expect(html).toContain('eco-extra-info-box--declared-value');
     expect(html).toContain('eco-sign-date');

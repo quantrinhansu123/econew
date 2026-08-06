@@ -89,7 +89,7 @@ export const ORDER_BULK_COLUMNS: OrderBulkColumn[] = [
   { key: 'phuongThuc', label: 'Phương thức', required: true, sample: 'Công nợ tháng' },
   { key: 'donGia', label: 'Đơn giá', required: false, sample: '5000' },
   { key: 'cod', label: 'COD', required: false, sample: '0' },
-  { key: 'giamGia', label: 'Phụ phí (công)', required: false, sample: '0' },
+  { key: 'giamGia', label: 'Dịch vụ cộng thêm', required: false, sample: '0' },
   { key: 'anh1', label: 'URL ảnh 1', required: false, sample: '' },
   { key: 'anh2', label: 'URL ảnh 2', required: false, sample: '' },
   { key: 'anh3', label: 'URL ảnh 3', required: false, sample: '' },

@@ -13,6 +13,7 @@ describe('cors.config', () => {
     expect(isAllowedCorsOrigin('https://eco-webapp-git-main-htung0403.vercel.app')).toBe(true);
     expect(isAllowedCorsOrigin('https://econew-six.vercel.app')).toBe(true);
     expect(isAllowedCorsOrigin('https://eco-transport-api.onrender.com')).toBe(true);
+    expect(isAllowedCorsOrigin('http://127.0.0.1:5173')).toBe(true);
   });
 
   it('merges env origins with built-in production URLs', () => {

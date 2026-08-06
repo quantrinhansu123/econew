@@ -133,66 +133,68 @@ describe('buildWaybillPrintData receiver fields', () => {
     expect(data.ngayGuiDon).toBe('22/07/2026');
   });
 
-  it('shows freight and collects COD plus freight when the pricing toggle is enabled', () => {
+  it('shows main freight, extra services and their sum when pricing is enabled', () => {
     const data = buildWaybillPrintData(waybill({
       payment_type: 'CC',
       freight_amount: 532_000,
       cod_amount: 500_000,
-      note: 'phuong_thuc=Người nhận thanh toán | thanh_toan=999',
+      note: 'phuong_thuc=Người nhận thanh toán | cuoc_chinh=532000 | phu_phi=25000 | tong_cuoc=532000',
     }), true);
 
     expect(data.showPricing).toBe(true);
     expect(data.cuocChinh).toBe('532.000 đ');
-    expect(data.tongCuoc).toBe('532.000 đ');
-    expect(data.tongPhaiThuPhat).toBe('1,032,000');
+    expect(data.dichVuCongThem).toBe('25.000 đ');
+    expect(data.tongCuoc).toBe('557.000 đ');
   });
 
-  it('automatically shows freight for receiver-paid bills when the user has pricing access', () => {
+  it('automatically shows freight for receiver-paid bills', () => {
+    const data = buildWaybillPrintData(waybill({
+      payment_type: 'CC',
+      freight_amount: 532_000,
+      cod_amount: 500_000,
+      note: 'phuong_thuc=Người nhận thanh toán | cuoc_chinh=532000 | phu_phi=25000',
+    }));
+
+    expect(data.showPricing).toBe(true);
+    expect(data.cuocChinh).toBe('532.000 đ');
+    expect(data.dichVuCongThem).toBe('25.000 đ');
+    expect(data.tongCuoc).toBe('557.000 đ');
+  });
+
+  it('shows zero extra services on receiver-paid legacy bills', () => {
     const data = buildWaybillPrintData(waybill({
       payment_type: 'CC',
       freight_amount: 532_000,
       cod_amount: 500_000,
       note: 'phuong_thuc=Người nhận thanh toán',
-    }), false, true);
+    }));
+
+    expect(data.dichVuCongThem).toBe('0 đ');
+    expect(data.tongCuoc).toBe('532.000 đ');
+  });
+
+  it('does not require the pricing permission for a receiver-paid bill', () => {
+    const data = buildWaybillPrintData(waybill({
+      payment_type: 'CC',
+      freight_amount: 532_000,
+      cod_amount: 500_000,
+      note: 'phuong_thuc=Người nhận thanh toán | thanh_toan=1032000',
+    }));
 
     expect(data.showPricing).toBe(true);
     expect(data.cuocChinh).toBe('532.000 đ');
     expect(data.tongCuoc).toBe('532.000 đ');
-    expect(data.tongPhaiThuPhat).toBe('1,032,000');
   });
 
-  it('uses COD plus freight when a receiver-paid legacy bill has no stored total', () => {
+  it('uses note-backed pricing when protected amount columns are absent', () => {
     const data = buildWaybillPrintData(waybill({
       payment_type: 'CC',
-      freight_amount: 532_000,
-      cod_amount: 500_000,
-      note: 'phuong_thuc=Người nhận thanh toán',
+      note: 'phuong_thuc=Người nhận thanh toán | cuoc_chinh=532000 | phu_phi=25000',
     }));
 
-    expect(data.tongPhaiThuPhat).toBe('1,032,000');
-  });
-
-  it('keeps freight hidden from receiver-paid bills when the pricing toggle is off', () => {
-    const data = buildWaybillPrintData(waybill({
-      payment_type: 'CC',
-      freight_amount: 532_000,
-      cod_amount: 500_000,
-      note: 'phuong_thuc=Người nhận thanh toán | thanh_toan=1032000',
-    }));
-
-    expect(data.showPricing).toBe(false);
-    expect(data.cuocChinh).toBe('');
-    expect(data.tongCuoc).toBe('');
-    expect(data.tongPhaiThuPhat).toBe('1,032,000');
-  });
-
-  it('falls back to the stored collection total when protected amount columns are absent', () => {
-    const data = buildWaybillPrintData(waybill({
-      payment_type: 'CC',
-      note: 'phuong_thuc=Người nhận thanh toán | thanh_toan=1032000',
-    }));
-
-    expect(data.tongPhaiThuPhat).toBe('1,032,000');
+    expect(data.cuocChinh).toBe('532.000 đ');
+    expect(data.dichVuCongThem).toBe('25.000 đ');
+    expect(data.tongCuoc).toBe('557.000 đ');
   });
 
   it('does not treat a note-backed cash payment as receiver-paid', () => {
@@ -201,9 +203,11 @@ describe('buildWaybillPrintData receiver fields', () => {
       freight_amount: 532_000,
       cod_amount: 500_000,
       note: 'phuong_thuc=Tiền mặt | thanh_toan=532000',
-    }), false, true);
+    }), false);
 
     expect(data.showPricing).toBe(false);
-    expect(data.tongPhaiThuPhat).toBe('500,000');
+    expect(data.cuocChinh).toBe('');
+    expect(data.dichVuCongThem).toBe('');
+    expect(data.tongCuoc).toBe('');
   });
 });

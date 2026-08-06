@@ -16,10 +16,9 @@ const MIME_EXT: Record<string, string> = {
 
 const PRICE_LIST_MIME_EXT: Record<string, string> = {
   'application/pdf': 'pdf',
-  'application/vnd.ms-excel': 'xls',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-  'text/csv': 'csv',
-  ...MIME_EXT,
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
 };
 const PRICE_LIST_EXTENSIONS = new Set(Object.values(PRICE_LIST_MIME_EXT));
 
@@ -160,17 +159,27 @@ export class StorageService {
     return this.uploadImage(file, 'waybills');
   }
 
-  async uploadCustomerPriceList(file: Express.Multer.File): Promise<string> {
+  async uploadCustomerPriceList(file: Express.Multer.File, customerCode: string): Promise<string> {
     if (!file?.buffer?.length) throw new BadRequestException('Thiếu file bảng giá.');
     if (file.size > MAX_PRICE_LIST_BYTES) throw new BadRequestException('File bảng giá tối đa 10 MB.');
+
+    const normalizedCustomerCode = customerCode?.trim().toUpperCase() || '';
+    if (!normalizedCustomerCode) throw new BadRequestException('Thiếu mã khách hàng của bảng giá.');
+    const customerFolder = normalizedCustomerCode
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64);
+    if (!customerFolder) throw new BadRequestException('Mã khách hàng không hợp lệ.');
 
     const nameExt = file.originalname?.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase() || '';
     const mimeExt = PRICE_LIST_MIME_EXT[file.mimetype];
     const ext = mimeExt || (PRICE_LIST_EXTENSIONS.has(nameExt) ? nameExt : '');
     if (!ext) {
-      throw new BadRequestException('Chỉ chấp nhận bảng giá PDF, XLS, XLSX, CSV hoặc file ảnh.');
+      throw new BadRequestException('Chỉ chấp nhận bảng giá PDF hoặc ảnh JPG, PNG, WebP.');
     }
 
-    return this.storeObject(file, 'customer-price-lists', ext);
+    return this.storeObject(file, `customer-price-lists/${customerFolder}`, ext);
   }
 }

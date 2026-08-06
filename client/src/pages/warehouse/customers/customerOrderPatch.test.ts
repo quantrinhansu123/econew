@@ -120,6 +120,7 @@ describe('customer order autofill', () => {
       phuongThuc: 'Người nhận thanh toán',
       specialGoods: ['HIGH_VALUE', 'FRAGILE'],
     });
+    expect(patch.giamGia).toBeUndefined();
   });
 
   it('clears unchanged HCM autofill when the order province changes', () => {

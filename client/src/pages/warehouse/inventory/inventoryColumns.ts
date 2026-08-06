@@ -189,7 +189,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'billing_unit', label: 'ĐVT', defaultVisible: false },
   { id: 'billing_qty_detail', label: 'Kg / khối', defaultVisible: false, align: 'right' },
   { id: 'unit_price', label: 'Đơn giá', defaultVisible: false, align: 'right' },
-  { id: 'surcharge', label: 'Phụ phí', defaultVisible: false, managerOnly: true, align: 'right' },
+  { id: 'surcharge', label: 'Dịch vụ cộng thêm', defaultVisible: false, managerOnly: true, align: 'right' },
   { id: 'transit_fee', label: 'Trung chuyển', defaultVisible: false, align: 'right' },
   { id: 'total_amount', label: 'Thành tiền', defaultVisible: false, managerOnly: true, align: 'right' },
   { id: 'thu_ho_khach', label: 'Thu hộ khách', defaultVisible: false, align: 'right' },
@@ -304,7 +304,7 @@ const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   receiver_ward: 'Phường/Xã',
   order_status: 'Trạng thái',
   billing_qty_detail: 'Kg / khối',
-  surcharge: 'Phụ phí',
+  surcharge: 'Dịch vụ cộng thêm',
   stt: 'STT',
   package_count: 'SL',
   billing_unit: 'ĐVT',
@@ -553,7 +553,7 @@ export function resolveTotalAmount(waybill: WaybillInventoryItem): number {
     const fromBill = Number(String(parseNote(note, 'thanh_toan')).replace(/\D/g, ''));
     if (Number.isFinite(fromBill)) return fromBill;
   }
-  return Math.max(0, resolveFreight(waybill) - resolveSurcharge(waybill));
+  return resolveFreight(waybill);
 }
 
 export function resolveBillingQtyDetail(waybill: WaybillInventoryItem): string {

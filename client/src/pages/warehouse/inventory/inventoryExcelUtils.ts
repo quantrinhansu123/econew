@@ -242,7 +242,7 @@ const detailColumns: Array<{
   { label: 'Phương thức', width: 22, value: (waybill) => resolvePaymentMethod(waybill) },
   { label: 'Đơn giá', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: (waybill) => resolveUnitPrice(waybill) },
   { label: 'Cước chính', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: billFreight },
-  { label: 'Phụ phí', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: (waybill) => resolveSurcharge(waybill) },
+  { label: 'Dịch vụ cộng thêm', width: 20, align: 'right', numFmt: '#,##0 "đ"', value: (waybill) => resolveSurcharge(waybill) },
   { label: 'Thành tiền', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: (waybill) => resolveTotalAmount(waybill) },
   { label: 'COD', width: 16, align: 'right', numFmt: '#,##0 "đ"', value: billCod },
 ];

@@ -6,7 +6,7 @@ import { getStoredAuthUser } from '../../lib/authUser';
 import type { WaybillDetail } from '../warehouse/orders/types';
 import WaybillInvoiceTemplate from './WaybillInvoiceTemplate';
 import { buildWaybillPrintData, printWaybillWhenReady } from './waybillPrintUtils';
-import { canViewWaybillPricing, shouldShowWaybillPricing } from './waybillPricingAccess';
+import { shouldShowWaybillPricing } from './waybillPricingAccess';
 import './waybill-invoice.css';
 
 export default function PrintWaybillsBulkPage() {
@@ -17,7 +17,6 @@ export default function PrintWaybillsBulkPage() {
   );
   const autoPrint = searchParams.get('print') === '1';
   const roleMask = getStoredAuthUser()?.role_mask;
-  const canViewPricing = canViewWaybillPricing(roleMask);
   const showPricing = shouldShowWaybillPricing(roleMask, searchParams.get('pricing'));
   const pageSizeRule = '@media print { @page { size: A4 portrait; margin: 5mm; } }';
 
@@ -64,9 +63,9 @@ export default function PrintWaybillsBulkPage() {
 
   const printItems = useMemo(
     () => waybills.map((waybill) => (
-      buildWaybillPrintData(waybill, showPricing, canViewPricing)
+      buildWaybillPrintData(waybill, showPricing)
     )),
-    [waybills, showPricing, canViewPricing],
+    [waybills, showPricing],
   );
   const displayError = ids.length ? error : 'Chưa chọn vận đơn để in.';
 

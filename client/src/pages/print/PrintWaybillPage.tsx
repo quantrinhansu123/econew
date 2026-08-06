@@ -77,10 +77,10 @@ export default function PrintWaybillPage() {
 
   const printData = useMemo(() => {
     if (!waybill) return null;
-    const base = buildWaybillPrintData(waybill, showPricing, canViewPricing);
+    const base = buildWaybillPrintData(waybill, showPricing);
     if (!customer) return base;
     return mergeCustomerIntoPrintData(base, customer);
-  }, [waybill, customer, showPricing, canViewPricing]);
+  }, [waybill, customer, showPricing]);
 
   return (
     <div className="waybill-invoice-wrap waybill-invoice-wrap--a4">

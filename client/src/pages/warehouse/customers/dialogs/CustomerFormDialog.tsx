@@ -65,10 +65,14 @@ export default function CustomerFormDialog({
 
   const handlePriceFile = async (file?: File) => {
     if (!file || isPriceFileUploading) return;
+    if (!form.code.trim()) {
+      setPriceFileError('Nhập Mã KH trước khi tải bảng giá.');
+      return;
+    }
     setIsPriceFileUploading(true);
     setPriceFileError('');
     try {
-      const url = await uploadCustomerPriceList(file);
+      const url = await uploadCustomerPriceList(file, form.code);
       onChange('price_list_url', url);
       onChange('price_list_name', file.name);
     } catch (uploadError) {
@@ -193,11 +197,11 @@ export default function CustomerFormDialog({
                 ) : (
                   <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-blue-300 bg-blue-50/40 px-3 text-[13px] font-bold text-primary hover:bg-blue-50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
                     {isPriceFileUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                    {isPriceFileUploading ? 'Đang tải bảng giá...' : 'Chọn file PDF / Excel / ảnh'}
+                    {isPriceFileUploading ? 'Đang tải bảng giá...' : 'Chọn ảnh / PDF'}
                     <input
                       type="file"
                       accept={CUSTOMER_PRICE_LIST_ACCEPT}
-                      disabled={isPriceFileUploading || isSubmitting}
+                      disabled={isPriceFileUploading || isSubmitting || !form.code.trim()}
                       className="hidden"
                       onChange={(event) => {
                         void handlePriceFile(event.target.files?.[0]);
@@ -208,7 +212,9 @@ export default function CustomerFormDialog({
                 )}
                 {priceFileError && <p className="mt-1.5 text-[12px] font-bold text-red-600">{priceFileError}</p>}
                 <p className="mt-1 text-[11px] font-medium text-muted-foreground">
-                  Chỉ dùng để mở xem khi nhập bill; hệ thống không tự thay đổi đơn giá.
+                  {!form.code.trim()
+                    ? 'Nhập Mã KH trước khi chọn file.'
+                    : `Lưu theo mã ${form.code.trim().toUpperCase()}, tối đa 10 MB. Chỉ dùng để xem; không tự thay đổi đơn giá.`}
                 </p>
               </div>
               <Field label="Giao nhận">

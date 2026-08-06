@@ -2,6 +2,7 @@ import {
   Controller,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   UploadedFile,
   UseGuards,
@@ -51,10 +52,10 @@ export class UploadsController {
     return this.storageService.uploadWaybillImage(file).then((url) => ({ url }));
   }
 
-  @Post('customer-price-lists')
+  @Post('customer-price-lists/:customerCode')
   @HttpCode(HttpStatus.OK)
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Upload file bảng giá gắn với khách hàng' })
+  @ApiOperation({ summary: 'Upload ảnh/PDF bảng giá theo mã khách hàng' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -62,7 +63,10 @@ export class UploadsController {
       limits: { fileSize: 10 * 1024 * 1024 },
     }),
   )
-  uploadCustomerPriceList(@UploadedFile() file: Express.Multer.File) {
-    return this.storageService.uploadCustomerPriceList(file).then((url) => ({ url }));
+  uploadCustomerPriceList(
+    @Param('customerCode') customerCode: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.storageService.uploadCustomerPriceList(file, customerCode).then((url) => ({ url }));
   }
 }

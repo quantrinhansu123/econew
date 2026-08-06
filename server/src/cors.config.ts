@@ -1,5 +1,6 @@
 const DEV_CORS_ORIGINS = [
   'http://localhost:5173',
+  'http://127.0.0.1:5173',
   'http://localhost:6060',
   'http://127.0.0.1:6060',
   'http://localhost:4173',

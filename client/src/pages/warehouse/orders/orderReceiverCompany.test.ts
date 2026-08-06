@@ -15,6 +15,16 @@ describe('receiver company on order form', () => {
     expect(restored.specialGoods).toEqual(['RETURN_DOCUMENTS', 'LIQUID']);
   });
 
+  it('stores and restores the VAT invoice request', () => {
+    const payload = buildCreatePayload({
+      ...emptyOrderForm(),
+      coVat: true,
+    }, 0);
+
+    expect(payload.note).toContain('co_vat=1');
+    expect(waybillToOrderForm({ id: '1', note: payload.note } as any, []).coVat).toBe(true);
+  });
+
   it('allows sender phone and address to remain visually empty on legacy APIs', () => {
     const payload = buildCreatePayload({
       ...emptyOrderForm(),

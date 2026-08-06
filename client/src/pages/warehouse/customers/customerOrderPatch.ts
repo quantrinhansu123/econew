@@ -146,7 +146,6 @@ export function customerToOrderPatch(customer: CustomerRecord): Partial<NewOrder
     dienThoaiKh: phoneKh,
     nvgn: str(customer.delivery_handler) || undefined,
     buuTaLay: str(customer.manager_name) || undefined,
-    giamGia: customer.discount_percent != null ? String(customer.discount_percent) : undefined,
     specialGoods: normalizeWaybillSpecialGoods(customer.default_special_goods),
     huyen: destinationProvince || undefined,
   };

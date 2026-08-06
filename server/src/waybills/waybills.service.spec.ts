@@ -971,13 +971,13 @@ describe('WaybillsService', () => {
     );
   });
 
-  it('all-orders keeps warehouse staff limited to their assigned hub', async () => {
+  it('all-orders shows warehouse staff bills from every hub', async () => {
     const qb = createQueryBuilder();
     waybillsRepository.createQueryBuilder.mockReturnValue(qb);
 
     await service.getInventoryTripLines({ list_scope: 'all_orders' }, warehouse);
 
-    expect(qb.andWhere).toHaveBeenCalledWith(
+    expect(qb.andWhere).not.toHaveBeenCalledWith(
       'COALESCE(waybill.current_hub_id, waybill.origin_hub_id) IN (:...hubIds)',
       { hubIds: ['1'] },
     );

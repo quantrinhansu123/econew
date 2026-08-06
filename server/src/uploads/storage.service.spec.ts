@@ -9,9 +9,9 @@ const imageFile = {
 } as Express.Multer.File;
 
 const priceListFile = {
-  buffer: Buffer.from('excel-bytes'),
-  mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  originalname: 'bao-gia.xlsx',
+  buffer: Buffer.from('%PDF-1.7 price-list'),
+  mimetype: 'application/pdf',
+  originalname: 'bao-gia.pdf',
   size: 11,
 } as Express.Multer.File;
 
@@ -141,25 +141,31 @@ describe('StorageService', () => {
     expect(fetchMock.mock.calls.every(([url]) => !String(url).endsWith('/storage/v1/bucket'))).toBe(true);
   });
 
-  it('uploads an Excel customer price list to its own folder', async () => {
+  it('uploads a PDF customer price list under the customer code folder', async () => {
     config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { Key: 'customer-price-lists/bao-gia.xlsx' }));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { Key: 'customer-price-lists/ACESCO/bao-gia.pdf' }));
 
-    const url = await createService().uploadCustomerPriceList(priceListFile);
+    const url = await createService().uploadCustomerPriceList(priceListFile, 'acesco');
 
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/customer-price-lists/');
-    expect(url).toMatch(/\/customer-price-lists\/.+\.xlsx$/);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/customer-price-lists/ACESCO/');
+    expect(url).toMatch(/\/customer-price-lists\/ACESCO\/.+\.pdf$/);
   });
 
-  it('rejects unsupported customer price-list files', async () => {
+  it('rejects Excel customer price-list files', async () => {
     const unsupported = {
       ...priceListFile,
-      mimetype: 'application/javascript',
-      originalname: 'bao-gia.js',
+      mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      originalname: 'bao-gia.xlsx',
     } as Express.Multer.File;
 
-    await expect(createService().uploadCustomerPriceList(unsupported)).rejects.toThrow(
-      'Chỉ chấp nhận bảng giá PDF, XLS, XLSX, CSV hoặc file ảnh.',
+    await expect(createService().uploadCustomerPriceList(unsupported, 'ACESCO')).rejects.toThrow(
+      'Chỉ chấp nhận bảng giá PDF hoặc ảnh JPG, PNG, WebP.',
+    );
+  });
+
+  it('requires a customer code for customer price-list files', async () => {
+    await expect(createService().uploadCustomerPriceList(priceListFile, '  ')).rejects.toThrow(
+      'Thiếu mã khách hàng của bảng giá.',
     );
   });
 });

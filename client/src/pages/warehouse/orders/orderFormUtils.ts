@@ -96,12 +96,10 @@ export function calcCuocChinhAmount(form: NewOrderFormState): number {
 export function calcOrderPricing(form: NewOrderFormState) {
   const cuocChinhAmount = calcCuocChinhAmount(form);
   const cod = parseMoneyAmount(form.cod);
-  const giamGia = parseMoneyAmount(form.giamGia);
-  const tongCuoc = cuocChinhAmount;
+  const dichVuCongThem = parseMoneyAmount(form.giamGia);
+  const tongCuoc = cuocChinhAmount + dichVuCongThem;
   const receiverPays = form.phuongThuc.trim() === 'Người nhận thanh toán';
-  const thanhToan = receiverPays
-    ? tongCuoc + cod
-    : Math.max(0, tongCuoc - giamGia);
+  const thanhToan = tongCuoc + (receiverPays ? cod : 0);
 
   return {
     cuocChinh: formatDisplayNumber(cuocChinhAmount, 0),
@@ -469,8 +467,8 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
   const cod = parseMoneyAmount(form.cod);
   const surcharge = parseMoneyAmount(form.giamGia);
   const receiverPays = form.phuongThuc.trim() === 'Người nhận thanh toán';
-  const freightToCollect = receiverPays ? freight : Math.max(0, freight - surcharge);
-  const thanhToan = freightToCollect + (receiverPays ? cod : 0);
+  const totalFreight = freight + surcharge;
+  const thanhToan = totalFreight + (receiverPays ? cod : 0);
   const weight = parseDecimalNumber(form.klKg);
   const volumeM3 = parseDecimalNumber(form.m3);
   const length = Math.max(0, parseDecimalNumber(form.chieuDai));
@@ -504,10 +502,10 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     volumetric_weight: volumetricWeight,
     the_tich_m3: volumeM3,
     package_count: Math.max(1, parseInt(form.soKien, 10) || 1),
-    freight_amount: freight,
+    freight_amount: totalFreight,
     cod_amount: cod,
     // CC chỉ lưu phần cước; COD có cột riêng. Tổng phải thu = CC + COD.
-    cc_amount: paymentType === 'CC' ? freightToCollect : 0,
+    cc_amount: paymentType === 'CC' ? totalFreight : 0,
     xe_lay: form.xeLay.trim() || undefined,
     xe_phat: form.xePhat.trim() || undefined,
     delivery_photo_url: joinWaybillImages(form.billImages) || undefined,
@@ -530,7 +528,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
       form.buuTaPhat && `buu_ta_phat=${form.buuTaPhat}`,
       form.dvdb && `dvdb=${parseMoneyAmount(form.dvdb)}`,
       `cuoc_chinh=${freight}`,
-      `tong_cuoc=${parseMoneyAmount(form.tongCuoc) || freight}`,
+      `tong_cuoc=${totalFreight}`,
       form.thueSuat && `thue_suat=${form.thueSuat}`,
       `vat=${parseMoneyAmount(form.vat)}`,
       `co_vat=${form.coVat ? 1 : 0}`,

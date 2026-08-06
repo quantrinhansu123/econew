@@ -4,6 +4,7 @@ import {
   normalizeInventoryVisibleColumnIds,
   resolvePrintColumnIds,
   resolveNoiDen,
+  resolveTotalAmount,
   resolveUserNote,
   resolveVisibleColumnViews,
   type InventoryColumnId,
@@ -129,5 +130,13 @@ describe('inventory display values', () => {
     expect(resolveUserNote({ note, notes: null })).toBe(
       'Giao buổi sáng · Giá trị cao, Dễ vỡ',
     );
+  });
+
+  it('keeps extra services inside the total instead of subtracting them', () => {
+    expect(resolveTotalAmount({
+      id: 1,
+      freight_amount: 557_000,
+      note: 'cuoc_chinh=532000 | phu_phi=25000',
+    })).toBe(557_000);
   });
 });

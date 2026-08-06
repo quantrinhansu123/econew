@@ -29,9 +29,6 @@ export const IMAGE_UPLOAD_ACCEPT = [
 
 export const CUSTOMER_PRICE_LIST_ACCEPT = [
   '.pdf',
-  '.xls',
-  '.xlsx',
-  '.csv',
   'image/jpeg',
   'image/png',
   'image/webp',
@@ -245,13 +242,21 @@ export function uploadWaybillImage(file: File): Promise<string> {
   return uploadImage(file, '/uploads/waybill-images');
 }
 
-export function uploadCustomerPriceList(file: File): Promise<string> {
-  const supported = /\.(?:csv|pdf|xlsx?|jpe?g|png|webp)$/i.test(file.name);
+export function uploadCustomerPriceList(file: File, customerCode: string): Promise<string> {
+  const normalizedCustomerCode = customerCode.trim().toUpperCase();
+  if (!normalizedCustomerCode) {
+    throw new ApiError(400, 'Nhập Mã KH trước khi tải bảng giá.', null);
+  }
+  const supported = /\.(?:pdf|jpe?g|png|webp)$/i.test(file.name);
   if (!supported) {
-    throw new ApiError(400, 'Chỉ chấp nhận bảng giá PDF, XLS, XLSX, CSV hoặc file ảnh.', null);
+    throw new ApiError(400, 'Chỉ chấp nhận bảng giá PDF hoặc ảnh JPG, PNG, WebP.', null);
   }
   if (file.size > MAX_PRICE_LIST_BYTES) {
     throw new ApiError(400, 'File bảng giá tối đa 10 MB.', null);
   }
-  return uploadStoredFile(file, '/uploads/customer-price-lists', 'Không upload được file bảng giá.');
+  return uploadStoredFile(
+    file,
+    `/uploads/customer-price-lists/${encodeURIComponent(normalizedCustomerCode)}`,
+    'Không upload được file bảng giá.',
+  );
 }

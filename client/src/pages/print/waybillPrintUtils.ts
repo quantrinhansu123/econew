@@ -35,7 +35,6 @@ export interface WaybillPrintData {
   cuocChinh: string;
   dichVuCongThem: string;
   tongCuoc: string;
-  tongPhaiThuPhat: string;
   dichVu: string;
   dvGtgt: string;
   codStamp: boolean;
@@ -122,7 +121,6 @@ function parseM3FromNote(note: string) {
 export function buildWaybillPrintData(
   waybill: WaybillDetail,
   showPricing = false,
-  allowReceiverPricing = false,
 ): WaybillPrintData {
   const note = waybill.note || waybill.notes || '';
   const sender = parseContact(waybill.sender_info);
@@ -156,23 +154,19 @@ export function buildWaybillPrintData(
     0;
 
   const cod = Number(waybill.cod_amount) || 0;
-  const freight = Number(waybill.freight_amount) || Number(waybill.cost_amount) || 0;
+  const storedFreight = Number(waybill.freight_amount) || Number(waybill.cost_amount) || 0;
+  const notedMainFreight = parseAmountInput(parseNoteField(note, 'cuoc_chinh'));
+  const serviceExtra = parseAmountInput(
+    parseNoteField(note, 'phu_phi') || parseNoteField(note, 'giamGia'),
+  );
+  const mainFreight = notedMainFreight || storedFreight;
+  const totalFreight = mainFreight + serviceExtra;
   const paymentType = String(waybill.payment_type || '').toUpperCase();
   const phuongThuc = parseNoteField(note, 'phuong_thuc');
   const receiverPays =
     phuongThuc.trim().toLocaleLowerCase('vi-VN') === 'người nhận thanh toán'
     || (!phuongThuc.trim() && paymentType === 'CC');
-  const pricingVisible = showPricing || (allowReceiverPricing && receiverPays);
-  const storedPayment = parseNoteField(note, 'thanh_toan');
-  const hasCurrentCollectionAmounts =
-    waybill.cod_amount != null
-    || waybill.freight_amount != null
-    || waybill.cost_amount != null;
-  const totalToCollect = receiverPays
-    ? hasCurrentCollectionAmounts
-      ? cod + freight
-      : parseAmountInput(storedPayment)
-    : cod;
+  const pricingVisible = showPricing || receiverPays;
   const createdAt = waybill.received_at || (waybill as { created_at?: string }).created_at;
   const sentAt = parseNoteField(note, 'ngay_gui') || createdAt;
 
@@ -208,10 +202,9 @@ export function buildWaybillPrintData(
     thuHo: formatNum(cod, 0) || '0',
     khaiGia: 'Không',
     ngayGuiDon: formatDate(sentAt),
-    cuocChinh: pricingVisible ? formatMoney(freight) : '',
-    dichVuCongThem: '',
-    tongCuoc: pricingVisible ? formatMoney(freight) : '',
-    tongPhaiThuPhat: formatNum(totalToCollect, 0) || '0',
+    cuocChinh: pricingVisible ? formatMoney(mainFreight) : '',
+    dichVuCongThem: pricingVisible ? formatMoney(serviceExtra) : '',
+    tongCuoc: pricingVisible ? formatMoney(totalFreight) : '',
     dichVu: (dichVu || loaiBp || 'ĐƯỜNG BỘ').toUpperCase(),
     dvGtgt: parseNoteField(note, 'dich_vu_gia_tang') || 'Tiêu chuẩn',
     codStamp: paymentType === 'COD' || cod > 0,

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { WaybillPrintData } from './waybillPrintUtils';
 
 export const WAYBILL_PRINT_LOGO_SRC = '/z7901426682318_7c6139835f49e94fff8a3f239aaea0b8.jpg';
+export const WAYBILL_POLICY_QR_SRC = '/eco-policy-qr.jpg';
 
 interface Props {
   data: WaybillPrintData;
@@ -22,15 +23,14 @@ function StatCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="eco-stat-cell">
       <div>{label}</div>
-      <strong>{value}</strong>
+      <span className="eco-stat-value">{value}</span>
     </div>
   );
 }
 
 export default function WaybillInvoiceTemplate({ data }: Props) {
   const displayWaybillCode = data.waybillCode.replace(/[\s-]+/g, '');
-  const barcodeUrl = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(displayWaybillCode)}&scale=2&height=10&includetext=false`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(displayWaybillCode)}`;
+  const barcodeUrl = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(displayWaybillCode)}&scale=4&height=12&includetext=false`;
   const hasPricing = data.showPricing;
 
   return (
@@ -46,6 +46,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         <div className="eco-a5-title">
           <h1>VẬN TẢI ECO</h1>
           <h2>VẬN CHUYỂN HÀNG HÓA BẮC - NAM</h2>
+          <div className="eco-origin-code">Mã BC gửi: <b>{value(data.maBcGui)}</b></div>
         </div>
         <div className="eco-a5-barcode">
           <img src={barcodeUrl} alt="" className="eco-barcode-img" />
@@ -59,7 +60,6 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
       <div className="eco-a5-row eco-a5-people-row">
         <div className="eco-band eco-band--codes eco-band--left eco-band--top">
           <MiniLine label="Mã KH gửi:" strong>{value(data.maKhGui)}</MiniLine>
-          <MiniLine label="Mã BC gửi:" strong>{value(data.maBcGui)}</MiniLine>
         </div>
         <div className="eco-band eco-band--receiver-summary">
           <div className="eco-recipient-summary">
@@ -67,7 +67,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           </div>
         </div>
         <div className="eco-band eco-band--sender-details eco-band--left">
-          <MiniLine label="Tên khách gửi:" strong>{value(data.tenKhGui)}</MiniLine>
+          <MiniLine label="Tên khách gửi:">{value(data.tenKhGui)}</MiniLine>
           <MiniLine label="Địa chỉ:" className="eco-mini-line--address">{value(data.diaChiGui)}</MiniLine>
         </div>
         <div className="eco-band eco-band--receiver-details">
@@ -77,7 +77,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         <div className="eco-band eco-band--sender-region eco-band--left">
           <div className="eco-two-col-line">
             <MiniLine label="Quận/Huyện:">{value(data.quanHuyenGui)}</MiniLine>
-            <MiniLine label="Tỉnh/TP:" strong>{value(data.tinhGui)}</MiniLine>
+            <MiniLine label="Tỉnh/TP:">{value(data.tinhGui)}</MiniLine>
           </div>
         </div>
         <div className="eco-band eco-band--receiver-region">
@@ -94,7 +94,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         <div className="eco-band eco-band--receiver-contact">
           <div className="eco-two-col-line eco-two-col-line--receiver-contact">
             <MiniLine label="Số điện thoại:" strong className="eco-recipient-phone">{value(data.sdtNhan)}</MiniLine>
-            <MiniLine label="Tên liên hệ:" strong>{value(data.tenLienHeNhan)}</MiniLine>
+            <MiniLine label="Tên liên hệ:">{value(data.tenLienHeNhan)}</MiniLine>
           </div>
         </div>
       </div>
@@ -131,10 +131,6 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
               <div className="eco-charge-line"><span>Dịch vụ cộng thêm:</span><b>{hasPricing ? value(data.dichVuCongThem) : ' '}</b></div>
               <div className="eco-charge-line"><span>Tổng cước:</span><span className="eco-charge-value">{hasPricing ? value(data.tongCuoc) : ' '}</span></div>
             </div>
-            <div className="eco-total">
-              <span className="eco-total-label">Tổng phải thu khi phát thư</span>
-              <strong className="eco-total-value">{value(data.tongPhaiThuPhat)}</strong>
-            </div>
           </div>
           <div className="eco-extra-info-box eco-extra-info-box--cod"><p><span className="eco-extra-label">Thu hộ:</span><b>{data.thuHo || '0'}</b></p></div>
           <div className="eco-extra-info-box eco-extra-info-box--declared-value"><p><span className="eco-extra-label">Khai giá:</span><b>{data.khaiGia}</b></p></div>
@@ -160,7 +156,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
             <p><b>Dịch vụ:</b> {value(data.dichVu)}</p>
             <p><i>Quý khách vui lòng quét mã QR để xem chính sách đền bù và điều kiện chuyển phát</i></p>
           </div>
-          <div className="eco-qr"><img src={qrUrl} alt="QR" /></div>
+          <div className="eco-qr"><img src={WAYBILL_POLICY_QR_SRC} alt="QR chính sách ECO" /></div>
         </div>
         <div className="eco-footer-staff">
           <b>Mã nhân viên nhận</b>

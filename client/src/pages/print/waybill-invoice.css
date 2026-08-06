@@ -30,9 +30,9 @@
 
 .waybill-invoice {
   --eco-a5-scale: 0.64;
-  --eco-ink: #111;
-  --eco-line: 0.7px solid var(--eco-ink);
-  --eco-line-strong-width: 1px;
+  --eco-ink: #000;
+  --eco-line: 0.85px solid var(--eco-ink);
+  --eco-line-strong-width: 1.15px;
   --eco-line-strong: var(--eco-line-strong-width) solid var(--eco-ink);
   --eco-a5-width: 200mm;
   --eco-a5-height: 136mm;
@@ -85,7 +85,7 @@
 }
 
 .waybill-invoice::after {
-  top: 56mm;
+  top: 61mm;
   left: calc(var(--eco-a5-split) + 50mm + var(--eco-line-strong-width));
   border-left: var(--eco-line);
 }
@@ -217,10 +217,10 @@
 
 /* Người gửi / người nhận */
 .eco-a5-people-row {
-  min-height: 31mm;
+  min-height: 36mm;
   display: grid;
   grid-template-columns: var(--eco-a5-split) 1fr;
-  grid-template-rows: auto minmax(8mm, auto) auto auto;
+  grid-template-rows: auto minmax(10mm, auto) auto auto;
   align-content: start;
   font-size: var(--fs-body);
   line-height: 1.25;
@@ -253,7 +253,7 @@
   grid-row: 1;
   padding: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   align-items: stretch;
   gap: 0;
   font-size: var(--fs-row);
@@ -326,21 +326,22 @@
 .eco-band--sender-details {
   grid-column: 1;
   grid-row: 2;
+  font-size: var(--fs-base);
 }
 
 .eco-band--receiver-details {
   grid-column: 2;
   grid-row: 2;
-  padding-top: 0.35mm;
-  padding-bottom: 0.35mm;
+  padding-top: 0.6mm;
+  padding-bottom: 0.6mm;
   justify-content: flex-start;
-  gap: 0.15mm;
-  font-size: calc(13.5pt * var(--eco-a5-scale));
-  line-height: 1.08;
+  gap: 0.5mm;
+  font-size: var(--fs-row);
+  line-height: 1.3;
 }
 
 .eco-band--receiver-details .eco-mini-line {
-  min-height: 3.8mm;
+  min-height: 4.4mm;
 }
 
 .eco-band--receiver-details .eco-mini-line--ward {
@@ -351,6 +352,7 @@
 .eco-band--sender-region {
   grid-column: 1;
   grid-row: 3;
+  font-size: var(--fs-base);
 }
 
 .eco-band--receiver-region {
@@ -365,6 +367,7 @@
 .eco-band--sender-contact {
   grid-column: 1;
   grid-row: 4;
+  font-size: var(--fs-base);
 }
 
 .eco-band--receiver-contact {
@@ -372,8 +375,8 @@
   grid-row: 4;
   padding-top: 1mm;
   padding-bottom: 0.35mm;
-  font-size: calc(14.5pt * var(--eco-a5-scale));
-  line-height: 1.12;
+  font-size: var(--fs-row);
+  line-height: 1.2;
 }
 
 .eco-two-col-line--sender-contact {
@@ -390,16 +393,33 @@
   white-space: nowrap;
 }
 
+.eco-origin-code {
+  position: absolute;
+  right: 0;
+  bottom: 0.8mm;
+  left: 0;
+  font-size: var(--fs-row);
+  font-weight: 400;
+  line-height: 1;
+}
+
 .eco-two-col-line .eco-mini-line {
   grid-template-columns: max-content 1fr;
 }
 
 .eco-two-col-line--dest {
-  grid-template-columns: minmax(0, 1fr) 38mm;
+  grid-template-columns: minmax(0, 1fr) max-content;
   column-gap: 1mm;
+  font-size: calc(11.5pt * var(--eco-a5-scale));
 }
 
-.eco-two-col-line--dest .eco-mini-line:last-child {
+.eco-two-col-line--dest .eco-mini-line {
+  column-gap: 0.6mm;
+  white-space: nowrap;
+}
+
+.eco-two-col-line--dest .eco-mini-value {
+  overflow-wrap: normal;
   white-space: nowrap;
 }
 
@@ -455,10 +475,11 @@
   border-bottom: var(--eco-line);
 }
 
-.eco-stat-cell strong {
+.eco-stat-value {
   margin: auto 0;
-  font-size: var(--fs-stat);
-  line-height: 1;
+  font-size: var(--fs-base);
+  font-weight: 400;
+  line-height: 1.1;
 }
 
 .eco-note-grid {
@@ -492,14 +513,19 @@
   text-align: center;
 }
 
+.eco-a5-title {
+  position: relative;
+  padding-bottom: 5mm;
+}
+
 .eco-note-heading {
   margin: 0;
   padding: 0.5mm;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: calc(16.5pt * var(--eco-a5-scale));
-  font-weight: 700;
+  font-size: var(--fs-base);
+  font-weight: 400;
   line-height: 1.1;
 }
 
@@ -508,14 +534,15 @@
   padding: 1mm 1.5mm 0;
   overflow: hidden;
   overflow-wrap: anywhere;
-  font-size: calc(14.5pt * var(--eco-a5-scale));
+  font-size: var(--fs-base);
+  font-weight: 400;
   line-height: 1.2;
   white-space: pre-wrap;
 }
 
 .eco-note-cell--contents p {
-  font-size: calc(16pt * var(--eco-a5-scale));
-  font-weight: 500;
+  font-size: var(--fs-base);
+  font-weight: 400;
   line-height: 1.2;
 }
 
@@ -656,34 +683,6 @@
 .eco-sign-receiver {
   grid-column: 2;
   grid-row: 4;
-}
-
-.eco-a5-template .eco-total {
-  min-height: 0;
-  margin: 0;
-  padding: 0.7mm 0.5mm;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  align-items: center;
-  border-top: var(--eco-line);
-  text-align: center;
-}
-
-.eco-a5-template .eco-total-label {
-  margin: 0;
-  padding: 0;
-  display: block;
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  line-height: 1.15;
-  white-space: nowrap;
-}
-
-.eco-a5-template .eco-total-value {
-  margin: 0;
-  display: block;
-  font-size: var(--fs-money);
-  line-height: 1;
 }
 
 .eco-cod-stamp {

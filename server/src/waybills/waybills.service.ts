@@ -512,7 +512,9 @@ export class WaybillsService {
       .leftJoinAndSelect('waybill.dest_hub', 'dest_hub')
       .leftJoinAndSelect('waybill.order', 'order');
     this.applyFilters(qb, inventoryQuery);
-    this.applyHubScope(qb, currentUser);
+    if (query.list_scope !== 'all_orders') {
+      this.applyHubScope(qb, currentUser);
+    }
 
     const vendorId = query.vendor_id?.trim();
     if (vendorId) {
@@ -2048,12 +2050,7 @@ export class WaybillsService {
     if (query.current_hub_id?.trim() || query.hub_id?.trim()) {
       return query.current_hub_id ?? query.hub_id;
     }
-    if (
-      query.list_scope === 'all_orders'
-      && (isManager(currentUser.role_mask)
-        || hasRole(currentUser.role_mask, Roles.ACCOUNTANT)
-        || !currentUser.hub_id)
-    ) {
+    if (query.list_scope === 'all_orders') {
       return undefined;
     }
     if (query.ma_kh?.trim() || query.vendor_id?.trim()) {
