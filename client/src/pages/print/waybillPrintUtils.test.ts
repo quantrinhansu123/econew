@@ -145,6 +145,7 @@ describe('buildWaybillPrintData receiver fields', () => {
     expect(data.cuocChinh).toBe('532.000 đ');
     expect(data.dichVuCongThem).toBe('25.000 đ');
     expect(data.tongCuoc).toBe('557.000 đ');
+    expect(data.tongPhaiThuPhat).toBe('1,057,000');
   });
 
   it('automatically shows freight for receiver-paid bills', () => {
@@ -209,5 +210,6 @@ describe('buildWaybillPrintData receiver fields', () => {
     expect(data.cuocChinh).toBe('');
     expect(data.dichVuCongThem).toBe('');
     expect(data.tongCuoc).toBe('');
+    expect(data.tongPhaiThuPhat).toBe('500,000');
   });
 });

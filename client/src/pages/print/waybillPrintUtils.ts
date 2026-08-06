@@ -35,6 +35,7 @@ export interface WaybillPrintData {
   cuocChinh: string;
   dichVuCongThem: string;
   tongCuoc: string;
+  tongPhaiThuPhat: string;
   dichVu: string;
   dvGtgt: string;
   codStamp: boolean;
@@ -167,6 +168,11 @@ export function buildWaybillPrintData(
     phuongThuc.trim().toLocaleLowerCase('vi-VN') === 'người nhận thanh toán'
     || (!phuongThuc.trim() && paymentType === 'CC');
   const pricingVisible = showPricing || receiverPays;
+  const storedPayment = parseAmountInput(parseNoteField(note, 'thanh_toan'));
+  const calculatedCollection = cod + totalFreight;
+  const totalToCollect = receiverPays
+    ? calculatedCollection || storedPayment
+    : cod;
   const createdAt = waybill.received_at || (waybill as { created_at?: string }).created_at;
   const sentAt = parseNoteField(note, 'ngay_gui') || createdAt;
 
@@ -205,6 +211,7 @@ export function buildWaybillPrintData(
     cuocChinh: pricingVisible ? formatMoney(mainFreight) : '',
     dichVuCongThem: pricingVisible ? formatMoney(serviceExtra) : '',
     tongCuoc: pricingVisible ? formatMoney(totalFreight) : '',
+    tongPhaiThuPhat: formatNum(totalToCollect, 0) || '0',
     dichVu: (dichVu || loaiBp || 'ĐƯỜNG BỘ').toUpperCase(),
     dvGtgt: parseNoteField(note, 'dich_vu_gia_tang') || 'Tiêu chuẩn',
     codStamp: paymentType === 'COD' || cod > 0,

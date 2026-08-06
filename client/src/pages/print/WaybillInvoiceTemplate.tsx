@@ -131,6 +131,10 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
               <div className="eco-charge-line"><span>Dịch vụ cộng thêm:</span><b>{hasPricing ? value(data.dichVuCongThem) : ' '}</b></div>
               <div className="eco-charge-line"><span>Tổng cước:</span><span className="eco-charge-value">{hasPricing ? value(data.tongCuoc) : ' '}</span></div>
             </div>
+            <div className="eco-total">
+              <span className="eco-total-label">Tổng phải thu khi phát thư</span>
+              <strong className="eco-total-value">{value(data.tongPhaiThuPhat)}</strong>
+            </div>
           </div>
           <div className="eco-extra-info-box eco-extra-info-box--cod"><p><span className="eco-extra-label">Thu hộ:</span><b>{data.thuHo || '0'}</b></p></div>
           <div className="eco-extra-info-box eco-extra-info-box--declared-value"><p><span className="eco-extra-label">Khai giá:</span><b>{data.khaiGia}</b></p></div>

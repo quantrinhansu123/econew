@@ -40,7 +40,8 @@ describe('waybill invoice marked layout', () => {
     expect(css).toMatch(
       /\.eco-sign-box\s*\{[^}]*grid-template-rows:\s*6mm minmax\(0,\s*1fr\);/s,
     );
-    expect(css).not.toContain('.eco-total');
+    const totalRule = css.match(/\.eco-a5-template \.eco-total\s*\{[^}]*\}/s)?.[0] || '';
+    expect(totalRule).not.toContain('border-top');
     expect(css).toMatch(
       /\.eco-note-cell--contents p\s*\{[^}]*font-size:\s*var\(--fs-base\);[^}]*font-weight:\s*400;/s,
     );

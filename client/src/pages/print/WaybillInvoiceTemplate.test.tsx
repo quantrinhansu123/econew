@@ -33,6 +33,7 @@ const printData: WaybillPrintData = {
   cuocChinh: '',
   dichVuCongThem: '',
   tongCuoc: '',
+  tongPhaiThuPhat: '0',
   dichVu: 'TIÊU CHUẨN 72H',
   dvGtgt: 'Tiêu chuẩn',
   codStamp: false,
@@ -82,12 +83,13 @@ describe('waybill invoice layout', () => {
     expect(html).not.toContain('api.qrserver.com');
   });
 
-  it('keeps charge details and removes the crossed-out collection-total bar', () => {
+  it('keeps charge details and the collection total without a separator bar', () => {
     const html = renderToStaticMarkup(<WaybillInvoiceTemplate data={printData} />);
 
     expect(html).toContain('eco-charge-lines');
-    expect(html).not.toContain('eco-total');
-    expect(html).not.toContain('Tổng phải thu khi phát thư');
+    expect(html).toContain('eco-total');
+    expect(html).toContain('Tổng phải thu khi phát thư');
+    expect(html).toContain('<strong class="eco-total-value">0</strong>');
     expect(html).toContain('eco-extra-info-box--cod');
     expect(html).toContain('eco-extra-info-box--declared-value');
     expect(html).toContain('eco-sign-date');

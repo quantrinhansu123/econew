@@ -622,6 +622,33 @@
   font-weight: 400;
 }
 
+.eco-a5-template .eco-total {
+  min-height: 0;
+  margin: 0;
+  padding: 0.7mm 0.5mm;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-items: center;
+  text-align: center;
+}
+
+.eco-a5-template .eco-total-label {
+  margin: 0;
+  padding: 0;
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.eco-a5-template .eco-total-value {
+  margin: 0;
+  display: block;
+  font-size: var(--fs-money);
+  line-height: 1;
+}
+
 .eco-extra-info-box--cod {
   grid-row: 2;
 }
