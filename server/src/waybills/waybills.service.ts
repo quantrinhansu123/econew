@@ -65,6 +65,7 @@ const ALL_ORDER_LIST_STATUSES = [
   WaybillStatus.OUT_FOR_DELIVERY,
   WaybillStatus.DELIVERED,
   WaybillStatus.RETURNED,
+  WaybillStatus.CANCELLED,
 ];
 const MUTABLE_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE];
 const ROUTE_ASSIGNABLE_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE, WaybillStatus.AT_DEST_HUB];
@@ -570,6 +571,7 @@ export class WaybillsService {
       loadSummary(),
       qb.clone()
         .orderBy('waybill.created_at', 'DESC')
+        .addOrderBy('waybill.id', 'DESC')
         .skip((page - 1) * limit)
         .take(limit)
         .getMany(),

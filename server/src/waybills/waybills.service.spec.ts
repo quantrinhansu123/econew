@@ -983,6 +983,20 @@ describe('WaybillsService', () => {
     );
   });
 
+  it('all-orders includes cancelled bills and keeps pagination order stable by creation time', async () => {
+    const qb = createQueryBuilder();
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.getInventoryTripLines({ list_scope: 'all_orders' }, manager);
+
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'waybill.current_state IN (:...statuses)',
+      { statuses: expect.arrayContaining([WaybillStatus.CANCELLED]) },
+    );
+    expect(qb.orderBy).toHaveBeenCalledWith('waybill.created_at', 'DESC');
+    expect(qb.addOrderBy).toHaveBeenCalledWith('waybill.id', 'DESC');
+  });
+
   it('receive transitions RECEIVED to IN_WAREHOUSE', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
     const result = await service.receive('1', { delivery_photo_url: 'https://example.com/receive.jpg' }, warehouse);

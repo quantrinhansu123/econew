@@ -57,7 +57,7 @@ import {
   type InventoryColumnId,
   type InventoryColumnView,
 } from './warehouse/inventory/inventoryColumns';
-import { buildInventoryTripLinesQuery, isIncompleteSplitRow } from './warehouse/inventory/inventoryTripLines';
+import { buildInventoryTripLinesQuery, isIncompleteSplitRow, sortAllOrdersByCreatedAt } from './warehouse/inventory/inventoryTripLines';
 import { ORDER_STATUS_GROUP_OPTIONS } from './warehouse/inventory/orderStatusUtils';
 import type { BadgeConfig, FilterOption, HubSummary, InventoryFilters, InventoryListResponse, WaybillInventoryDetail, WaybillInventoryItem } from './warehouse/inventory/types';
 import { parseWaybillImages } from '../lib/waybillImages';
@@ -140,16 +140,6 @@ const buildQuery = (filters: InventoryFilters, variant: InventoryPageVariant) =>
     listScope: variant === 'all-orders' ? 'all_orders' : undefined,
   });
 
-const sortAllOrders = (items: WaybillInventoryItem[]) =>
-  [...items].sort((a, b) => {
-    const dateA = new Date(a.received_at || a.created_at || 0).getTime();
-    const dateB = new Date(b.received_at || b.created_at || 0).getTime();
-    if (dateB !== dateA) return dateB - dateA;
-    const orderCmp = String(a.order_code || '').localeCompare(String(b.order_code || ''), 'vi');
-    if (orderCmp !== 0) return orderCmp;
-    return displayCode(a).localeCompare(displayCode(b), 'vi');
-  });
-
 const EXCEL_EXPORT_PAGE_SIZE = 100;
 
 async function loadAllInventoryRowsForExcel(
@@ -168,7 +158,7 @@ async function loadAllInventoryRowsForExcel(
   const firstItems = normalizeList(firstResponse);
   if (Array.isArray(firstResponse)) {
     return variant === 'all-orders'
-      ? sortAllOrders(firstItems)
+      ? sortAllOrdersByCreatedAt(firstItems)
       : firstItems.filter(isIncompleteSplitRow);
   }
 
@@ -197,7 +187,7 @@ async function loadAllInventoryRowsForExcel(
   });
 
   return variant === 'all-orders'
-    ? sortAllOrders(uniqueItems)
+    ? sortAllOrdersByCreatedAt(uniqueItems)
     : uniqueItems.filter(isIncompleteSplitRow);
 }
 
@@ -256,6 +246,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     isAllOrders ? loadAllOrdersVisibleColumnIds() : loadVisibleColumnIds(canViewPricing),
   );
   const totalPages = Math.max(1, Math.ceil(total / filters.limit));
+  const visibleRangeStart = waybills.length ? (filters.page - 1) * filters.limit + 1 : 0;
+  const visibleRangeEnd = waybills.length ? visibleRangeStart + waybills.length - 1 : 0;
   const hubOptions = useMemo(() => hubs.map(hub => ({ value: String(hub.id), label: formatHub(hub) })), [hubs]);
   const activeFilterCount =
     filters.statuses.length +
@@ -351,7 +343,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     try {
       const response = await apiRequest<InventoryListResponse | WaybillInventoryItem[]>(`/waybills/inventory/trip-lines?${buildQuery(filters, variant)}`);
       const rawItems = normalizeList(response);
-      const items = isAllOrders ? sortAllOrders(rawItems) : rawItems.filter(isIncompleteSplitRow);
+      const items = isAllOrders ? sortAllOrdersByCreatedAt(rawItems) : rawItems.filter(isIncompleteSplitRow);
       setWaybills(items);
       const orderCount = Array.isArray(response)
         ? items.length
@@ -837,7 +829,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         </div>
 
         <div className="border-t border-border bg-card px-4 py-3 flex items-center justify-between shrink-0">
-          <p className="text-[12px] font-medium text-muted-foreground">{waybills.length ? `1-${waybills.length}/Tổng:${total}` : `0/Tổng:${total}`}</p>
+          <p className="text-[12px] font-medium text-muted-foreground">{waybills.length ? `${visibleRangeStart}-${visibleRangeEnd}/Tổng:${total}` : `0/Tổng:${total}`}</p>
           <div className="flex items-center gap-2">
             <select value={filters.limit} onChange={event => updateFilters({ limit: Number(event.target.value), page: 1 })} className="h-9 rounded-lg border border-border bg-white px-3 text-[13px] text-muted-foreground outline-none"><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select>
             <span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span>

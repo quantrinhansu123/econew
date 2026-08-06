@@ -10,6 +10,23 @@ export const isIncompleteSplitRow = (item: WaybillInventoryItem) => {
   return Number(item.trip_package_count ?? item.package_count ?? 0) < totalPackages;
 };
 
+const compareDescendingIds = (left: WaybillInventoryItem, right: WaybillInventoryItem) => {
+  const leftId = String(left.id);
+  const rightId = String(right.id);
+  if (/^\d+$/.test(leftId) && /^\d+$/.test(rightId) && leftId.length !== rightId.length) {
+    return rightId.length - leftId.length;
+  }
+  return rightId.localeCompare(leftId, 'en', { numeric: true });
+};
+
+export const sortAllOrdersByCreatedAt = <T extends WaybillInventoryItem>(items: T[]): T[] =>
+  [...items].sort((left, right) => {
+    const leftCreatedAt = new Date(left.created_at || 0).getTime();
+    const rightCreatedAt = new Date(right.created_at || 0).getTime();
+    if (rightCreatedAt !== leftCreatedAt) return rightCreatedAt - leftCreatedAt;
+    return compareDescendingIds(left, right);
+  });
+
 export function buildInventoryTripLinesQuery(
   filters: Pick<
     InventoryFilters,
