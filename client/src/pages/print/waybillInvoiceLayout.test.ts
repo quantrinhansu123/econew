@@ -74,6 +74,9 @@ describe('waybill invoice marked layout', () => {
       /\.eco-stat-value\s*\{[^}]*font-size:\s*var\(--fs-base\);[^}]*font-weight:\s*400;/s,
     );
     expect(css).toMatch(
+      /\.eco-a5-goods-code\s*\{[^}]*font-size:\s*var\(--fs-sm\);[^}]*font-weight:\s*400;/s,
+    );
+    expect(css).toMatch(
       /\.eco-note-cell p\s*\{[^}]*font-size:\s*var\(--fs-base\);[^}]*font-weight:\s*400;/s,
     );
   });

@@ -441,6 +441,8 @@
   padding: 0.8mm 1.5mm;
   overflow: hidden;
   border-bottom: var(--eco-line);
+  font-size: var(--fs-sm);
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
