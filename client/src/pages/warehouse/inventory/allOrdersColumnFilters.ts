@@ -112,6 +112,55 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
 
 const normalize = (value: string) => value.trim().toLocaleUpperCase('vi-VN');
 
+const normalizeSearchText = (value: unknown) => String(value ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/g, 'd')
+  .replace(/Đ/g, 'D')
+  .toLocaleLowerCase('vi-VN')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const compactSearchText = (value: string) => value.replace(/[^a-z0-9]/g, '');
+
+const SEARCH_IGNORED_FIELD = /(image|photo|url|token|password)/i;
+
+function collectSearchableValues(value: unknown, values: string[], depth = 0, fieldName = ''): void {
+  if (value === null || value === undefined || depth > 3 || SEARCH_IGNORED_FIELD.test(fieldName)) return;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    values.push(String(value));
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectSearchableValues(item, values, depth + 1, fieldName));
+    return;
+  }
+  if (typeof value === 'object') {
+    Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+      collectSearchableValues(item, values, depth + 1, key);
+    });
+  }
+}
+
+export function applyAllOrdersGlobalSearch(
+  waybills: WaybillInventoryItem[],
+  keyword: string,
+): WaybillInventoryItem[] {
+  const query = normalizeSearchText(keyword);
+  if (!query) return waybills;
+  const compactQuery = compactSearchText(query);
+
+  return waybills.filter((waybill) => {
+    const values: string[] = [];
+    collectSearchableValues(waybill, values);
+    return values.some((value) => {
+      const normalizedValue = normalizeSearchText(value);
+      if (normalizedValue.includes(query)) return true;
+      return compactQuery.length >= 2 && compactSearchText(normalizedValue).includes(compactQuery);
+    });
+  });
+}
+
 export function applyAllOrdersColumnFilters(
   waybills: WaybillInventoryItem[],
   filters: AllOrdersColumnFilters,

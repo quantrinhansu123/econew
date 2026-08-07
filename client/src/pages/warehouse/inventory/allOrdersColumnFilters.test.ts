@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyAllOrdersColumnFilters,
+  applyAllOrdersGlobalSearch,
   buildAllOrdersColumnFilterOptions,
   getAllOrdersColumnValue,
 } from './allOrdersColumnFilters';
 import type { WaybillInventoryItem } from './types';
 
 const rows: WaybillInventoryItem[] = [
-  { id: 1, waybill_code: 'ECO001', ma_kh: 'ACUU', sender_info: 'A Cừu | 0901', noi_den: 'HCM' },
-  { id: 2, waybill_code: 'ECO002', ma_kh: 'acuu', sender_info: 'Tên khác | 0902', noi_den: 'Hà Nội' },
-  { id: 3, waybill_code: 'ECO003', ma_kh: 'ABC', sender_info: 'A Cừu | 0903', noi_den: 'HCM' },
+  { id: 1, waybill_code: 'ECO001', ma_kh: 'ACUU', sender_info: 'A Cừu | 0901', noi_den: 'HCM', noi_dung: 'Xe Đạp' },
+  { id: 2, waybill_code: 'ECO002', ma_kh: 'acuu', sender_info: 'Tên khác | 0902', noi_den: 'Hà Nội', noi_dung: 'Xe máy' },
+  { id: 3, waybill_code: 'ECO003', ma_kh: 'ABC', sender_info: 'A Cừu | 0903', noi_den: 'HCM', receiver_address: 'Kho FY-01' },
 ];
 
 describe('all-orders column filters', () => {
@@ -27,5 +28,11 @@ describe('all-orders column filters', () => {
 
   it('returns the displayed value used by the filter', () => {
     expect(getAllOrdersColumnValue(rows[0], 'waybill_code')).toBe('ECO001');
+  });
+
+  it('searches actual values across one bill without returning unrelated bills', () => {
+    expect(applyAllOrdersGlobalSearch(rows, 'xe đạp').map((row) => row.id)).toEqual([1]);
+    expect(applyAllOrdersGlobalSearch(rows, 'xe dap').map((row) => row.id)).toEqual([1]);
+    expect(applyAllOrdersGlobalSearch(rows, 'FY').map((row) => row.id)).toEqual([3]);
   });
 });

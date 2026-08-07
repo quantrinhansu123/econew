@@ -209,7 +209,7 @@ const detailColumns: Array<{
   { label: 'Dịch vụ', width: 18, value: (waybill) => noteField(waybill, 'dich_vu') },
   { label: 'Giao hàng', width: 18, value: (waybill) => noteField(waybill, 'giao_hang') },
   { label: 'Ngày gửi', width: 16, value: billSentDate },
-  { label: 'ĐVT', width: 13, value: (waybill) => resolveBillingUnit(waybill) },
+  { label: 'ĐVT cước', width: 13, value: (waybill) => resolveBillingUnit(waybill) },
   {
     label: 'Số cân (kg)',
     width: 16,

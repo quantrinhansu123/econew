@@ -21,6 +21,7 @@ import InventoryColumnPicker from './warehouse/inventory/InventoryColumnPicker';
 import AllOrdersTableHeader from './warehouse/inventory/AllOrdersTableHeader';
 import {
   applyAllOrdersColumnFilters,
+  applyAllOrdersGlobalSearch,
   buildAllOrdersColumnFilterOptions,
   type AllOrdersColumnFilterOption,
   type AllOrdersColumnFilters,
@@ -244,6 +245,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [customerCodeOptions, setCustomerCodeOptions] = useState<AllOrdersColumnFilterOption[]>([]);
   const [ledgerCustomer, setLedgerCustomer] = useState<CustomerRecord | null>(null);
   const [isLedgerCustomerLoading, setIsLedgerCustomerLoading] = useState(false);
+  const inventoryRequestIdRef = useRef(0);
 
   const user = useMemo(getStoredUser, []);
   const canViewPricing = hasManagerAccess(user?.role_mask ?? 0);
@@ -264,6 +266,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     filters.paymentTypes.length +
     filters.priorities.length +
     filters.billingUnits.length +
+    Number(Boolean(filters.keyword.trim())) +
     Number(Boolean(filters.receivedFrom || filters.receivedTo)) +
     Number(Boolean(filters.ma_kh.trim())) +
     Number(Boolean(filters.noiDenKeyword.trim()));
@@ -271,10 +274,11 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     () => resolveVisibleColumnViews(visibleColumnIds, variant, canViewPricing),
     [visibleColumnIds, variant, canViewPricing],
   );
-  const displayedWaybills = useMemo(
-    () => isAllOrders ? applyAllOrdersColumnFilters(waybills, columnFilters) : waybills,
-    [columnFilters, isAllOrders, waybills],
-  );
+  const displayedWaybills = useMemo(() => {
+    if (!isAllOrders) return waybills;
+    const searchResults = applyAllOrdersGlobalSearch(waybills, filters.keyword);
+    return applyAllOrdersColumnFilters(searchResults, columnFilters);
+  }, [columnFilters, filters.keyword, isAllOrders, waybills]);
   const displayedFilterTotals = useMemo(() => {
     if (!isAllOrders) return filterTotals;
     return {
@@ -299,6 +303,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   }, [customerCodeOptions, isAllOrders, visibleColumns, waybills]);
   const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length;
   const totalActiveFilterCount = activeFilterCount + activeColumnFilterCount;
+  const inventoryLoadKey = useMemo(
+    () => JSON.stringify(isAllOrders ? { ...filters, keyword: '' } : filters),
+    [filters, isAllOrders],
+  );
   const grandTotals = useMemo(
     () => computeGrandTotals(waybills, canViewPricing),
     [waybills, canViewPricing],
@@ -370,7 +378,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     const maKh = searchParams.get('ma_kh')?.trim() || '';
     setFilters((prev) => (prev.ma_kh === maKh ? prev : { ...prev, ma_kh: maKh, page: 1 }));
   }, [searchParams, isAllOrders]);
-  useEffect(() => { if (canViewPage) void loadInventory(); }, [filters, canViewPage]);
+  useEffect(() => { if (canViewPage) void loadInventory(); }, [inventoryLoadKey, canViewPage]);
   useEffect(() => {
     const visibleIds = new Set(waybills.map((waybill) => String(waybill.id)));
     setSelectedWaybillIds((prev) => prev.filter((id) => visibleIds.has(id)));
@@ -386,11 +394,15 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   }
 
   async function loadInventory() {
+    const requestId = inventoryRequestIdRef.current + 1;
+    inventoryRequestIdRef.current = requestId;
+    const isCurrentRequest = () => inventoryRequestIdRef.current === requestId;
     setIsLoading(true);
     setError('');
     try {
       if (isAllOrders) {
-        const items = await loadAllInventoryRows(filters, variant);
+        const items = await loadAllInventoryRows({ ...filters, keyword: '' }, variant);
+        if (!isCurrentRequest()) return;
         setWaybills(items);
         const nextCustomerCodes = buildAllOrdersColumnFilterOptions(items, 'ma_kh')
           .filter((option) => option.value !== '—');
@@ -412,6 +424,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         return;
       }
       const items = await loadAllInventoryRows(filters, variant);
+      if (!isCurrentRequest()) return;
       setWaybills(items);
       setFilterTotals({
         orderCount: items.length,
@@ -420,11 +433,12 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
           : 0,
       });
     } catch (err) {
+      if (!isCurrentRequest()) return;
       setError(err instanceof ApiError ? err.message : 'Không thể tải danh sách tồn kho theo chuyến.');
       setWaybills([]);
       setFilterTotals({ orderCount: 0, totalFreight: 0 });
     } finally {
-      setIsLoading(false);
+      if (isCurrentRequest()) setIsLoading(false);
     }
   }
 
@@ -553,8 +567,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     }
     setIsExporting(true);
     try {
-      const loadedRows = await loadAllInventoryRows(filters, variant);
-      const exportRows = isAllOrders ? applyAllOrdersColumnFilters(loadedRows, columnFilters) : loadedRows;
+      const loadedRows = await loadAllInventoryRows(isAllOrders ? { ...filters, keyword: '' } : filters, variant);
+      const exportRows = isAllOrders
+        ? applyAllOrdersColumnFilters(applyAllOrdersGlobalSearch(loadedRows, filters.keyword), columnFilters)
+        : loadedRows;
       const exported = downloadInventoryExcel(
         exportRows,
         visibleColumns.map((col) => col.id),
@@ -823,8 +839,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               <FilterSelect
                 multiple
                 icon={Package}
-                placeholder="ĐVT"
-                searchPlaceholder="Tìm ĐVT..."
+                placeholder="ĐVT cước"
+                searchPlaceholder="Tìm ĐVT cước..."
                 options={billingUnitFilterOptions}
                 value={filters.billingUnits}
                 onValueChange={(value) => setFilterArray('billingUnits', value)}
@@ -837,7 +853,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
           {isLoading ? <StateCard compact icon={<Loader2 className="animate-spin" size={24} />} title="Đang tải dữ liệu" description={isAllOrders ? 'Hệ thống đang lấy danh sách đơn từ API.' : 'Hệ thống đang lấy danh sách vận đơn tồn kho từ API.'} /> : displayedWaybills.length === 0 ? <StateCard compact icon={<Package size={24} />} title={isAllOrders ? 'Không có đơn phù hợp' : 'Chưa có đơn cần chia'} description={isAllOrders ? 'Thử bỏ bớt bộ lọc tìm kiếm hoặc bộ lọc tại tiêu đề cột.' : 'Tất cả đơn tồn kho đã phân hết kiện lên xe, hoặc thử đổi bộ lọc.'} /> : (
             <>
-              <table className={clsx('hidden md:table border-collapse', isAllOrders ? 'w-[2735px] table-fixed text-[12px]' : 'w-full min-w-[1280px] text-left')}>
+              <table className={clsx('hidden md:table border-collapse', isAllOrders ? 'w-[2820px] table-fixed text-[12px]' : 'w-full min-w-[1280px] text-left')}>
                 {isAllOrders && (
                   <colgroup>
                     {visibleColumns.map((column) => (
@@ -1491,7 +1507,7 @@ function AllOrdersCompactTable({
 
   return (
     <div className="md:hidden min-w-0 overflow-x-auto bg-white">
-      <table className="w-[812px] table-fixed border-collapse text-left">
+      <table className="w-[866px] table-fixed border-collapse text-left">
         <thead>
           <tr>
             <th className={`${headerClass} w-[34px] text-center`}>STT</th>
@@ -1500,8 +1516,8 @@ function AllOrdersCompactTable({
             <th className={`${headerClass} w-[92px]`}>Mã KH</th>
             <th className={`${headerClass} w-[112px]`}>Nội dung</th>
             <th className={`${headerClass} w-[74px]`}>Nơi đến</th>
-            <th className={`${headerClass} w-[36px] text-right`}>SL</th>
-            <th className={`${headerClass} w-[46px]`}>ĐVT</th>
+            <th className={`${headerClass} w-[64px] text-right`}>Số kiện</th>
+            <th className={`${headerClass} w-[72px]`}>ĐVT cước</th>
             <th className={`${headerClass} w-[82px] text-right`}>Thành tiền</th>
             <th className={`${headerClass} w-[72px]`}>HTTT</th>
             <th className={`${headerClass} w-[104px] text-center`}>Thao tác</th>
