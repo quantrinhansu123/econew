@@ -64,11 +64,11 @@ export default function ManifestDispatchPrintView({ manifest, links, rows, visib
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">Biển số xe</span>
             <span className="manifest-dispatch-print-meta-value">{licensePlate}</span>
-            <span className="text-[10px] font-semibold">SĐT: {driverPhone}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">NCC / Tài xế</span>
             <span className="manifest-dispatch-print-meta-value">{carrier}</span>
+            <span className="text-[10px] font-semibold">SĐT: {driverPhone}</span>
             <span className="text-[10px] font-semibold">Khởi hành: {departureDate}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item">
