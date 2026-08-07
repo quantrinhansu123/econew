@@ -137,6 +137,34 @@ const dedupeWaybills = (lines: WaybillInventoryItem[]) => {
 const inventoryTotalFromResponse = (response: InventoryListResponse | WaybillInventoryItem[], fallback: number) =>
   Array.isArray(response) ? fallback : response.meta?.total_waybills ?? response.total ?? response.meta?.total ?? fallback;
 
+const CUSTOMER_BILL_PAGE_SIZE = 200;
+
+async function loadAllCustomerBills(customerCode: string) {
+  const requestPage = (page: number) => apiRequest<InventoryListResponse | WaybillInventoryItem[]>(
+    `/waybills/inventory/trip-lines?ma_kh=${encodeURIComponent(customerCode)}&list_scope=all_orders&limit=${CUSTOMER_BILL_PAGE_SIZE}&page=${page}`,
+  );
+  const firstResponse = await requestPage(1);
+  const firstItems = normalizeInventoryList(firstResponse);
+  if (Array.isArray(firstResponse)) {
+    const items = dedupeWaybills(firstItems);
+    return { items, total: items.length };
+  }
+
+  const total = inventoryTotalFromResponse(firstResponse, firstItems.length);
+  const totalPages = Math.max(1, Math.ceil(total / CUSTOMER_BILL_PAGE_SIZE));
+  const allItems = [...firstItems];
+  for (let page = 2; page <= totalPages; page += 4) {
+    const pageNumbers = Array.from(
+      { length: Math.min(4, totalPages - page + 1) },
+      (_, index) => page + index,
+    );
+    const responses = await Promise.all(pageNumbers.map(requestPage));
+    responses.forEach((response) => allItems.push(...normalizeInventoryList(response)));
+  }
+  const items = dedupeWaybills(allItems);
+  return { items, total: Math.max(total, items.length) };
+}
+
 export default function CustomerDetailDialog({ customer, loading, initialTab = 'chi-tiet', onClose, onEdit }: Props) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<CustomerDetailTabId>('chi-tiet');
@@ -226,14 +254,11 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       setInventoryLoading(true);
       setInventoryError('');
 
-      apiRequest<InventoryListResponse | WaybillInventoryItem[]>(
-        `/waybills/inventory/trip-lines?ma_kh=${encodeURIComponent(customer.code.trim())}&limit=200&page=1`,
-      )
-        .then((response) => {
+      loadAllCustomerBills(customer.code.trim())
+        .then(({ items, total }) => {
           if (cancelled) return;
-          const list = dedupeWaybills(normalizeInventoryList(response));
-          setInventoryItems(list);
-          setInventoryTotal(inventoryTotalFromResponse(response, list.length));
+          setInventoryItems(items);
+          setInventoryTotal(total);
         })
         .catch(() => {
           if (!cancelled) {
@@ -251,6 +276,12 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       cancelled = true;
     };
   }, [activeTab, customer?.code]);
+
+  useEffect(() => {
+    const firstWaybillId = inventoryItems[0]?.id;
+    if (!isCollectOpen || !firstWaybillId) return;
+    queueMicrotask(() => setCollectWaybillId((current) => current || String(firstWaybillId)));
+  }, [inventoryItems, isCollectOpen]);
 
   const deliveryTenCty = customer?.code?.trim() || customer?.name?.trim() || '';
 
