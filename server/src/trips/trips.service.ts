@@ -95,6 +95,7 @@ export class TripsService {
   }
 
   async findAll(query: QueryTripsDto, currentUser: UserEntity) {
+    await this.processScheduledArrivals();
     const hubScopeId =
       query.end_hub_id != null
         ? String(query.end_hub_id)
@@ -144,6 +145,7 @@ export class TripsService {
   }
 
   async findOne(id: string, currentUser: UserEntity): Promise<TripEntity> {
+    await this.processScheduledArrivals();
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('truck.vendor', 'vendor')
@@ -825,6 +827,34 @@ export class TripsService {
     if (!truck) return;
     truck.status = status;
     await this.trucksRepository.save(truck);
+  }
+
+  /** Chốt chuyến đã quá giờ dự kiến; nút Đến hub chỉ còn dùng cho xe đến sớm. */
+  private async processScheduledArrivals(): Promise<void> {
+    const now = new Date();
+    const trips = (await this.tripsRepository.find({ where: { status: TripStatus.IN_TRANSIT } as any })) ?? [];
+    for (const trip of trips) {
+      if (!trip.expected_arrival_time) continue;
+      const expected = new Date(trip.expected_arrival_time);
+      if (Number.isNaN(expected.getTime()) || expected > now) continue;
+      trip.status = TripStatus.ARRIVED;
+      trip.arrival_time = trip.arrival_time ?? now;
+      if (trip.manifest_id) {
+        await this.moveManifestWaybills(String(trip.manifest_id), WaybillState.IN_TRANSIT, WaybillState.AT_DEST_HUB);
+      }
+      await this.waybillSplitsRepository.update(
+        {
+          trip_id: String(trip.id),
+          load_status: In([
+            WaybillSplitLoadStatus.LOADED,
+            WaybillSplitLoadStatus.DEPARTED,
+            WaybillSplitLoadStatus.IN_TRANSIT,
+          ]),
+        } as any,
+        { load_status: WaybillSplitLoadStatus.ARRIVED },
+      );
+      await this.tripsRepository.save(trip);
+    }
   }
 
   private assertNonNegative(...values: Array<number | undefined>): void {
