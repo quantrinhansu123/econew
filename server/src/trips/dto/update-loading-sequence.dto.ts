@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsInt, Min, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsInt, IsOptional, Min, ValidateNested } from 'class-validator';
 
 export class LoadingSequenceItemDto {
   @ApiProperty()
@@ -13,6 +13,13 @@ export class LoadingSequenceItemDto {
   @IsInt()
   @Min(1)
   loading_position: number;
+
+  @ApiProperty({ required: false, description: 'Số kiện thực đi trên chuyến' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  package_count?: number;
 }
 
 export class UpdateLoadingSequenceDto {
