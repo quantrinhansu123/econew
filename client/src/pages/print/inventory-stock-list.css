@@ -460,6 +460,10 @@
   overflow: hidden;
 }
 
+.manifest-dispatch-print-page .manifest-dispatch-sheet + .manifest-dispatch-sheet {
+  margin-top: 12px;
+}
+
 .manifest-dispatch-sheet-meta {
   margin: 0 0 6px;
   text-align: center;
@@ -547,6 +551,12 @@
 }
 
 @media print {
+  .manifest-dispatch-print-page .manifest-dispatch-sheet + .manifest-dispatch-sheet {
+    margin-top: 0;
+    break-before: page;
+    page-break-before: always;
+  }
+
   .manifest-dispatch-print-page .manifest-dispatch-sheet {
     border: none;
     box-shadow: none;

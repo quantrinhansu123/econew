@@ -4,7 +4,10 @@ import { ArrayMinSize, IsArray, IsDate, IsInt, IsNumber, IsOptional, IsString, M
 
 export class BulkStackOntoTruckLineDto {
   @ApiProperty() @IsString() waybill_id: string;
-  @ApiProperty() @IsString() truck_id: string;
+  @ApiPropertyOptional({ description: 'Xe/BKS, để trống khi NCC chưa chốt biển số' })
+  @IsOptional()
+  @IsString()
+  truck_id?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) loading_position?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) package_count?: number;
   @ApiPropertyOptional({ description: 'Cước trả NCC — tùy chọn, ghi công nợ khi có giá trị' })
@@ -55,4 +58,10 @@ export class BulkStackOntoTruckDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   vendor_cost?: number;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time', description: 'Ngày khởi hành có thể sửa khi xếp xe' })
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  departure_time?: Date;
 }

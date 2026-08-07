@@ -38,3 +38,36 @@ export function sortManifestPrintLinks(links: DispatchLink[]) {
     (a, b) => Number(a.loading_position ?? 9999) - Number(b.loading_position ?? 9999),
   );
 }
+
+export interface ManifestPrintDestinationGroup {
+  key: string;
+  hubId?: string | number | null;
+  hub?: { id?: string | number | null; code?: string | null; name?: string | null } | null;
+  links: DispatchLink[];
+}
+
+export function groupManifestPrintLinksByDestination(
+  manifest: LoadPlanningManifest,
+  links: DispatchLink[],
+): ManifestPrintDestinationGroup[] {
+  const groups = new Map<string, ManifestPrintDestinationGroup>();
+
+  sortManifestPrintLinks(links).forEach((link) => {
+    const hub = link.waybill?.dest_hub ?? manifest.dest_hub ?? null;
+    const hubId = link.waybill?.dest_hub_id ?? hub?.id ?? manifest.dest_hub_id ?? null;
+    const code = String(hub?.code || '').trim().toLocaleUpperCase('vi-VN');
+    const name = String(hub?.name || '').trim().toLocaleLowerCase('vi-VN');
+    const key = hubId != null && String(hubId).trim()
+      ? `id:${String(hubId).trim()}`
+      : code
+        ? `code:${code}`
+        : name
+          ? `name:${name}`
+          : 'unknown';
+    const current: ManifestPrintDestinationGroup = groups.get(key) ?? { key, hubId, hub, links: [] };
+    current.links.push(link);
+    groups.set(key, current);
+  });
+
+  return [...groups.values()];
+}

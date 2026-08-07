@@ -3,9 +3,10 @@ export enum WaybillSplitLoadStatus {
   LOADED = 'LOADED',
   DEPARTED = 'DEPARTED',
   IN_TRANSIT = 'IN_TRANSIT',
-  /** @deprecated Dùng DELIVERED — giữ để tương thích dữ liệu cũ */
   ARRIVED = 'ARRIVED',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
   DELIVERED = 'DELIVERED',
+  RETURNED = 'RETURNED',
 }
 
 export const WAYBILL_SPLIT_LOAD_STATUS_LABELS: Record<WaybillSplitLoadStatus, string> = {
@@ -13,17 +14,21 @@ export const WAYBILL_SPLIT_LOAD_STATUS_LABELS: Record<WaybillSplitLoadStatus, st
   [WaybillSplitLoadStatus.LOADED]: 'Đã bốc',
   [WaybillSplitLoadStatus.DEPARTED]: 'Đã khởi hành',
   [WaybillSplitLoadStatus.IN_TRANSIT]: 'Đang vận chuyển',
-  [WaybillSplitLoadStatus.ARRIVED]: 'Đang vận chuyển',
+  [WaybillSplitLoadStatus.ARRIVED]: 'Tới hub đích',
+  [WaybillSplitLoadStatus.OUT_FOR_DELIVERY]: 'Đang giao',
   [WaybillSplitLoadStatus.DELIVERED]: 'Đã giao',
+  [WaybillSplitLoadStatus.RETURNED]: 'Hoàn hàng',
 };
 
 const SPLIT_LOAD_STATUS_TRANSITIONS: Partial<Record<WaybillSplitLoadStatus, WaybillSplitLoadStatus[]>> = {
   [WaybillSplitLoadStatus.WAITING_LOAD]: [WaybillSplitLoadStatus.LOADED],
   [WaybillSplitLoadStatus.LOADED]: [WaybillSplitLoadStatus.DEPARTED],
   [WaybillSplitLoadStatus.DEPARTED]: [WaybillSplitLoadStatus.IN_TRANSIT],
-  [WaybillSplitLoadStatus.IN_TRANSIT]: [WaybillSplitLoadStatus.DELIVERED],
-  [WaybillSplitLoadStatus.ARRIVED]: [WaybillSplitLoadStatus.DELIVERED],
+  [WaybillSplitLoadStatus.IN_TRANSIT]: [WaybillSplitLoadStatus.OUT_FOR_DELIVERY, WaybillSplitLoadStatus.DELIVERED],
+  [WaybillSplitLoadStatus.ARRIVED]: [WaybillSplitLoadStatus.OUT_FOR_DELIVERY, WaybillSplitLoadStatus.DELIVERED],
+  [WaybillSplitLoadStatus.OUT_FOR_DELIVERY]: [WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED],
   [WaybillSplitLoadStatus.DELIVERED]: [],
+  [WaybillSplitLoadStatus.RETURNED]: [],
 };
 
 export function assertSplitLoadStatusTransition(

@@ -8,6 +8,7 @@ import '../../../print/inventory-stock-list.css';
 import ManifestDispatchPrintView from '../ManifestDispatchPrintView';
 import {
   buildManifestPrintRows,
+  groupManifestPrintLinksByDestination,
   manifestPrintCode,
   normalizeManifestPrintLinks,
   sortManifestPrintLinks,
@@ -63,6 +64,10 @@ export default function PrintManifestDialog({ isOpen, isClosing, isLoading, mani
   }, [manifest]);
 
   const rows = useMemo(() => buildManifestPrintRows(links), [links]);
+  const destinationGroups = useMemo(
+    () => manifest ? groupManifestPrintLinksByDestination(manifest, links) : [],
+    [manifest, links],
+  );
   const hasRows = links.length > 0;
 
   if (!isOpen) return null;
@@ -111,12 +116,17 @@ export default function PrintManifestDialog({ isOpen, isClosing, isLoading, mani
               Bảng kê chưa có dòng hàng để in.
             </div>
           ) : (
-            <ManifestDispatchPrintView
-              manifest={manifest}
-              links={links}
-              rows={rows}
-              visibleColumnIds={printColumnIds}
-            />
+            destinationGroups.map((group) => (
+              <ManifestDispatchPrintView
+                key={group.key}
+                manifest={manifest}
+                links={group.links}
+                rows={rows}
+                visibleColumnIds={printColumnIds}
+                destinationHub={group.hub}
+                destinationHubId={group.hubId}
+              />
+            ))
           )}
         </div>
       </div>

@@ -271,9 +271,9 @@ describe('TripsService', () => {
   const mockFindOne = (trip: any) => jest.spyOn(service, 'findOne').mockResolvedValue(trip);
 
   describe('update', () => {
-    it('cho phép sửa ngày khởi hành và ngày đến sau khi xe đã đến', async () => {
-      const departure = new Date('2026-08-07T01:00:00Z');
-      const arrival = new Date('2026-08-08T01:00:00Z');
+    it('cho phép sửa ngày quá khứ sau khi xe đã đến', async () => {
+      const departure = new Date('2025-08-07T01:00:00Z');
+      const arrival = new Date('2025-08-08T01:00:00Z');
       mockFindOne({
         id: '1',
         status: TripStatus.ARRIVED,
@@ -293,6 +293,15 @@ describe('TripsService', () => {
       mockFindOne({ id: '1', status: TripStatus.IN_TRANSIT, truck_id: '5' });
       await expect(service.update('1', { truck_id: 7 }, manager)).rejects.toBeInstanceOf(BadRequestException);
       expect(trucks.findOne).not.toHaveBeenCalled();
+    });
+
+    it('không cho sửa chuyến đã hủy', async () => {
+      mockFindOne({ id: '1', status: 'CANCELLED', departure_time: new Date() });
+
+      await expect(
+        service.update('1', { departure_time: new Date('2025-08-07T01:00:00Z') }, manager),
+      ).rejects.toThrow('Không thể sửa chuyến đã hủy');
+      expect(trips.save).not.toHaveBeenCalled();
     });
   });
 

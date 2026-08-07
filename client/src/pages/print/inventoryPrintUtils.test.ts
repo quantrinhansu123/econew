@@ -108,8 +108,22 @@ describe('inventory stock-list print columns', () => {
     );
 
     expect(payload.columns).toEqual([
-      { id: 'waybill_code', label: 'Bill' },
       { id: 'noi_den', label: 'Nơi đến' },
+      { id: 'waybill_code', label: 'Bill' },
+    ]);
+  });
+
+  it('moves Mã bill to the final printable column', () => {
+    const payload = mapWaybillsToPrintRows(
+      [{ id: 1, waybill_code: 'ECOHAN1001', noi_den: 'HCM', package_count: 2 }],
+      true,
+      ['waybill_code', 'noi_den', 'package_count'],
+    );
+
+    expect(payload.columns.map((column) => column.id)).toEqual([
+      'noi_den',
+      'package_count',
+      'waybill_code',
     ]);
   });
 });

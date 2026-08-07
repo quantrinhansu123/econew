@@ -275,8 +275,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     [visibleColumnIds, variant, canViewPricing],
   );
   const displayedWaybills = useMemo(() => {
-    if (!isAllOrders) return waybills;
-    const searchResults = applyAllOrdersGlobalSearch(waybills, filters.keyword);
+    const searchResults = isAllOrders ? applyAllOrdersGlobalSearch(waybills, filters.keyword) : waybills;
     return applyAllOrdersColumnFilters(searchResults, columnFilters);
   }, [columnFilters, filters.keyword, isAllOrders, waybills]);
   const displayedFilterTotals = useMemo(() => {
@@ -293,14 +292,13 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     [columnFilters, filters.ma_kh],
   );
   const allOrdersColumnFilterOptions = useMemo(() => {
-    if (!isAllOrders) return {};
     return Object.fromEntries(visibleColumns.map((column) => [
       column.id,
       column.id === 'ma_kh'
         ? customerCodeOptions
         : buildAllOrdersColumnFilterOptions(waybills, column.id),
     ])) as Partial<Record<InventoryColumnId, AllOrdersColumnFilterOption[]>>;
-  }, [customerCodeOptions, isAllOrders, visibleColumns, waybills]);
+  }, [customerCodeOptions, visibleColumns, waybills]);
   const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length;
   const totalActiveFilterCount = activeFilterCount + activeColumnFilterCount;
   const inventoryLoadKey = useMemo(
@@ -315,9 +313,12 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     () => waybills.filter((waybill) => selectedWaybillIds.includes(String(waybill.id))),
     [waybills, selectedWaybillIds],
   );
-  const allRowsSelected = waybills.length > 0 && waybills.every((waybill) => selectedWaybillIds.includes(String(waybill.id)));
+  const allRowsSelected = displayedWaybills.length > 0 && displayedWaybills.every((waybill) => selectedWaybillIds.includes(String(waybill.id)));
   const toggleSelectAll = () => {
-    setSelectedWaybillIds(allRowsSelected ? [] : waybills.map((waybill) => String(waybill.id)));
+    const displayedIds = displayedWaybills.map((waybill) => String(waybill.id));
+    setSelectedWaybillIds((current) => allRowsSelected
+      ? current.filter((id) => !displayedIds.includes(id))
+      : [...new Set([...current, ...displayedIds])]);
   };
   const toggleSelectRow = (waybillId: string | number) => {
     const id = String(waybillId);
@@ -754,6 +755,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             )}
             {isAllOrders && <DateRangePicker value={{ from: filters.receivedFrom, to: filters.receivedTo }} onChange={({ from, to }) => updateFilters({ receivedFrom: from || '', receivedTo: to || '' })} placeholder="Từ ngày - Đến ngày" className="w-full shrink-0 md:w-[18.5rem]" />}
             {isAllOrders && totalActiveFilterCount > 0 && <button onClick={clearFilters} className="h-10 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100">× Xóa {totalActiveFilterCount} bộ lọc</button>}
+            {!isAllOrders && activeColumnFilterCount > 0 && <button onClick={() => setColumnFilters({})} className="h-10 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100">× Xóa {activeColumnFilterCount} lọc cột</button>}
             <button
               type="button"
               title="Bảng kê phát hàng — xe & vị trí"
@@ -862,34 +864,16 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                   </colgroup>
                 )}
                 <thead className="text-[11px] uppercase tracking-wider text-slate-600">
-                  {isAllOrders ? (
-                    <AllOrdersTableHeader
-                      columns={visibleColumns}
-                      selectionEnabled={false}
-                      filterOptions={allOrdersColumnFilterOptions}
-                      filterValues={columnFilterValues}
-                      onFilterChange={updateColumnFilter}
-                    />
-                  ) : (
-                    <tr className="bg-slate-100">
-                      {selectionEnabled && (
-                        <th className="w-10 px-2 py-2.5 font-bold border-r border-border text-center">
-                          <input
-                            type="checkbox"
-                            checked={allRowsSelected}
-                            onChange={toggleSelectAll}
-                            className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
-                            aria-label="Chọn tất cả"
-                          />
-                        </th>
-                      )}
-                      {visibleColumns.map((col) => (
-                        <th key={col.id} className="px-4 py-2.5 font-bold border-r border-border last:border-r-0 whitespace-nowrap">
-                          {col.label}
-                        </th>
-                      ))}
-                    </tr>
-                  )}
+                  <AllOrdersTableHeader
+                    columns={visibleColumns}
+                    selectionEnabled={!isAllOrders && selectionEnabled}
+                    allRowsSelected={allRowsSelected}
+                    onToggleSelectAll={toggleSelectAll}
+                    filterOptions={allOrdersColumnFilterOptions}
+                    filterValues={columnFilterValues}
+                    onFilterChange={updateColumnFilter}
+                    grouped={isAllOrders}
+                  />
                 </thead>
                 <tbody>
                   {displayedWaybills.map((waybill, rowIndex) => (
@@ -1102,6 +1086,9 @@ function InventoryRow({
     'border-r border-border max-w-[200px] truncate',
     isAllOrders ? 'px-2 py-2 text-[12px]' : 'px-4 py-3 text-[13px]',
   );
+  const displayedPackages = Number(waybill.remaining_packages ?? waybill.trip_package_count ?? waybill.package_count ?? 0);
+  const orderPackages = Number(waybill.order_total_packages ?? waybill.package_count ?? displayedPackages);
+  const isPartialLine = displayedPackages > 0 && orderPackages > 0 && displayedPackages < orderPackages;
 
   const renderCell = (colId: InventoryColumnId) => {
     switch (colId) {
@@ -1280,11 +1267,11 @@ function InventoryRow({
           </td>
         );
       case 'weight':
-        return <td className={`${cellClass} font-medium`}>{displayValue(resolveWeightKg(waybill) || null, ' kg')}</td>;
+        return <td className={clsx(cellClass, isPartialLine ? 'bg-amber-50 font-black text-slate-950' : 'font-medium')}>{displayValue(resolveWeightKg(waybill) || null, ' kg')}</td>;
       case 'volumetric_weight':
-        return <td className={`${cellClass} font-medium`}>{displayValue(waybill.volumetric_weight || null, ' kg')}</td>;
+        return <td className={clsx(cellClass, isPartialLine ? 'bg-amber-50 font-black text-slate-950' : 'font-medium')}>{displayValue(waybill.volumetric_weight || null, ' kg')}</td>;
       case 'volume':
-        return <td className={`${cellClass} font-medium`}>{resolveVolumeM3(waybill) ? `${resolveVolumeM3(waybill).toFixed(2)} CBM` : '—'}</td>;
+        return <td className={clsx(cellClass, isPartialLine ? 'bg-amber-50 font-black text-slate-950' : 'font-medium')}>{resolveVolumeM3(waybill) ? `${resolveVolumeM3(waybill).toFixed(2)} CBM` : '—'}</td>;
       case 'freight':
         return (
           <td className={`${cellClass} font-bold`}>

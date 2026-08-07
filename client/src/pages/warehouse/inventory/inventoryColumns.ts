@@ -221,8 +221,8 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
 
 export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v8';
 
-/** Các cột luôn hiện trên danh sách tồn, theo đúng thứ tự biểu mẫu vận hành. */
-export const INVENTORY_FIXED_COLUMN_IDS: InventoryColumnId[] = [
+/** Các cột hiện mặc định lần đầu; người dùng có thể bỏ chọn và lưu lại. */
+export const INVENTORY_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
   'stack_position',
   'loaded_at',
   'noi_den',
@@ -237,6 +237,9 @@ export const INVENTORY_FIXED_COLUMN_IDS: InventoryColumnId[] = [
   'volumetric_weight',
   'volume',
 ];
+
+/** @deprecated Dùng INVENTORY_DEFAULT_COLUMN_IDS. */
+export const INVENTORY_FIXED_COLUMN_IDS = INVENTORY_DEFAULT_COLUMN_IDS;
 
 /** Không dùng trên danh sách đơn — thay bằng Bill + Cộng SG riêng */
 export const ALL_ORDERS_DISALLOWED_COLUMN_IDS: InventoryColumnId[] = [
@@ -397,7 +400,7 @@ export function saveAllOrdersVisibleColumnIds(ids: InventoryColumnId[]) {
 }
 
 export function getDefaultVisibleColumnIds(canViewPricing: boolean): InventoryColumnId[] {
-  return normalizeInventoryVisibleColumnIds([], canViewPricing);
+  return normalizeInventoryVisibleColumnIds(INVENTORY_DEFAULT_COLUMN_IDS, canViewPricing);
 }
 
 export function normalizeInventoryVisibleColumnIds(
@@ -409,20 +412,14 @@ export function normalizeInventoryVisibleColumnIds(
       .filter((column) => !column.managerOnly || canViewPricing)
       .map((column) => column.id),
   );
-  const selected = new Set(ids.filter((id) => allowed.has(id)));
-  const fixed = INVENTORY_FIXED_COLUMN_IDS.filter((id) => allowed.has(id));
-  const fixedSet = new Set(fixed);
-  const optional = INVENTORY_COLUMNS
-    .filter((column) => (
-      column.id !== 'actions'
-      && column.id !== 'stt'
-      && !fixedSet.has(column.id)
-      && selected.has(column.id)
-      && allowed.has(column.id)
-    ))
-    .map((column) => column.id);
+  const selected = ids.filter((id, index) => (
+    id !== 'actions'
+    && id !== 'stt'
+    && allowed.has(id)
+    && ids.indexOf(id) === index
+  ));
 
-  return [...fixed, ...optional, 'actions'];
+  return [...selected, 'actions'];
 }
 
 export function loadVisibleColumnIds(canViewPricing: boolean): InventoryColumnId[] {
@@ -448,9 +445,11 @@ export function resolvePrintColumnIds(visibleColumnIds: InventoryColumnId[]): In
       .filter((col) => col.id !== 'actions')
       .map((col) => col.id),
   );
-  return visibleColumnIds.filter(
+  const selected = visibleColumnIds.filter(
     (id, index) => printable.has(id) && visibleColumnIds.indexOf(id) === index,
   );
+  const withoutBill = selected.filter((id) => id !== 'waybill_code');
+  return selected.includes('waybill_code') ? [...withoutBill, 'waybill_code'] : withoutBill;
 }
 
 const parseNote = (note: string | null | undefined, key: string) => {

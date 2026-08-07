@@ -16,7 +16,7 @@ import { QueryReceiverContactsDto } from './dto/query-receiver-contacts.dto';
 import { QueryWaybillsDto } from './dto/query-waybills.dto';
 import { ReceiveWaybillDto } from './dto/receive-waybill.dto';
 import { UpdateCodFeeDto } from './dto/update-cod-fee.dto';
-import { UpdateWaybillStatusDto } from './dto/update-waybill-status.dto';
+import { CorrectWaybillStatusDto, UpdateWaybillStatusDto } from './dto/update-waybill-status.dto';
 import { UpdateWaybillDto } from './dto/update-waybill.dto';
 import { BulkStackOntoTruckDto } from './dto/bulk-stack-onto-truck.dto';
 import { BulkUpdateCustomerPaymentStatusDto } from './dto/bulk-update-customer-payment-status.dto';
@@ -43,6 +43,13 @@ export class WaybillsController {
   @ApiOperation({ summary: 'List waybills' })
   findAll(@Query() query: QueryWaybillsDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.findAll(query, currentUser);
+  }
+
+  @Get('delivery-tasks')
+  @RequireRoles(Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'List last-mile tasks aggregated from all arrived trips' })
+  getDeliveryTasks(@Query() query: QueryWaybillsDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.getDeliveryTasks(query, currentUser);
   }
 
   @Get('load-planning/board')
@@ -202,6 +209,13 @@ export class WaybillsController {
   @ApiOperation({ summary: 'Update waybill status by state machine' })
   updateStatus(@Param('id') id: string, @Body() dto: UpdateWaybillStatusDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.updateStatus(id, dto, currentUser);
+  }
+
+  @Patch(':id/status/correction')
+  @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Correct an accidentally finalized delivery status' })
+  correctStatus(@Param('id') id: string, @Body() dto: CorrectWaybillStatusDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.correctStatus(id, dto, currentUser);
   }
 
   @Patch(':id/priority')

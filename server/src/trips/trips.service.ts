@@ -16,6 +16,7 @@ import { VendorPaymentEntity } from '../vendors/vendor-payment.entity';
 import { WaybillsService } from '../waybills/waybills.service';
 import { WaybillEntity } from '../waybills/waybill.entity';
 import { WaybillSplitEntity } from '../waybills/waybill-split.entity';
+import { WaybillSplitLoadStatus } from '../waybills/dto/waybill-split-load-status.enum';
 import { ArriveTripDto } from './dto/arrive-trip.dto';
 import { AssignManifestDto } from './dto/assign-manifest.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
@@ -29,7 +30,7 @@ import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripEntity } from './trip.entity';
 
 const ACTIVE_TRIP_STATUSES = [TripStatus.PLANNED, TripStatus.IN_TRANSIT];
-const LOADING_SEQUENCE_STATUSES = [TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED];
+const LOADING_SEQUENCE_STATUSES = [TripStatus.PLANNED, TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED];
 const ALLOCATION_BOARD_STATUSES = [TripStatus.PLANNED, TripStatus.IN_TRANSIT, TripStatus.ARRIVED];
 
 type Money = string | number | null | undefined;
@@ -158,6 +159,9 @@ export class TripsService {
 
   async update(id: string, dto: UpdateTripDto, currentUser: UserEntity): Promise<TripEntity> {
     const trip = await this.findOne(id, currentUser);
+    if (String(trip.status) === 'CANCELLED') {
+      throw new BadRequestException('Không thể sửa chuyến đã hủy');
+    }
     if (dto.truck_id !== undefined) {
       if (trip.status !== TripStatus.PLANNED) {
         throw new BadRequestException('Chỉ được đổi xe khi chuyến chưa khởi hành');
@@ -224,6 +228,16 @@ export class TripsService {
       await this.moveManifestWaybills(trip.manifest_id, WaybillState.LOADED, WaybillState.IN_TRANSIT);
       await this.moveManifestWaybills(trip.manifest_id, WaybillState.MANIFEST_CLOSED, WaybillState.IN_TRANSIT);
     }
+    await this.waybillSplitsRepository.update(
+      {
+        trip_id: String(trip.id),
+        load_status: In([
+          WaybillSplitLoadStatus.LOADED,
+          WaybillSplitLoadStatus.DEPARTED,
+        ]),
+      } as any,
+      { load_status: WaybillSplitLoadStatus.IN_TRANSIT },
+    );
     return this.tripsRepository.save(trip);
   }
 
@@ -233,6 +247,17 @@ export class TripsService {
     trip.status = TripStatus.ARRIVED;
     trip.arrival_time = dto.arrival_time ?? new Date();
     if (trip.manifest_id) await this.moveManifestWaybills(trip.manifest_id, WaybillState.IN_TRANSIT, WaybillState.AT_DEST_HUB);
+    await this.waybillSplitsRepository.update(
+      {
+        trip_id: String(trip.id),
+        load_status: In([
+          WaybillSplitLoadStatus.LOADED,
+          WaybillSplitLoadStatus.DEPARTED,
+          WaybillSplitLoadStatus.IN_TRANSIT,
+        ]),
+      } as any,
+      { load_status: WaybillSplitLoadStatus.ARRIVED },
+    );
     return this.tripsRepository.save(trip);
   }
 
@@ -551,7 +576,7 @@ export class TripsService {
   async getLoadingSequence(id: string, currentUser: UserEntity) {
     const trip = await this.findOne(id, currentUser);
     if (!LOADING_SEQUENCE_STATUSES.includes(trip.status)) {
-      throw new BadRequestException('Loading sequence is available after trip departure');
+      throw new BadRequestException('Loading sequence is unavailable for this trip status');
     }
     const rows = trip.manifest_id
       ? await this.manifestWaybillsRepository.find({
@@ -603,7 +628,7 @@ export class TripsService {
   async updateLoadingSequence(id: string, dto: UpdateLoadingSequenceDto, currentUser: UserEntity) {
     const trip = await this.findOne(id, currentUser);
     if (!LOADING_SEQUENCE_STATUSES.includes(trip.status)) {
-      throw new BadRequestException('Loading sequence can only be updated after trip departure');
+      throw new BadRequestException('Loading sequence cannot be updated for this trip status');
     }
     if (!trip.manifest_id) return this.getLoadingSequence(id, currentUser);
     const rows = await this.manifestWaybillsRepository.find({ where: { manifest_id: trip.manifest_id } });

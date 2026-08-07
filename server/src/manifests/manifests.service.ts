@@ -100,14 +100,6 @@ export class ManifestsService {
     let destHub: HubEntity | null = null;
     if (dto.dest_hub_id) {
       destHub = await this.assertActiveHub(dto.dest_hub_id);
-      const destinationChanged = String(dto.dest_hub_id) !== String(manifest.dest_hub_id);
-      const hasMismatchedWaybill = destinationChanged && (manifest.manifest_waybills ?? []).some(
-        (link: ManifestWaybillEntity & Record<string, any>) =>
-          link.waybill && String(link.waybill.dest_hub_id) !== String(dto.dest_hub_id),
-      );
-      if (hasMismatchedWaybill) {
-        throw new ConflictException('Không thể đổi HUB đến vì bảng kê đã có vận đơn của HUB khác');
-      }
     }
     Object.assign(manifest, {
       dest_hub_id: dto.dest_hub_id ?? manifest.dest_hub_id,
@@ -529,7 +521,20 @@ export class ManifestsService {
     links.forEach((link: ManifestWaybillEntity) => {
       const packageCount = packageCounts.get(String(link.waybill_id));
       if (packageCount == null) return;
-      link.dispatch_fields = { ...(link.dispatch_fields ?? {}), so_luong: String(packageCount) };
+      const waybill = (link as ManifestWaybillEntity & { waybill?: WaybillRecord }).waybill;
+      const totalPackages = Math.max(1, Number(waybill?.package_count ?? packageCount));
+      const ratio = Math.min(1, packageCount / totalPackages);
+      const prorate = (value: unknown, precision = 2) => {
+        const numeric = Number(value ?? 0);
+        return Number.isFinite(numeric) ? Number((numeric * ratio).toFixed(precision)) : '';
+      };
+      link.dispatch_fields = {
+        ...(link.dispatch_fields ?? {}),
+        so_luong: String(packageCount),
+        kg: prorate(waybill?.weight),
+        m3: prorate(waybill?.the_tich_m3, 3),
+        qd: prorate(waybill?.volumetric_weight),
+      };
     });
   }
 
@@ -819,11 +824,6 @@ export class ManifestsService {
     }
     if (waybill.manifest_id && String(waybill.manifest_id) !== String(manifest.id)) {
       throw new ConflictException('Waybill already belongs to another manifest');
-    }
-    if (String(waybill.dest_hub_id) !== String(manifest.dest_hub_id)) {
-      throw new BadRequestException(
-        `Vận đơn ${waybill.waybill_code} có HUB đến khác với HUB đến của bảng kê`,
-      );
     }
   }
 

@@ -22,11 +22,12 @@ import { QueryReceiverContactsDto } from './dto/query-receiver-contacts.dto';
 import { QueryWaybillsDto } from './dto/query-waybills.dto';
 import { ReceiveWaybillDto } from './dto/receive-waybill.dto';
 import { UpdateCodFeeDto } from './dto/update-cod-fee.dto';
-import { UpdateWaybillStatusDto } from './dto/update-waybill-status.dto';
+import { CorrectWaybillStatusDto, UpdateWaybillStatusDto } from './dto/update-waybill-status.dto';
 import { UpdateWaybillDto } from './dto/update-waybill.dto';
 import { WaybillPriority, WaybillStatus } from './dto/waybill.enums';
 import { TripEntity } from '../trips/trip.entity';
 import { TruckEntity } from '../trucks/truck.entity';
+import { TruckStatus } from '../trucks/dto/truck.enums';
 import { WaybillSplitEntity } from './waybill-split.entity';
 import { WaybillCashVoucherEntity } from './waybill-cash-voucher.entity';
 import { BulkStackOntoTruckDto } from './dto/bulk-stack-onto-truck.dto';
@@ -261,6 +262,98 @@ export class WaybillsService {
     return { items: items.map((item) => this.sanitize(item as WaybillRecord, currentUser)), meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
   }
 
+  async getDeliveryTasks(query: QueryWaybillsDto, currentUser: UserEntity) {
+    const page = query.page ?? 1;
+    const limit = clampPaginationLimit(query.limit, 100);
+    const qb = this.waybillsRepository.createQueryBuilder('waybill')
+      .where('waybill.deleted_at IS NULL')
+      .leftJoinAndSelect('waybill.origin_hub', 'origin_hub')
+      .leftJoinAndSelect('waybill.dest_hub', 'dest_hub')
+      .leftJoinAndSelect('waybill.order', 'order')
+      .leftJoin('waybill_splits', 'delivery_split', 'delivery_split.waybill_id = waybill.id')
+      .leftJoin('trips', 'delivery_trip', 'delivery_trip.id = delivery_split.trip_id')
+      .andWhere(new Brackets((builder) => builder
+        .where('waybill.current_state IN (:...deliveryStates)', {
+          deliveryStates: [WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY],
+        })
+        .orWhere(
+          '(delivery_trip.status = :arrivedStatus AND delivery_split.load_status NOT IN (:...finishedSplitStatuses))',
+          {
+            arrivedStatus: TripStatus.ARRIVED,
+            finishedSplitStatuses: [WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED],
+          },
+        )))
+      .distinct(true);
+
+    this.applyFilters(qb, { ...query, status: undefined });
+    this.applyHubScope(qb, currentUser);
+    if (!isManager(currentUser.role_mask) && currentUser.hub_id) {
+      qb.andWhere('waybill.dest_hub_id = :deliveryHubId', { deliveryHubId: currentUser.hub_id });
+    }
+
+    const waybills = await qb
+      .orderBy('waybill.created_at', 'DESC')
+      .addOrderBy('waybill.id', 'DESC')
+      .getMany();
+    const waybillIds = waybills.map((waybill) => String(waybill.id));
+    const splits = waybillIds.length
+      ? await this.splitsRepository.find({
+        where: { waybill_id: In(waybillIds) },
+        relations: ['trip', 'trip.truck', 'truck'],
+        order: { loading_position: 'ASC', id: 'ASC' },
+      })
+      : [];
+    const activeSplitsByWaybill = splits.reduce<Map<string, WaybillSplitEntity[]>>((map, split) => {
+      if (split.trip?.status !== TripStatus.ARRIVED) return map;
+      if ([WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED].includes(split.load_status)) return map;
+      const rows = map.get(String(split.waybill_id)) ?? [];
+      rows.push(split);
+      map.set(String(split.waybill_id), rows);
+      return map;
+    }, new Map());
+
+    const requestedStatuses = this.parseList(query.status);
+    const taskItems = waybills.flatMap((waybill) => {
+      const sanitized = this.sanitize(waybill as WaybillRecord, currentUser);
+      const activeSplits = activeSplitsByWaybill.get(String(waybill.id)) ?? [];
+      if (activeSplits.length) {
+        return activeSplits.map((split) => {
+          const currentState = split.load_status === WaybillSplitLoadStatus.OUT_FOR_DELIVERY
+            || this.getStatus(waybill as WaybillRecord) === WaybillStatus.OUT_FOR_DELIVERY
+            ? WaybillStatus.OUT_FOR_DELIVERY
+            : WaybillStatus.AT_DEST_HUB;
+          return {
+            ...this.mapInventoryTripLine(sanitized, split),
+            task_id: `split:${split.id}`,
+            current_state: currentState,
+            status: currentState,
+            trip: split.trip ?? null,
+          };
+        });
+      }
+      const currentState = this.getStatus(waybill as WaybillRecord);
+      if (![WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY].includes(currentState)) return [];
+      return [{
+        ...this.mapInventoryTripLine(sanitized, null),
+        task_id: `waybill:${waybill.id}`,
+        current_state: currentState,
+        status: currentState,
+      }];
+    }).filter((item) => !requestedStatuses.length || requestedStatuses.includes(String(item.current_state)));
+
+    const total = taskItems.length;
+    const items = taskItems.slice((page - 1) * limit, page * limit);
+    return {
+      items,
+      meta: {
+        total,
+        page,
+        limit,
+        total_pages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  }
+
   async findOne(id: string, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.waybillsRepository.findOne({ where: { id, deleted_at: IsNull() } as any, relations: ['origin_hub', 'dest_hub'] }) as WaybillRecord | null;
     if (!waybill) throw new NotFoundException('Waybill not found');
@@ -388,7 +481,9 @@ export class WaybillsService {
   }
 
   async updateStatus(id: string, dto: UpdateWaybillStatusDto, currentUser: UserEntity): Promise<WaybillRecord> {
-    const waybill = await this.findMutable(id, currentUser);
+    const waybill = await this.findEditable(id, currentUser);
+    const splitDeliveryResult = await this.updateSplitDeliveryStatus(waybill, dto, currentUser);
+    if (splitDeliveryResult) return splitDeliveryResult;
     const currentStatus = this.getStatus(waybill);
     if (!STATE_TRANSITIONS[currentStatus]?.includes(dto.status)) throw new BadRequestException('Invalid waybill state transition');
     if (dto.status === WaybillStatus.DELIVERED && !dto.delivery_photo_url && !waybill.delivery_photo_url) throw new BadRequestException('Delivery photo is required');
@@ -397,7 +492,43 @@ export class WaybillsService {
     if (dto.delivery_photo_url) waybill.delivery_photo_url = normalizeWaybillPhotos(dto.delivery_photo_url);
     if (dto.status === WaybillStatus.DELIVERED) Object.assign(waybill, { delivered_at: new Date(), delivery_time: new Date() });
     if (dto.status === WaybillStatus.RETURNED) waybill.returned_at = new Date();
-    return this.saveWithAudit(waybill, currentUser, 'STATUS_CHANGE');
+    const saved = await this.saveWithAudit(waybill, currentUser, 'STATUS_CHANGE');
+    if (dto.status === WaybillStatus.DELIVERED) {
+      await this.markTripAllocationDelivered(id, dto.trip_id);
+    }
+    return saved;
+  }
+
+  async correctStatus(id: string, dto: CorrectWaybillStatusDto, currentUser: UserEntity): Promise<WaybillRecord> {
+    const waybill = await this.findEditable(id, currentUser);
+    const currentStatus = this.getStatus(waybill);
+    if (![WaybillStatus.DELIVERED, WaybillStatus.RETURNED].includes(currentStatus)) {
+      throw new BadRequestException('Only delivered or returned waybills can be corrected');
+    }
+    if (![WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY].includes(dto.status)) {
+      throw new BadRequestException('Correction status must be AT_DEST_HUB or OUT_FOR_DELIVERY');
+    }
+
+    let correctedWaybillStatus: WaybillStatus = dto.status;
+    if (dto.trip_id) {
+      const splits = await this.splitsRepository.find({ where: { waybill_id: String(id) } });
+      const allocatedPackages = splits.reduce((sum, split) => sum + Number(split.package_count ?? 0), 0);
+      if (allocatedPackages < this.resolveTotalPackages(waybill)) {
+        correctedWaybillStatus = WaybillStatus.IN_WAREHOUSE;
+      }
+    }
+
+    this.setStatus(waybill, correctedWaybillStatus);
+    Object.assign(waybill, {
+      updated_by: currentUser.id,
+      note: dto.note ?? waybill.note,
+      delivered_at: null,
+      delivery_time: null,
+      returned_at: null,
+    });
+    const saved = await this.saveWithAudit(waybill, currentUser, 'STATUS_CORRECTION');
+    await this.reopenTripAllocation(id, dto.trip_id);
+    return saved;
   }
 
   async updatePhotos(id: string, dto: UpdateWaybillPhotosDto, currentUser: UserEntity): Promise<WaybillRecord> {
@@ -871,7 +1002,7 @@ export class WaybillsService {
     }
 
     const saved: Array<Record<string, unknown>> = [];
-    const stackDepartureTime = new Date();
+    const stackDepartureTime = dto.departure_time ? new Date(dto.departure_time) : new Date();
     const sharedVendorCostProvided = dto.vendor_cost != null;
     const sharedVendorCost = sharedVendorCostProvided
       ? this.normalizeStackVendorCost(dto.vendor_cost!)
@@ -879,9 +1010,9 @@ export class WaybillsService {
     const legacyVendorCosts = dto.items.map((line) => (
       line.vendor_cost != null ? this.normalizeStackVendorCost(line.vendor_cost) : 0
     ));
-    const truckIds = [...new Set(dto.items.map((line) => String(line.truck_id)))];
-    if (sharedVendorCostProvided && truckIds.length !== 1) {
-      throw new BadRequestException('Shared vendor cost requires all waybills to use the same truck');
+    const truckIds = [...new Set(dto.items.map((line) => line.truck_id?.trim()).filter((value): value is string => Boolean(value)))];
+    if (sharedVendorCostProvided && truckIds.length > 1) {
+      throw new BadRequestException('Shared vendor cost requires all waybills to use the same truck or carrier');
     }
 
     const selectedVendorId = dto.vendor_id?.trim() || null;
@@ -890,6 +1021,9 @@ export class WaybillsService {
       : null;
     if (selectedVendor?.status && selectedVendor.status.toUpperCase() !== 'ACTIVE') {
       throw new BadRequestException('Selected vendor is not active');
+    }
+    if (!selectedVendor && !truckIds.length) {
+      throw new BadRequestException('Select a vendor or truck before stacking');
     }
     const trucksById = new Map<string, TruckEntity>();
     const trucksPendingVendorLink: TruckEntity[] = [];
@@ -924,7 +1058,7 @@ export class WaybillsService {
       is_fully_allocated: boolean;
       split_id: string;
       expected_arrival_at: Date | null;
-      truck_id: string;
+      truck_id: string | null;
       vendor_id: string | null;
       vendor_cost: number;
       license_plate: string | null;
@@ -933,7 +1067,7 @@ export class WaybillsService {
       line: BulkStackOntoTruckDto['items'][number];
       line_index: number;
       waybill: WaybillRecord;
-      truck: TruckEntity;
+      truck: TruckEntity | null;
       package_count: number;
       total_packages: number;
       is_fully_allocated: boolean;
@@ -952,8 +1086,8 @@ export class WaybillsService {
         throw new BadRequestException(`Waybill ${waybill.waybill_code} cannot be stacked`);
       }
 
-      const truck = trucksById.get(String(line.truck_id));
-      if (!truck) throw new NotFoundException(`Truck ${line.truck_id} not found`);
+      const truck = line.truck_id ? trucksById.get(String(line.truck_id)) ?? null : null;
+      if (line.truck_id && !truck) throw new NotFoundException(`Truck ${line.truck_id} not found`);
 
       const existingSplits = await this.splitsRepository.find({ where: { waybill_id: String(line.waybill_id) } });
       const totalPackages = this.resolveTotalPackages(waybill);
@@ -971,10 +1105,11 @@ export class WaybillsService {
         stackDepartureTime,
         line.expected_arrival_at,
       );
-      const carrierLabel = truck.nha_xe?.trim()
-        || truck.vendor?.name?.trim()
-        || truck.bks?.trim()
-        || truck.license_plate?.trim()
+      const carrierLabel = truck?.nha_xe?.trim()
+        || truck?.vendor?.name?.trim()
+        || truck?.bks?.trim()
+        || truck?.license_plate?.trim()
+        || selectedVendor?.name?.trim()
         || null;
 
       preparedRows.push({
@@ -1009,7 +1144,7 @@ export class WaybillsService {
 
       const split = await this.splitsRepository.save(this.splitsRepository.create({
         waybill_id: String(line.waybill_id),
-        truck_id: String(line.truck_id),
+        truck_id: line.truck_id ? String(line.truck_id) : null,
         package_count: packageCount,
         loading_position: line.loading_position ?? null,
         carrier_label: carrierLabel,
@@ -1031,7 +1166,7 @@ export class WaybillsService {
         waybill_id: split.waybill_id,
         waybill_code: waybill.waybill_code,
         truck_id: split.truck_id,
-        license_plate: truck.bks ?? truck.license_plate ?? null,
+        license_plate: truck?.bks ?? truck?.license_plate ?? null,
         nha_xe: carrierLabel,
         loading_position: split.loading_position,
         package_count: split.package_count,
@@ -1046,16 +1181,16 @@ export class WaybillsService {
         is_fully_allocated: isFullyAllocated,
         split_id: String(split.id),
         expected_arrival_at: split.expected_arrival_at,
-        truck_id: String(line.truck_id),
-        vendor_id: truck.vendor_id ? String(truck.vendor_id) : null,
+        truck_id: line.truck_id ? String(line.truck_id) : null,
+        vendor_id: truck?.vendor_id ? String(truck.vendor_id) : selectedVendorId,
         vendor_cost: vendorDebtAmount ?? 0,
-        license_plate: truck.bks ?? truck.license_plate ?? null,
+        license_plate: truck?.bks ?? truck?.license_plate ?? null,
       });
     }
 
     const routeGroups = [...stackedRows.reduce((groups, row) => {
       const key = [
-        String(row.truck_id),
+        String(row.truck_id ?? row.vendor_id ?? 'NO_CARRIER'),
         String(row.waybill.origin_hub_id),
         String(row.waybill.dest_hub_id),
       ].join(':');
@@ -1064,10 +1199,10 @@ export class WaybillsService {
       groups.set(key, group);
       return groups;
     }, new Map<string, typeof stackedRows>()).values()].sort((left, right) => {
-      const leftKey = [left[0].truck_id, left[0].waybill.origin_hub_id, left[0].waybill.dest_hub_id]
+      const leftKey = [left[0].truck_id ?? left[0].vendor_id, left[0].waybill.origin_hub_id, left[0].waybill.dest_hub_id]
         .map(String)
         .join(':');
-      const rightKey = [right[0].truck_id, right[0].waybill.origin_hub_id, right[0].waybill.dest_hub_id]
+      const rightKey = [right[0].truck_id ?? right[0].vendor_id, right[0].waybill.origin_hub_id, right[0].waybill.dest_hub_id]
         .map(String)
         .join(':');
       return leftKey.localeCompare(rightKey, 'en', { numeric: true });
@@ -1199,7 +1334,7 @@ export class WaybillsService {
 
   private async createInTransitTripForStack(
     manifest: ManifestEntity,
-    truckId: string,
+    truckId: string | null,
     splitRows: Array<{ split_id: string | number; expected_arrival_at?: Date | string | null }>,
     _waybillRows: Array<{ waybill: WaybillRecord }>,
     departureTime = new Date(),
@@ -1269,7 +1404,10 @@ export class WaybillsService {
 
     Object.assign(manifest, {
       total_waybills: rows.length,
-      total_weight: rows.reduce((sum, row) => sum + Number(row.waybill.weight ?? 0), 0),
+      total_weight: rows.reduce((sum, row) => {
+        const totalPackages = this.resolveTotalPackages(row.waybill);
+        return sum + Number(row.waybill.weight ?? 0) * (row.package_count / totalPackages);
+      }, 0),
       closed_at: new Date(),
       closed_by: currentUser.id,
       created_by: currentUser.id,
@@ -1701,6 +1839,198 @@ export class WaybillsService {
       throw new ConflictException('Cancelled waybill cannot be updated');
     }
     return waybill;
+  }
+
+  private async updateSplitDeliveryStatus(
+    waybill: WaybillRecord,
+    dto: UpdateWaybillStatusDto,
+    currentUser: UserEntity,
+  ): Promise<WaybillRecord | null> {
+    if (!dto.trip_id) return null;
+    if (![WaybillStatus.OUT_FOR_DELIVERY, WaybillStatus.DELIVERED, WaybillStatus.RETURNED].includes(dto.status)) {
+      return null;
+    }
+
+    const splitWhere = {
+      waybill_id: String(waybill.id),
+      trip_id: String(dto.trip_id),
+      ...(dto.split_id ? { id: String(dto.split_id) } : {}),
+    };
+    const splits = await this.splitsRepository.find({ where: splitWhere as any });
+    if (!splits.length) {
+      if (dto.split_id) throw new BadRequestException('Split line does not belong to the selected trip');
+      return null;
+    }
+
+    const trip = await this.tripsRepository.findOne({ where: { id: String(dto.trip_id) } });
+    if (!trip || trip.status !== TripStatus.ARRIVED) {
+      throw new BadRequestException('Delivery can only be updated after the trip arrives');
+    }
+    if (dto.status === WaybillStatus.DELIVERED && !dto.delivery_photo_url && !waybill.delivery_photo_url) {
+      throw new BadRequestException('Delivery photo is required');
+    }
+
+    const splitStatus = dto.status === WaybillStatus.OUT_FOR_DELIVERY
+      ? WaybillSplitLoadStatus.OUT_FOR_DELIVERY
+      : dto.status === WaybillStatus.DELIVERED
+        ? WaybillSplitLoadStatus.DELIVERED
+        : WaybillSplitLoadStatus.RETURNED;
+    splits.forEach((split) => { split.load_status = splitStatus; });
+    await this.splitsRepository.save(splits);
+
+    Object.assign(waybill, { updated_by: currentUser.id, note: dto.note ?? waybill.note });
+    if (dto.delivery_photo_url) waybill.delivery_photo_url = normalizeWaybillPhotos(dto.delivery_photo_url);
+
+    const allSplits = await this.splitsRepository.find({ where: { waybill_id: String(waybill.id) } });
+    const totalPackages = this.resolveTotalPackages(waybill);
+    const allocatedPackages = allSplits.reduce((sum, split) => sum + Number(split.package_count ?? 0), 0);
+    if (allocatedPackages >= totalPackages) {
+      const allDelivered = allSplits.length > 0
+        && allSplits.every((split) => split.load_status === WaybillSplitLoadStatus.DELIVERED);
+      const allFinished = allSplits.length > 0
+        && allSplits.every((split) => [WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED].includes(split.load_status));
+      const allOutForDelivery = allSplits.length > 0
+        && allSplits.every((split) => split.load_status === WaybillSplitLoadStatus.OUT_FOR_DELIVERY);
+      if (allDelivered) {
+        this.setStatus(waybill, WaybillStatus.DELIVERED);
+        Object.assign(waybill, { delivered_at: new Date(), delivery_time: new Date() });
+      } else if (allFinished) {
+        this.setStatus(waybill, WaybillStatus.RETURNED);
+        waybill.returned_at = new Date();
+      } else if (allOutForDelivery) {
+        this.setStatus(waybill, WaybillStatus.OUT_FOR_DELIVERY);
+      }
+    }
+
+    const saved = await this.saveWithAudit(waybill, currentUser, 'SPLIT_DELIVERY_STATUS_CHANGE');
+    if (dto.status === WaybillStatus.DELIVERED) {
+      await this.completeTripWhenAllDelivered(String(dto.trip_id));
+    }
+    return {
+      ...saved,
+      current_state: dto.status,
+      status: dto.status,
+      trip_id: String(dto.trip_id),
+      split_id: splits[0].id,
+    } as unknown as WaybillRecord;
+  }
+
+  private async resolveDeliveryTripIds(waybillId: string, requestedTripId?: string): Promise<string[]> {
+    const [splits, links] = await Promise.all([
+      this.splitsRepository.find({ where: { waybill_id: waybillId } }),
+      this.manifestWaybillsRepository.find({
+        where: { waybill_id: waybillId },
+        relations: ['manifest', 'manifest.trips'],
+      }),
+    ]);
+    const relatedIds = new Set<string>();
+    splits.forEach((split) => {
+      if (split.trip_id) relatedIds.add(String(split.trip_id));
+    });
+    links.forEach((link) => link.manifest?.trips?.forEach((trip) => relatedIds.add(String(trip.id))));
+
+    if (requestedTripId) {
+      const tripId = String(requestedTripId);
+      if (!relatedIds.has(tripId)) {
+        throw new BadRequestException('Waybill does not belong to the selected trip');
+      }
+      return [tripId];
+    }
+
+    if (!relatedIds.size) return [];
+    const trips = await this.tripsRepository.find({
+      where: { id: In([...relatedIds]), status: In([TripStatus.ARRIVED, TripStatus.COMPLETED]) } as any,
+    });
+    return trips.map((trip) => String(trip.id));
+  }
+
+  private async markTripAllocationDelivered(waybillId: string, requestedTripId?: string): Promise<void> {
+    const tripIds = await this.resolveDeliveryTripIds(waybillId, requestedTripId);
+    if (!tripIds.length) return;
+
+    const splits = await this.splitsRepository.find({
+      where: { waybill_id: waybillId, trip_id: In(tripIds) } as any,
+    });
+    splits.forEach((split) => { split.load_status = WaybillSplitLoadStatus.DELIVERED; });
+    if (splits.length) await this.splitsRepository.save(splits);
+
+    for (const tripId of tripIds) await this.completeTripWhenAllDelivered(tripId);
+  }
+
+  private async completeTripWhenAllDelivered(tripId: string): Promise<void> {
+    const trip = await this.tripsRepository.findOne({ where: { id: tripId } });
+    if (!trip || trip.status !== TripStatus.ARRIVED) return;
+
+    const splits = await this.splitsRepository.find({ where: { trip_id: tripId } });
+    let allDelivered = splits.length > 0
+      ? splits.every((split) => split.load_status === WaybillSplitLoadStatus.DELIVERED)
+      : false;
+
+    if (!splits.length && trip.manifest_id) {
+      const links = await this.manifestWaybillsRepository.find({
+        where: { manifest_id: String(trip.manifest_id) },
+        relations: ['waybill'],
+      });
+      allDelivered = links.length > 0
+        && links.every((link) => this.getStatus(link.waybill as WaybillRecord) === WaybillStatus.DELIVERED);
+    }
+    if (!allDelivered) return;
+
+    trip.status = TripStatus.COMPLETED;
+    await this.tripsRepository.save(trip);
+    if (trip.manifest_id) {
+      const manifest = await this.manifestsRepository.findOne({ where: { id: String(trip.manifest_id) } });
+      if (manifest) {
+        manifest.status = ManifestStatus.COMPLETED;
+        await this.manifestsRepository.save(manifest);
+      }
+    }
+    if (trip.truck_id) {
+      const activeTrips = await this.tripsRepository.find({
+        where: {
+          truck_id: String(trip.truck_id),
+          status: In([TripStatus.PLANNED, TripStatus.IN_TRANSIT, TripStatus.ARRIVED]),
+        } as any,
+      });
+      if (!activeTrips.some((item) => String(item.id) !== String(trip.id))) {
+        const truck = await this.trucksRepository.findOne({ where: { id: String(trip.truck_id) } });
+        if (truck) {
+          truck.status = TruckStatus.AVAILABLE;
+          await this.trucksRepository.save(truck);
+        }
+      }
+    }
+  }
+
+  private async reopenTripAllocation(waybillId: string, requestedTripId?: string): Promise<void> {
+    const tripIds = await this.resolveDeliveryTripIds(waybillId, requestedTripId);
+    if (!tripIds.length) return;
+    const splits = await this.splitsRepository.find({
+      where: { waybill_id: waybillId, trip_id: In(tripIds) } as any,
+    });
+    splits.forEach((split) => { split.load_status = WaybillSplitLoadStatus.IN_TRANSIT; });
+    if (splits.length) await this.splitsRepository.save(splits);
+
+    for (const tripId of tripIds) {
+      const trip = await this.tripsRepository.findOne({ where: { id: tripId } });
+      if (!trip || trip.status !== TripStatus.COMPLETED) continue;
+      trip.status = TripStatus.ARRIVED;
+      await this.tripsRepository.save(trip);
+      if (trip.manifest_id) {
+        const manifest = await this.manifestsRepository.findOne({ where: { id: String(trip.manifest_id) } });
+        if (manifest) {
+          manifest.status = ManifestStatus.IN_TRANSIT;
+          await this.manifestsRepository.save(manifest);
+        }
+      }
+      if (trip.truck_id) {
+        const truck = await this.trucksRepository.findOne({ where: { id: String(trip.truck_id) } });
+        if (truck) {
+          truck.status = TruckStatus.IN_TRIP;
+          await this.trucksRepository.save(truck);
+        }
+      }
+    }
   }
 
   private async assertOriginChangeIsUnallocated(waybillId: string): Promise<void> {
@@ -2373,6 +2703,11 @@ export class WaybillsService {
     const totalCod = Number(waybill.cod_amount ?? 0);
     const tripPackages = remainingPackages ?? (split ? split.package_count : totalPackages);
     const ratio = tripPackages / totalPackages;
+    const allocatedMetric = (value: unknown, precision = 3) => {
+      const numeric = Number(value ?? 0);
+      if (!Number.isFinite(numeric)) return value;
+      return Number((numeric * ratio).toFixed(precision));
+    };
     const truck = split?.truck ?? split?.trip?.truck ?? null;
     const licensePlate = truck?.bks ?? truck?.license_plate ?? null;
     const carrier = split?.carrier_label ?? truck?.nha_xe ?? null;
@@ -2382,6 +2717,10 @@ export class WaybillsService {
 
     return {
       ...waybill,
+      weight: allocatedMetric(waybill.weight),
+      actual_weight: allocatedMetric(waybill.actual_weight ?? waybill.weight),
+      volumetric_weight: allocatedMetric(waybill.volumetric_weight),
+      the_tich_m3: allocatedMetric(waybill.the_tich_m3, 4),
       mat_hang: this.resolveGoodsContent(waybill) || null,
       split_id: split?.id ?? null,
       trip_id: split?.trip_id ?? null,

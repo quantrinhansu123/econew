@@ -83,20 +83,14 @@ export function filterManifestAddableInventoryRows<T extends WaybillInventoryIte
   items: T[],
   options: {
     manifestId: string;
-    manifestDestHubId?: string | number | null;
     existingWaybillIds?: Set<string>;
   },
 ) {
   const existingIds = options.existingWaybillIds ?? new Set<string>();
-  const manifestDestHubId = String(options.manifestDestHubId ?? '').trim();
   const seen = new Set<string>();
   return items.filter((waybill) => {
     const id = String(waybill.id);
     if (!id || seen.has(id)) return false;
-    if (manifestDestHubId) {
-      const waybillDestHubId = String(waybill.dest_hub_id ?? waybill.dest_hub?.id ?? '').trim();
-      if (waybillDestHubId !== manifestDestHubId) return false;
-    }
     if (waybill.manifest_id && String(waybill.manifest_id) !== options.manifestId) return false;
     if (existingIds.has(id)) {
       const remaining = Number(waybill.remaining_packages ?? 0);

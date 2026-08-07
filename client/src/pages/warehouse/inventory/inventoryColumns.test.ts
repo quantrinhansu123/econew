@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  INVENTORY_FIXED_COLUMN_IDS,
+  INVENTORY_DEFAULT_COLUMN_IDS,
+  getDefaultVisibleColumnIds,
   normalizeInventoryVisibleColumnIds,
   resolvePrintColumnIds,
   resolveNoiDen,
@@ -11,7 +12,7 @@ import {
 } from './inventoryColumns';
 import type { WaybillInventoryItem } from './types';
 
-const EXPECTED_FIXED_COLUMN_IDS: InventoryColumnId[] = [
+const EXPECTED_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
   'stack_position',
   'loaded_at',
   'noi_den',
@@ -28,16 +29,25 @@ const EXPECTED_FIXED_COLUMN_IDS: InventoryColumnId[] = [
 ];
 
 describe('inventory visible columns', () => {
-  it('keeps the requested stock-list columns fixed in the exact requested order', () => {
-    expect(INVENTORY_FIXED_COLUMN_IDS).toEqual(EXPECTED_FIXED_COLUMN_IDS);
-    expect(normalizeInventoryVisibleColumnIds([], true)).toEqual([
-      ...EXPECTED_FIXED_COLUMN_IDS,
+  it('uses the requested stock-list columns as the initial default order', () => {
+    expect(INVENTORY_DEFAULT_COLUMN_IDS).toEqual(EXPECTED_DEFAULT_COLUMN_IDS);
+    expect(getDefaultVisibleColumnIds(true)).toEqual([
+      ...EXPECTED_DEFAULT_COLUMN_IDS,
+      'actions',
+    ]);
+  });
+
+  it('allows every default data column to be hidden and preserves the selected order', () => {
+    expect(normalizeInventoryVisibleColumnIds([], true)).toEqual(['actions']);
+    expect(normalizeInventoryVisibleColumnIds(['volume', 'loaded_at'], true)).toEqual([
+      'volume',
+      'loaded_at',
       'actions',
     ]);
   });
 
   it('does not show optional order, priority, and image columns until they are selected', () => {
-    const defaults = normalizeInventoryVisibleColumnIds([], true);
+    const defaults = getDefaultVisibleColumnIds(true);
 
     expect(defaults).not.toContain('order_code');
     expect(defaults).not.toContain('priority');
@@ -47,9 +57,7 @@ describe('inventory visible columns', () => {
     expect(selected).toContain('order_code');
     expect(selected).toContain('priority');
     expect(selected).toContain('bill_images');
-    expect(selected.filter((id) => EXPECTED_FIXED_COLUMN_IDS.includes(id))).toEqual(
-      EXPECTED_FIXED_COLUMN_IDS,
-    );
+    expect(selected).toEqual(['priority', 'order_code', 'bill_images', 'actions']);
   });
 
   it('keeps receiver, ward, and district columns optional', () => {
@@ -58,7 +66,7 @@ describe('inventory visible columns', () => {
       'receiver_ward',
       'receiver_district',
     ];
-    const defaults = normalizeInventoryVisibleColumnIds([], true);
+    const defaults = getDefaultVisibleColumnIds(true);
     optionalReceiverColumns.forEach((id) => expect(defaults).not.toContain(id));
     optionalReceiverColumns.forEach((id) => expect(resolvePrintColumnIds(defaults)).not.toContain(id));
 
@@ -71,15 +79,15 @@ describe('inventory visible columns', () => {
     expect(normalizeInventoryVisibleColumnIds(['freight'], false)).not.toContain('freight');
   });
 
-  it('resolves the fixed views in order and labels Cộng SG as Nội dung hàng', () => {
+  it('resolves the default views in order and labels Cộng SG as Nội dung hàng', () => {
     const views = resolveVisibleColumnViews(
-      normalizeInventoryVisibleColumnIds([], true),
+      getDefaultVisibleColumnIds(true),
       'split-pending',
       true,
     );
 
     expect(views.map((column) => column.id)).toEqual([
-      ...EXPECTED_FIXED_COLUMN_IDS,
+      ...EXPECTED_DEFAULT_COLUMN_IDS,
       'actions',
     ]);
     expect(views.find((column) => column.id === 'cong_sg')?.label).toBe('Nội dung hàng');

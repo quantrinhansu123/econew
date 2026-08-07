@@ -141,14 +141,19 @@ describe('ManifestsService', () => {
         waybill_id: '100',
         loading_position: 1,
         dispatch_fields: null,
-        waybill: waybill({ package_count: 138 }),
+        waybill: waybill({ package_count: 138, weight: 2760, the_tich_m3: 13.8, volumetric_weight: 6900 }),
       }],
     }));
     splitsRepo.find.mockResolvedValue([{ id: 's1', waybill_id: '100', trip_id: '5', package_count: 38 }]);
 
     const result = await service.findOne('10', manager);
 
-    expect(result.manifest_waybills[0].dispatch_fields).toMatchObject({ so_luong: '38' });
+    expect(result.manifest_waybills[0].dispatch_fields).toMatchObject({
+      so_luong: '38',
+      kg: 760,
+      m3: 3.8,
+      qd: 1900,
+    });
   });
 
   it('addWaybills thành công', async () => {
@@ -285,7 +290,7 @@ describe('ManifestsService', () => {
     expect(linksRepo.save).toHaveBeenCalled();
   });
 
-  it('addWaybills rejects a waybill whose destination differs from the manifest destination', async () => {
+  it('addWaybills allows a waybill for another destination hub', async () => {
     const manifest = draftManifest({ dest_hub_id: '2' });
     manifestsRepo.findOne.mockImplementation(async (options: any) => (
       options?.where?.manifest_code ? null : manifest
@@ -293,12 +298,13 @@ describe('ManifestsService', () => {
     linksRepo.find.mockResolvedValue([]);
     waybillsRepo.find.mockResolvedValue([waybill({ dest_hub_id: '3' })]);
 
+    linksRepo.create.mockImplementation((value) => value);
     await expect(service.addWaybills('10', { waybill_ids: ['100'] }, dispatcher))
-      .rejects.toBeInstanceOf(BadRequestException);
-    expect(linksRepo.save).not.toHaveBeenCalled();
+      .resolves.toBeDefined();
+    expect(linksRepo.save).toHaveBeenCalled();
   });
 
-  it('update rejects changing destination when existing rows belong to another destination', async () => {
+  it('update allows changing the primary destination when rows contain other destinations', async () => {
     const manifest = draftManifest({
       dest_hub_id: '2',
       manifest_waybills: [{ waybill: waybill({ dest_hub_id: '2' }) }],
@@ -306,9 +312,10 @@ describe('ManifestsService', () => {
     manifestsRepo.findOne.mockResolvedValue(manifest);
     hubsRepo.findOne.mockResolvedValue({ id: '3', code: 'DAN', is_active: true });
 
+    manifestsRepo.save.mockImplementation(async (value) => value);
     await expect(service.update('10', { dest_hub_id: '3' }, dispatcher))
-      .rejects.toBeInstanceOf(ConflictException);
-    expect(manifestsRepo.save).not.toHaveBeenCalled();
+      .resolves.toMatchObject({ dest_hub_id: '3' });
+    expect(manifestsRepo.save).toHaveBeenCalled();
   });
 
   it('remove waybill khỏi manifest DRAFT thành công', async () => {

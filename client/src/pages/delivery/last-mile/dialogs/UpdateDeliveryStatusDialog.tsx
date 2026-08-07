@@ -1,4 +1,7 @@
-import { Loader2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ImagePlus, Loader2, Trash2, X } from 'lucide-react';
+import { ApiError } from '../../../../lib/api';
+import { IMAGE_UPLOAD_ACCEPT, uploadWaybillImage } from '../../../../lib/uploadImage';
 import type { LastMileWaybill } from '../types';
 
 type DeliveryStatus = 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED';
@@ -8,10 +11,19 @@ interface Props {
   isSubmitting: boolean;
   error: string;
   onClose: () => void;
-  onConfirm: (status: DeliveryStatus) => void;
+  onConfirm: (status: DeliveryStatus, deliveryPhotoUrl?: string) => void;
 }
 
 export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, error, onClose, onConfirm }: Props) {
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+
+  useEffect(() => {
+    setPhotos(String(waybill?.delivery_photo_url || '').split('|').map((item) => item.trim()).filter(Boolean));
+    setUploadError('');
+  }, [waybill]);
+
   if (!waybill) return null;
 
   const currentStatus = String(waybill.current_state || '').toUpperCase();
@@ -22,6 +34,29 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
     OUT_FOR_DELIVERY: 'Bàn giao tài xế chặng cuối',
     DELIVERED: 'Xác nhận giao thành công',
     RETURNED: 'Xác nhận hoàn hàng',
+  };
+
+  const handleFiles = async (files: FileList | null) => {
+    const selected = Array.from(files || []).slice(0, Math.max(0, 4 - photos.length));
+    if (!selected.length) return;
+    setIsUploading(true);
+    setUploadError('');
+    try {
+      const urls = await Promise.all(selected.map(uploadWaybillImage));
+      setPhotos((current) => [...current, ...urls].slice(0, 4));
+    } catch (uploadFailure) {
+      setUploadError(uploadFailure instanceof ApiError ? uploadFailure.message : 'Không upload được ảnh giao hàng.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const submitStatus = (status: DeliveryStatus) => {
+    if (status === 'DELIVERED' && !photos.length) {
+      setUploadError('Giao thành công bắt buộc có ít nhất 1 ảnh.');
+      return;
+    }
+    onConfirm(status, photos.length ? photos.join('|') : undefined);
   };
 
   return (
@@ -36,12 +71,39 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
         </div>
         <div className="space-y-3 p-4 text-[13px] text-muted-foreground">
           <p>Chọn trạng thái giao chặng cuối hợp lệ theo state machine cho vận đơn này.</p>
+          {currentStatus === 'OUT_FOR_DELIVERY' && (
+            <div className="rounded-xl border border-border bg-slate-50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-black text-foreground">Ảnh giao hàng</p>
+                <span className="text-[11px] font-bold">{photos.length}/4 ảnh</span>
+              </div>
+              {photos.length > 0 && (
+                <div className="mt-2 grid grid-cols-4 gap-2">
+                  {photos.map((url, index) => (
+                    <div key={`${url}-${index}`} className="relative aspect-square overflow-hidden rounded-lg border border-border bg-white">
+                      <img src={url} alt={`Ảnh giao hàng ${index + 1}`} className="h-full w-full object-cover" />
+                      <button type="button" title="Bỏ ảnh" onClick={() => setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index))} disabled={isSubmitting || isUploading} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-md bg-white/95 text-red-600 shadow">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {photos.length < 4 && (
+                <label className="mt-2 inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-primary/40 bg-white px-3 font-bold text-primary hover:bg-primary/5">
+                  {isUploading ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />}
+                  {isUploading ? 'Đang tải ảnh...' : 'Thêm ảnh'}
+                  <input type="file" accept={IMAGE_UPLOAD_ACCEPT} multiple disabled={isSubmitting || isUploading} onChange={(event) => { void handleFiles(event.target.files); event.currentTarget.value = ''; }} className="sr-only" />
+                </label>
+              )}
+            </div>
+          )}
           <div className="grid gap-2">
             {nextStatuses.map(status => (
               <button
                 key={status}
-                onClick={() => onConfirm(status)}
-                disabled={isSubmitting}
+                onClick={() => submitStatus(status)}
+                disabled={isSubmitting || isUploading}
                 className="flex h-10 items-center justify-between rounded-xl border border-border px-3 text-left text-[13px] font-black text-foreground hover:border-primary hover:text-primary disabled:opacity-50"
               >
                 <span>{labels[status]}</span>
@@ -49,6 +111,7 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
               </button>
             ))}
           </div>
+          {uploadError && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700">{uploadError}</div>}
           {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700">{error}</div>}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-border p-3">

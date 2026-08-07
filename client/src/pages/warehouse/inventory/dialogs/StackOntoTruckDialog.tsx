@@ -97,7 +97,7 @@ export default function StackOntoTruckDialog({
   onSaved,
 }: Props) {
   const [rows, setRows] = useState<StackOntoTruckFormRow[]>([]);
-  const [shared, setShared] = useState<StackOntoTruckSharedFields>({ truck_id: '', nha_xe: '', vendor_id: '', vendor_cost: '', driver_name: '', driver_phone: '' });
+  const [shared, setShared] = useState<StackOntoTruckSharedFields>({ truck_id: '', nha_xe: '', vendor_id: '', vendor_cost: '', driver_name: '', driver_phone: '', departure_time: '' });
   const [truckOptions, setTruckOptions] = useState<TruckPickOption[]>([]);
   const [vendorOptions, setVendorOptions] = useState<VendorOption[]>([]);
   const [truckDraft, setTruckDraft] = useState('');
@@ -256,8 +256,8 @@ export default function StackOntoTruckDialog({
 
   async function handleSubmit() {
     setError('');
-    if (!shared.truck_id) {
-      setError('Chọn biển số xe trước khi xếp hàng.');
+    if (!shared.truck_id && !shared.vendor_id) {
+      setError('Chọn NCC hoặc biển số xe trước khi xếp hàng.');
       return;
     }
 
@@ -372,11 +372,11 @@ export default function StackOntoTruckDialog({
                     />
                   </div>
                   <div className="col-span-12 md:col-span-3">
-                    <label className="mb-1 block text-[12px] font-bold uppercase tracking-wide text-slate-700">BKS theo NCC</label>
+                    <label className="mb-1 block text-[12px] font-bold uppercase tracking-wide text-slate-700">BKS theo NCC <span className="normal-case text-muted-foreground">(không bắt buộc)</span></label>
                     <TruckSearchSelect options={filteredTruckOptions} value={shared.truck_id} onChange={handleTruckChange} disabled={!shared.nha_xe} placeholder={shared.nha_xe ? 'Chọn BKS...' : 'Chọn NCC trước'} searchPlaceholder="Tìm biển số..." className="h-11 text-[14px]" />
                   </div>
                   <div className="col-span-12 md:col-span-3">
-                    <label className="mb-1 block text-[12px] font-bold uppercase tracking-wide text-slate-700">Thêm BKS nếu chưa có</label>
+                    <label className="mb-1 block text-[12px] font-bold uppercase tracking-wide text-slate-700">Thêm BKS nếu chưa có <span className="normal-case text-muted-foreground">(không bắt buộc)</span></label>
                     <div className="flex gap-2">
                       <input value={truckDraft} onChange={(e) => setTruckDraft(e.target.value.toUpperCase())} disabled={!shared.nha_xe} placeholder="VD: 89H-09800" className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-[14px] font-bold outline-none focus:border-primary disabled:bg-slate-100" />
                       <button type="button" disabled={isSaving || !shared.nha_xe || !truckDraft.trim()} onClick={() => void handleCreateTruck()} className="inline-flex h-11 items-center gap-1 rounded-lg border border-primary/20 bg-white px-3 text-[12px] font-black text-primary disabled:opacity-50"><Plus size={14} />BKS</button>
@@ -399,6 +399,15 @@ export default function StackOntoTruckDialog({
                       <input inputMode="numeric" value={shared.vendor_cost} onChange={(e) => setShared((prev) => ({ ...prev, vendor_cost: formatDonGia(e.target.value) }))} placeholder="Nhập sau..." className="h-11 w-full rounded-lg border border-amber-300 bg-amber-50/40 px-3 text-right text-[15px] font-bold outline-none focus:border-primary" />
                     </div>
                   )}
+                  <div className="col-span-12 md:col-span-3">
+                    <label className="mb-1 block text-[12px] font-bold uppercase tracking-wide text-slate-700">Ngày khởi hành</label>
+                    <input type="datetime-local" value={shared.departure_time} onChange={(event) => {
+                      const departure = event.target.value;
+                      setShared((prev) => ({ ...prev, departure_time: departure }));
+                      const date = departure ? new Date(departure) : new Date();
+                      setRows((current) => current.map((row) => ({ ...row, expected_arrival_label: new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(date.getTime() + 3 * 86400000)) })));
+                    }} className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-[14px] font-bold outline-none focus:border-primary" />
+                  </div>
                 </div>
               </div>
 

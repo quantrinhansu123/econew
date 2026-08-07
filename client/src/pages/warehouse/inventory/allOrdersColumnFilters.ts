@@ -11,10 +11,16 @@ import {
   resolvePackageCountSl,
   resolvePaymentMethod,
   resolveReceiverAddress,
+  resolveReceiverPhone,
+  resolveRoute,
   resolveServiceType,
   resolveSurcharge,
   resolveTotalAmount,
   resolveUnitPrice,
+  resolveUserNote,
+  resolveVolumetricWeightKg,
+  resolveVolumeM3,
+  resolveWeightKg,
 } from './inventoryColumns';
 import type { InventoryColumnId } from './inventoryColumns';
 
@@ -48,6 +54,20 @@ export const ALL_ORDERS_FILTERABLE_COLUMN_IDS: InventoryColumnId[] = [
   'payment_method',
   'customer_payment_status',
   'customer_payment_note',
+  'stack_position',
+  'loaded_at',
+  'trip_label',
+  'user_note',
+  'route',
+  'receiver_phone',
+  'weight',
+  'volumetric_weight',
+  'volume',
+  'current_hub',
+  'dest_hub',
+  'payment_type',
+  'cod_amount',
+  'priority',
 ];
 
 const paymentStatusLabel = (waybill: WaybillInventoryItem) => {
@@ -105,6 +125,34 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
       return paymentStatusLabel(waybill);
     case 'customer_payment_note':
       return waybill.customer_payment_note?.trim() || EMPTY_VALUE;
+    case 'stack_position':
+      return String(waybill.loading_position ?? EMPTY_VALUE);
+    case 'loaded_at':
+      return waybill.loaded_at ? formatInventoryDate(String(waybill.loaded_at)) : EMPTY_VALUE;
+    case 'trip_label':
+      return waybill.trip_label?.trim() || EMPTY_VALUE;
+    case 'user_note':
+      return resolveUserNote(waybill) || EMPTY_VALUE;
+    case 'route':
+      return resolveRoute(waybill) || EMPTY_VALUE;
+    case 'receiver_phone':
+      return resolveReceiverPhone(waybill) || EMPTY_VALUE;
+    case 'weight':
+      return `${resolveWeightKg(waybill)} kg`;
+    case 'volumetric_weight':
+      return `${resolveVolumetricWeightKg(waybill)} kg`;
+    case 'volume':
+      return `${resolveVolumeM3(waybill)} m3`;
+    case 'current_hub':
+      return [waybill.current_hub?.code, waybill.current_hub?.name].filter(Boolean).join(' · ') || EMPTY_VALUE;
+    case 'dest_hub':
+      return [waybill.dest_hub?.code, waybill.dest_hub?.name].filter(Boolean).join(' · ') || EMPTY_VALUE;
+    case 'payment_type':
+      return String(waybill.payment_type || EMPTY_VALUE);
+    case 'cod_amount':
+      return moneyValue(waybill.allocated_cod ?? waybill.cod_amount);
+    case 'priority':
+      return String(waybill.priority || EMPTY_VALUE);
     default:
       return EMPTY_VALUE;
   }

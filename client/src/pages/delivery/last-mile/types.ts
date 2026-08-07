@@ -36,6 +36,8 @@ export interface TripSummary {
 
 export interface LastMileWaybill {
   id: string | number;
+  task_id?: string | null;
+  split_id?: string | number | null;
   waybill_code: string;
   sender_info: string;
   receiver_info: string;
@@ -59,6 +61,8 @@ export interface LastMileWaybill {
   delivery_photo_url?: string | null;
   trip_id?: string | number | null;
   trip?: TripSummary | null;
+  trip_package_count?: number | null;
+  order_total_packages?: number | null;
 }
 
 export type LastMileWaybillDetail = LastMileWaybill;
@@ -71,7 +75,7 @@ export interface ListResponse<T> {
   hubs?: T[];
   trips?: T[];
   total?: number;
-  meta?: { total?: number };
+  meta?: { total?: number; page?: number; limit?: number; total_pages?: number };
 }
 
 export interface LastMileFilters {

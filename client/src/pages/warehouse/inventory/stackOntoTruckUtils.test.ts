@@ -52,6 +52,7 @@ describe('stack-onto-truck request payload', () => {
       vendor_cost: '13.000.000',
       driver_name: ' Nguyễn Văn A ',
       driver_phone: ' 0901234567 ',
+      departure_time: '2026-07-20T12:00',
     };
 
     const payload = buildStackOntoTruckPayload(rows, shared, 13_000_000);
@@ -61,6 +62,7 @@ describe('stack-onto-truck request payload', () => {
       vendor_cost: 13_000_000,
       driver_name: 'Nguyễn Văn A',
       driver_phone: '0901234567',
+      departure_time: new Date('2026-07-20T12:00').toISOString(),
       items: [{
         waybill_id: 'waybill-1',
         truck_id: 'truck-1',
@@ -76,5 +78,21 @@ describe('stack-onto-truck request payload', () => {
       'truck_id',
       'waybill_id',
     ]);
+  });
+
+  it('allows stacking by vendor before the license plate is known', () => {
+    const rows: StackOntoTruckFormRow[] = [{
+      waybill_id: 'waybill-1', waybill_code: 'ECOHAN1', package_count: '1', max_package_count: 1,
+      loading_position: '', expected_arrival_label: '23/07/2026', delivery_instruction: 'Kho HCM',
+    }];
+    const shared: StackOntoTruckSharedFields = {
+      truck_id: '', nha_xe: 'Xe lẻ', vendor_id: 'vendor-1', vendor_cost: '',
+      driver_name: '', driver_phone: '', departure_time: '2026-07-20T12:00',
+    };
+
+    const payload = buildStackOntoTruckPayload(rows, shared);
+
+    expect(payload.items[0]).not.toHaveProperty('truck_id');
+    expect(payload).toMatchObject({ vendor_id: 'vendor-1', departure_time: expect.any(String) });
   });
 });

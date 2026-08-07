@@ -41,7 +41,9 @@ const createQueryBuilder = () => {
   const qb: any = {
     where: jest.fn().mockReturnThis(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
+    leftJoin: jest.fn().mockReturnThis(),
     innerJoinAndSelect: jest.fn().mockReturnThis(),
+    distinct: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     addOrderBy: jest.fn().mockReturnThis(),
@@ -684,6 +686,23 @@ describe('WaybillsService', () => {
     ]);
   });
 
+  it('bulk stack cho phép chọn NCC khi chưa có biển số xe', async () => {
+    setupMixedDestinationBulkStack();
+    vendorsService.findOne.mockResolvedValue({ id: 'vendor-1', name: 'Xe lẻ', status: 'ACTIVE' });
+
+    await service.bulkStackOntoTruck({
+      items: [{ waybill_id: 'w1', package_count: 1 }],
+      vendor_id: 'vendor-1',
+      departure_time: new Date('2025-08-07T01:00:00Z'),
+    }, manager);
+
+    expect(splitsRepository.create).toHaveBeenCalledWith(expect.objectContaining({ truck_id: null, carrier_label: 'Xe lẻ' }));
+    expect(tripsRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      truck_id: null,
+      departure_time: new Date('2025-08-07T01:00:00Z'),
+    }));
+  });
+
   it('bulk stack keeps shared vendor cost allocation stable when selection order is reversed', async () => {
     const selectedVendor = { id: 'vendor-1', name: 'Công ty Anh Dũng', status: 'ACTIVE' };
     setupMixedDestinationBulkStack({ vendor_id: 'vendor-1', vendor: selectedVendor });
@@ -1110,6 +1129,155 @@ describe('WaybillsService', () => {
   it('softDelete blocks MANIFEST_CLOSED waybill', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.MANIFEST_CLOSED }));
     await expect(service.softDelete('1', director)).rejects.toThrow(BadRequestException);
+  });
+
+  it('getDeliveryTasks đưa phần kiện của chuyến đã đến vào danh sách giao', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.IN_WAREHOUSE,
+      status: WaybillStatus.IN_WAREHOUSE,
+      package_count: 138,
+      weight: 1380,
+      volumetric_weight: 690,
+      the_tich_m3: 13.8,
+    });
+    const qb = createQueryBuilder();
+    qb.getMany.mockResolvedValue([waybill]);
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+    splitsRepository.find.mockResolvedValue([{
+      id: 's38',
+      waybill_id: '1',
+      trip_id: 't1',
+      package_count: 38,
+      load_status: WaybillSplitLoadStatus.ARRIVED,
+      trip: { id: 't1', status: TripStatus.ARRIVED, truck_id: null },
+    }]);
+
+    const result = await service.getDeliveryTasks({
+      status: `${WaybillStatus.AT_DEST_HUB},${WaybillStatus.OUT_FOR_DELIVERY}`,
+      page: 1,
+      limit: 100,
+    }, manager);
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        task_id: 'split:s38',
+        split_id: 's38',
+        trip_id: 't1',
+        current_state: WaybillStatus.AT_DEST_HUB,
+        trip_package_count: 38,
+        order_total_packages: 138,
+        weight: 380,
+        volumetric_weight: 190,
+        the_tich_m3: 3.8,
+      }),
+    ]);
+  });
+
+  it('giao phần kiện không đổi toàn bộ vận đơn khỏi danh sách tồn', async () => {
+    const split = {
+      id: 's38',
+      waybill_id: '1',
+      trip_id: 't1',
+      package_count: 38,
+      load_status: WaybillSplitLoadStatus.ARRIVED,
+    };
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.IN_WAREHOUSE,
+      status: WaybillStatus.IN_WAREHOUSE,
+      package_count: 138,
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+    splitsRepository.find.mockResolvedValue([split]);
+    tripsRepository.findOne.mockResolvedValue({ id: 't1', status: TripStatus.ARRIVED, manifest_id: null, truck_id: null });
+
+    const result = await service.updateStatus('1', {
+      status: WaybillStatus.DELIVERED,
+      delivery_photo_url: 'https://example.com/partial-delivery.jpg',
+      trip_id: 't1',
+      split_id: 's38',
+    }, manager);
+
+    expect(split.load_status).toBe(WaybillSplitLoadStatus.DELIVERED);
+    expect(waybill.current_state).toBe(WaybillStatus.IN_WAREHOUSE);
+    expect(result).toMatchObject({
+      current_state: WaybillStatus.DELIVERED,
+      trip_id: 't1',
+      split_id: 's38',
+    });
+    expect(tripsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: TripStatus.COMPLETED }));
+  });
+
+  it('updateStatus cho phép giao đơn đã nằm trong bảng kê và tự hoàn tất chuyến', async () => {
+    const split = {
+      id: 's1', waybill_id: '1', trip_id: 't1', package_count: 1,
+      load_status: WaybillSplitLoadStatus.IN_TRANSIT,
+    };
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      current_state: WaybillStatus.OUT_FOR_DELIVERY,
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+      manifest_id: 'm1',
+    }));
+    splitsRepository.find.mockResolvedValue([split]);
+    manifestWaybillsRepository.find.mockResolvedValue([]);
+    tripsRepository.find.mockResolvedValue([{ id: 't1', status: TripStatus.ARRIVED }]);
+    tripsRepository.findOne.mockResolvedValue({ id: 't1', status: TripStatus.ARRIVED, manifest_id: 'm1', truck_id: null });
+    manifestsRepository.findOne.mockResolvedValue({ id: 'm1', status: ManifestStatus.IN_TRANSIT });
+
+    await service.updateStatus('1', {
+      status: WaybillStatus.DELIVERED,
+      delivery_photo_url: 'https://example.com/delivered.jpg',
+      trip_id: 't1',
+    }, warehouse);
+
+    expect(split.load_status).toBe(WaybillSplitLoadStatus.DELIVERED);
+    expect(tripsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: TripStatus.COMPLETED }));
+    expect(manifestsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: ManifestStatus.COMPLETED }));
+  });
+
+  it('correctStatus mở lại chuyến khi sửa nhầm đơn đã giao', async () => {
+    const split = {
+      id: 's1', waybill_id: '1', trip_id: 't1', package_count: 1,
+      load_status: WaybillSplitLoadStatus.DELIVERED,
+    };
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      current_state: WaybillStatus.DELIVERED,
+      status: WaybillStatus.DELIVERED,
+      manifest_id: 'm1',
+      delivered_at: new Date(),
+    }));
+    splitsRepository.find.mockResolvedValue([split]);
+    manifestWaybillsRepository.find.mockResolvedValue([]);
+    tripsRepository.findOne.mockResolvedValue({ id: 't1', status: TripStatus.COMPLETED, manifest_id: 'm1', truck_id: null });
+    manifestsRepository.findOne.mockResolvedValue({ id: 'm1', status: ManifestStatus.COMPLETED });
+
+    const result = await service.correctStatus('1', { status: WaybillStatus.AT_DEST_HUB, trip_id: 't1' }, manager);
+
+    expect(result.status).toBe(WaybillStatus.AT_DEST_HUB);
+    expect(split.load_status).toBe(WaybillSplitLoadStatus.IN_TRANSIT);
+    expect(tripsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: TripStatus.ARRIVED }));
+  });
+
+  it('correctStatus giữ phần kiện chưa đi trong tồn kho', async () => {
+    const split = {
+      id: 's38', waybill_id: '1', trip_id: 't1', package_count: 38,
+      load_status: WaybillSplitLoadStatus.DELIVERED,
+    };
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      current_state: WaybillStatus.DELIVERED,
+      status: WaybillStatus.DELIVERED,
+      package_count: 138,
+      delivered_at: new Date(),
+    }));
+    splitsRepository.find.mockResolvedValue([split]);
+    tripsRepository.findOne.mockResolvedValue({ id: 't1', status: TripStatus.COMPLETED, manifest_id: null, truck_id: null });
+
+    const result = await service.correctStatus('1', {
+      status: WaybillStatus.AT_DEST_HUB,
+      trip_id: 't1',
+    }, manager);
+
+    expect(result.status).toBe(WaybillStatus.IN_WAREHOUSE);
+    expect(split.load_status).toBe(WaybillSplitLoadStatus.IN_TRANSIT);
   });
 
   it('softDelete only allows DIRECTOR and soft deletes mutable waybills', async () => {

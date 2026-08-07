@@ -1,6 +1,6 @@
 export interface FilterOption { value: string; label: string; }
 export interface BadgeConfig { label: string; className: string; }
-export interface HubSummary { id: string | number; code?: string | null; name?: string | null; }
+export interface HubSummary { id: string | number; code?: string | null; name?: string | null; phone?: string | null; manager_phone?: string | null; }
 export interface UserSummary { id: string | number; username?: string | null; name?: string | null; full_name?: string | null; phone?: string | null; }
 export interface TripSummary { id?: string | number; trip_code?: string | null; code?: string | null; status?: string | null; start_hub_id?: string | number | null; end_hub_id?: string | number | null; start_hub?: HubSummary | null; end_hub?: HubSummary | null; departure_time?: string | null; arrival_time?: string | null; expected_arrival_time?: string | null; trip_cost?: number | string | null; fuel_cost?: number | string | null; other_costs?: number | string | null; driver_name?: string | null; driver_phone?: string | null; carrier_label?: string | null; driver?: UserSummary | null; truck?: { license_plate?: string | null; bks?: string | null; phone?: string | null; ten_lai_xe?: string | null; driver?: UserSummary | null } | null; }
 export type ManifestDispatchFields = Record<string, string | number | null | undefined>;

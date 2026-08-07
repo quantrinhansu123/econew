@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Loader2, MapPin, PackageOpen, Phone, Search, Truck } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { AlertTriangle, Building2, CreditCard, Loader2, MapPin, PackageOpen, Phone, RefreshCw, Search, Truck } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
 import { getStoredAuthUser } from '../lib/authUser';
 import UpdateDeliveryStatusDialog from './delivery/last-mile/dialogs/UpdateDeliveryStatusDialog';
-import type { LastMileWaybill, ListResponse } from './delivery/last-mile/types';
+import type { HubSummary, LastMileWaybill, ListResponse } from './delivery/last-mile/types';
 
 const DRIVER = 4;
 const DISPATCHER = 8;
@@ -24,6 +25,11 @@ export default function NhiemVuGiaoHangPage() {
   const isManager = (roleMask & (MANAGER | DIRECTOR)) !== 0;
 
   const [keyword, setKeyword] = useState('');
+  const [statusFilter, setStatusFilter] = useState('AT_DEST_HUB,OUT_FOR_DELIVERY');
+  const [destHubId, setDestHubId] = useState('');
+  const [originHubId, setOriginHubId] = useState('');
+  const [paymentType, setPaymentType] = useState('');
+  const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [waybills, setWaybills] = useState<LastMileWaybill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -35,16 +41,27 @@ export default function NhiemVuGiaoHangPage() {
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({
-        page: '1',
-        limit: '100',
-        status: 'AT_DEST_HUB,OUT_FOR_DELIVERY',
-      });
+      const params = new URLSearchParams({ page: '1', limit: '100', status: statusFilter });
       if (keyword.trim()) params.set('keyword', keyword.trim());
-      const response = await apiRequest<ListResponse<LastMileWaybill> | LastMileWaybill[]>(
-        `/waybills?${params.toString()}`,
+      if (destHubId) params.set('dest_hub_id', destHubId);
+      if (originHubId) params.set('origin_hub_id', originHubId);
+      if (paymentType) params.set('payment_type', paymentType);
+      const firstResponse = await apiRequest<ListResponse<LastMileWaybill> | LastMileWaybill[]>(
+        `/waybills/delivery-tasks?${params.toString()}`,
       );
-      let items = normalizeList(response);
+      let items = normalizeList(firstResponse);
+      if (!Array.isArray(firstResponse)) {
+        const total = firstResponse.meta?.total ?? firstResponse.total ?? items.length;
+        const totalPages = firstResponse.meta?.total_pages ?? Math.max(1, Math.ceil(total / 100));
+        if (totalPages > 1) {
+          const remaining = await Promise.all(Array.from({ length: totalPages - 1 }, async (_, index) => {
+            const nextParams = new URLSearchParams(params);
+            nextParams.set('page', String(index + 2));
+            return apiRequest<ListResponse<LastMileWaybill> | LastMileWaybill[]>(`/waybills/delivery-tasks?${nextParams.toString()}`);
+          }));
+          items = [...items, ...remaining.flatMap(normalizeList)];
+        }
+      }
       if (!isManager && user?.id) {
         const uid = String(user.id);
         items = items.filter(
@@ -61,21 +78,27 @@ export default function NhiemVuGiaoHangPage() {
     } finally {
       setLoading(false);
     }
-  }, [isManager, keyword, user?.id]);
+  }, [destHubId, isManager, keyword, originHubId, paymentType, statusFilter, user?.id]);
 
   useEffect(() => {
     void loadTasks();
   }, [loadTasks]);
 
-  const confirmUpdateStatus = async (status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED') => {
+  useEffect(() => {
+    void apiRequest<ListResponse<HubSummary> | HubSummary[]>('/hubs/active')
+      .then((response) => setHubs(normalizeList(response)))
+      .catch(() => setHubs([]));
+  }, []);
+
+  const confirmUpdateStatus = async (status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED', deliveryPhotoUrl?: string) => {
     if (!statusWaybill) return;
     setIsSubmitting(true);
     setActionError('');
     try {
-      const body: { status: string; delivery_photo_url?: string } = { status };
-      if (status === 'DELIVERED') {
-        body.delivery_photo_url = statusWaybill.delivery_photo_url || 'pending-upload';
-      }
+      const body: { status: string; delivery_photo_url?: string; trip_id?: string; split_id?: string } = { status };
+      if (deliveryPhotoUrl) body.delivery_photo_url = deliveryPhotoUrl;
+      if (statusWaybill.trip_id) body.trip_id = String(statusWaybill.trip_id);
+      if (statusWaybill.split_id) body.split_id = String(statusWaybill.split_id);
       await apiRequest(`/waybills/${statusWaybill.id}/status`, { method: 'PATCH', body });
       setStatusWaybill(null);
       await loadTasks();
@@ -93,15 +116,35 @@ export default function NhiemVuGiaoHangPage() {
         <p className="mt-1 text-[13px] text-muted-foreground">
           Đơn chờ giao / đang giao chặng cuối — bấm <strong className="text-foreground">Giao hàng</strong> để xác nhận.
         </p>
-        <div className="relative mt-3">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void loadTasks()}
-            placeholder="Tìm mã bill, người nhận..."
-            className="h-10 w-full rounded-lg border border-border pl-9 pr-3 text-[13px] outline-none focus:ring-2 focus:ring-primary/15"
-          />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <div className="relative min-w-[260px] flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void loadTasks()}
+              placeholder="Tìm mã bill, mã KH, SĐT, tên, địa chỉ, nội dung hàng..."
+              className="h-10 w-full rounded-lg border border-border pl-9 pr-3 text-[13px] outline-none focus:ring-2 focus:ring-primary/15"
+            />
+          </div>
+          <FilterSelect icon={<Truck size={15} />} value={statusFilter} onChange={setStatusFilter} label="Trạng thái">
+            <option value="AT_DEST_HUB,OUT_FOR_DELIVERY">Tất cả đơn cần giao</option>
+            <option value="AT_DEST_HUB">Chờ phân giao</option>
+            <option value="OUT_FOR_DELIVERY">Đang giao</option>
+          </FilterSelect>
+          <FilterSelect icon={<Building2 size={15} />} value={destHubId} onChange={setDestHubId} label="HUB đến">
+            <option value="">Tất cả HUB đến</option>
+            {hubs.map((hub) => <option key={String(hub.id)} value={String(hub.id)}>{[hub.code, hub.name].filter(Boolean).join(' · ')}</option>)}
+          </FilterSelect>
+          <FilterSelect icon={<Building2 size={15} />} value={originHubId} onChange={setOriginHubId} label="HUB đi">
+            <option value="">Tất cả HUB đi</option>
+            {hubs.map((hub) => <option key={String(hub.id)} value={String(hub.id)}>{[hub.code, hub.name].filter(Boolean).join(' · ')}</option>)}
+          </FilterSelect>
+          <FilterSelect icon={<CreditCard size={15} />} value={paymentType} onChange={setPaymentType} label="Thanh toán">
+            <option value="">Tất cả thanh toán</option>
+            <option value="PP">PP</option><option value="CC">CC</option><option value="COD">COD</option>
+          </FilterSelect>
+          <button type="button" title="Làm mới" onClick={() => void loadTasks()} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground hover:text-primary"><RefreshCw size={16} /></button>
         </div>
         {!allowed && (
           <p className="mt-2 text-[12px] font-bold text-amber-700">
@@ -129,7 +172,7 @@ export default function NhiemVuGiaoHangPage() {
           </p>
         </div>
       ) : (
-        <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-4">
+        <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-4">
           {waybills.map((waybill) => {
             const status = normalizeStatus(waybill);
             const canStart = allowed && status === 'AT_DEST_HUB';
@@ -137,8 +180,8 @@ export default function NhiemVuGiaoHangPage() {
 
             return (
               <article
-                key={waybill.id}
-                className="rounded-2xl border border-border bg-white p-4 shadow-sm"
+                key={waybill.task_id || waybill.split_id || waybill.id}
+                className="rounded-xl border border-border bg-white p-3 shadow-sm"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
@@ -183,6 +226,13 @@ export default function NhiemVuGiaoHangPage() {
                 </div>
                 <div className="mt-3 grid gap-2 text-[13px]">
                   <p className="font-bold text-foreground">{waybill.receiver_info}</p>
+                  <p className="text-[12px] font-bold text-muted-foreground">
+                    {[waybill.origin_hub?.code || waybill.origin_hub_id, waybill.dest_hub?.code || waybill.dest_hub_id].filter(Boolean).join(' → ')}
+                    {waybill.trip_id ? ` · Chuyến #${waybill.trip_id}` : ''}
+                    {waybill.trip_package_count != null && waybill.order_total_packages != null
+                      ? ` · ${waybill.trip_package_count}/${waybill.order_total_packages} kiện`
+                      : ''}
+                  </p>
                   {waybill.receiver_address && (
                     <p className="flex items-start gap-1.5 text-muted-foreground">
                       <MapPin size={14} className="mt-0.5 shrink-0" />
@@ -213,5 +263,17 @@ export default function NhiemVuGiaoHangPage() {
         onConfirm={confirmUpdateStatus}
       />
     </div>
+  );
+}
+
+function FilterSelect({ icon, value, onChange, label, children }: { icon: ReactNode; value: string; onChange: (value: string) => void; label: string; children: ReactNode }) {
+  return (
+    <label className="relative inline-flex h-10 min-w-[150px] items-center gap-2 rounded-lg border border-border bg-white pl-3 text-muted-foreground">
+      {icon}
+      <span className="sr-only">{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-full min-w-0 flex-1 appearance-none bg-transparent pr-7 text-[12px] font-bold text-foreground outline-none">
+        {children}
+      </select>
+    </label>
   );
 }

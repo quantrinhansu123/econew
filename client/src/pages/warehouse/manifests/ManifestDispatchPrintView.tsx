@@ -9,10 +9,12 @@ interface Props {
   links: DispatchLink[];
   rows: Record<string, ManifestDispatchFields>;
   visibleColumnIds: DispatchPrintColumnId[];
+  destinationHub?: { id?: string | number | null; code?: string | null; name?: string | null; phone?: string | null; manager_phone?: string | null } | null;
+  destinationHubId?: string | number | null;
 }
 
 const hubLabel = (
-  hub: LoadPlanningManifest['origin_hub'] | LoadPlanningManifest['dest_hub'],
+  hub: { id?: string | number | null; code?: string | null; name?: string | null } | null | undefined,
   id?: string | number | null,
 ) => {
   const code = String(hub?.code || '').trim();
@@ -23,13 +25,20 @@ const hubLabel = (
   return code || name || (id ? `#${id}` : '—');
 };
 
-export default function ManifestDispatchPrintView({ manifest, links, rows, visibleColumnIds }: Props) {
+export default function ManifestDispatchPrintView({ manifest, links, rows, visibleColumnIds, destinationHub: destinationHubOverride, destinationHubId }: Props) {
   const trip = manifestPrintTrip(manifest);
   const licensePlate = trip?.truck?.bks?.trim() || trip?.truck?.license_plate?.trim() || trip?.carrier_label?.trim() || '—';
   const carrier = trip?.carrier_label?.trim() || trip?.driver_name || trip?.truck?.ten_lai_xe || '—';
   const manifestCode = manifestPrintCode(manifest);
   const originHub = hubLabel(manifest.origin_hub, manifest.origin_hub_id);
-  const destinationHub = hubLabel(manifest.dest_hub, manifest.dest_hub_id);
+  const destinationHub = hubLabel(destinationHubOverride ?? manifest.dest_hub, destinationHubId ?? manifest.dest_hub_id);
+  const originHubPhone = manifest.origin_hub?.phone || manifest.origin_hub?.manager_phone || '—';
+  const destinationHubRecord = destinationHubOverride ?? manifest.dest_hub;
+  const destinationHubPhone = destinationHubRecord?.phone || destinationHubRecord?.manager_phone || '—';
+  const driverPhone = trip?.driver_phone || trip?.driver?.phone || trip?.truck?.driver?.phone || trip?.truck?.phone || '—';
+  const departureDate = trip?.departure_time
+    ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(trip.departure_time))
+    : '—';
   const printedAt = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date());
 
   return (
@@ -40,18 +49,22 @@ export default function ManifestDispatchPrintView({ manifest, links, rows, visib
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">HUB đi</span>
             <span className="manifest-dispatch-print-meta-value">{originHub}</span>
+            <span className="text-[10px] font-semibold">SĐT: {originHubPhone}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">HUB đến</span>
             <span className="manifest-dispatch-print-meta-value">{destinationHub}</span>
+            <span className="text-[10px] font-semibold">SĐT: {destinationHubPhone}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">Biển số xe</span>
             <span className="manifest-dispatch-print-meta-value">{licensePlate}</span>
+            <span className="text-[10px] font-semibold">SĐT: {driverPhone}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">NCC / Tài xế</span>
             <span className="manifest-dispatch-print-meta-value">{carrier}</span>
+            <span className="text-[10px] font-semibold">Khởi hành: {departureDate}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">Mã bảng kê</span>

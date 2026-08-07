@@ -5,6 +5,7 @@ import { apiRequest } from '../../lib/api';
 import ManifestDispatchPrintView from '../warehouse/manifests/ManifestDispatchPrintView';
 import {
   buildManifestPrintRows,
+  groupManifestPrintLinksByDestination,
   normalizeManifestPrintLinks,
   sortManifestPrintLinks,
 } from '../warehouse/manifests/manifestDispatchPrintUtils';
@@ -57,6 +58,10 @@ export default function PrintManifestPage() {
   }, [manifest]);
 
   const rows = useMemo(() => buildManifestPrintRows(links), [links]);
+  const destinationGroups = useMemo(
+    () => manifest ? groupManifestPrintLinksByDestination(manifest, links) : [],
+    [manifest, links],
+  );
 
   const updatePrintColumnIds = (ids: DispatchPrintColumnId[]) => {
     saveVisibleDispatchColumnIds(ids);
@@ -119,12 +124,17 @@ export default function PrintManifestPage() {
         </div>
       </div>
 
-      <ManifestDispatchPrintView
-        manifest={manifest}
-        links={links}
-        rows={rows}
-        visibleColumnIds={printColumnIds}
-      />
+      {destinationGroups.map((group) => (
+        <ManifestDispatchPrintView
+          key={group.key}
+          manifest={manifest}
+          links={group.links}
+          rows={rows}
+          visibleColumnIds={printColumnIds}
+          destinationHub={group.hub}
+          destinationHubId={group.hubId}
+        />
+      ))}
     </div>
   );
 }

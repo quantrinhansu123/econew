@@ -17,11 +17,12 @@ export interface StackOntoTruckSharedFields {
   vendor_cost: string;
   driver_name: string;
   driver_phone: string;
+  departure_time: string;
 }
 
 export interface StackOntoTruckPayloadItem {
   waybill_id: string;
-  truck_id: string;
+  truck_id?: string;
   loading_position?: number;
   package_count: number;
   note: string;
@@ -32,6 +33,7 @@ export interface StackOntoTruckPayload {
   vendor_cost?: number;
   driver_name?: string;
   driver_phone?: string;
+  departure_time?: string;
   items: StackOntoTruckPayloadItem[];
 }
 
@@ -91,6 +93,7 @@ export function buildInitialSharedFields(waybills: WaybillInventoryItem[]): Stac
     vendor_cost: '',
     driver_name: '',
     driver_phone: '',
+    departure_time: toLocalDateTimeInput(new Date()),
   };
 }
 
@@ -112,13 +115,19 @@ export function buildStackOntoTruckPayload(
     ...(hasVendorCost ? { vendor_cost: parsedVendorCost } : {}),
     ...(driverName ? { driver_name: driverName } : {}),
     ...(driverPhone ? { driver_phone: driverPhone } : {}),
+    ...(shared.departure_time ? { departure_time: new Date(shared.departure_time).toISOString() } : {}),
     items: rows.map((row) => ({
       waybill_id: row.waybill_id,
-      truck_id: shared.truck_id,
+      ...(shared.truck_id ? { truck_id: shared.truck_id } : {}),
       ...(row.loading_position ? { loading_position: Number(row.loading_position) } : {}),
       package_count: Number(row.package_count),
       note: row.delivery_instruction,
     })),
   };
+}
+
+function toLocalDateTimeInput(value: Date): string {
+  const shifted = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
+  return shifted.toISOString().slice(0, 16);
 }
 

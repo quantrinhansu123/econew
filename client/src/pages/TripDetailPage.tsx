@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Eye, Filter, Fuel, Loader2, Package, Pencil, Plus, Printer, Search, Tag, Trash2, Truck as TruckIcon } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, Eye, Filter, Fuel, Loader2, Package, Pencil, Plus, Printer, RotateCcw, Save, Search, Tag, Trash2, Truck as TruckIcon, X } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
 import { FilterPanel } from '../components/ui/FilterPanel';
@@ -42,7 +42,7 @@ const waybillHeaders: Array<{ id: WaybillColumnId; label: string; className?: st
   { id: 'weight', label: 'Cân nặng' },
   { id: 'dimensions', label: 'Kích thước' },
   { id: 'volumetric_weight', label: 'TL quy đổi' },
-  { id: 'actions', label: 'Thao tác', className: 'w-[96px] min-w-[96px]' },
+  { id: 'actions', label: 'Thao tác', className: 'w-[128px] min-w-[128px]' },
 ];
 
 const getAvailableTripActions = (status?: string | null): TripAction[] => {
@@ -93,6 +93,7 @@ const compareLoadingPosition = (a: WaybillSummary, b: WaybillSummary) => {
 export default function TripDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const user = useMemo(getStoredUser, []);
   const roleMask = user?.role_mask ?? 0;
   const canOperateTrip = hasAnyRole(roleMask, [DISPATCHER, DRIVER, MANAGER, DIRECTOR]);
@@ -122,6 +123,8 @@ export default function TripDetailPage() {
   const [waybillTotal, setWaybillTotal] = useState(0);
   const [addWaybillsForm, setAddWaybillsForm] = useState<AddWaybillsFormState>({ keyword: '', page: 1, limit: 200 });
   const [addWaybillsError, setAddWaybillsError] = useState('');
+  const [isEditingManifest, setIsEditingManifest] = useState(() => searchParams.get('edit') === 'manifest');
+  const [positionDrafts, setPositionDrafts] = useState<Record<string, string>>({});
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
   const [filters, setFilters] = useState<WaybillFilters>({ keyword: '', current_state: [], origin_hub_id: [], dest_hub_id: [], payment_type: [], page: 1, limit: 10 });
 
@@ -150,22 +153,27 @@ export default function TripDetailPage() {
     if (isAddWaybillsOpen && manifest) void fetchWaybillChoices();
   }, [isAddWaybillsOpen, manifest?.id, addWaybillsForm.keyword, addWaybillsForm.page, addWaybillsForm.limit]);
 
-  const waybills = useMemo(() => {
+  const allManifestWaybills = useMemo(() => {
     const raw = manifest?.waybills || manifest?.manifest_waybills?.map(item => (item.waybill ? {
       ...item.waybill,
       loading_position: item.loading_position,
       package_count: item.dispatch_fields?.so_luong ?? item.waybill.package_count,
     } : null)).filter(Boolean) as WaybillSummary[] | undefined || [];
+    return [...raw].sort(compareLoadingPosition);
+  }, [manifest]);
+
+  const waybills = useMemo(() => {
     const keyword = filters.keyword.trim().toLowerCase();
-    return raw.filter(waybill => {
+    return allManifestWaybills.filter(waybill => {
       const textMatch = !keyword || [waybill.waybill_code, waybill.sender_info, waybill.receiver_info].some(value => String(value || '').toLowerCase().includes(keyword));
       return textMatch && (!filters.current_state.length || filters.current_state.includes(String(waybill.current_state || ''))) && (!filters.origin_hub_id.length || filters.origin_hub_id.includes(normalizeId(waybill.origin_hub_id))) && (!filters.dest_hub_id.length || filters.dest_hub_id.includes(normalizeId(waybill.dest_hub_id))) && (!filters.payment_type.length || filters.payment_type.includes(String(waybill.payment_type || '')));
     }).sort(compareLoadingPosition);
-  }, [manifest, filters]);
+  }, [allManifestWaybills, filters]);
 
   const total = waybills.length;
   const activeFilterCount = filters.current_state.length + filters.origin_hub_id.length + filters.dest_hub_id.length + filters.payment_type.length;
   const isFinal = ['COMPLETED', 'CANCELLED'].includes(String(trip?.status || ''));
+  const manifestEditActive = isEditingManifest && Boolean(manifest) && canEditTrip && String(trip?.status || '') !== 'CANCELLED';
   const hubOptions = hubs.map(hub => ({ value: normalizeId(hub.id), label: hub.code ? `${hub.code} · ${hub.name || ''}` : hub.name || `Hub #${hub.id}` }));
   const waybillStatusOptions = Array.from(new Set(waybills.map(waybill => String(waybill.current_state || '')).filter(Boolean))).map(value => ({ value, label: value }));
   const filterPanelGroups = [
@@ -214,9 +222,48 @@ export default function TripDetailPage() {
     setWaybillTotal(0);
     setIsAddWaybillsOpen(true);
   }
+  function openManifestEditor() {
+    if (!trip || !manifest || !canEditTrip || String(trip.status || '') === 'CANCELLED') return;
+    setPositionDrafts(Object.fromEntries(allManifestWaybills.map((waybill, index) => [
+      String(waybill.id),
+      String(waybill.loading_position || index + 1),
+    ])));
+    setActionError('');
+    setIsEditingManifest(true);
+  }
+  function closeManifestEditor() {
+    setIsEditingManifest(false);
+    setPositionDrafts({});
+    if (searchParams.get('edit') === 'manifest') navigate(`/trips/${trip?.id || id}`, { replace: true });
+  }
+  async function saveManifestPositions() {
+    if (!trip || !allManifestWaybills.length) return;
+    const items = allManifestWaybills.map((waybill, index) => ({
+      waybill_id: Number(waybill.id),
+      loading_position: Number(positionDrafts[String(waybill.id)] ?? waybill.loading_position ?? index + 1),
+    }));
+    const invalid = items.find((item) => !Number.isInteger(item.loading_position) || item.loading_position < 1);
+    if (invalid) {
+      setActionError('Vị trí xếp hàng phải là số nguyên từ 1 trở lên.');
+      return;
+    }
+    if (new Set(items.map((item) => item.loading_position)).size !== items.length) {
+      setActionError('Mỗi đơn phải có vị trí xếp hàng khác nhau.');
+      return;
+    }
+    setIsSubmitting(true); setActionError('');
+    try {
+      await apiRequest(`/trips/${trip.id}/loading-sequence`, { method: 'PATCH', body: { items } });
+      setIsEditingManifest(false);
+      setPositionDrafts({});
+      await loadTrip();
+      if (searchParams.get('edit') === 'manifest') navigate(`/trips/${trip.id}`, { replace: true });
+    } catch (submitError) {
+      setActionError(submitError instanceof ApiError ? submitError.message : 'Không lưu được vị trí xếp hàng.');
+    } finally { setIsSubmitting(false); }
+  }
   async function fetchWaybillChoices() {
     if (!manifest) return;
-    const manifestDestHubId = manifest.dest_hub_id ?? manifest.dest_hub?.id;
     setIsWaybillLoading(true); setAddWaybillsError('');
     try {
       const query = buildInventoryTripLinesQuery({
@@ -234,7 +281,7 @@ export default function TripDetailPage() {
         priorities: [],
         receivedFrom: '',
         receivedTo: '',
-      }, { onlyIncompleteSplit: true, destHubId: manifestDestHubId });
+      }, { onlyIncompleteSplit: true });
       const response = await apiRequest<{
         items?: WaybillInventoryItem[];
         data?: WaybillInventoryItem[];
@@ -243,10 +290,9 @@ export default function TripDetailPage() {
         meta?: { total?: number; total_lines?: number; total_waybills?: number };
       } | WaybillInventoryItem[]>(`/waybills/inventory/trip-lines?${query}`);
       const raw = Array.isArray(response) ? response : response.items || response.data || response.waybills || [];
-      const existingIds = new Set(waybills.map((waybill) => String(waybill.id ?? '')).filter(Boolean));
+      const existingIds = new Set(allManifestWaybills.map((waybill) => String(waybill.id ?? '')).filter(Boolean));
       const list = filterManifestAddableInventoryRows(raw.filter(isIncompleteSplitRow), {
         manifestId: String(manifest.id),
-        manifestDestHubId,
         existingWaybillIds: existingIds,
       });
       setWaybillChoices(list);
@@ -285,6 +331,26 @@ export default function TripDetailPage() {
       },
     });
   }
+  function confirmCorrectWaybillStatus(waybill: WaybillSummary) {
+    if (!waybill.id || !trip || !canEditTrip || !['DELIVERED', 'RETURNED'].includes(String(waybill.current_state || ''))) return;
+    setConfirmDialog({
+      title: 'Sửa trạng thái giao hàng',
+      message: `Đưa vận đơn ${waybill.waybill_code || waybill.id} về trạng thái Tới HUB đích? Nếu chuyến đã tự hoàn tất, chuyến sẽ được mở lại.`,
+      confirmLabel: 'Đưa về Tới HUB đích',
+      onConfirm: async () => {
+        setIsSubmitting(true); setActionError('');
+        try {
+          await apiRequest(`/waybills/${waybill.id}/status/correction`, {
+            method: 'PATCH',
+            body: { status: 'AT_DEST_HUB', trip_id: String(trip.id) },
+          });
+          await loadTrip();
+        } catch (submitError) {
+          setActionError(submitError instanceof ApiError ? submitError.message : 'Không sửa được trạng thái giao hàng.');
+        } finally { setIsSubmitting(false); }
+      },
+    });
+  }
   function printManifest() {
     if (!trip?.manifest_id) return;
     window.open(`/print/manifest/${trip.manifest_id}`, '_blank', 'noopener');
@@ -309,13 +375,13 @@ export default function TripDetailPage() {
             <FilterSelect multiple icon={Tag} placeholder="Loại thanh toán" options={paymentOptions} value={filters.payment_type} onValueChange={value => updateFilter('payment_type', value)} />
           </div>
           {actionError && !scheduleTrip && <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-bold text-red-700"><AlertTriangle size={14} />{actionError}</div>}
-          {trip && <TripInfo trip={trip} manifest={manifest} truck={truck} hubs={hubs} canOperateTrip={canOperateTrip} canEditTrip={canEditTrip} isFinal={isFinal} openAction={openAction} openManifest={() => manifest && setDetailManifest(manifest)} openTruck={() => truck && setDetailTruck(truck)} openScheduleEditor={openScheduleEditor} openAddWaybills={openAddWaybills} printManifest={printManifest} />}
+          {trip && <TripInfo trip={trip} manifest={manifest} truck={truck} hubs={hubs} canOperateTrip={canOperateTrip} canEditTrip={canEditTrip} isFinal={isFinal} isEditingManifest={manifestEditActive} isSubmitting={isSubmitting} openAction={openAction} openManifest={() => manifest && setDetailManifest(manifest)} openTruck={() => truck && setDetailTruck(truck)} openScheduleEditor={openScheduleEditor} openAddWaybills={openAddWaybills} openManifestEditor={openManifestEditor} closeManifestEditor={closeManifestEditor} saveManifestPositions={saveManifestPositions} printManifest={printManifest} />}
         </div>
 
         {isLoading ? <StateBlock icon={<Loader2 className="animate-spin" size={28} />} title="Đang tải chi tiết chuyến xe" description="Hệ thống đang lấy dữ liệu thật từ API." /> : error ? <StateBlock icon={<AlertTriangle size={28} />} title="Không tải được dữ liệu" description={error} /> : !trip ? <StateBlock icon={<TruckIcon size={28} />} title="Không tìm thấy chuyến xe" description="Kiểm tra lại mã chuyến hoặc quyền truy cập." /> : !waybills.length ? <StateBlock icon={<Package size={28} />} title="Chưa có vận đơn phù hợp" description="Bảng kê chưa có vận đơn hoặc bộ lọc không có kết quả." /> : (
           <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
-            <table className="hidden md:table w-full min-w-[1380px] text-left border-collapse"><thead className="sticky top-0 z-10 bg-slate-100 text-[11px] uppercase tracking-wider text-slate-600"><tr>{waybillHeaders.map(header => <th key={header.id} className={clsx('px-4 py-2.5 font-bold border-r border-border last:border-r-0', header.className)}>{header.label}</th>)}</tr></thead><tbody>{waybills.map((waybill, index) => <tr key={waybill.id || waybill.waybill_code || index} className="border-b border-border hover:bg-muted/10 transition-colors">{waybillHeaders.map(header => renderWaybillCell(header.id, waybill, hubs, canEditTrip && String(trip.status || '') !== 'CANCELLED' ? confirmRemoveWaybill : undefined))}</tr>)}</tbody></table>
-            <div className="grid gap-3 p-3 md:hidden">{waybills.map((waybill, index) => <WaybillMobileCard key={waybill.id || waybill.waybill_code || index} waybill={waybill} hubs={hubs} onRemove={canEditTrip && String(trip.status || '') !== 'CANCELLED' ? confirmRemoveWaybill : undefined} />)}</div>
+            <table className="hidden md:table w-full min-w-[1380px] text-left border-collapse"><thead className="sticky top-0 z-10 bg-slate-100 text-[11px] uppercase tracking-wider text-slate-600"><tr>{waybillHeaders.map(header => <th key={header.id} className={clsx('px-4 py-2.5 font-bold border-r border-border last:border-r-0', header.className)}>{header.label}</th>)}</tr></thead><tbody>{waybills.map((waybill, index) => <tr key={waybill.id || waybill.waybill_code || index} className="border-b border-border hover:bg-muted/10 transition-colors">{waybillHeaders.map(header => renderWaybillCell(header.id, waybill, hubs, { isEditingManifest: manifestEditActive, positionDrafts: { ...positionDrafts, [String(waybill.id)]: positionDrafts[String(waybill.id)] ?? String(waybill.loading_position || index + 1) }, onPositionChange: (waybillId, value) => setPositionDrafts(prev => ({ ...prev, [waybillId]: value })), onRemove: canEditTrip && String(trip.status || '') !== 'CANCELLED' ? confirmRemoveWaybill : undefined, onCorrectStatus: canEditTrip ? confirmCorrectWaybillStatus : undefined }))}</tr>)}</tbody></table>
+            <div className="grid gap-3 p-3 md:hidden">{waybills.map((waybill, index) => <WaybillMobileCard key={waybill.id || waybill.waybill_code || index} waybill={waybill} hubs={hubs} isEditingManifest={manifestEditActive} positionValue={positionDrafts[String(waybill.id)] ?? String(waybill.loading_position || index + 1)} onPositionChange={value => setPositionDrafts(prev => ({ ...prev, [String(waybill.id)]: value }))} onRemove={canEditTrip && String(trip.status || '') !== 'CANCELLED' ? confirmRemoveWaybill : undefined} onCorrectStatus={canEditTrip ? confirmCorrectWaybillStatus : undefined} />)}</div>
           </div>
         )}
 
@@ -333,7 +399,7 @@ export default function TripDetailPage() {
   );
 }
 
-function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, isFinal, openAction, openManifest, openTruck, openScheduleEditor, openAddWaybills, printManifest }: { trip: Trip; manifest: ManifestDetail | null; truck: TruckSummary | null; hubs: HubSummary[]; canOperateTrip: boolean; canEditTrip: boolean; isFinal: boolean; openAction: (action: TripAction) => void; openManifest: () => void; openTruck: () => void; openScheduleEditor: () => void; openAddWaybills: () => void; printManifest: () => void }) {
+function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, isFinal, isEditingManifest, isSubmitting, openAction, openManifest, openTruck, openScheduleEditor, openAddWaybills, openManifestEditor, closeManifestEditor, saveManifestPositions, printManifest }: { trip: Trip; manifest: ManifestDetail | null; truck: TruckSummary | null; hubs: HubSummary[]; canOperateTrip: boolean; canEditTrip: boolean; isFinal: boolean; isEditingManifest: boolean; isSubmitting: boolean; openAction: (action: TripAction) => void; openManifest: () => void; openTruck: () => void; openScheduleEditor: () => void; openAddWaybills: () => void; openManifestEditor: () => void; closeManifestEditor: () => void; saveManifestPositions: () => void; printManifest: () => void }) {
   const navigate = useNavigate();
   return (
     <div className="grid gap-2 rounded-xl border border-border bg-muted/5 p-3 text-[12px] md:grid-cols-4">
@@ -355,19 +421,17 @@ function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, is
           </button>
         ))}
         {trip.manifest_id && <button type="button" onClick={() => void printManifest()} className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2 text-[11px] font-bold text-slate-800"><Printer size={13} className="mr-1 inline" />In bảng kê</button>}
-        {!isFinal && (trip.status === 'IN_TRANSIT' || trip.status === 'ARRIVED') && (
-          <>
-            <button type="button" onClick={() => navigate(`/trips/${trip.id}/loading-sequence`)} className="h-8 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-800">Vị trí xếp hàng</button>
-            <button type="button" onClick={() => navigate(`/trips/${trip.id}/expenses`)} className="h-8 rounded-lg border border-orange-200 bg-orange-50 px-2 text-[11px] font-bold text-orange-800">Chi phí phát sinh</button>
-          </>
-        )}
+        {canEditTrip && trip.manifest_id && String(trip.status || '') !== 'CANCELLED' && !isEditingManifest && <button type="button" onClick={openManifestEditor} className="h-8 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-800"><Pencil size={13} className="mr-1 inline" />Sửa bảng kê</button>}
+        {isEditingManifest && <button type="button" disabled={isSubmitting} onClick={saveManifestPositions} className="h-8 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-bold text-emerald-700 disabled:opacity-40"><Save size={13} className="mr-1 inline" />Lưu vị trí</button>}
+        {isEditingManifest && <button type="button" disabled={isSubmitting} onClick={closeManifestEditor} className="h-8 rounded-lg border border-border bg-white px-2 text-[11px] font-bold text-muted-foreground disabled:opacity-40"><X size={13} className="mr-1 inline" />Đóng sửa</button>}
+        {!isFinal && (trip.status === 'IN_TRANSIT' || trip.status === 'ARRIVED') && <button type="button" onClick={() => navigate(`/trips/${trip.id}/expenses`)} className="h-8 rounded-lg border border-orange-200 bg-orange-50 px-2 text-[11px] font-bold text-orange-800">Chi phí phát sinh</button>}
       </div>
     </div>
   );
 }
 
-function renderWaybillCell(column: WaybillColumnId, waybill: WaybillSummary, hubs: HubSummary[], onRemove?: (waybill: WaybillSummary) => void) { const content: Record<WaybillColumnId, ReactNode> = { loading_position: <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-yellow-200 px-2 text-[12px] font-extrabold text-slate-900">{waybill.loading_position || '—'}</span>, waybill_code: <span className="font-extrabold text-primary">{waybill.waybill_code || '—'}</span>, package_count: <span className="font-bold">{formatNumber(waybill.package_count)}</span>, sender_info: waybill.sender_info || '—', receiver_info: waybill.receiver_info || '—', origin_hub_id: <HubBadge hubs={hubs} id={waybill.origin_hub_id} />, dest_hub_id: <HubBadge hubs={hubs} id={waybill.dest_hub_id} />, current_state: <WaybillStatusBadge status={waybill.current_state} />, payment_type: <PaymentBadge value={waybill.payment_type} />, weight: formatNumber(waybill.weight, ' kg'), dimensions: `${formatNumber(waybill.length)} × ${formatNumber(waybill.width)} × ${formatNumber(waybill.height)}`, volumetric_weight: formatNumber(waybill.volumetric_weight, ' kg'), actions: <div className="flex gap-1"><IconButton icon={<Eye size={15} />} title="Xem" />{onRemove && <IconButton icon={<Trash2 size={15} />} title="Bỏ khỏi chuyến" onClick={() => onRemove(waybill)} danger />}</div> }; return <td key={column} className={clsx('px-4 py-3 border-r border-border last:border-r-0 text-[13px] align-top', column === 'package_count' && 'text-center')}>{content[column]}</td>; }
-function WaybillMobileCard({ waybill, hubs, onRemove }: { waybill: WaybillSummary; hubs: HubSummary[]; onRemove?: (waybill: WaybillSummary) => void }) { return <article className="rounded-2xl border border-border bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Vận đơn</p><h3 className="text-base font-extrabold text-primary">{waybill.waybill_code || '—'}</h3></div><WaybillStatusBadge status={waybill.current_state} /></div><div className="mt-4 grid gap-2 text-[13px]"><Line label="Vị trí xếp" value={<span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-yellow-200 px-2 text-[12px] font-extrabold text-slate-900">{waybill.loading_position || '—'}</span>} /><Line label="Số kiện trên chuyến" value={formatNumber(waybill.package_count)} /><Line label="Người gửi" value={waybill.sender_info || '—'} /><Line label="Người nhận" value={waybill.receiver_info || '—'} /><Line label="Hub đi" value={<HubBadge hubs={hubs} id={waybill.origin_hub_id} />} /><Line label="Hub đến" value={<HubBadge hubs={hubs} id={waybill.dest_hub_id} />} /><Line label="Thanh toán" value={<PaymentBadge value={waybill.payment_type} />} /><Line label="Cân nặng" value={formatNumber(waybill.weight, ' kg')} /><Line label="Kích thước" value={`${formatNumber(waybill.length)} × ${formatNumber(waybill.width)} × ${formatNumber(waybill.height)}`} /><Line label="TL quy đổi" value={formatNumber(waybill.volumetric_weight, ' kg')} /></div><div className="mt-4 flex gap-2"><IconButton icon={<Eye size={15} />} title="Xem" />{onRemove && <IconButton icon={<Trash2 size={15} />} title="Bỏ khỏi chuyến" onClick={() => onRemove(waybill)} danger />}</div></article>; }
+function renderWaybillCell(column: WaybillColumnId, waybill: WaybillSummary, hubs: HubSummary[], edit: { isEditingManifest: boolean; positionDrafts: Record<string, string>; onPositionChange: (waybillId: string, value: string) => void; onRemove?: (waybill: WaybillSummary) => void; onCorrectStatus?: (waybill: WaybillSummary) => void }) { const waybillId = String(waybill.id); const canCorrect = ['DELIVERED', 'RETURNED'].includes(String(waybill.current_state || '')); const content: Record<WaybillColumnId, ReactNode> = { loading_position: edit.isEditingManifest ? <input type="number" min="1" step="1" aria-label={`Vị trí ${waybill.waybill_code || waybillId}`} value={edit.positionDrafts[waybillId] || ''} onChange={event => edit.onPositionChange(waybillId, event.target.value)} className="h-8 w-16 rounded-lg border border-amber-300 bg-amber-50 px-2 text-center text-[12px] font-extrabold outline-none focus:border-amber-500" /> : <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-yellow-200 px-2 text-[12px] font-extrabold text-slate-900">{waybill.loading_position || '—'}</span>, waybill_code: <span className="font-extrabold text-primary">{waybill.waybill_code || '—'}</span>, package_count: <span className="font-bold">{formatNumber(waybill.package_count)}</span>, sender_info: waybill.sender_info || '—', receiver_info: waybill.receiver_info || '—', origin_hub_id: <HubBadge hubs={hubs} id={waybill.origin_hub_id} />, dest_hub_id: <HubBadge hubs={hubs} id={waybill.dest_hub_id} />, current_state: <WaybillStatusBadge status={waybill.current_state} />, payment_type: <PaymentBadge value={waybill.payment_type} />, weight: formatNumber(waybill.weight, ' kg'), dimensions: `${formatNumber(waybill.length)} × ${formatNumber(waybill.width)} × ${formatNumber(waybill.height)}`, volumetric_weight: formatNumber(waybill.volumetric_weight, ' kg'), actions: <div className="flex gap-1"><IconButton icon={<Eye size={15} />} title="Xem" />{canCorrect && edit.onCorrectStatus && <IconButton icon={<RotateCcw size={15} />} title="Sửa trạng thái giao hàng" onClick={() => edit.onCorrectStatus?.(waybill)} />}{edit.onRemove && <IconButton icon={<Trash2 size={15} />} title="Bỏ khỏi chuyến" onClick={() => edit.onRemove?.(waybill)} danger />}</div> }; return <td key={column} className={clsx('px-4 py-3 border-r border-border last:border-r-0 text-[13px] align-top', column === 'package_count' && 'text-center')}>{content[column]}</td>; }
+function WaybillMobileCard({ waybill, hubs, isEditingManifest, positionValue, onPositionChange, onRemove, onCorrectStatus }: { waybill: WaybillSummary; hubs: HubSummary[]; isEditingManifest: boolean; positionValue: string; onPositionChange: (value: string) => void; onRemove?: (waybill: WaybillSummary) => void; onCorrectStatus?: (waybill: WaybillSummary) => void }) { const canCorrect = ['DELIVERED', 'RETURNED'].includes(String(waybill.current_state || '')); return <article className="rounded-2xl border border-border bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Vận đơn</p><h3 className="text-base font-extrabold text-primary">{waybill.waybill_code || '—'}</h3></div><WaybillStatusBadge status={waybill.current_state} /></div><div className="mt-4 grid gap-2 text-[13px]"><Line label="Vị trí xếp" value={isEditingManifest ? <input type="number" min="1" step="1" value={positionValue} onChange={event => onPositionChange(event.target.value)} className="h-8 w-16 rounded-lg border border-amber-300 bg-amber-50 px-2 text-center font-extrabold" /> : <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-yellow-200 px-2 text-[12px] font-extrabold text-slate-900">{waybill.loading_position || '—'}</span>} /><Line label="Số kiện trên chuyến" value={formatNumber(waybill.package_count)} /><Line label="Người gửi" value={waybill.sender_info || '—'} /><Line label="Người nhận" value={waybill.receiver_info || '—'} /><Line label="Hub đi" value={<HubBadge hubs={hubs} id={waybill.origin_hub_id} />} /><Line label="Hub đến" value={<HubBadge hubs={hubs} id={waybill.dest_hub_id} />} /><Line label="Thanh toán" value={<PaymentBadge value={waybill.payment_type} />} /><Line label="Cân nặng" value={formatNumber(waybill.weight, ' kg')} /><Line label="Kích thước" value={`${formatNumber(waybill.length)} × ${formatNumber(waybill.width)} × ${formatNumber(waybill.height)}`} /><Line label="TL quy đổi" value={formatNumber(waybill.volumetric_weight, ' kg')} /></div><div className="mt-4 flex gap-2"><IconButton icon={<Eye size={15} />} title="Xem" />{canCorrect && onCorrectStatus && <IconButton icon={<RotateCcw size={15} />} title="Sửa trạng thái giao hàng" onClick={() => onCorrectStatus(waybill)} />}{onRemove && <IconButton icon={<Trash2 size={15} />} title="Bỏ khỏi chuyến" onClick={() => onRemove(waybill)} danger />}</div></article>; }
 function Info({ label, value }: { label: string; value: ReactNode }) { return <div className="min-w-0"><p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p><div className="mt-1 truncate font-bold text-foreground">{value}</div></div>; }
 function Line({ label, value }: { label: string; value: ReactNode }) { return <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/5 px-3 py-2"><span className="text-muted-foreground">{label}</span><span className="text-right font-bold text-foreground">{value}</span></div>; }
 function IconButton({ icon, title, onClick, danger = false }: { icon: ReactNode; title: string; onClick?: () => void; danger?: boolean }) { return <button type="button" title={title} onClick={onClick} className={clsx('rounded-lg border bg-white p-2 hover:bg-muted', danger ? 'border-red-200 text-red-500 hover:text-red-700' : 'border-border text-muted-foreground hover:text-primary')}>{icon}</button>; }

@@ -122,11 +122,11 @@ export default function DeliveryLastMilePage() {
     try { setDetailWaybill(await apiRequest<LastMileWaybillDetail>(`/waybills/${waybill.id}`)); }
     catch { setDetailWaybill(waybill); }
   };
-  const confirmUpdateStatus = async (status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED') => {
+  const confirmUpdateStatus = async (status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED', deliveryPhotoUrl?: string) => {
     if (!statusWaybill) return;
     setIsSubmitting(true); setActionError('');
     try {
-      await apiRequest(`/waybills/${statusWaybill.id}/status`, { method: 'PATCH', body: { status } });
+      await apiRequest(`/waybills/${statusWaybill.id}/status`, { method: 'PATCH', body: { status, delivery_photo_url: deliveryPhotoUrl } });
       setStatusWaybill(null); await loadWaybills();
     } catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái vận đơn.'); }
     finally { setIsSubmitting(false); }

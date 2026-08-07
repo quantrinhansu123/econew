@@ -20,6 +20,7 @@ interface Props {
   filterOptions?: Partial<Record<InventoryColumnId, AllOrdersColumnFilterOption[]>>;
   filterValues?: AllOrdersColumnFilters;
   onFilterChange?: (columnId: InventoryColumnId, value: string) => void;
+  grouped?: boolean;
 }
 
 function ColumnFilterLabel({
@@ -136,7 +137,24 @@ export default function AllOrdersTableHeader({
   filterOptions = {},
   filterValues = {},
   onFilterChange,
+  grouped = true,
 }: Props) {
+  if (!grouped) {
+    return (
+      <tr className="bg-slate-100 text-[11px] uppercase tracking-wider text-slate-600">
+        {selectionEnabled && (
+          <th className="w-10 border-b border-r border-border px-2 py-2.5 text-center font-bold">
+            <input type="checkbox" checked={Boolean(allRowsSelected)} onChange={onToggleSelectAll} className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30" aria-label="Chọn tất cả" />
+          </th>
+        )}
+        {columns.map((column) => (
+          <th key={column.id} className={clsx('border-b border-r border-border px-2 py-2 font-bold last:border-r-0 whitespace-nowrap', column.headerClass)}>
+            <ColumnFilterLabel column={column} options={filterOptions[column.id] || []} value={filterValues[column.id] || ''} onChange={onFilterChange} />
+          </th>
+        ))}
+      </tr>
+    );
+  }
   const prefixColumns = columns.filter((col) => ALL_ORDERS_PREFIX_COLUMN_IDS.includes(col.id));
   const senderColumns = columns.filter((col) => ALL_ORDERS_SENDER_COLUMN_IDS.includes(col.id));
   const financialColumns = columns.filter((col) => ALL_ORDERS_FINANCIAL_COLUMN_IDS.includes(col.id));

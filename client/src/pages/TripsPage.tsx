@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, Eye, Loader2, PackageCheck, Pencil, Printer, Receipt, RefreshCw, Truck } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Eye, Loader2, PackageCheck, Pencil, Printer, Receipt, RefreshCw, Truck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
-import type { ListResponse, Trip } from './trips/types';
+import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
+import type { ListResponse, Trip, TripAction } from './trips/types';
 
 const tripKanbanStatuses = ['PLANNED', 'IN_TRANSIT', 'ARRIVED', 'COMPLETED'] as const;
 type TripKanbanStatus = (typeof tripKanbanStatuses)[number];
@@ -54,11 +55,29 @@ const driverName = (trip: Trip) => trip.driver_name || trip.truck?.ten_lai_xe ||
 const manifestCode = (trip: Trip) => trip.manifest?.manifest_code || (trip.manifest_id ? `BK #${trip.manifest_id}` : '—');
 const routeLabel = (trip: Trip) => `${trip.start_hub?.code || trip.start_hub_id || '—'} → ${trip.end_hub?.code || trip.end_hub_id || '—'}`;
 
+const getPrimaryTripAction = (status?: string | null): TripAction | null => {
+  if (status === 'PLANNED') return 'start';
+  if (status === 'IN_TRANSIT') return 'arrive';
+  if (status === 'ARRIVED') return 'complete';
+  return null;
+};
+
+const primaryActionLabel = (status?: string | null) => {
+  if (status === 'PLANNED') return 'Bấm khởi hành';
+  if (status === 'IN_TRANSIT') return 'Xác nhận đến hub';
+  if (status === 'ARRIVED') return 'Hoàn tất chuyến';
+  return 'Chuyến đã hoàn tất';
+};
+
 export default function TripsPage() {
   const navigate = useNavigate();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actionTrip, setActionTrip] = useState<Trip | null>(null);
+  const [action, setAction] = useState<TripAction | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [actionError, setActionError] = useState('');
 
   async function loadTrips() {
     setIsLoading(true);
@@ -99,29 +118,46 @@ export default function TripsPage() {
     completed: tripsByStatus.COMPLETED.length,
   }), [tripsByStatus]);
 
+  function openPrimaryAction(trip: Trip) {
+    const nextAction = getPrimaryTripAction(trip.status);
+    if (!nextAction) return;
+    setActionTrip(trip);
+    setAction(nextAction);
+    setActionError('');
+  }
+
+  async function confirmAction() {
+    if (!actionTrip || !action) return;
+    setIsSubmitting(true);
+    setActionError('');
+    try {
+      await apiRequest<Trip>(`/trips/${actionTrip.id}/${action}`, { method: 'PATCH' });
+      setActionTrip(null);
+      setAction(null);
+      await loadTrips();
+    } catch (submitError) {
+      setActionError(submitError instanceof ApiError ? submitError.message : 'Không cập nhật được trạng thái chuyến.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
-    <div className="h-full min-h-0 flex flex-col gap-3">
-      <section className="rounded-2xl border border-border bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Truck size={22} /></div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-extrabold text-foreground">Bảng kê đơn đã đi</h1>
-            <p className="text-[13px] text-muted-foreground">Kanban theo trạng thái chuyến: chờ khởi hành, đang chạy, đã đến và hoàn tất.</p>
-          </div>
+    <div className="h-full min-h-0">
+      <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><Truck size={17} /></div>
+          <p className="min-w-0 flex-1 text-[12px] font-bold text-muted-foreground">
+            <span className="text-foreground">{trips.length.toLocaleString('vi-VN')} chuyến</span>
+            <span className="mx-2">·</span>{totals.planned.toLocaleString('vi-VN')} chờ
+            <span className="mx-2">·</span>{totals.departed.toLocaleString('vi-VN')} đang chạy
+            <span className="mx-2">·</span>{totals.arrived.toLocaleString('vi-VN')} đã đến
+            <span className="mx-2">·</span>{totals.completed.toLocaleString('vi-VN')} hoàn tất
+          </p>
           <button type="button" onClick={() => void loadTrips()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-muted-foreground hover:bg-muted">
             {isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Làm mới
           </button>
         </div>
-        <div className="mt-3 flex flex-wrap gap-2 text-[12px] font-bold text-muted-foreground">
-          <span>{trips.length.toLocaleString('vi-VN')} chuyến</span><span>·</span>
-          <span>{totals.planned.toLocaleString('vi-VN')} chờ khởi hành</span><span>·</span>
-          <span>{totals.departed.toLocaleString('vi-VN')} đang chạy</span><span>·</span>
-          <span>{totals.arrived.toLocaleString('vi-VN')} đã đến</span><span>·</span>
-          <span>{totals.completed.toLocaleString('vi-VN')} hoàn tất</span>
-        </div>
-      </section>
-
-      <section className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
         {isLoading ? (
           <StateBlock icon={<Loader2 size={22} className="animate-spin" />} title="Đang tải bảng kê đơn đã đi..." />
         ) : error ? (
@@ -129,9 +165,24 @@ export default function TripsPage() {
         ) : !trips.length ? (
           <StateBlock icon={<PackageCheck size={22} />} title="Chưa có chuyến xe." />
         ) : (
-          <TripKanbanBoard tripsByStatus={tripsByStatus} onOpen={(id) => navigate(`/trips/${id}`)} onExpenses={(id) => navigate(`/trips/${id}/expenses`)} />
+          <TripKanbanBoard
+            tripsByStatus={tripsByStatus}
+            onOpen={(id) => navigate(`/trips/${id}`)}
+            onEdit={(id) => navigate(`/trips/${id}?edit=manifest`)}
+            onPrint={(manifestId) => window.open(`/print/manifest/${manifestId}`, '_blank', 'noopener')}
+            onExpenses={(id) => navigate(`/trips/${id}/expenses`)}
+            onPrimaryAction={openPrimaryAction}
+          />
         )}
       </section>
+      <TripStatusActionDialog
+        trip={actionTrip}
+        action={action}
+        isSubmitting={isSubmitting}
+        error={actionError}
+        onClose={() => { setActionTrip(null); setAction(null); }}
+        onConfirm={confirmAction}
+      />
     </div>
   );
 }
@@ -139,21 +190,35 @@ export default function TripsPage() {
 function TripKanbanBoard({
   tripsByStatus,
   onOpen,
+  onEdit,
+  onPrint,
   onExpenses,
+  onPrimaryAction,
 }: {
   tripsByStatus: Record<TripKanbanStatus, Trip[]>;
   onOpen: (id: string | number) => void;
+  onEdit: (id: string | number) => void;
+  onPrint: (manifestId: string | number) => void;
   onExpenses: (id: string | number) => void;
+  onPrimaryAction: (trip: Trip) => void;
 }) {
   return (
-    <div className="h-full overflow-auto p-3 custom-scrollbar">
-      <div className="grid min-h-full gap-3 xl:grid-cols-4 lg:grid-cols-2">
+    <div className="min-h-0 flex-1 overflow-auto p-2 custom-scrollbar">
+      <div className="grid h-full min-h-[420px] min-w-[1060px] grid-cols-4 gap-2">
         {tripKanbanColumns.map((column) => (
           <KanbanColumn key={column.id} title={column.title} count={tripsByStatus[column.id].length} tone={column.tone}>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1.5">
               {tripsByStatus[column.id].length
                 ? tripsByStatus[column.id].map((trip) => (
-                    <TripCard key={String(trip.id)} trip={trip} onOpen={() => onOpen(trip.id)} onExpenses={() => onExpenses(trip.id)} />
+                    <TripCard
+                      key={String(trip.id)}
+                      trip={trip}
+                      onOpen={() => onOpen(trip.id)}
+                      onEdit={() => onEdit(trip.id)}
+                      onPrint={trip.manifest_id ? () => onPrint(trip.manifest_id!) : undefined}
+                      onExpenses={() => onExpenses(trip.id)}
+                      onPrimaryAction={() => onPrimaryAction(trip)}
+                    />
                   ))
                 : <EmptyColumn title="Chưa có chuyến" />}
             </div>
@@ -166,19 +231,20 @@ function TripKanbanBoard({
 
 function KanbanColumn({ title, count, tone, children }: { title: string; count: number; tone: string; children: ReactNode }) {
   return (
-    <section className="flex min-h-[420px] flex-col rounded-xl border border-border bg-white">
-      <div className={clsx('flex items-center justify-between rounded-t-xl border-b px-3 py-2', tone)}>
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-white">
+      <div className={clsx('flex items-center justify-between border-b px-2.5 py-1.5', tone)}>
         <h3 className="text-[12px] font-black">{title}</h3>
         <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-foreground">{count}</span>
       </div>
-      <div className="flex-1 overflow-auto p-2 custom-scrollbar">{children}</div>
+      <div className="min-h-0 flex-1 overflow-auto p-1.5 custom-scrollbar">{children}</div>
     </section>
   );
 }
 
-function TripCard({ trip, onOpen, onExpenses }: { trip: Trip; onOpen: () => void; onExpenses: () => void }) {
+function TripCard({ trip, onOpen, onEdit, onPrint, onExpenses, onPrimaryAction }: { trip: Trip; onOpen: () => void; onEdit: () => void; onPrint?: () => void; onExpenses: () => void; onPrimaryAction: () => void }) {
+  const primaryAction = getPrimaryTripAction(trip.status);
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-primary/30 hover:bg-blue-50/20">
+    <article className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm transition-colors hover:border-primary/30 hover:bg-blue-50/20">
       <button type="button" onClick={onOpen} className="w-full text-left">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -187,7 +253,7 @@ function TripCard({ trip, onOpen, onExpenses }: { trip: Trip; onOpen: () => void
           </div>
           <TripStatusBadge status={trip.status} />
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-1 rounded-lg border border-slate-100 bg-slate-50 p-2 text-[10px]">
+        <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-1 rounded-md bg-slate-50 px-2 py-1.5 text-[10px]">
           <CompactCell label="BSX" value={truckPlate(trip)} />
           <CompactCell label="Tài xế" value={driverName(trip)} />
           <CompactCell label="Tuyến" value={routeLabel(trip)} className="col-span-2" />
@@ -195,11 +261,12 @@ function TripCard({ trip, onOpen, onExpenses }: { trip: Trip; onOpen: () => void
           <CompactCell label="Dự kiến đến" value={formatDate(trip.expected_arrival_time || trip.arrival_time)} />
         </div>
       </button>
-      <div className="mt-2 flex items-center gap-1">
+      <div className="mt-1.5 flex items-center gap-1 border-t border-slate-100 pt-1.5">
         <ActionButton title="Xem chi tiết" icon={<Eye size={14} />} onClick={onOpen} />
-        <ActionButton title="Sửa chuyến / thêm bớt đơn" icon={<Pencil size={14} />} onClick={onOpen} />
-        <ActionButton title="In bảng kê" icon={<Printer size={14} />} onClick={onOpen} />
+        <ActionButton title={onPrint ? 'Xem / In bảng kê theo HUB đến' : 'Chuyến chưa có bảng kê'} icon={<Printer size={14} />} onClick={onPrint} disabled={!onPrint} />
         <ActionButton title="Chi phí" icon={<Receipt size={14} />} onClick={onExpenses} />
+        <ActionButton title="Sửa bảng kê" icon={<Pencil size={14} />} onClick={onEdit} disabled={!trip.manifest_id || trip.status === 'CANCELLED'} />
+        <ActionButton title={primaryActionLabel(trip.status)} icon={primaryAction ? <Truck size={14} /> : <CheckCircle2 size={14} />} onClick={primaryAction ? onPrimaryAction : undefined} disabled={!primaryAction} />
       </div>
     </article>
   );
@@ -233,8 +300,8 @@ function TripStatusBadge({ status }: { status?: string | null }) {
   return <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-extrabold ${className}`}>{tripStatusLabel(status)}</span>;
 }
 
-function ActionButton({ icon, title, onClick }: { icon: ReactNode; title: string; onClick: () => void }) {
-  return <button type="button" title={title} onClick={onClick} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground hover:bg-muted hover:text-primary">{icon}</button>;
+function ActionButton({ icon, title, onClick, disabled = false }: { icon: ReactNode; title: string; onClick?: () => void; disabled?: boolean }) {
+  return <button type="button" title={title} aria-label={title} onClick={onClick} disabled={disabled} className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-white text-muted-foreground hover:bg-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-35">{icon}</button>;
 }
 
 function StateBlock({ icon, title }: { icon: ReactNode; title: string }) {

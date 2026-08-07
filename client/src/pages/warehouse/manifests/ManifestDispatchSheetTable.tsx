@@ -169,12 +169,19 @@ export default function ManifestDispatchSheetTable({
     if (!fieldKey) return null;
 
     const value = getDispatchCellValue(rows, link, waybillId, fieldKey);
+    const allocatedPackages = Number(getDispatchCellValue(rows, link, waybillId, 'so_luong'));
+    const totalPackages = Number(link.waybill?.package_count ?? allocatedPackages);
+    const isPartial = Number.isFinite(allocatedPackages)
+      && Number.isFinite(totalPackages)
+      && allocatedPackages > 0
+      && totalPackages > 0
+      && allocatedPackages < totalPackages;
     const isRedText = columnId === 'noiTra' || columnId === 'tangHaThuKhach' || columnId === 'ghiChu' || columnId === 'tinhTrangGiaoHang';
     const alignClass = meta.money || columnId === 'kg' || columnId === 'm3' ? 'text-right' : 'text-center';
 
     if (readOnly || meta.readOnly || !onCellChange) {
       return (
-        <div className={`min-h-[50px] px-1.5 py-2 text-[12px] font-semibold ${alignClass} ${isRedText || meta.money ? 'font-black text-red-600' : ''}`}>
+        <div className={`min-h-[50px] px-1.5 py-2 text-[12px] font-semibold ${alignClass} ${isRedText || meta.money ? 'font-black text-red-600' : ''} ${isPartial && (columnId === 'kg' || columnId === 'm3') ? 'bg-amber-50 font-black text-slate-950' : ''}`}>
           {value}
         </div>
       );
