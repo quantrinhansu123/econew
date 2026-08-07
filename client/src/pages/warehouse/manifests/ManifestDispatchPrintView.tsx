@@ -40,6 +40,10 @@ export default function ManifestDispatchPrintView({ manifest, links, rows, visib
     ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(trip.departure_time))
     : '—';
   const printedAt = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date());
+  const hubExpectedArrival = links.find((link) => link.dispatch_fields?.expected_arrival_at)?.dispatch_fields?.expected_arrival_at;
+  const hubExpectedArrivalLabel = hubExpectedArrival
+    ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(String(hubExpectedArrival)))
+    : '—';
 
   return (
     <div className="inventory-stock-sheet manifest-dispatch-sheet">
@@ -55,6 +59,7 @@ export default function ManifestDispatchPrintView({ manifest, links, rows, visib
             <span className="manifest-dispatch-print-meta-label">HUB đến</span>
             <span className="manifest-dispatch-print-meta-value">{destinationHub}</span>
             <span className="text-[10px] font-semibold">SĐT: {destinationHubPhone}</span>
+            <span className="text-[10px] font-semibold">Dự kiến đến: {hubExpectedArrivalLabel}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">Biển số xe</span>

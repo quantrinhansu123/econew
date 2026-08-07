@@ -7,6 +7,8 @@ import { TruckEntity } from '../trucks/truck.entity';
 
 @Entity('trips')
 export class TripEntity {
+  route_label?: string;
+
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;
 

@@ -7,6 +7,7 @@ export interface StackOntoTruckFormRow {
   max_package_count: number;
   loading_position: string;
   expected_arrival_label: string;
+  expected_arrival_at?: string;
   delivery_instruction: string;
 }
 
@@ -26,6 +27,7 @@ export interface StackOntoTruckPayloadItem {
   loading_position?: number;
   package_count: number;
   note: string;
+  expected_arrival_at?: string;
 }
 
 export interface StackOntoTruckPayload {
@@ -71,6 +73,8 @@ export function formatExpectedArrivalLabel(base?: string | Date | null): string 
 }
 
 export function buildStackFormRows(waybills: WaybillInventoryItem[], loadingDate: Date = new Date()): StackOntoTruckFormRow[] {
+  const expected = computeExpectedArrivalDate(loadingDate);
+  const localExpected = new Date(expected.getTime() - expected.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
   return waybills.map((waybill) => {
     return {
       waybill_id: String(waybill.id),
@@ -79,6 +83,7 @@ export function buildStackFormRows(waybills: WaybillInventoryItem[], loadingDate
       max_package_count: Math.max(1, Number(waybill.remaining_packages ?? waybill.package_count ?? 1)),
       loading_position: waybill.loading_position ? String(waybill.loading_position) : '',
       expected_arrival_label: formatExpectedArrivalLabel(loadingDate),
+      expected_arrival_at: localExpected,
       delivery_instruction: buildDestinationInstruction(waybill),
     };
   });
@@ -122,6 +127,7 @@ export function buildStackOntoTruckPayload(
       ...(row.loading_position ? { loading_position: Number(row.loading_position) } : {}),
       package_count: Number(row.package_count),
       note: row.delivery_instruction,
+      ...(row.expected_arrival_at ? { expected_arrival_at: new Date(row.expected_arrival_at).toISOString() } : {}),
     })),
   };
 }

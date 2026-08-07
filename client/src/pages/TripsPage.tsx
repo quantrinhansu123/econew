@@ -53,7 +53,7 @@ const tripStatusLabel = (status?: string | null) => {
 const truckPlate = (trip: Trip) => trip.truck?.bks?.trim() || trip.truck?.license_plate?.trim() || (trip.truck_id ? `Xe #${trip.truck_id}` : 'Chưa có xe');
 const driverName = (trip: Trip) => trip.driver_name || trip.truck?.ten_lai_xe || 'Chưa có tài xế';
 const manifestCode = (trip: Trip) => trip.manifest?.manifest_code || (trip.manifest_id ? `BK #${trip.manifest_id}` : '—');
-const routeLabel = (trip: Trip) => `${trip.start_hub?.code || trip.start_hub_id || '—'} → ${trip.end_hub?.code || trip.end_hub_id || '—'}`;
+const routeLabel = (trip: Trip) => trip.route_label || `${trip.start_hub?.code || trip.start_hub_id || '—'} → ${trip.end_hub?.code || trip.end_hub_id || '—'}`;
 
 const getPrimaryTripAction = (status?: string | null): TripAction | null => {
   if (status === 'PLANNED') return 'start';

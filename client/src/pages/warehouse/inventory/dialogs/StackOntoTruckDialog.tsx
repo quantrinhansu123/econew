@@ -405,7 +405,9 @@ export default function StackOntoTruckDialog({
                       const departure = event.target.value;
                       setShared((prev) => ({ ...prev, departure_time: departure }));
                       const date = departure ? new Date(departure) : new Date();
-                      setRows((current) => current.map((row) => ({ ...row, expected_arrival_label: new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(date.getTime() + 3 * 86400000)) })));
+                      const expected = new Date(date.getTime() + 3 * 86400000);
+                      const localExpected = new Date(expected.getTime() - expected.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+                      setRows((current) => current.map((row) => ({ ...row, expected_arrival_label: new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(expected), expected_arrival_at: localExpected })));
                     }} className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-[14px] font-bold outline-none focus:border-primary" />
                   </div>
                 </div>
@@ -447,7 +449,7 @@ export default function StackOntoTruckDialog({
                             <p className="mt-1 text-center text-[11px] font-medium text-muted-foreground">/ {row.max_package_count}</p>
                           </td>
                           <td className="border-r border-border px-3 py-3"><input type="number" min={1} value={row.loading_position} onChange={(e) => updateRow(row.waybill_id, { loading_position: e.target.value })} placeholder="VT" className="h-10 w-full min-w-[72px] rounded-lg border border-yellow-300 bg-yellow-50 px-2 text-center text-[14px] font-bold outline-none focus:border-primary" /></td>
-                          <td className="border-r border-border px-3 py-3 text-center text-[14px] font-bold text-emerald-800">{row.expected_arrival_label}</td>
+                          <td className="border-r border-border px-3 py-3"><input type="datetime-local" value={row.expected_arrival_at} onChange={(e) => updateRow(row.waybill_id, { expected_arrival_at: e.target.value })} className="h-10 min-w-[170px] rounded-lg border border-emerald-300 bg-emerald-50 px-2 text-[13px] font-bold text-emerald-900 outline-none focus:border-primary" /></td>
                           <td className="border-r border-border px-3 py-3">
                             <select value={row.delivery_instruction} onChange={(e) => updateRow(row.waybill_id, { delivery_instruction: e.target.value })} className="h-10 w-full min-w-[180px] rounded-lg border border-slate-300 bg-white px-2 text-[13px] font-bold outline-none focus:border-primary">
                               {!DELIVERY_INSTRUCTION_OPTIONS.some((option) => option === row.delivery_instruction) && (

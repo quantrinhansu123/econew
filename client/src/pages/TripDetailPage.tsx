@@ -423,7 +423,7 @@ function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, is
       <Info label="Bảng kê" value={<button type="button" onClick={openManifest} className="font-bold text-primary hover:underline"><ManifestBadge trip={trip} manifest={manifest} /></button>} />
       <Info label="Giờ dự kiến đến" value={formatDate(trip.expected_arrival_time || trip.arrival_time)} />
       <Info label="Kho đi" value={<HubBadge hubs={hubs} id={trip.start_hub_id} hub={trip.start_hub} />} />
-      <Info label="Kho đến" value={<HubBadge hubs={hubs} id={trip.end_hub_id} hub={trip.end_hub} />} />
+      <Info label="Tuyến / Kho đến" value={trip.route_label || <HubBadge hubs={hubs} id={trip.end_hub_id} hub={trip.end_hub} />} />
       <Info label="Khởi hành" value={formatDate(trip.departure_time)} />
       <Info label="Chốt cân/khối" value={`${formatNumber(trip.actual_total_weight, ' kg')} / ${formatNumber(trip.actual_total_volume, ' m³')}`} />
       <Info label="Trạng thái" value={<TripStatusBadge status={trip.status} />} />

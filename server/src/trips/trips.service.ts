@@ -141,6 +141,7 @@ export class TripsService {
     this.applyHubScope(qb, currentUser);
 
     const [data, total] = await qb.getManyAndCount();
+    await this.enrichRouteLabels(data);
     return { data, total, page, limit };
   }
 
@@ -156,6 +157,7 @@ export class TripsService {
     this.applyHubScope(qb, currentUser);
     const trip = await qb.getOne();
     if (!trip) throw new NotFoundException('Trip not found');
+    await this.enrichRouteLabels([trip]);
     return trip;
   }
 
@@ -827,6 +829,25 @@ export class TripsService {
     if (!truck) return;
     truck.status = status;
     await this.trucksRepository.save(truck);
+  }
+
+  private async enrichRouteLabels(trips: TripEntity[]): Promise<void> {
+    if (!trips.length) return;
+    const ids = trips.map((trip) => String(trip.id));
+    const splits = (await this.waybillSplitsRepository.find({
+      where: { trip_id: In(ids) } as any,
+      relations: ['waybill', 'waybill.dest_hub'],
+    })) ?? [];
+    for (const trip of trips) {
+      const destinations = splits
+        .filter((split) => String(split.trip_id) === String(trip.id))
+        .sort((a, b) => new Date(a.expected_arrival_at ?? 0).getTime() - new Date(b.expected_arrival_at ?? 0).getTime())
+        .map((split) => split.waybill?.dest_hub?.code || split.waybill?.dest_hub?.name || String(split.waybill?.dest_hub_id || ''))
+        .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index);
+      const origin = trip.start_hub?.code || trip.start_hub?.name || String(trip.start_hub_id);
+      trip.route_label = [origin, ...destinations].join(' → ')
+        || `${origin} → ${trip.end_hub?.code || trip.end_hub_id}`;
+    }
   }
 
   /** Chốt chuyến đã quá giờ dự kiến; nút Đến hub chỉ còn dùng cho xe đến sớm. */

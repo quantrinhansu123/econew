@@ -52,6 +52,7 @@ export interface Trip {
   start_hub?: HubSummary | null;
   end_hub?: HubSummary | null;
   created_at?: string | null;
+  route_label?: string | null;
 }
 
 export interface ListResponse<T> {

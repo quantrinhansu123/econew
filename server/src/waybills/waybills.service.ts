@@ -1227,17 +1227,16 @@ export class WaybillsService {
       const key = [
         String(row.truck_id ?? row.vendor_id ?? 'NO_CARRIER'),
         String(row.waybill.origin_hub_id),
-        String(row.waybill.dest_hub_id),
       ].join(':');
       const group = groups.get(key) ?? [];
       group.push(row);
       groups.set(key, group);
       return groups;
     }, new Map<string, typeof stackedRows>()).values()].sort((left, right) => {
-      const leftKey = [left[0].truck_id ?? left[0].vendor_id, left[0].waybill.origin_hub_id, left[0].waybill.dest_hub_id]
+      const leftKey = [left[0].truck_id ?? left[0].vendor_id, left[0].waybill.origin_hub_id]
         .map(String)
         .join(':');
-      const rightKey = [right[0].truck_id ?? right[0].vendor_id, right[0].waybill.origin_hub_id, right[0].waybill.dest_hub_id]
+      const rightKey = [right[0].truck_id ?? right[0].vendor_id, right[0].waybill.origin_hub_id]
         .map(String)
         .join(':');
       return leftKey.localeCompare(rightKey, 'en', { numeric: true });
@@ -1257,6 +1256,7 @@ export class WaybillsService {
       waybill_count: number;
     }> = [];
     for (const [groupIndex, group] of routeGroups.entries()) {
+      group.sort((a, b) => (a.expected_arrival_at?.getTime() ?? 0) - (b.expected_arrival_at?.getTime() ?? 0));
       const manifest = await this.createClosedManifestForStack(group, currentUser);
       if (!manifest) throw new ConflictException('Không thể tạo bảng kê cho nhóm HUB đến');
       let tripId: string | null = null;
@@ -1425,7 +1425,7 @@ export class WaybillsService {
     return trip;
   }
 
-  private async createClosedManifestForStack(rows: Array<{ waybill: WaybillRecord; loading_position: number | null; package_count: number; is_fully_allocated?: boolean }>, currentUser: UserEntity) {
+  private async createClosedManifestForStack(rows: Array<{ waybill: WaybillRecord; loading_position: number | null; package_count: number; expected_arrival_at?: Date | null; is_fully_allocated?: boolean }>, currentUser: UserEntity) {
     const firstWaybill = rows[0]?.waybill;
     if (!firstWaybill) return null;
 
@@ -1433,7 +1433,7 @@ export class WaybillsService {
       manifest_code: await this.generateInventoryManifestCode(),
       seal_code: `AUTO-${Date.now()}`,
       origin_hub_id: String(firstWaybill.origin_hub_id),
-      dest_hub_id: String(firstWaybill.dest_hub_id),
+      dest_hub_id: String(rows[rows.length - 1]?.waybill.dest_hub_id ?? firstWaybill.dest_hub_id),
       status: ManifestStatus.CLOSED,
     } as any) as unknown as ManifestEntity & Record<string, any>;
 
@@ -1456,7 +1456,7 @@ export class WaybillsService {
       waybill_id: String(row.waybill.id),
       loading_position: row.loading_position ?? index + 1,
       loaded_at: new Date(),
-      dispatch_fields: { so_luong: String(row.package_count) },
+      dispatch_fields: { so_luong: String(row.package_count), expected_arrival_at: row.expected_arrival_at?.toISOString() ?? null },
     })));
 
     const fullyAllocatedWaybills = rows.filter((row) => row.is_fully_allocated !== false);

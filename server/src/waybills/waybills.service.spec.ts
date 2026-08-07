@@ -633,21 +633,20 @@ describe('WaybillsService', () => {
 
     expect(result.saved_count).toBe(2);
     expect(result.manifests).toEqual([
-      expect.objectContaining({ id: 'm1', dest_hub_id: '2', trip_id: 't1', waybill_count: 1 }),
-      expect.objectContaining({ id: 'm2', dest_hub_id: '3', trip_id: 't2', waybill_count: 1 }),
+      expect.objectContaining({ id: 'm1', dest_hub_id: '3', trip_id: 't1', waybill_count: 2 }),
     ]);
     expect(manifestsRepository.create.mock.calls.map(([value]: [any]) => value.dest_hub_id))
-      .toEqual(['2', '3']);
+      .toEqual(['3']);
     expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.end_hub_id))
-      .toEqual(['2', '3']);
+      .toEqual(['3']);
     expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.driver_name))
-      .toEqual(['Nguyễn Văn A', 'Nguyễn Văn A']);
+      .toEqual(['Nguyễn Văn A']);
     expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.driver_phone))
-      .toEqual(['0901234567', '0901234567']);
+      .toEqual(['0901234567']);
     expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.trip_cost))
-      .toEqual(['25', '75.01']);
+      .toEqual(['100.01']);
     expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.other_costs))
-      .toEqual([null, null]);
+      .toEqual([null]);
     for (const [tripData] of tripsRepository.create.mock.calls) {
       expect(tripData.expected_arrival_time.getTime()).toBeGreaterThan(tripData.departure_time.getTime());
       expect(tripData.expected_arrival_time.getTime() - tripData.departure_time.getTime())
@@ -659,19 +658,14 @@ describe('WaybillsService', () => {
       vendor: selectedVendor,
       nha_xe: 'Công ty Anh Dũng',
     }));
-    expect(vendorsService.addPayableDebt).toHaveBeenCalledTimes(2);
+    expect(vendorsService.addPayableDebt).toHaveBeenCalledTimes(1);
     expect(vendorsService.addPayableDebt).toHaveBeenNthCalledWith(
-      1, 'vendor-1', 25, 't1', expect.stringContaining('Chi phí chuyến #t1'),
-    );
-    expect(vendorsService.addPayableDebt).toHaveBeenNthCalledWith(
-      2, 'vendor-1', 75.01, 't2', expect.stringContaining('Chi phí chuyến #t2'),
+      1, 'vendor-1', 100.01, 't1', expect.stringContaining('Chi phí chuyến #t1'),
     );
     expect(vendorsService.resolveDefaultVendorId).not.toHaveBeenCalled();
     expect(vendorsService.addPayableDebt.mock.invocationCallOrder[0])
       .toBeGreaterThan(tripsRepository.save.mock.invocationCallOrder[0]);
-    expect(vendorsService.addPayableDebt.mock.invocationCallOrder[1])
-      .toBeGreaterThan(tripsRepository.save.mock.invocationCallOrder[1]);
-    expect(manifestWaybillsRepository.save).toHaveBeenCalledTimes(2);
+    expect(manifestWaybillsRepository.save).toHaveBeenCalledTimes(1);
   });
 
   it('bulk stack một phần giữ số kiện còn lại trong tồn kho', async () => {
@@ -695,7 +689,7 @@ describe('WaybillsService', () => {
     expect(partialWaybill.status).toBe(WaybillStatus.IN_WAREHOUSE);
     expect(waybillsRepository.save).not.toHaveBeenCalled();
     expect(manifestWaybillsRepository.save).toHaveBeenCalledWith([
-      expect.objectContaining({ dispatch_fields: { so_luong: '38' } }),
+      expect.objectContaining({ dispatch_fields: expect.objectContaining({ so_luong: '38' }) }),
     ]);
   });
 
@@ -733,10 +727,10 @@ describe('WaybillsService', () => {
     const costByDestination = Object.fromEntries(
       tripsRepository.create.mock.calls.map(([value]: [any]) => [value.end_hub_id, Number(value.trip_cost)]),
     );
-    expect(costByDestination).toEqual({ '2': 25, '3': 75.01 });
+    expect(costByDestination).toEqual({ '2': 100.01 });
     expect(Object.values(costByDestination).reduce((sum, cost) => sum + cost, 0)).toBeCloseTo(100.01, 2);
     expect(vendorsService.addPayableDebt.mock.calls.map(([, amount, tripId]: [string, number, string]) => [amount, tripId]))
-      .toEqual([[25, 't1'], [75.01, 't2']]);
+      .toEqual([[100.01, 't1']]);
   });
 
   it('bulk stack keeps legacy line vendor costs local to their destination group', async () => {
@@ -753,9 +747,9 @@ describe('WaybillsService', () => {
     const costByDestination = Object.fromEntries(
       tripsRepository.create.mock.calls.map(([value]: [any]) => [value.end_hub_id, Number(value.trip_cost)]),
     );
-    expect(costByDestination).toEqual({ '2': 10.1, '3': 20.25 });
+    expect(costByDestination).toEqual({ '2': 30.35 });
     expect(vendorsService.addPayableDebt.mock.calls.map(([vendorId, amount, tripId]: [string, number, string]) => [vendorId, amount, tripId]))
-      .toEqual([['vendor-1', 10.1, 't1'], ['vendor-1', 20.25, 't2']]);
+      .toEqual([['vendor-1', 30.35, 't1']]);
   });
 
   it('bulk stack rejects shared vendor cost across multiple trucks', async () => {
