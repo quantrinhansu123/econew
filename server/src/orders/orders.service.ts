@@ -29,7 +29,7 @@ export class OrdersService {
       origin_hub_id: dto.origin_hub_id,
       dest_hub_id: dto.dest_hub_id,
       package_count: dto.package_count ?? 1,
-      weight: dto.weight,
+      weight: dto.weight ?? 0,
       payment_type: paymentType,
       freight_amount: String(dto.freight_amount ?? 0),
       cod_amount: String(dto.cod_amount ?? 0),

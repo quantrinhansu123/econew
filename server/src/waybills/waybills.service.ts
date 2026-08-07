@@ -132,7 +132,7 @@ export class WaybillsService {
       waybill_code: waybillCode,
       sender_info: this.packContact(dto.sender_name, dto.sender_phone, dto.sender_address),
       receiver_info: this.packReceiverContact(dto.receiver_name, dto.receiver_phone, dto.receiver_address),
-      weight: dto.weight,
+      weight: dto.weight ?? 0,
       length: dto.length ?? 0,
       width: dto.width ?? 0,
       height: dto.height ?? 0,

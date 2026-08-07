@@ -67,6 +67,15 @@ describe('new order defaults', () => {
     }, 0)).toBe('');
   });
 
+  it('allows an order without actual weight, converted weight, or CBM', () => {
+    expect(validateNewOrderForm({
+      ...validOrderForm(),
+      klKg: '',
+      klQuyDoi: '',
+      m3: '',
+    }, 0)).toBe('');
+  });
+
   it('still rejects an invalid receiver phone when one is entered', () => {
     expect(validateNewOrderForm({ ...validOrderForm(), dienThoaiNhan: '123' }, 0))
       .toBe('Số điện thoại người nhận không hợp lệ.');

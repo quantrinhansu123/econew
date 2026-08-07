@@ -160,7 +160,7 @@ export function isValidVnPhone(raw: string): boolean {
   return /^0\d{9,10}$/.test(phone);
 }
 
-export function validateNewOrderForm(form: NewOrderFormState, volumetricWeight: number): string {
+export function validateNewOrderForm(form: NewOrderFormState, _volumetricWeight: number): string {
   if (!form.soBill.trim()) return 'Số bill là bắt buộc.';
   if (!form.nguoiGui.trim()) return 'Người gửi là bắt buộc.';
   if (form.dienThoaiKh.trim() && !isValidVnPhone(form.dienThoaiKh)) {
@@ -172,9 +172,6 @@ export function validateNewOrderForm(form: NewOrderFormState, volumetricWeight: 
   if (!form.originHubId) return 'Chọn HUB gửi.';
   if (!form.destHubId) return 'Chọn HUB đến.';
   if (form.originHubId === form.destHubId) return 'HUB gửi và HUB đến không được trùng.';
-  if (!parseDecimalNumber(form.klKg) && !volumetricWeight && !parseDecimalNumber(form.m3)) {
-    return 'Nhập trọng lượng thực, trọng lượng quy đổi hoặc CBM.';
-  }
   return '';
 }
 

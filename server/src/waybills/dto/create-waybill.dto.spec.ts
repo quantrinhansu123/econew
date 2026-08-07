@@ -59,4 +59,27 @@ describe('CreateWaybillDto', () => {
 
     await expect(validate(dto)).resolves.toEqual([]);
   });
+
+  it('accepts a waybill without actual weight or CBM', async () => {
+    const dto = Object.assign(new CreateWaybillDto(), {
+      waybill_code: 'ECOHAN1',
+      sender_name: 'Khách gửi',
+      origin_hub_id: '1',
+      dest_hub_id: '2',
+    });
+
+    await expect(validate(dto)).resolves.toEqual([]);
+  });
+
+  it('accepts zero actual weight when an empty input is normalized', async () => {
+    const dto = Object.assign(new CreateWaybillDto(), {
+      waybill_code: 'ECOHAN1',
+      sender_name: 'Khách gửi',
+      origin_hub_id: '1',
+      dest_hub_id: '2',
+      weight: 0,
+    });
+
+    await expect(validate(dto)).resolves.toEqual([]);
+  });
 });
