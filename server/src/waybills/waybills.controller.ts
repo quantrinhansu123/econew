@@ -52,6 +52,13 @@ export class WaybillsController {
     return this.waybillsService.getDeliveryTasks(query, currentUser);
   }
 
+  @Get('delivery-resources')
+  @RequireRoles(Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'List drivers, internal trucks and partners available for last-mile assignment' })
+  getDeliveryResources(@Query('hub_id') hubId: string | undefined, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.getDeliveryResources(hubId, currentUser);
+  }
+
   @Get('load-planning/board')
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Load planning board — waybill splits grouped by truck' })

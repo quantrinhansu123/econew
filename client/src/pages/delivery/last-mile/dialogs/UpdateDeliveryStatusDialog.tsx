@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ImagePlus, Loader2, Trash2, X } from 'lucide-react';
 import { ApiError } from '../../../../lib/api';
 import { IMAGE_UPLOAD_ACCEPT, uploadWaybillImage } from '../../../../lib/uploadImage';
-import type { LastMileWaybill } from '../types';
+import type { DeliveryResources, LastMileWaybill } from '../types';
 
 type DeliveryStatus = 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED';
 
@@ -11,18 +11,28 @@ interface Props {
   isSubmitting: boolean;
   error: string;
   onClose: () => void;
-  onConfirm: (status: DeliveryStatus, deliveryPhotoUrl?: string) => void;
+  resources?: DeliveryResources;
+  currentUserId?: string | number | null;
+  onConfirm: (status: DeliveryStatus, deliveryPhotoUrl?: string, assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string }) => void;
 }
 
-export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, error, onClose, onConfirm }: Props) {
+export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, error, resources, currentUserId, onClose, onConfirm }: Props) {
   const [photos, setPhotos] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [assignmentType, setAssignmentType] = useState<'INTERNAL' | 'PARTNER'>('INTERNAL');
+  const [driverId, setDriverId] = useState('');
+  const [truckId, setTruckId] = useState('');
+  const [vendorId, setVendorId] = useState('');
 
   useEffect(() => {
     setPhotos(String(waybill?.delivery_photo_url || '').split('|').map((item) => item.trim()).filter(Boolean));
     setUploadError('');
-  }, [waybill]);
+    setAssignmentType(waybill?.delivery_assignment_type || 'INTERNAL');
+    setDriverId(String(waybill?.last_mile_driver_id || currentUserId || ''));
+    setTruckId(String(waybill?.last_mile_truck_id || ''));
+    setVendorId(String(waybill?.last_mile_vendor_id || ''));
+  }, [currentUserId, waybill]);
 
   if (!waybill) return null;
 
@@ -52,6 +62,21 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
   };
 
   const submitStatus = (status: DeliveryStatus) => {
+    if (status === 'OUT_FOR_DELIVERY') {
+      if (assignmentType === 'INTERNAL' && !driverId) {
+        setUploadError('Phải chọn tài xế nội bộ.');
+        return;
+      }
+      if (assignmentType === 'PARTNER' && !vendorId) {
+        setUploadError('Phải chọn đối tác giao hàng.');
+        return;
+      }
+      onConfirm(status, undefined, {
+        assignment_type: assignmentType,
+        ...(assignmentType === 'INTERNAL' ? { driver_id: driverId, truck_id: truckId || undefined } : { vendor_id: vendorId }),
+      });
+      return;
+    }
     if (status === 'DELIVERED' && !photos.length) {
       setUploadError('Giao thành công bắt buộc có ít nhất 1 ảnh.');
       return;
@@ -71,6 +96,32 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
         </div>
         <div className="space-y-3 p-4 text-[13px] text-muted-foreground">
           <p>Chọn trạng thái giao chặng cuối hợp lệ theo state machine cho vận đơn này.</p>
+          {currentStatus === 'AT_DEST_HUB' && resources && (
+            <div className="space-y-3 rounded-xl border border-border bg-slate-50 p-3">
+              <p className="font-black text-foreground">Phân giao chặng cuối</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setAssignmentType('INTERNAL')} className={`h-9 rounded-lg border text-[12px] font-black ${assignmentType === 'INTERNAL' ? 'border-primary bg-blue-50 text-primary' : 'border-border bg-white text-muted-foreground'}`}>Xe nội bộ</button>
+                <button type="button" onClick={() => setAssignmentType('PARTNER')} className={`h-9 rounded-lg border text-[12px] font-black ${assignmentType === 'PARTNER' ? 'border-primary bg-blue-50 text-primary' : 'border-border bg-white text-muted-foreground'}`}>Đối tác</button>
+              </div>
+              {assignmentType === 'INTERNAL' ? (
+                <div className="grid gap-2">
+                  <select value={driverId} onChange={(event) => setDriverId(event.target.value)} className="h-10 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">
+                    <option value="">Chọn tài xế</option>
+                    {resources.drivers.map((driver) => <option key={String(driver.id)} value={String(driver.id)}>{driver.name || driver.username}{driver.phone ? ` · ${driver.phone}` : ''}</option>)}
+                  </select>
+                  <select value={truckId} onChange={(event) => { const value = event.target.value; setTruckId(value); const truck = resources.trucks.find((item) => String(item.id) === value); if (truck?.driver_id) setDriverId(String(truck.driver_id)); }} className="h-10 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">
+                    <option value="">Không chọn xe</option>
+                    {resources.trucks.map((truck) => <option key={String(truck.id)} value={String(truck.id)}>{truck.bks || truck.license_plate}{truck.driver_name ? ` · ${truck.driver_name}` : ''}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <select value={vendorId} onChange={(event) => setVendorId(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">
+                  <option value="">Chọn đối tác giao hàng</option>
+                  {resources.vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{vendor.name || vendor.code}{vendor.phone ? ` · ${vendor.phone}` : ''}</option>)}
+                </select>
+              )}
+            </div>
+          )}
           {currentStatus === 'OUT_FOR_DELIVERY' && (
             <div className="rounded-xl border border-border bg-slate-50 p-3">
               <div className="flex items-center justify-between gap-2">

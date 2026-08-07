@@ -84,6 +84,8 @@ describe('WaybillsService', () => {
   let splitsRepository: any;
   let tripsRepository: any;
   let trucksRepository: any;
+  let usersRepository: any;
+  let vendorsRepository: any;
   let manifestsRepository: any;
   let manifestWaybillsRepository: any;
   let cashVouchersRepository: any;
@@ -124,7 +126,16 @@ describe('WaybillsService', () => {
     };
     trucksRepository = {
       findOne: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
       save: jest.fn(async (value) => value),
+    };
+    usersRepository = {
+      findOne: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
+    };
+    vendorsRepository = {
+      findOne: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
     };
     manifestsRepository = {
       find: jest.fn().mockResolvedValue([]),
@@ -181,6 +192,8 @@ describe('WaybillsService', () => {
       splitsRepository,
       tripsRepository,
       trucksRepository,
+      usersRepository,
+      vendorsRepository,
       manifestsRepository,
       manifestWaybillsRepository,
       cashVouchersRepository,
@@ -1232,6 +1245,53 @@ describe('WaybillsService', () => {
     expect(split.load_status).toBe(WaybillSplitLoadStatus.DELIVERED);
     expect(tripsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: TripStatus.COMPLETED }));
     expect(manifestsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ status: ManifestStatus.COMPLETED }));
+  });
+
+  it('lưu phân công tài xế và xe nội bộ khi nhận giao chặng cuối', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.AT_DEST_HUB,
+      status: WaybillStatus.AT_DEST_HUB,
+      dest_hub_id: '2',
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+    usersRepository.findOne.mockResolvedValue({ id: 'd1', full_name: 'Tài xế A', role_mask: Roles.DRIVER, hub_id: '2', is_active: true });
+    trucksRepository.findOne.mockResolvedValue({ id: 'x1', license_plate: '51A-12345', bks: '51A-12345' });
+
+    await service.updateStatus('1', {
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+      assignment_type: 'INTERNAL',
+      driver_id: 'd1',
+      truck_id: 'x1',
+    }, manager);
+
+    expect(waybill).toMatchObject({
+      current_state: WaybillStatus.OUT_FOR_DELIVERY,
+      delivery_assignment_type: 'INTERNAL',
+      last_mile_driver_id: 'd1',
+      last_mile_truck_id: 'x1',
+      last_mile_vendor_id: null,
+      xe_phat: '51A-12345',
+    });
+  });
+
+  it('lưu đối tác khi phân giao chặng cuối', async () => {
+    const waybill = makeWaybill({ current_state: WaybillStatus.AT_DEST_HUB, status: WaybillStatus.AT_DEST_HUB });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+    vendorsRepository.findOne.mockResolvedValue({ id: 'v1', name: 'Đối tác HCM', status: 'ACTIVE' });
+
+    await service.updateStatus('1', {
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+      assignment_type: 'PARTNER',
+      vendor_id: 'v1',
+    }, manager);
+
+    expect(waybill).toMatchObject({
+      delivery_assignment_type: 'PARTNER',
+      last_mile_driver_id: null,
+      last_mile_truck_id: null,
+      last_mile_vendor_id: 'v1',
+      xe_phat: 'Đối tác HCM',
+    });
   });
 
   it('correctStatus mở lại chuyến khi sửa nhầm đơn đã giao', async () => {

@@ -41,6 +41,7 @@ import { OrderEntity } from '../orders/order.entity';
 import { VendorsService } from '../vendors/vendors.service';
 import { normalizeWaybillPhotos } from '../common/waybill-photos';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
+import { VendorEntity } from '../vendors/vendor.entity';
 
 type WaybillRecord = WaybillEntity & Record<string, any>;
 type WaybillAuditValue = string | number | boolean | null;
@@ -114,6 +115,8 @@ export class WaybillsService {
     @InjectRepository(WaybillSplitEntity) private readonly splitsRepository: Repository<WaybillSplitEntity>,
     @InjectRepository(TripEntity) private readonly tripsRepository: Repository<TripEntity>,
     @InjectRepository(TruckEntity) private readonly trucksRepository: Repository<TruckEntity>,
+    @InjectRepository(UserEntity) private readonly usersRepository: Repository<UserEntity>,
+    @InjectRepository(VendorEntity) private readonly vendorsRepository: Repository<VendorEntity>,
     @InjectRepository(ManifestEntity) private readonly manifestsRepository: Repository<ManifestEntity>,
     @InjectRepository(ManifestWaybillEntity) private readonly manifestWaybillsRepository: Repository<ManifestWaybillEntity>,
     @InjectRepository(WaybillCashVoucherEntity) private readonly cashVouchersRepository: Repository<WaybillCashVoucherEntity>,
@@ -270,6 +273,9 @@ export class WaybillsService {
       .leftJoinAndSelect('waybill.origin_hub', 'origin_hub')
       .leftJoinAndSelect('waybill.dest_hub', 'dest_hub')
       .leftJoinAndSelect('waybill.order', 'order')
+      .leftJoinAndSelect('waybill.last_mile_driver', 'last_mile_driver')
+      .leftJoinAndSelect('waybill.last_mile_truck', 'last_mile_truck')
+      .leftJoinAndSelect('waybill.last_mile_vendor', 'last_mile_vendor')
       .leftJoin('waybill_splits', 'delivery_split', 'delivery_split.waybill_id = waybill.id')
       .leftJoin('trips', 'delivery_trip', 'delivery_trip.id = delivery_split.trip_id')
       .andWhere(new Brackets((builder) => builder
@@ -351,6 +357,32 @@ export class WaybillsService {
         limit,
         total_pages: Math.max(1, Math.ceil(total / limit)),
       },
+    };
+  }
+
+  async getDeliveryResources(requestedHubId: string | undefined, currentUser: UserEntity) {
+    const hubId = isManager(currentUser.role_mask) ? requestedHubId || currentUser.hub_id : currentUser.hub_id;
+    const drivers = await this.usersRepository.find({
+      where: {
+        is_active: true,
+        ...(hubId ? { hub_id: String(hubId) } : {}),
+      } as any,
+      order: { full_name: 'ASC' },
+    });
+    const eligibleDrivers = drivers.filter((driver) => (driver.role_mask & Roles.DRIVER) !== 0);
+    const trucks = await this.trucksRepository.find({
+      where: { status: In([TruckStatus.AVAILABLE, TruckStatus.ASSIGNED]) } as any,
+      relations: ['driver'],
+      order: { license_plate: 'ASC' },
+    });
+    const vendors = await this.vendorsRepository.find({
+      where: { status: 'ACTIVE' } as any,
+      order: { name: 'ASC' },
+    });
+    return {
+      drivers: eligibleDrivers.map((driver) => ({ id: driver.id, name: driver.full_name, username: driver.username, phone: driver.phone, hub_id: driver.hub_id })),
+      trucks: trucks.map((truck) => ({ id: truck.id, license_plate: truck.license_plate, bks: truck.bks, loai_xe: truck.loai_xe, driver_id: truck.driver_id, driver_name: truck.driver?.full_name ?? truck.ten_lai_xe })),
+      vendors: vendors.map((vendor) => ({ id: vendor.id, code: vendor.code, name: vendor.name, phone: vendor.phone, service_type: vendor.service_type })),
     };
   }
 
@@ -482,6 +514,9 @@ export class WaybillsService {
 
   async updateStatus(id: string, dto: UpdateWaybillStatusDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
+    if (dto.status === WaybillStatus.OUT_FOR_DELIVERY && dto.assignment_type) {
+      await this.applyLastMileAssignment(waybill, dto, currentUser);
+    }
     const splitDeliveryResult = await this.updateSplitDeliveryStatus(waybill, dto, currentUser);
     if (splitDeliveryResult) return splitDeliveryResult;
     const currentStatus = this.getStatus(waybill);
@@ -1841,6 +1876,50 @@ export class WaybillsService {
     return waybill;
   }
 
+  private async applyLastMileAssignment(
+    waybill: WaybillRecord,
+    dto: UpdateWaybillStatusDto,
+    currentUser: UserEntity,
+  ): Promise<void> {
+    const assignmentType = dto.assignment_type;
+    if (!assignmentType) throw new BadRequestException('Phải chọn hình thức phân giao nội bộ hoặc đối tác');
+
+    if (assignmentType === 'INTERNAL') {
+      const driverId = String(dto.driver_id || ((currentUser.role_mask & Roles.DRIVER) !== 0 ? currentUser.id : '')).trim();
+      if (!driverId) throw new BadRequestException('Phải chọn tài xế nội bộ');
+      const driver = await this.usersRepository.findOne({ where: { id: driverId, is_active: true } as any });
+      if (!driver || (driver.role_mask & Roles.DRIVER) === 0) throw new BadRequestException('Tài xế nội bộ không hợp lệ');
+      if (driver.hub_id && String(driver.hub_id) !== String(waybill.dest_hub_id)) {
+        throw new BadRequestException('Tài xế không thuộc HUB đến của vận đơn');
+      }
+
+      let truck: TruckEntity | null = null;
+      if (dto.truck_id) {
+        truck = await this.trucksRepository.findOne({ where: { id: String(dto.truck_id) } as any });
+        if (!truck) throw new BadRequestException('Xe nội bộ không hợp lệ');
+      }
+      Object.assign(waybill, {
+        delivery_assignment_type: 'INTERNAL',
+        last_mile_driver_id: driverId,
+        last_mile_truck_id: truck?.id ?? null,
+        last_mile_vendor_id: null,
+        xe_phat: truck?.bks || truck?.license_plate || driver.full_name,
+      });
+      return;
+    }
+
+    if (!dto.vendor_id) throw new BadRequestException('Phải chọn đối tác giao hàng');
+    const vendor = await this.vendorsRepository.findOne({ where: { id: String(dto.vendor_id), status: 'ACTIVE' } as any });
+    if (!vendor) throw new BadRequestException('Đối tác giao hàng không hợp lệ');
+    Object.assign(waybill, {
+      delivery_assignment_type: 'PARTNER',
+      last_mile_driver_id: null,
+      last_mile_truck_id: null,
+      last_mile_vendor_id: vendor.id,
+      xe_phat: vendor.name || vendor.code || `NCC #${vendor.id}`,
+    });
+  }
+
   private async updateSplitDeliveryStatus(
     waybill: WaybillRecord,
     dto: UpdateWaybillStatusDto,
@@ -2744,6 +2823,31 @@ export class WaybillsService {
 
   private sanitize(waybill: WaybillRecord, currentUser: UserEntity): WaybillRecord {
     const result: Record<string, any> = { ...waybill, status: this.getStatus(waybill) };
+    if (waybill.last_mile_driver) {
+      result.last_mile_driver = {
+        id: waybill.last_mile_driver.id,
+        username: waybill.last_mile_driver.username,
+        name: waybill.last_mile_driver.full_name,
+        phone: waybill.last_mile_driver.phone,
+        hub_id: waybill.last_mile_driver.hub_id,
+      };
+    }
+    if (waybill.last_mile_truck) {
+      result.last_mile_truck = {
+        id: waybill.last_mile_truck.id,
+        license_plate: waybill.last_mile_truck.license_plate,
+        bks: waybill.last_mile_truck.bks,
+        loai_xe: waybill.last_mile_truck.loai_xe,
+      };
+    }
+    if (waybill.last_mile_vendor) {
+      result.last_mile_vendor = {
+        id: waybill.last_mile_vendor.id,
+        code: waybill.last_mile_vendor.code,
+        name: waybill.last_mile_vendor.name,
+        phone: waybill.last_mile_vendor.phone,
+      };
+    }
     result.noi_dung = this.resolveGoodsContent(waybill) || null;
     if (waybill.order?.order_code) {
       result.order_code = waybill.order.order_code;

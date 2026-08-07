@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsIn, IsOptional, IsString } from 'class-validator';
 import { WaybillStatus } from './waybill.enums';
 
 export class UpdateWaybillStatusDto {
@@ -15,6 +15,26 @@ export class UpdateWaybillStatusDto {
   @IsOptional()
   @IsString()
   split_id?: string;
+
+  @ApiPropertyOptional({ enum: ['INTERNAL', 'PARTNER'] })
+  @IsOptional()
+  @IsIn(['INTERNAL', 'PARTNER'])
+  assignment_type?: 'INTERNAL' | 'PARTNER';
+
+  @ApiPropertyOptional({ description: 'Tài xế nội bộ nhận giao' })
+  @IsOptional()
+  @IsString()
+  driver_id?: string;
+
+  @ApiPropertyOptional({ description: 'Xe nội bộ dùng giao chặng cuối' })
+  @IsOptional()
+  @IsString()
+  truck_id?: string;
+
+  @ApiPropertyOptional({ description: 'Đối tác giao chặng cuối' })
+  @IsOptional()
+  @IsString()
+  vendor_id?: string;
 }
 
 export class CorrectWaybillStatusDto {

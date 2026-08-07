@@ -4,6 +4,8 @@ import { HubEntity } from '../hubs/hub.entity';
 import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
 import { OrderEntity } from '../orders/order.entity';
 import { UserEntity } from '../users/user.entity';
+import { TruckEntity } from '../trucks/truck.entity';
+import { VendorEntity } from '../vendors/vendor.entity';
 
 @Entity('waybills')
 @Index('UQ_waybills_waybill_code_active', ['waybill_code'], { unique: true, where: '"deleted_at" IS NULL' })
@@ -94,6 +96,15 @@ export class WaybillEntity {
 
   @Column({ type: 'bigint', nullable: true })
   last_mile_driver_id: string | null;
+
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  delivery_assignment_type: 'INTERNAL' | 'PARTNER' | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  last_mile_truck_id: string | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  last_mile_vendor_id: string | null;
 
   @Column({ type: 'text', nullable: true })
   delivery_photo_url: string | null;
@@ -191,6 +202,14 @@ export class WaybillEntity {
   @ManyToOne(() => UserEntity, (user) => user.delivery_waybills, { nullable: true })
   @JoinColumn({ name: 'last_mile_driver_id' })
   last_mile_driver: UserEntity | null;
+
+  @ManyToOne(() => TruckEntity, { nullable: true })
+  @JoinColumn({ name: 'last_mile_truck_id' })
+  last_mile_truck: TruckEntity | null;
+
+  @ManyToOne(() => VendorEntity, { nullable: true })
+  @JoinColumn({ name: 'last_mile_vendor_id' })
+  last_mile_vendor: VendorEntity | null;
 
   @OneToMany(() => ManifestWaybillEntity, (manifestWaybill) => manifestWaybill.waybill)
   manifest_waybills: ManifestWaybillEntity[];

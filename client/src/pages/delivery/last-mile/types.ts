@@ -57,6 +57,11 @@ export interface LastMileWaybill {
   origin_hub?: HubSummary | null;
   dest_hub?: HubSummary | null;
   last_mile_driver?: UserSummary | null;
+  delivery_assignment_type?: 'INTERNAL' | 'PARTNER' | null;
+  last_mile_truck_id?: string | number | null;
+  last_mile_vendor_id?: string | number | null;
+  last_mile_truck?: { id: string | number; license_plate?: string | null; bks?: string | null; loai_xe?: string | null } | null;
+  last_mile_vendor?: { id: string | number; code?: string | null; name?: string | null; phone?: string | null } | null;
   driver?: UserSummary | null;
   delivery_photo_url?: string | null;
   trip_id?: string | number | null;
@@ -64,6 +69,11 @@ export interface LastMileWaybill {
   trip_package_count?: number | null;
   order_total_packages?: number | null;
 }
+
+export interface DeliveryDriverOption { id: string | number; name?: string | null; username?: string | null; phone?: string | null; hub_id?: string | number | null }
+export interface DeliveryTruckOption { id: string | number; license_plate?: string | null; bks?: string | null; loai_xe?: string | null; driver_id?: string | number | null; driver_name?: string | null }
+export interface DeliveryVendorOption { id: string | number; code?: string | null; name?: string | null; phone?: string | null; service_type?: string | null }
+export interface DeliveryResources { drivers: DeliveryDriverOption[]; trucks: DeliveryTruckOption[]; vendors: DeliveryVendorOption[] }
 
 export type LastMileWaybillDetail = LastMileWaybill;
 

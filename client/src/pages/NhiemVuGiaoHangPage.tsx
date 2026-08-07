@@ -5,7 +5,7 @@ import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
 import { getStoredAuthUser } from '../lib/authUser';
 import UpdateDeliveryStatusDialog from './delivery/last-mile/dialogs/UpdateDeliveryStatusDialog';
-import type { HubSummary, LastMileWaybill, ListResponse } from './delivery/last-mile/types';
+import type { DeliveryResources, HubSummary, LastMileWaybill, ListResponse } from './delivery/last-mile/types';
 
 const DRIVER = 4;
 const DISPATCHER = 8;
@@ -26,7 +26,7 @@ export default function NhiemVuGiaoHangPage() {
 
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('AT_DEST_HUB,OUT_FOR_DELIVERY');
-  const [destHubId, setDestHubId] = useState('');
+  const [destHubId, setDestHubId] = useState(() => String(user?.hub_id || ''));
   const [originHubId, setOriginHubId] = useState('');
   const [paymentType, setPaymentType] = useState('');
   const [hubs, setHubs] = useState<HubSummary[]>([]);
@@ -36,6 +36,7 @@ export default function NhiemVuGiaoHangPage() {
   const [statusWaybill, setStatusWaybill] = useState<LastMileWaybill | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [resources, setResources] = useState<DeliveryResources>({ drivers: [], trucks: [], vendors: [] });
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -90,7 +91,19 @@ export default function NhiemVuGiaoHangPage() {
       .catch(() => setHubs([]));
   }, []);
 
-  const confirmUpdateStatus = async (status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED', deliveryPhotoUrl?: string) => {
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (destHubId) params.set('hub_id', destHubId);
+    void apiRequest<DeliveryResources>(`/waybills/delivery-resources?${params.toString()}`)
+      .then(setResources)
+      .catch(() => setResources({ drivers: [], trucks: [], vendors: [] }));
+  }, [destHubId]);
+
+  const confirmUpdateStatus = async (
+    status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED',
+    deliveryPhotoUrl?: string,
+    assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string },
+  ) => {
     if (!statusWaybill) return;
     setIsSubmitting(true);
     setActionError('');
@@ -99,6 +112,7 @@ export default function NhiemVuGiaoHangPage() {
       if (deliveryPhotoUrl) body.delivery_photo_url = deliveryPhotoUrl;
       if (statusWaybill.trip_id) body.trip_id = String(statusWaybill.trip_id);
       if (statusWaybill.split_id) body.split_id = String(statusWaybill.split_id);
+      Object.assign(body, assignment || {});
       await apiRequest(`/waybills/${statusWaybill.id}/status`, { method: 'PATCH', body });
       setStatusWaybill(null);
       await loadTasks();
@@ -245,6 +259,13 @@ export default function NhiemVuGiaoHangPage() {
                       {waybill.receiver_phone}
                     </p>
                   )}
+                  {status === 'OUT_FOR_DELIVERY' && (
+                    <p className="text-[12px] font-bold text-primary">
+                      {waybill.delivery_assignment_type === 'PARTNER'
+                        ? `Đối tác: ${waybill.last_mile_vendor?.name || waybill.last_mile_vendor?.code || '—'}`
+                        : `Nội bộ: ${waybill.last_mile_driver?.name || waybill.last_mile_driver?.username || '—'}${waybill.last_mile_truck ? ` · ${waybill.last_mile_truck.bks || waybill.last_mile_truck.license_plate || ''}` : ''}`}
+                    </p>
+                  )}
                 </div>
               </article>
             );
@@ -256,6 +277,8 @@ export default function NhiemVuGiaoHangPage() {
         waybill={statusWaybill}
         isSubmitting={isSubmitting}
         error={actionError}
+        resources={resources}
+        currentUserId={user?.id}
         onClose={() => {
           setStatusWaybill(null);
           setActionError('');
