@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Layers, Loader2, MoreHorizontal, Package, Pencil, Printer, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Trash2, Truck, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Hash, Layers, Loader2, MoreHorizontal, Package, Pencil, Printer, ReceiptText, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
-import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
 import { DayPicker } from '../components/ui/DayPicker';
 import { DateRangePicker } from '../components/ui/DateRangePicker';
 import { FilterSelect } from '../components/ui/FilterSelect';
@@ -20,8 +19,15 @@ import StackOntoTruckDialog from './warehouse/inventory/dialogs/StackOntoTruckDi
 import { mapWaybillsToPrintRows, saveInventoryPrintPayload, summarizeFilters } from './print/inventoryPrintUtils';
 import InventoryColumnPicker from './warehouse/inventory/InventoryColumnPicker';
 import AllOrdersTableHeader from './warehouse/inventory/AllOrdersTableHeader';
+import {
+  applyAllOrdersColumnFilters,
+  buildAllOrdersColumnFilterOptions,
+  type AllOrdersColumnFilterOption,
+  type AllOrdersColumnFilters,
+} from './warehouse/inventory/allOrdersColumnFilters';
 import { downloadInventoryExcel } from './warehouse/inventory/inventoryExcelUtils';
 import {
+  ALL_ORDERS_COLUMN_WIDTHS,
   canCollectCashPayment,
   computeGrandTotals,
   formatInventoryDate,
@@ -61,6 +67,9 @@ import { buildInventoryTripLinesQuery, isIncompleteSplitRow, sortAllOrdersByCrea
 import { ORDER_STATUS_GROUP_OPTIONS } from './warehouse/inventory/orderStatusUtils';
 import type { BadgeConfig, FilterOption, HubSummary, InventoryFilters, InventoryListResponse, WaybillInventoryDetail, WaybillInventoryItem } from './warehouse/inventory/types';
 import { parseWaybillImages } from '../lib/waybillImages';
+import CustomerDetailDialog from './warehouse/customers/dialogs/CustomerDetailDialog';
+import type { CustomerRecord } from './warehouse/customers/customerFormTypes';
+import type { CustomerListItem, CustomerListResponse } from './warehouse/customers/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const WAREHOUSE = 1;
@@ -221,7 +230,6 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [actionError, setActionError] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [isColumnPickerOpen, setIsColumnPickerOpen] = useState(false);
-  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [cashVoucherWaybill, setCashVoucherWaybill] = useState<WaybillInventoryItem | null>(null);
   const [isCashVoucherOpen, setIsCashVoucherOpen] = useState(false);
@@ -233,6 +241,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [isStackOpen, setIsStackOpen] = useState(false);
   const [isStackClosing, setIsStackClosing] = useState(false);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+  const [columnFilters, setColumnFilters] = useState<AllOrdersColumnFilters>({});
+  const [customerCodeOptions, setCustomerCodeOptions] = useState<AllOrdersColumnFilterOption[]>([]);
+  const [ledgerCustomer, setLedgerCustomer] = useState<CustomerRecord | null>(null);
+  const [isLedgerCustomerLoading, setIsLedgerCustomerLoading] = useState(false);
 
   const user = useMemo(getStoredUser, []);
   const canViewPricing = hasManagerAccess(user?.role_mask ?? 0);
@@ -241,7 +253,6 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const canUpdateCustomerPayment = ((user?.role_mask ?? 0) & (ACCOUNTANT | MANAGER | DIRECTOR)) !== 0;
   const selectionEnabled = (!isAllOrders && canUpdate) || (isAllOrders && canUpdateCustomerPayment);
   const canEdit = canEditWaybill(user?.role_mask ?? 0);
-  const canDelete = isAllOrders && ((user?.role_mask ?? 0) & DIRECTOR) !== 0;
   const [visibleColumnIds, setVisibleColumnIds] = useState<InventoryColumnId[]>(() =>
     isAllOrders ? loadAllOrdersVisibleColumnIds() : loadVisibleColumnIds(canViewPricing),
   );
@@ -264,6 +275,34 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     () => resolveVisibleColumnViews(visibleColumnIds, variant, canViewPricing),
     [visibleColumnIds, variant, canViewPricing],
   );
+  const displayedWaybills = useMemo(
+    () => isAllOrders ? applyAllOrdersColumnFilters(waybills, columnFilters) : waybills,
+    [columnFilters, isAllOrders, waybills],
+  );
+  const displayedFilterTotals = useMemo(() => {
+    if (!isAllOrders) return filterTotals;
+    return {
+      orderCount: displayedWaybills.length,
+      totalFreight: canViewPricing
+        ? displayedWaybills.reduce((sum, waybill) => sum + Number(waybill.freight_amount ?? waybill.cost_amount ?? 0), 0)
+        : 0,
+    };
+  }, [canViewPricing, displayedWaybills, filterTotals, isAllOrders]);
+  const columnFilterValues = useMemo<AllOrdersColumnFilters>(
+    () => ({ ...columnFilters, ...(filters.ma_kh.trim() ? { ma_kh: filters.ma_kh.trim() } : {}) }),
+    [columnFilters, filters.ma_kh],
+  );
+  const allOrdersColumnFilterOptions = useMemo(() => {
+    if (!isAllOrders) return {};
+    return Object.fromEntries(visibleColumns.map((column) => [
+      column.id,
+      column.id === 'ma_kh'
+        ? customerCodeOptions
+        : buildAllOrdersColumnFilterOptions(waybills, column.id),
+    ])) as Partial<Record<InventoryColumnId, AllOrdersColumnFilterOption[]>>;
+  }, [customerCodeOptions, isAllOrders, visibleColumns, waybills]);
+  const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length;
+  const totalActiveFilterCount = activeFilterCount + activeColumnFilterCount;
   const grandTotals = useMemo(
     () => computeGrandTotals(waybills, canViewPricing),
     [waybills, canViewPricing],
@@ -297,6 +336,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   };
   const clearFilters = () => {
     setFilters(isAllOrders ? allOrdersDefaultFilters : defaultFilters);
+    setColumnFilters({});
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete('ma_kh');
@@ -308,6 +348,18 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete('ma_kh');
+      return next;
+    });
+  };
+  const updateColumnFilter = (columnId: InventoryColumnId, value: string) => {
+    if (columnId === 'ma_kh') {
+      updateFilters({ ma_kh: value });
+      return;
+    }
+    setColumnFilters((prev) => {
+      const next = { ...prev };
+      if (value) next[columnId] = value;
+      else delete next[columnId];
       return next;
     });
   };
@@ -344,6 +396,17 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       if (isAllOrders) {
         const items = await loadAllInventoryRows(filters, variant);
         setWaybills(items);
+        const nextCustomerCodes = buildAllOrdersColumnFilterOptions(items, 'ma_kh')
+          .filter((option) => option.value !== '—');
+        setCustomerCodeOptions((current) => {
+          const merged = new Map(current.map((option) => [option.value.toLocaleUpperCase('vi-VN'), option]));
+          nextCustomerCodes.forEach((option) => {
+            const key = option.value.toLocaleUpperCase('vi-VN');
+            const previous = merged.get(key);
+            if (!previous || option.count > previous.count) merged.set(key, option);
+          });
+          return [...merged.values()].sort((left, right) => left.label.localeCompare(right.label, 'vi', { numeric: true, sensitivity: 'base' }));
+        });
         setTotal(items.length);
         setFilterTotals({
           orderCount: items.length,
@@ -446,43 +509,50 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     navigate(`/orders/new?edit=${encodeURIComponent(String(waybill.id))}`);
   };
 
-  const confirmDeleteWaybill = (waybill: WaybillInventoryItem) => {
-    setConfirmDialog({
-      title: 'Xóa vận đơn',
-      message: `Xóa vận đơn ${displayCode(waybill)} khỏi hệ thống? Chỉ xóa được khi đơn ở trạng thái «Đã tạo đơn» hoặc «Trong kho».`,
-      confirmLabel: 'Xóa',
-      danger: true,
-      onConfirm: async () => {
-        setIsDeleting(true);
-        setActionError('');
-        try {
-          await apiRequest(`/waybills/${waybill.id}`, { method: 'DELETE' });
-          await loadInventory();
-        } catch (err) {
-          setActionError(err instanceof ApiError ? err.message : 'Không thể xóa vận đơn.');
-        } finally {
-          setIsDeleting(false);
-        }
-      },
-    });
+  const openCustomerLedger = async (rawCode: string) => {
+    const code = rawCode.trim();
+    if (!code || code === '—') return;
+    setActionError('');
+    setIsLedgerCustomerLoading(true);
+    try {
+      const params = new URLSearchParams({ page: '1', limit: '100', keyword: code });
+      const response = await apiRequest<CustomerListResponse | CustomerListItem[]>(`/customers?${params.toString()}`);
+      const customers = Array.isArray(response) ? response : response.items || [];
+      const customer = customers.find((item) => item.code.trim().toLocaleUpperCase('vi-VN') === code.toLocaleUpperCase('vi-VN'));
+      if (!customer) {
+        setActionError(`Không tìm thấy mã khách ${code} trong Danh sách khách hàng.`);
+        return;
+      }
+      setLedgerCustomer(customer);
+      try {
+        const fullCustomer = await apiRequest<CustomerRecord>(`/customers/${customer.id}`);
+        setLedgerCustomer({ ...customer, ...fullCustomer });
+      } catch {
+        setLedgerCustomer(customer);
+      }
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : `Không mở được bảng kê mã khách ${code}.`);
+    } finally {
+      setIsLedgerCustomerLoading(false);
+    }
   };
 
   function handlePrintStockList() {
     setActionError('');
-    if (!waybills.length) {
+    if (!displayedWaybills.length) {
       setActionError('Không có đơn tồn kho trên danh sách để in.');
       return;
     }
     const payload = mapWaybillsToPrintRows(
-      waybills,
+      displayedWaybills,
       canViewPricing,
       visibleColumns.map((col) => col.id),
       Object.fromEntries(visibleColumns.map((col) => [col.id, col.label])),
     );
     const pageNote =
-      total > waybills.length
-        ? ` · Trang ${filters.page}: in ${waybills.length}/${total} đơn đang hiển thị`
-        : ` · ${waybills.length} đơn`;
+      !isAllOrders && total > displayedWaybills.length
+        ? ` · Trang ${filters.page}: in ${displayedWaybills.length}/${total} đơn đang hiển thị`
+        : ` · ${displayedWaybills.length} đơn`;
     payload.filterSummary = summarizeFilters(filters) + pageNote;
     saveInventoryPrintPayload(payload);
     window.open('/print/inventory-stock', '_blank');
@@ -490,13 +560,14 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
 
   async function handleDownloadExcel() {
     setActionError('');
-    if (!waybills.length) {
+    if (!displayedWaybills.length) {
       setActionError(isAllOrders ? 'Không có đơn trên danh sách để tải Excel.' : 'Không có đơn tồn kho trên danh sách để tải Excel.');
       return;
     }
     setIsExporting(true);
     try {
-      const exportRows = await loadAllInventoryRows(filters, variant);
+      const loadedRows = await loadAllInventoryRows(filters, variant);
+      const exportRows = isAllOrders ? applyAllOrdersColumnFilters(loadedRows, columnFilters) : loadedRows;
       const exported = downloadInventoryExcel(
         exportRows,
         visibleColumns.map((col) => col.id),
@@ -555,13 +626,13 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
           <div className={clsx('grid gap-2 sm:gap-3', canViewPricing ? 'grid-cols-2' : 'grid-cols-1')}>
             <FilterSummaryCard
               label="Tổng đơn (theo bộ lọc)"
-              value={isLoading ? '…' : `${filterTotals.orderCount.toLocaleString('vi-VN')} đơn`}
+              value={isLoading ? '…' : `${displayedFilterTotals.orderCount.toLocaleString('vi-VN')} đơn`}
               tone="blue"
             />
             {canViewPricing && (
               <FilterSummaryCard
                 label="Tổng cước phí (theo bộ lọc)"
-                value={isLoading ? '…' : `${filterTotals.totalFreight.toLocaleString('vi-VN')} đ`}
+                value={isLoading ? '…' : `${displayedFilterTotals.totalFreight.toLocaleString('vi-VN')} đ`}
                 tone="emerald"
               />
             )}
@@ -617,11 +688,14 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                     className="h-10 w-full rounded-lg border border-border bg-muted/10 pl-9 pr-3 text-[13px] font-medium outline-none focus:ring-2 focus:ring-primary/10"
                   />
                 </div>
-                <input
-                  value={filters.ma_kh}
-                  onChange={(event) => updateFilters({ ma_kh: event.target.value })}
+                <FilterSelect
+                  icon={Hash}
                   placeholder="Lọc mã khách"
-                  className="h-10 min-w-0 flex-1 rounded-lg border border-border px-3 text-[13px] font-medium md:w-[160px] md:flex-none"
+                  searchPlaceholder="Tìm theo mã khách..."
+                  options={[{ value: '', label: 'Tất cả mã KH' }, ...customerCodeOptions]}
+                  value={filters.ma_kh}
+                  onValueChange={(value) => updateFilters({ ma_kh: value })}
+                  className="min-w-0 flex-1 md:w-[180px] md:flex-none"
                 />
                 <select
                   value={filters.customerPaymentStatuses[0] || ''}
@@ -639,6 +713,18 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                     </option>
                   ))}
                 </select>
+                {filters.ma_kh.trim() && (
+                  <button
+                    type="button"
+                    disabled={isLedgerCustomerLoading}
+                    onClick={() => void openCustomerLedger(filters.ma_kh)}
+                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-[13px] font-bold text-violet-800 hover:bg-violet-100 disabled:opacity-60"
+                    title={`Xem chi tiết và bảng kê công nợ ${filters.ma_kh}`}
+                  >
+                    {isLedgerCustomerLoading ? <Loader2 size={15} className="animate-spin" /> : <ReceiptText size={15} />}
+                    <span>Bảng kê KH</span>
+                  </button>
+                )}
                 <input
                   value={filters.noiDenKeyword}
                   onChange={(event) => updateFilters({ noiDenKeyword: event.target.value })}
@@ -664,7 +750,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               </button>
             )}
             {isAllOrders && <DateRangePicker value={{ from: filters.receivedFrom, to: filters.receivedTo }} onChange={({ from, to }) => updateFilters({ receivedFrom: from || '', receivedTo: to || '' })} placeholder="Từ ngày - Đến ngày" className="w-full shrink-0 md:w-[18.5rem]" />}
-            {isAllOrders && activeFilterCount > 0 && <button onClick={clearFilters} className="h-10 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100">× Xóa {activeFilterCount} bộ lọc</button>}
+            {isAllOrders && totalActiveFilterCount > 0 && <button onClick={clearFilters} className="h-10 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100">× Xóa {totalActiveFilterCount} bộ lọc</button>}
             <button
               type="button"
               title="Bảng kê phát hàng — xe & vị trí"
@@ -687,7 +773,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             <button
               type="button"
               title="In danh sách tồn"
-              disabled={isLoading || waybills.length === 0}
+              disabled={isLoading || displayedWaybills.length === 0}
               onClick={handlePrintStockList}
               className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-emerald-600 bg-emerald-600 px-3 text-[13px] font-extrabold text-white hover:bg-emerald-700 disabled:opacity-50"
             >
@@ -697,7 +783,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             <button
               type="button"
               title="Tải xuống Excel"
-              disabled={isLoading || isExporting || waybills.length === 0}
+              disabled={isLoading || isExporting || displayedWaybills.length === 0}
               onClick={() => void handleDownloadExcel()}
               className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-50 px-3 text-[13px] font-extrabold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
             >
@@ -762,14 +848,24 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
-          {isLoading ? <StateCard compact icon={<Loader2 className="animate-spin" size={24} />} title="Đang tải dữ liệu" description={isAllOrders ? 'Hệ thống đang lấy danh sách đơn từ API.' : 'Hệ thống đang lấy danh sách vận đơn tồn kho từ API.'} /> : waybills.length === 0 ? <StateCard compact icon={<Package size={24} />} title={isAllOrders ? 'Chưa có đơn' : 'Chưa có đơn cần chia'} description={isAllOrders ? 'Chưa có vận đơn nào trong hệ thống.' : 'Tất cả đơn tồn kho đã phân hết kiện lên xe, hoặc thử đổi bộ lọc.'} /> : (
+          {isLoading ? <StateCard compact icon={<Loader2 className="animate-spin" size={24} />} title="Đang tải dữ liệu" description={isAllOrders ? 'Hệ thống đang lấy danh sách đơn từ API.' : 'Hệ thống đang lấy danh sách vận đơn tồn kho từ API.'} /> : displayedWaybills.length === 0 ? <StateCard compact icon={<Package size={24} />} title={isAllOrders ? 'Không có đơn phù hợp' : 'Chưa có đơn cần chia'} description={isAllOrders ? 'Thử bỏ bớt bộ lọc tìm kiếm hoặc bộ lọc tại tiêu đề cột.' : 'Tất cả đơn tồn kho đã phân hết kiện lên xe, hoặc thử đổi bộ lọc.'} /> : (
             <>
-              <table className={clsx('hidden md:table w-full border-collapse', isAllOrders ? 'table-fixed text-[12px]' : 'min-w-[1280px] text-left')}>
+              <table className={clsx('hidden md:table border-collapse', isAllOrders ? 'w-[2735px] table-fixed text-[12px]' : 'w-full min-w-[1280px] text-left')}>
+                {isAllOrders && (
+                  <colgroup>
+                    {visibleColumns.map((column) => (
+                      <col key={column.id} style={{ width: ALL_ORDERS_COLUMN_WIDTHS[column.id] || 120 }} />
+                    ))}
+                  </colgroup>
+                )}
                 <thead className="text-[11px] uppercase tracking-wider text-slate-600">
                   {isAllOrders ? (
                     <AllOrdersTableHeader
                       columns={visibleColumns}
                       selectionEnabled={false}
+                      filterOptions={allOrdersColumnFilterOptions}
+                      filterValues={columnFilterValues}
+                      onFilterChange={updateColumnFilter}
                     />
                   ) : (
                     <tr className="bg-slate-100">
@@ -793,7 +889,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                   )}
                 </thead>
                 <tbody>
-                  {waybills.map((waybill, rowIndex) => (
+                  {displayedWaybills.map((waybill, rowIndex) => (
                     <InventoryRow
                       key={`${waybill.id}-${waybill.split_id ?? 'base'}`}
                       waybill={waybill}
@@ -803,7 +899,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       canViewPricing={canViewPricing}
                       canUpdate={canUpdate}
                       canEdit={canEdit}
-                      canDelete={canDelete}
+                      canPay={canUpdateCustomerPayment}
                       showSelection={selectionEnabled && !isAllOrders}
                       selected={selectedWaybillIds.includes(String(waybill.id))}
                       onToggleSelect={toggleSelectRow}
@@ -812,9 +908,9 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       onCloseActionMenu={() => setOpenActionMenuId(null)}
                       onDetail={openDetail}
                       onEdit={openEdit}
-                      onDelete={confirmDeleteWaybill}
                       onSplit={openSplit}
                       onCashVoucher={openCashVoucher}
+                      onCustomerLedger={openCustomerLedger}
                     />
                   ))}
                 </tbody>
@@ -837,16 +933,17 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               </table>
               {isAllOrders ? (
                 <AllOrdersCompactTable
-                  waybills={waybills}
+                  waybills={displayedWaybills}
                   canViewPricing={canViewPricing}
                   canEdit={canEdit}
-                  canDelete={canDelete}
+                  canPay={canUpdateCustomerPayment}
                   onDetail={openDetail}
                   onEdit={openEdit}
-                  onDelete={confirmDeleteWaybill}
+                  onPayment={openCashVoucher}
+                  onCustomerLedger={openCustomerLedger}
                 />
               ) : (
-                <div className="grid gap-3 p-3 md:hidden">{waybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} canDelete={canDelete} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onDelete={confirmDeleteWaybill} onSplit={openSplit} onCashVoucher={openCashVoucher} />)}</div>
+                <div className="grid gap-3 p-3 md:hidden">{displayedWaybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onSplit={openSplit} onCashVoucher={openCashVoucher} onCustomerLedger={openCustomerLedger} />)}</div>
               )}
             </>
           )}
@@ -854,7 +951,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
 
         <div className="border-t border-border bg-card px-4 py-3 flex items-center justify-between shrink-0">
           {isAllOrders ? (
-            <p className="w-full text-center text-[12px] font-bold text-muted-foreground">Hiển thị toàn bộ {waybills.length} đơn</p>
+            <p className="w-full text-center text-[12px] font-bold text-muted-foreground">Hiển thị toàn bộ {displayedWaybills.length} đơn{displayedWaybills.length !== waybills.length ? ` / ${waybills.length} đơn trước lọc cột` : ''}</p>
           ) : (
             <>
               <p className="text-[12px] font-medium text-muted-foreground">{waybills.length ? `${visibleRangeStart}-${visibleRangeEnd}/Tổng:${total}` : `0/Tổng:${total}`}</p>
@@ -896,7 +993,12 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         onClose={() => setIsColumnPickerOpen(false)}
       />
       )}
-      <ConfirmDialog dialog={confirmDialog} isSubmitting={isDeleting} onClose={() => setConfirmDialog(null)} />
+      <CustomerDetailDialog
+        customer={ledgerCustomer}
+        loading={isLedgerCustomerLoading}
+        initialTab="thanh-toan"
+        onClose={() => setLedgerCustomer(null)}
+      />
       <WaybillCashVoucherDialog
         isOpen={isCashVoucherOpen}
         isClosing={isCashVoucherClosing}
@@ -982,7 +1084,7 @@ function InventoryRow({
   canViewPricing,
   canUpdate,
   canEdit,
-  canDelete,
+  canPay = false,
   openActionMenuId,
   onToggleActionMenu,
   onCloseActionMenu,
@@ -991,9 +1093,9 @@ function InventoryRow({
   onToggleSelect,
   onDetail,
   onEdit,
-  onDelete,
   onSplit,
   onCashVoucher,
+  onCustomerLedger,
 }: InventoryItemProps & {
   columns: InventoryColumnView[];
   rowIndex?: number;
@@ -1002,6 +1104,7 @@ function InventoryRow({
   showSelection?: boolean;
   selected?: boolean;
   onToggleSelect?: (waybillId: string | number) => void;
+  canPay?: boolean;
 }) {
   const cellClass = clsx(
     'border-r border-border max-w-[200px] truncate',
@@ -1034,7 +1137,7 @@ function InventoryRow({
             className={clsx(
               'border-r border-border font-semibold',
               isAllOrders
-                ? 'px-2 py-2 text-[12px] min-w-[100px] max-w-[160px] whitespace-normal leading-snug line-clamp-2'
+                ? 'truncate whitespace-nowrap px-2 py-2 text-[12px]'
                 : clsx(cellClass),
             )}
             title={resolveCustomerName(waybill)}
@@ -1081,8 +1184,8 @@ function InventoryRow({
         return <td className={clsx(cellClass, 'font-semibold')}>{resolveNoiDen(waybill)}</td>;
       case 'receiver_address':
         return (
-          <td className={clsx(cellClass, 'whitespace-normal align-top')} title={resolveReceiverAddress(waybill)}>
-            <span className="line-clamp-2 block max-w-[220px]">{resolveReceiverAddress(waybill)}</span>
+          <td className={clsx(cellClass, !isAllOrders && 'whitespace-normal align-top')} title={resolveReceiverAddress(waybill)}>
+            <span className={clsx('block', !isAllOrders && 'line-clamp-2 max-w-[220px]')}>{resolveReceiverAddress(waybill)}</span>
           </td>
         );
       case 'bill_images': {
@@ -1106,7 +1209,7 @@ function InventoryRow({
         return <td className={cellClass}>{resolveBillingUnit(waybill)}</td>;
       case 'billing_qty_detail':
         return (
-          <td className={clsx(cellClass, 'text-right font-medium whitespace-normal')} title={resolveBillingQtyDetail(waybill)}>
+          <td className={clsx(cellClass, 'text-right font-medium', !isAllOrders && 'whitespace-normal')} title={resolveBillingQtyDetail(waybill)}>
             {resolveBillingQtyDetail(waybill)}
           </td>
         );
@@ -1158,7 +1261,20 @@ function InventoryRow({
           </td>
         );
       case 'ma_kh':
-        return <td className={cellClass}>{resolveMaKh(waybill)}</td>;
+        return (
+          <td className={cellClass} onClick={(event) => event.stopPropagation()}>
+            {isAllOrders && resolveMaKh(waybill) !== '—' ? (
+              <button
+                type="button"
+                onClick={() => void onCustomerLedger(resolveMaKh(waybill))}
+                className="font-extrabold text-violet-700 hover:underline"
+                title={`Xem chi tiết và bảng kê công nợ ${resolveMaKh(waybill)}`}
+              >
+                {resolveMaKh(waybill)}
+              </button>
+            ) : resolveMaKh(waybill)}
+          </td>
+        );
       case 'package_count':
         return (
           <td className={`${cellClass} font-medium text-right`}>
@@ -1203,15 +1319,27 @@ function InventoryRow({
         );
       case 'actions':
         return (
-          <td className={clsx(isAllOrders ? 'px-2 py-2' : 'px-4 py-3')} onClick={(event) => event.stopPropagation()}>
+          <td
+            className={clsx(
+              isAllOrders
+                ? 'sticky right-0 z-10 border-l border-border px-2 py-2 shadow-[-4px_0_8px_rgba(15,23,42,0.06)]'
+                : 'px-4 py-3',
+              isAllOrders && (getStorageAgeRowClass(waybill).includes('red')
+                ? 'bg-red-50 group-hover:bg-red-100'
+                : getStorageAgeRowClass(waybill).includes('amber')
+                  ? 'bg-amber-50 group-hover:bg-amber-100'
+                  : 'bg-white group-hover:bg-sky-50'),
+            )}
+            onClick={(event) => event.stopPropagation()}
+          >
             {isAllOrders ? (
               <AllOrdersActions
                 waybill={waybill}
                 canEdit={canEdit}
-                canDelete={canDelete}
+                canPay={canPay}
                 onDetail={onDetail}
                 onEdit={onEdit}
-                onDelete={onDelete}
+                onPayment={onCashVoucher}
               />
             ) : (
               <Actions
@@ -1237,7 +1365,7 @@ function InventoryRow({
   return (
     <tr
       className={clsx(
-        'border-b border-border align-top transition-colors',
+        'group border-b border-border align-top transition-colors',
         getStorageAgeRowClass(waybill),
         selected && 'bg-amber-50/60',
         isAllOrders && 'cursor-pointer hover:bg-sky-50/50',
@@ -1263,12 +1391,18 @@ function InventoryRow({
 function AllOrdersActions({
   waybill,
   canEdit,
-  canDelete,
+  canPay,
   onDetail,
   onEdit,
-  onDelete,
-}: Pick<InventoryItemProps, 'waybill' | 'canEdit' | 'canDelete' | 'onDetail' | 'onEdit' | 'onDelete'>) {
-  const deleteDisabled = !isMutableWaybill(waybill);
+  onPayment,
+}: {
+  waybill: WaybillInventoryItem;
+  canEdit: boolean;
+  canPay: boolean;
+  onDetail: (waybill: WaybillInventoryItem) => void;
+  onEdit: (waybill: WaybillInventoryItem) => void;
+  onPayment: (waybill: WaybillInventoryItem) => void;
+}) {
 
   return (
     <div className="flex items-center justify-center gap-1">
@@ -1296,21 +1430,19 @@ function AllOrdersActions({
       >
         <Pencil size={14} />
       </button>
-      {canDelete && (
-        <button
-          type="button"
-          title={deleteDisabled ? 'Chỉ xóa được đơn ở trạng thái «Đã tạo đơn» hoặc «Trong kho»' : 'Admin xóa vận đơn'}
-          disabled={deleteDisabled}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (deleteDisabled) return;
-            onDelete(waybill);
-          }}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          <Trash2 size={14} />
-        </button>
-      )}
+      <button
+        type="button"
+        title={canPay ? 'Thanh toán / phiếu thu chi' : 'Cần quyền Kế toán hoặc Quản lý'}
+        disabled={!canPay}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (!canPay) return;
+          onPayment(waybill);
+        }}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        <HandCoins size={14} />
+      </button>
     </div>
   );
 }
@@ -1363,38 +1495,40 @@ function AllOrdersCompactTable({
   waybills,
   canViewPricing,
   canEdit,
-  canDelete,
+  canPay,
   onDetail,
   onEdit,
-  onDelete,
+  onPayment,
+  onCustomerLedger,
 }: {
   waybills: WaybillInventoryItem[];
   canViewPricing: boolean;
   canEdit: boolean;
-  canDelete: boolean;
+  canPay: boolean;
   onDetail: (waybill: WaybillInventoryItem) => void;
   onEdit: (waybill: WaybillInventoryItem) => void;
-  onDelete: (waybill: WaybillInventoryItem) => void;
+  onPayment: (waybill: WaybillInventoryItem) => void;
+  onCustomerLedger: (code: string) => void;
 }) {
   const headerClass = 'sticky top-0 z-10 border-b border-r border-slate-300 bg-slate-100 px-1.5 py-1.5 text-[9px] font-extrabold uppercase text-slate-600 whitespace-nowrap';
   const cellClass = 'border-b border-r border-slate-200 px-1.5 py-1.5 text-[10px] leading-tight whitespace-nowrap overflow-hidden text-ellipsis';
 
   return (
     <div className="md:hidden min-w-0 overflow-x-auto bg-white">
-      <table className="w-[780px] table-fixed border-collapse text-left">
+      <table className="w-[812px] table-fixed border-collapse text-left">
         <thead>
           <tr>
             <th className={`${headerClass} w-[34px] text-center`}>STT</th>
             <th className={`${headerClass} w-[62px]`}>Ngày</th>
             <th className={`${headerClass} w-[98px]`}>Bill</th>
-            <th className={`${headerClass} w-[92px]`}>Khách</th>
+            <th className={`${headerClass} w-[92px]`}>Mã KH</th>
             <th className={`${headerClass} w-[112px]`}>Nội dung</th>
             <th className={`${headerClass} w-[74px]`}>Nơi đến</th>
             <th className={`${headerClass} w-[36px] text-right`}>SL</th>
             <th className={`${headerClass} w-[46px]`}>ĐVT</th>
             <th className={`${headerClass} w-[82px] text-right`}>Thành tiền</th>
             <th className={`${headerClass} w-[72px]`}>HTTT</th>
-            <th className={`${headerClass} w-[72px] text-center`}>Xem</th>
+            <th className={`${headerClass} w-[104px] text-center`}>Thao tác</th>
           </tr>
         </thead>
         <tbody>
@@ -1409,7 +1543,13 @@ function AllOrdersCompactTable({
                 <td className={`${cellClass} text-center font-bold text-slate-500`}>{index + 1}</td>
                 <td className={`${cellClass} text-slate-600`}>{formatDate(waybill.created_at)}</td>
                 <td className={`${cellClass} font-extrabold text-primary`} title={displayCode(waybill)}>{displayCode(waybill)}</td>
-                <td className={`${cellClass} font-semibold`} title={resolveCustomerName(waybill)}>{resolveCustomerName(waybill)}</td>
+                <td className={`${cellClass} font-semibold`} title={resolveMaKh(waybill)} onClick={(event) => event.stopPropagation()}>
+                  {resolveMaKh(waybill) !== '—' ? (
+                    <button type="button" onClick={() => void onCustomerLedger(resolveMaKh(waybill))} className="font-extrabold text-violet-700 hover:underline">
+                      {resolveMaKh(waybill)}
+                    </button>
+                  ) : '—'}
+                </td>
                 <td className={cellClass} title={resolveCongSg(waybill)}>{resolveCongSg(waybill)}</td>
                 <td className={`${cellClass} font-semibold`} title={resolveNoiDen(waybill)}>{resolveNoiDen(waybill)}</td>
                 <td className={`${cellClass} text-right font-bold`}>{resolvePackageCountSl(waybill)}</td>
@@ -1422,10 +1562,10 @@ function AllOrdersCompactTable({
                   <AllOrdersActions
                     waybill={waybill}
                     canEdit={canEdit}
-                    canDelete={canDelete}
+                    canPay={canPay}
                     onDetail={onDetail}
                     onEdit={onEdit}
-                    onDelete={onDelete}
+                    onPayment={onPayment}
                   />
                 </td>
               </tr>
@@ -1437,7 +1577,7 @@ function AllOrdersCompactTable({
   );
 }
 
-function InventoryCard({ waybill, isAllOrders, canUpdate, canEdit, canDelete, openActionMenuId, onToggleActionMenu, onCloseActionMenu, onDetail, onEdit, onDelete, onSplit, onCashVoucher }: InventoryItemProps & { isAllOrders: boolean }) {
+function InventoryCard({ waybill, isAllOrders, canUpdate, canEdit, openActionMenuId, onToggleActionMenu, onCloseActionMenu, onDetail, onEdit, onSplit, onCashVoucher }: InventoryItemProps & { isAllOrders: boolean }) {
   return (
     <article className="rounded-2xl border border-border bg-white p-4 shadow-sm">
       <div className="flex items-start gap-3">
@@ -1491,7 +1631,7 @@ function InventoryCard({ waybill, isAllOrders, canUpdate, canEdit, canDelete, op
 
       <div className="mt-3 border-t border-border pt-3">
         {isAllOrders ? (
-          <AllOrdersActions waybill={waybill} canEdit={canEdit} canDelete={canDelete} onDetail={onDetail} onEdit={onEdit} onDelete={onDelete} />
+          <AllOrdersActions waybill={waybill} canEdit={canEdit} canPay={false} onDetail={onDetail} onEdit={onEdit} onPayment={onCashVoucher} />
         ) : (
           <Actions
             waybill={waybill}
@@ -1515,15 +1655,14 @@ interface InventoryItemProps {
   waybill: WaybillInventoryItem;
   canUpdate: boolean;
   canEdit: boolean;
-  canDelete: boolean;
   openActionMenuId: string | null;
   onToggleActionMenu: (id: string) => void;
   onCloseActionMenu: () => void;
   onDetail: (waybill: WaybillInventoryItem) => void;
   onEdit: (waybill: WaybillInventoryItem) => void;
-  onDelete: (waybill: WaybillInventoryItem) => void;
   onSplit: (waybill: WaybillInventoryItem) => void;
   onCashVoucher: (waybill: WaybillInventoryItem) => void;
+  onCustomerLedger: (code: string) => void;
 }
 
 function Actions({

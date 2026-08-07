@@ -252,6 +252,7 @@ export const ALL_ORDERS_PREFIX_COLUMN_IDS: InventoryColumnId[] = ['stt'];
 export const ALL_ORDERS_SENDER_COLUMN_IDS: InventoryColumnId[] = [
   'received_at',
   'customer_name',
+  'ma_kh',
   'waybill_code',
   'cong_sg',
   'service_type',
@@ -277,6 +278,32 @@ export const ALL_ORDERS_FINANCIAL_COLUMN_IDS: InventoryColumnId[] = [
 
 export const ALL_ORDERS_SUFFIX_COLUMN_IDS: InventoryColumnId[] = ['actions'];
 
+/** Độ rộng cố định giúp bảng danh sách đơn giữ một dòng gọn như Excel. */
+export const ALL_ORDERS_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>> = {
+  stt: 48,
+  received_at: 100,
+  customer_name: 135,
+  ma_kh: 100,
+  waybill_code: 120,
+  cong_sg: 160,
+  service_type: 120,
+  noi_den: 110,
+  receiver_address: 250,
+  bill_images: 90,
+  order_status: 115,
+  package_count: 60,
+  billing_unit: 65,
+  billing_qty_detail: 150,
+  unit_price: 100,
+  surcharge: 150,
+  total_amount: 120,
+  thu_ho_khach: 120,
+  payment_method: 145,
+  customer_payment_status: 115,
+  customer_payment_note: 140,
+  actions: 112,
+};
+
 export const ALL_ORDERS_FIXED_COLUMN_IDS: InventoryColumnId[] = [
   ...ALL_ORDERS_PREFIX_COLUMN_IDS,
   ...ALL_ORDERS_SENDER_COLUMN_IDS,
@@ -294,6 +321,7 @@ export function getAllOrdersFixedColumnIds(): InventoryColumnId[] {
 const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   received_at: 'Ngày nhận',
   customer_name: 'Tên khách',
+  ma_kh: 'Mã KH',
   waybill_code: 'Bill',
   cong_sg: 'Nội dung',
   service_type: 'Dịch vụ',

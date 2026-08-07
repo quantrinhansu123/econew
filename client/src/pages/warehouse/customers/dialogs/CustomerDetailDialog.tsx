@@ -26,8 +26,9 @@ import type { WaybillCashVoucher } from '../../inventory/dialogs/WaybillCashVouc
 interface Props {
   customer: CustomerRecord | null;
   loading?: boolean;
+  initialTab?: CustomerDetailTabId;
   onClose: () => void;
-  onEdit: () => void;
+  onEdit?: () => void;
 }
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -136,7 +137,7 @@ const dedupeWaybills = (lines: WaybillInventoryItem[]) => {
 const inventoryTotalFromResponse = (response: InventoryListResponse | WaybillInventoryItem[], fallback: number) =>
   Array.isArray(response) ? fallback : response.meta?.total_waybills ?? response.total ?? response.meta?.total ?? fallback;
 
-export default function CustomerDetailDialog({ customer, loading, onClose, onEdit }: Props) {
+export default function CustomerDetailDialog({ customer, loading, initialTab = 'chi-tiet', onClose, onEdit }: Props) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<CustomerDetailTabId>('chi-tiet');
   const [inventoryItems, setInventoryItems] = useState<WaybillInventoryItem[]>([]);
@@ -180,6 +181,10 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
   }, []);
 
   useEffect(() => {
+    if (customer) {
+      queueMicrotask(() => setActiveTab(initialTab));
+      return;
+    }
     if (!customer) {
       queueMicrotask(() => {
         setActiveTab('chi-tiet');
@@ -201,7 +206,7 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
         setIsStatementOpen(false);
       });
     }
-  }, [customer?.id]);
+  }, [customer?.id, initialTab]);
 
   const statementData = useMemo(() => {
     const paidMaps = buildPaidByWaybill(cashVouchers);
@@ -851,14 +856,16 @@ export default function CustomerDetailDialog({ customer, loading, onClose, onEdi
           <button type="button" onClick={onClose} className="h-10 rounded-xl border border-border px-4 text-[13px] font-bold text-muted-foreground hover:bg-muted">
             Đóng
           </button>
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-bold text-white hover:bg-primary/90"
-          >
-            <Edit size={15} />
-            Sửa
-          </button>
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-bold text-white hover:bg-primary/90"
+            >
+              <Edit size={15} />
+              Sửa
+            </button>
+          )}
         </div>
 
         {isCollectOpen && (
