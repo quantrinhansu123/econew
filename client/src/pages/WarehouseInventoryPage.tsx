@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Hash, Layers, Loader2, MoreHorizontal, Package, Pencil, Printer, ReceiptText, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Truck, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Hash, Layers, Loader2, MoreHorizontal, Package, Pencil, Printer, ReceiptText, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
@@ -211,7 +211,6 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [draftFilters, setDraftFilters] = useState<InventoryFilters>(isAllOrders ? allOrdersDefaultFilters : defaultFilters);
   const [waybills, setWaybills] = useState<WaybillInventoryItem[]>([]);
   const [hubs, setHubs] = useState<HubSummary[]>([]);
-  const [total, setTotal] = useState(0);
   const [filterTotals, setFilterTotals] = useState({ orderCount: 0, totalFreight: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -256,9 +255,6 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [visibleColumnIds, setVisibleColumnIds] = useState<InventoryColumnId[]>(() =>
     isAllOrders ? loadAllOrdersVisibleColumnIds() : loadVisibleColumnIds(canViewPricing),
   );
-  const totalPages = Math.max(1, Math.ceil(total / filters.limit));
-  const visibleRangeStart = waybills.length ? (filters.page - 1) * filters.limit + 1 : 0;
-  const visibleRangeEnd = waybills.length ? visibleRangeStart + waybills.length - 1 : 0;
   const hubOptions = useMemo(() => hubs.map(hub => ({ value: String(hub.id), label: formatHub(hub) })), [hubs]);
   const activeFilterCount =
     filters.statuses.length +
@@ -407,7 +403,6 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
           });
           return [...merged.values()].sort((left, right) => left.label.localeCompare(right.label, 'vi', { numeric: true, sensitivity: 'base' }));
         });
-        setTotal(items.length);
         setFilterTotals({
           orderCount: items.length,
           totalFreight: canViewPricing
@@ -416,22 +411,17 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         });
         return;
       }
-      const response = await apiRequest<InventoryListResponse | WaybillInventoryItem[]>(`/waybills/inventory/trip-lines?${buildQuery(filters, variant)}`);
-      const rawItems = normalizeList(response);
-      const items = rawItems.filter(isIncompleteSplitRow);
+      const items = await loadAllInventoryRows(filters, variant);
       setWaybills(items);
-      const orderCount = Array.isArray(response)
-        ? items.length
-        : response.meta?.total_waybills ?? response.meta?.total ?? items.length;
-      setTotal(orderCount);
       setFilterTotals({
-        orderCount,
-        totalFreight: Array.isArray(response) ? 0 : Number(response.meta?.total_freight ?? 0),
+        orderCount: items.length,
+        totalFreight: canViewPricing
+          ? items.reduce((sum, waybill) => sum + Number(waybill.freight_amount ?? waybill.cost_amount ?? 0), 0)
+          : 0,
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không thể tải danh sách tồn kho theo chuyến.');
       setWaybills([]);
-      setTotal(0);
       setFilterTotals({ orderCount: 0, totalFreight: 0 });
     } finally {
       setIsLoading(false);
@@ -549,10 +539,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       visibleColumns.map((col) => col.id),
       Object.fromEntries(visibleColumns.map((col) => [col.id, col.label])),
     );
-    const pageNote =
-      !isAllOrders && total > displayedWaybills.length
-        ? ` · Trang ${filters.page}: in ${displayedWaybills.length}/${total} đơn đang hiển thị`
-        : ` · ${displayedWaybills.length} đơn`;
+    const pageNote = ` · ${displayedWaybills.length} đơn`;
     payload.filterSummary = summarizeFilters(filters) + pageNote;
     saveInventoryPrintPayload(payload);
     window.open('/print/inventory-stock', '_blank');
@@ -642,17 +629,17 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         <>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <FilterSummaryCard
-            label="Tổng kiện (trang hiện tại)"
+            label="Tổng kiện (toàn bộ danh sách)"
             value={isLoading ? '…' : `${grandTotals.package_count.toLocaleString('vi-VN')} kiện`}
             tone="blue"
           />
           <FilterSummaryCard
-            label="Tổng cân (trang hiện tại)"
+            label="Tổng cân (toàn bộ danh sách)"
             value={isLoading ? '…' : `${grandTotals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg`}
             tone="emerald"
           />
           <FilterSummaryCard
-            label="Tổng khối (trang hiện tại)"
+            label="Tổng khối (toàn bộ danh sách)"
             value={isLoading ? '…' : `${grandTotals.volume_m3.toFixed(2)} m³`}
             tone="amber"
           />
@@ -894,7 +881,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       key={`${waybill.id}-${waybill.split_id ?? 'base'}`}
                       waybill={waybill}
                       columns={visibleColumns}
-                      rowIndex={(filters.page - 1) * filters.limit + rowIndex + 1}
+                      rowIndex={rowIndex + 1}
                       isAllOrders={isAllOrders}
                       canViewPricing={canViewPricing}
                       canUpdate={canUpdate}
@@ -950,21 +937,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         </div>
 
         <div className="border-t border-border bg-card px-4 py-3 flex items-center justify-between shrink-0">
-          {isAllOrders ? (
-            <p className="w-full text-center text-[12px] font-bold text-muted-foreground">Hiển thị toàn bộ {displayedWaybills.length} đơn{displayedWaybills.length !== waybills.length ? ` / ${waybills.length} đơn trước lọc cột` : ''}</p>
-          ) : (
-            <>
-              <p className="text-[12px] font-medium text-muted-foreground">{waybills.length ? `${visibleRangeStart}-${visibleRangeEnd}/Tổng:${total}` : `0/Tổng:${total}`}</p>
-              <div className="flex items-center gap-2">
-                <select value={filters.limit} onChange={event => updateFilters({ limit: Number(event.target.value), page: 1 })} className="h-9 rounded-lg border border-border bg-white px-3 text-[13px] text-muted-foreground outline-none"><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select>
-                <span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span>
-                <button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button>
-                <button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button>
-                <span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span>
-                <span className="text-[13px] font-bold text-foreground">/ {totalPages}</span>
-              </div>
-            </>
-          )}
+          <p className="w-full text-center text-[12px] font-bold text-muted-foreground">
+            Hiển thị toàn bộ {displayedWaybills.length} {isAllOrders ? 'đơn' : 'đơn tồn'}
+            {isAllOrders && displayedWaybills.length !== waybills.length ? ` / ${waybills.length} đơn trước lọc cột` : ''}
+          </p>
         </div>
       </div>
 
