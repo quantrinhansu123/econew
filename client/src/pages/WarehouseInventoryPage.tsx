@@ -142,7 +142,7 @@ const buildQuery = (filters: InventoryFilters, variant: InventoryPageVariant) =>
 
 const EXCEL_EXPORT_PAGE_SIZE = 100;
 
-async function loadAllInventoryRowsForExcel(
+async function loadAllInventoryRows(
   filters: InventoryFilters,
   variant: InventoryPageVariant,
 ): Promise<WaybillInventoryItem[]> {
@@ -341,9 +341,21 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     setIsLoading(true);
     setError('');
     try {
+      if (isAllOrders) {
+        const items = await loadAllInventoryRows(filters, variant);
+        setWaybills(items);
+        setTotal(items.length);
+        setFilterTotals({
+          orderCount: items.length,
+          totalFreight: canViewPricing
+            ? items.reduce((sum, waybill) => sum + Number(waybill.freight_amount ?? waybill.cost_amount ?? 0), 0)
+            : 0,
+        });
+        return;
+      }
       const response = await apiRequest<InventoryListResponse | WaybillInventoryItem[]>(`/waybills/inventory/trip-lines?${buildQuery(filters, variant)}`);
       const rawItems = normalizeList(response);
-      const items = isAllOrders ? sortAllOrdersByCreatedAt(rawItems) : rawItems.filter(isIncompleteSplitRow);
+      const items = rawItems.filter(isIncompleteSplitRow);
       setWaybills(items);
       const orderCount = Array.isArray(response)
         ? items.length
@@ -484,7 +496,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     }
     setIsExporting(true);
     try {
-      const exportRows = await loadAllInventoryRowsForExcel(filters, variant);
+      const exportRows = await loadAllInventoryRows(filters, variant);
       const exported = downloadInventoryExcel(
         exportRows,
         visibleColumns.map((col) => col.id),
@@ -823,21 +835,39 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                 </tfoot>
                 )}
               </table>
-              <div className="grid gap-3 p-3 md:hidden">{waybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} canDelete={canDelete} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onDelete={confirmDeleteWaybill} onSplit={openSplit} onCashVoucher={openCashVoucher} />)}</div>
+              {isAllOrders ? (
+                <AllOrdersCompactTable
+                  waybills={waybills}
+                  canViewPricing={canViewPricing}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  onDetail={openDetail}
+                  onEdit={openEdit}
+                  onDelete={confirmDeleteWaybill}
+                />
+              ) : (
+                <div className="grid gap-3 p-3 md:hidden">{waybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} canDelete={canDelete} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onDelete={confirmDeleteWaybill} onSplit={openSplit} onCashVoucher={openCashVoucher} />)}</div>
+              )}
             </>
           )}
         </div>
 
         <div className="border-t border-border bg-card px-4 py-3 flex items-center justify-between shrink-0">
-          <p className="text-[12px] font-medium text-muted-foreground">{waybills.length ? `${visibleRangeStart}-${visibleRangeEnd}/Tổng:${total}` : `0/Tổng:${total}`}</p>
-          <div className="flex items-center gap-2">
-            <select value={filters.limit} onChange={event => updateFilters({ limit: Number(event.target.value), page: 1 })} className="h-9 rounded-lg border border-border bg-white px-3 text-[13px] text-muted-foreground outline-none"><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select>
-            <span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span>
-            <button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button>
-            <button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button>
-            <span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span>
-            <span className="text-[13px] font-bold text-foreground">/ {totalPages}</span>
-          </div>
+          {isAllOrders ? (
+            <p className="w-full text-center text-[12px] font-bold text-muted-foreground">Hiển thị toàn bộ {waybills.length} đơn</p>
+          ) : (
+            <>
+              <p className="text-[12px] font-medium text-muted-foreground">{waybills.length ? `${visibleRangeStart}-${visibleRangeEnd}/Tổng:${total}` : `0/Tổng:${total}`}</p>
+              <div className="flex items-center gap-2">
+                <select value={filters.limit} onChange={event => updateFilters({ limit: Number(event.target.value), page: 1 })} className="h-9 rounded-lg border border-border bg-white px-3 text-[13px] text-muted-foreground outline-none"><option value={10}>10</option><option value={20}>20</option><option value={50}>50</option></select>
+                <span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span>
+                <button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button>
+                <button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button>
+                <span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span>
+                <span className="text-[13px] font-bold text-foreground">/ {totalPages}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -1326,6 +1356,84 @@ function BillImagesCell({ waybill, cellClass }: { waybill: WaybillInventoryItem;
         onClose={() => setPreviewUrl(null)}
       />
     </td>
+  );
+}
+
+function AllOrdersCompactTable({
+  waybills,
+  canViewPricing,
+  canEdit,
+  canDelete,
+  onDetail,
+  onEdit,
+  onDelete,
+}: {
+  waybills: WaybillInventoryItem[];
+  canViewPricing: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  onDetail: (waybill: WaybillInventoryItem) => void;
+  onEdit: (waybill: WaybillInventoryItem) => void;
+  onDelete: (waybill: WaybillInventoryItem) => void;
+}) {
+  const headerClass = 'sticky top-0 z-10 border-b border-r border-slate-300 bg-slate-100 px-1.5 py-1.5 text-[9px] font-extrabold uppercase text-slate-600 whitespace-nowrap';
+  const cellClass = 'border-b border-r border-slate-200 px-1.5 py-1.5 text-[10px] leading-tight whitespace-nowrap overflow-hidden text-ellipsis';
+
+  return (
+    <div className="md:hidden min-w-0 overflow-x-auto bg-white">
+      <table className="w-[780px] table-fixed border-collapse text-left">
+        <thead>
+          <tr>
+            <th className={`${headerClass} w-[34px] text-center`}>STT</th>
+            <th className={`${headerClass} w-[62px]`}>Ngày</th>
+            <th className={`${headerClass} w-[98px]`}>Bill</th>
+            <th className={`${headerClass} w-[92px]`}>Khách</th>
+            <th className={`${headerClass} w-[112px]`}>Nội dung</th>
+            <th className={`${headerClass} w-[74px]`}>Nơi đến</th>
+            <th className={`${headerClass} w-[36px] text-right`}>SL</th>
+            <th className={`${headerClass} w-[46px]`}>ĐVT</th>
+            <th className={`${headerClass} w-[82px] text-right`}>Thành tiền</th>
+            <th className={`${headerClass} w-[72px]`}>HTTT</th>
+            <th className={`${headerClass} w-[72px] text-center`}>Xem</th>
+          </tr>
+        </thead>
+        <tbody>
+          {waybills.map((waybill, index) => {
+            const totalAmount = resolveTotalAmount(waybill);
+            return (
+              <tr
+                key={`${waybill.id}-${waybill.split_id ?? 'base'}-compact`}
+                className="cursor-pointer odd:bg-white even:bg-slate-50/70 active:bg-blue-50"
+                onClick={() => onDetail(waybill)}
+              >
+                <td className={`${cellClass} text-center font-bold text-slate-500`}>{index + 1}</td>
+                <td className={`${cellClass} text-slate-600`}>{formatDate(waybill.created_at)}</td>
+                <td className={`${cellClass} font-extrabold text-primary`} title={displayCode(waybill)}>{displayCode(waybill)}</td>
+                <td className={`${cellClass} font-semibold`} title={resolveCustomerName(waybill)}>{resolveCustomerName(waybill)}</td>
+                <td className={cellClass} title={resolveCongSg(waybill)}>{resolveCongSg(waybill)}</td>
+                <td className={`${cellClass} font-semibold`} title={resolveNoiDen(waybill)}>{resolveNoiDen(waybill)}</td>
+                <td className={`${cellClass} text-right font-bold`}>{resolvePackageCountSl(waybill)}</td>
+                <td className={cellClass}>{resolveBillingUnit(waybill)}</td>
+                <td className={`${cellClass} text-right font-bold tabular-nums text-emerald-800`}>
+                  {canViewPricing ? displayValue(totalAmount, ' đ') : '—'}
+                </td>
+                <td className={cellClass} title={resolvePaymentMethod(waybill)}>{resolvePaymentMethod(waybill)}</td>
+                <td className="border-b border-slate-200 px-1 py-1" onClick={(event) => event.stopPropagation()}>
+                  <AllOrdersActions
+                    waybill={waybill}
+                    canEdit={canEdit}
+                    canDelete={canDelete}
+                    onDetail={onDetail}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
