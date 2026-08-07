@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, Building2, CreditCard, Loader2, MapPin, PackageOpen, Phone, RefreshCw, Search, Truck } from 'lucide-react';
+import { AlertTriangle, Building2, CreditCard, History, Loader2, MapPin, PackageOpen, Phone, RefreshCw, Search, Truck } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
 import { getStoredAuthUser } from '../lib/authUser';
 import UpdateDeliveryStatusDialog from './delivery/last-mile/dialogs/UpdateDeliveryStatusDialog';
-import type { DeliveryResources, HubSummary, LastMileWaybill, ListResponse } from './delivery/last-mile/types';
+import DeliveryPreparationDialog from './delivery/last-mile/dialogs/DeliveryPreparationDialog';
+import DeliveryHistoryDialog from './delivery/last-mile/dialogs/DeliveryHistoryDialog';
+import type { DeliveryResources, HubSummary, LastMileWaybill, ListResponse, WaybillHistoryItem } from './delivery/last-mile/types';
 
+const WAREHOUSE = 1;
 const DRIVER = 4;
 const DISPATCHER = 8;
 const MANAGER = 32;
 const DIRECTOR = 64;
 
-const canAct = (roleMask: number) => (roleMask & (DRIVER | DISPATCHER | MANAGER | DIRECTOR)) !== 0;
+const canAct = (roleMask: number) => (roleMask & (WAREHOUSE | DRIVER | DISPATCHER | MANAGER | DIRECTOR)) !== 0;
 const normalizeStatus = (waybill: LastMileWaybill) => String(waybill.current_state || '').toUpperCase();
 
 const normalizeList = <T,>(response: ListResponse<T> | T[]) =>
@@ -37,6 +40,10 @@ export default function NhiemVuGiaoHangPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
   const [resources, setResources] = useState<DeliveryResources>({ drivers: [], trucks: [], vendors: [] });
+  const [preparationWaybill, setPreparationWaybill] = useState<LastMileWaybill | null>(null);
+  const [historyWaybill, setHistoryWaybill] = useState<LastMileWaybill | null>(null);
+  const [historyItems, setHistoryItems] = useState<WaybillHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -123,12 +130,29 @@ export default function NhiemVuGiaoHangPage() {
     }
   };
 
+  const confirmPreparation = async (status: 'READY' | 'SCHEDULED' | 'HOLD', scheduledAt?: string, reason?: string) => {
+    if (!preparationWaybill) return;
+    setIsSubmitting(true); setActionError('');
+    try {
+      await apiRequest(`/waybills/${preparationWaybill.id}/delivery-preparation`, { method: 'PATCH', body: { status, scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined, reason } });
+      setPreparationWaybill(null); await loadTasks();
+    } catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không lưu được xử lý.'); }
+    finally { setIsSubmitting(false); }
+  };
+
+  const openHistory = async (waybill: LastMileWaybill) => {
+    setHistoryWaybill(waybill); setHistoryItems([]); setHistoryLoading(true);
+    try { setHistoryItems(await apiRequest<WaybillHistoryItem[]>(`/waybills/${waybill.id}/history`)); }
+    catch { setHistoryItems([]); }
+    finally { setHistoryLoading(false); }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
         <h1 className="text-lg font-extrabold text-foreground">Nhiệm vụ giao hàng</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Đơn chờ giao / đang giao chặng cuối — bấm <strong className="text-foreground">Giao hàng</strong> để xác nhận.
+          Hàng đã nhập HUB đến — xác nhận người nhận, lưu kho hoặc điều phối giao chặng cuối.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <div className="relative min-w-[260px] flex-1">
@@ -189,7 +213,9 @@ export default function NhiemVuGiaoHangPage() {
         <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-4">
           {waybills.map((waybill) => {
             const status = normalizeStatus(waybill);
-            const canStart = allowed && status === 'AT_DEST_HUB';
+            const preparation = waybill.delivery_preparation_status || 'PENDING_CONFIRMATION';
+            const canStart = allowed && status === 'AT_DEST_HUB' && preparation === 'READY';
+            const canPrepare = allowed && status === 'AT_DEST_HUB';
             const canDeliver = allowed && status === 'OUT_FOR_DELIVERY';
 
             return (
@@ -213,6 +239,11 @@ export default function NhiemVuGiaoHangPage() {
                     </span>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
+                    {canPrepare && (
+                      <button type="button" onClick={() => { setActionError(''); setPreparationWaybill(waybill); }} className="inline-flex h-10 items-center justify-center rounded-xl border px-4 text-[13px] font-extrabold text-foreground hover:bg-muted">
+                        {preparation === 'PENDING_CONFIRMATION' ? 'Gọi xác nhận / xử lý' : 'Sửa xử lý'}
+                      </button>
+                    )}
                     {canStart && (
                       <button
                         type="button"
@@ -220,9 +251,10 @@ export default function NhiemVuGiaoHangPage() {
                         className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-primary bg-primary/10 px-4 text-[13px] font-extrabold text-primary hover:bg-primary/15"
                       >
                         <Truck size={16} />
-                        Nhận đi giao
+                        Điều phối giao
                       </button>
                     )}
+                    <button type="button" title="Xem lịch sử" onClick={() => void openHistory(waybill)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border text-muted-foreground hover:text-primary"><History size={16}/></button>
                     {canDeliver && (
                       <button
                         type="button"
@@ -233,7 +265,7 @@ export default function NhiemVuGiaoHangPage() {
                         Giao hàng
                       </button>
                     )}
-                    {allowed && !canStart && !canDeliver && (
+                    {allowed && !canPrepare && !canStart && !canDeliver && (
                       <span className="text-[12px] font-bold text-muted-foreground">Không thao tác được</span>
                     )}
                   </div>
@@ -247,6 +279,10 @@ export default function NhiemVuGiaoHangPage() {
                       ? ` · ${waybill.trip_package_count}/${waybill.order_total_packages} kiện`
                       : ''}
                   </p>
+                  <p className="text-[12px] font-bold text-slate-700">Nguồn hàng: {waybill.trip_label || (waybill.trip_id ? `Chuyến #${waybill.trip_id}${waybill.license_plate ? ` · Xe ${waybill.license_plate}` : ''}` : 'Nhập trực tiếp tại HUB')}</p>
+                  {status === 'AT_DEST_HUB' && <p className={clsx('text-[12px] font-extrabold', preparation === 'NEEDS_ACTION' ? 'text-red-700' : preparation === 'READY' ? 'text-emerald-700' : 'text-amber-700')}>
+                    {preparation === 'READY' ? 'Sẵn sàng giao' : preparation === 'SCHEDULED' ? `Lưu kho · hẹn ${waybill.delivery_scheduled_at ? new Date(waybill.delivery_scheduled_at).toLocaleString('vi-VN') : ''}` : preparation === 'NEEDS_ACTION' ? 'Cần xử lý: còn tối đa 1 ngày tới lịch giao' : preparation === 'HOLD' ? `Lưu kho chờ xử lý · ${waybill.delivery_hold_reason || ''}` : 'Chờ gọi xác nhận'}
+                  </p>}
                   {waybill.receiver_address && (
                     <p className="flex items-start gap-1.5 text-muted-foreground">
                       <MapPin size={14} className="mt-0.5 shrink-0" />
@@ -285,6 +321,8 @@ export default function NhiemVuGiaoHangPage() {
         }}
         onConfirm={confirmUpdateStatus}
       />
+      <DeliveryPreparationDialog waybill={preparationWaybill} busy={isSubmitting} error={actionError} onClose={() => { setPreparationWaybill(null); setActionError(''); }} onConfirm={confirmPreparation}/>
+      <DeliveryHistoryDialog waybill={historyWaybill} items={historyItems} loading={historyLoading} onClose={() => setHistoryWaybill(null)}/>
     </div>
   );
 }

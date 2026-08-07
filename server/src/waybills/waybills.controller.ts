@@ -25,6 +25,7 @@ import { QueryLoadPlanningBoardDto } from './dto/query-load-planning-board.dto';
 import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
 import { WaybillsService } from './waybills.service';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
+import { UpdateDeliveryPreparationDto } from './dto/update-delivery-preparation.dto';
 
 @ApiTags('Waybills')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -57,6 +58,13 @@ export class WaybillsController {
   @ApiOperation({ summary: 'List drivers, internal trucks and partners available for last-mile assignment' })
   getDeliveryResources(@Query('hub_id') hubId: string | undefined, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.getDeliveryResources(hubId, currentUser);
+  }
+
+  @Patch(':id/delivery-preparation')
+  @RequireRoles(Roles.WAREHOUSE, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Confirm customer and prepare a HUB waybill for delivery' })
+  updateDeliveryPreparation(@Param('id') id: string, @Body() dto: UpdateDeliveryPreparationDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.updateDeliveryPreparation(id, dto, currentUser);
   }
 
   @Get('load-planning/board')
@@ -178,7 +186,7 @@ export class WaybillsController {
   }
 
   @Get(':id/history')
-  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Get field-level waybill edit history (manager only)' })
   findHistory(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.findHistory(id, currentUser);

@@ -36,6 +36,7 @@ import { SaveWaybillSplitsDto } from './dto/save-waybill-splits.dto';
 import { QueryLoadPlanningBoardDto } from './dto/query-load-planning-board.dto';
 import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
 import { assertSplitLoadStatusTransition, WaybillSplitLoadStatus } from './dto/waybill-split-load-status.enum';
+import { UpdateDeliveryPreparationDto } from './dto/update-delivery-preparation.dto';
 import { OrdersService } from '../orders/orders.service';
 import { OrderEntity } from '../orders/order.entity';
 import { VendorsService } from '../vendors/vendors.service';
@@ -266,6 +267,7 @@ export class WaybillsService {
   }
 
   async getDeliveryTasks(query: QueryWaybillsDto, currentUser: UserEntity) {
+    await this.activateScheduledDeliveryTasks(currentUser);
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 100);
     const qb = this.waybillsRepository.createQueryBuilder('waybill')
@@ -358,6 +360,51 @@ export class WaybillsService {
         total_pages: Math.max(1, Math.ceil(total / limit)),
       },
     };
+  }
+
+  async updateDeliveryPreparation(id: string, dto: UpdateDeliveryPreparationDto, currentUser: UserEntity) {
+    const waybill = await this.findEditable(id, currentUser);
+    if (this.getStatus(waybill) !== WaybillStatus.AT_DEST_HUB) {
+      throw new BadRequestException('Chỉ xử lý chuẩn bị giao khi đơn đã nhập HUB đến');
+    }
+    const before = this.buildAuditSnapshot(waybill);
+    const now = new Date();
+    if (dto.status === 'SCHEDULED') {
+      if (!dto.scheduled_at || dto.scheduled_at.getTime() <= now.getTime()) throw new BadRequestException('Ngày hẹn giao phải ở tương lai');
+      waybill.delivery_scheduled_at = dto.scheduled_at;
+      waybill.delivery_hold_reason = dto.reason?.trim() || null;
+    } else if (dto.status === 'HOLD') {
+      if (!dto.reason?.trim()) throw new BadRequestException('Phải nhập lý do lưu kho chờ xử lý');
+      waybill.delivery_scheduled_at = null;
+      waybill.delivery_hold_reason = dto.reason.trim();
+    } else {
+      waybill.delivery_scheduled_at = null;
+      waybill.delivery_hold_reason = null;
+    }
+    waybill.delivery_preparation_status = dto.status;
+    waybill.delivery_confirmed_at = now;
+    waybill.updated_by = currentUser.id;
+    const saved = await this.waybillsRepository.save(waybill as any);
+    await this.recordWaybillChange(String(saved.id), `DELIVERY_PREPARATION_${dto.status}`, currentUser, before, saved);
+    return this.sanitize(saved as WaybillRecord, currentUser);
+  }
+
+  private async activateScheduledDeliveryTasks(currentUser: UserEntity): Promise<void> {
+    const cutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const qb = this.waybillsRepository.createQueryBuilder('waybill')
+      .where('waybill.deleted_at IS NULL')
+      .andWhere('waybill.current_state = :state', { state: WaybillStatus.AT_DEST_HUB })
+      .andWhere('waybill.delivery_preparation_status = :scheduled', { scheduled: 'SCHEDULED' })
+      .andWhere('waybill.delivery_scheduled_at <= :cutoff', { cutoff });
+    this.applyHubScope(qb, currentUser);
+    const due = await qb.getMany();
+    for (const waybill of due) {
+      const before = this.buildAuditSnapshot(waybill as WaybillRecord);
+      waybill.delivery_preparation_status = 'NEEDS_ACTION';
+      waybill.updated_by = currentUser.id;
+      const saved = await this.waybillsRepository.save(waybill);
+      await this.recordWaybillChange(String(saved.id), 'DELIVERY_SCHEDULE_DUE', currentUser, before, saved as WaybillRecord);
+    }
   }
 
   async getDeliveryResources(requestedHubId: string | undefined, currentUser: UserEntity) {
@@ -1881,6 +1928,9 @@ export class WaybillsService {
     dto: UpdateWaybillStatusDto,
     currentUser: UserEntity,
   ): Promise<void> {
+    if (waybill.delivery_preparation_status && waybill.delivery_preparation_status !== 'READY') {
+      throw new BadRequestException('Vận đơn phải được xác nhận sẵn sàng giao trước khi điều phối');
+    }
     const assignmentType = dto.assignment_type;
     if (!assignmentType) throw new BadRequestException('Phải chọn hình thức phân giao nội bộ hoặc đối tác');
 
@@ -2706,6 +2756,10 @@ export class WaybillsService {
       giao_hang: this.auditNoteField(note, 'giao_hang'),
       ngay_gui: this.auditNoteField(note, 'ngay_gui'),
       phuong_thuc: this.auditNoteField(note, 'phuong_thuc') || this.auditText(waybill.payment_type),
+      delivery_preparation_status: this.auditText(waybill.delivery_preparation_status),
+      delivery_scheduled_at: waybill.delivery_scheduled_at?.toISOString() ?? null,
+      delivery_hold_reason: this.auditText(waybill.delivery_hold_reason),
+      delivery_confirmed_at: waybill.delivery_confirmed_at?.toISOString() ?? null,
       so_anh: photoCount,
     };
   }

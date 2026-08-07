@@ -68,6 +68,21 @@ export interface LastMileWaybill {
   trip?: TripSummary | null;
   trip_package_count?: number | null;
   order_total_packages?: number | null;
+  trip_label?: string | null;
+  license_plate?: string | null;
+  trip_nha_xe?: string | null;
+  delivery_preparation_status?: 'PENDING_CONFIRMATION' | 'READY' | 'SCHEDULED' | 'NEEDS_ACTION' | 'HOLD' | null;
+  delivery_scheduled_at?: string | null;
+  delivery_hold_reason?: string | null;
+  delivery_confirmed_at?: string | null;
+}
+
+export interface WaybillHistoryItem {
+  id: string | number;
+  action: string;
+  changes?: Record<string, { old_value?: unknown; new_value?: unknown }>;
+  changed_by_name?: string | null;
+  created_at: string;
 }
 
 export interface DeliveryDriverOption { id: string | number; name?: string | null; username?: string | null; phone?: string | null; hub_id?: string | number | null }

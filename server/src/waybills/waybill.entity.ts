@@ -106,6 +106,18 @@ export class WaybillEntity {
   @Column({ type: 'bigint', nullable: true })
   last_mile_vendor_id: string | null;
 
+  @Column({ type: 'varchar', length: 32, default: 'PENDING_CONFIRMATION' })
+  delivery_preparation_status: 'PENDING_CONFIRMATION' | 'READY' | 'SCHEDULED' | 'NEEDS_ACTION' | 'HOLD';
+
+  @Column({ type: 'timestamp', nullable: true })
+  delivery_scheduled_at: Date | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  delivery_hold_reason: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  delivery_confirmed_at: Date | null;
+
   @Column({ type: 'text', nullable: true })
   delivery_photo_url: string | null;
 
