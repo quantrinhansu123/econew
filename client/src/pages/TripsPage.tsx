@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, Eye, Loader2, PackageCheck, Printer, Receipt, RefreshCw, Truck } from 'lucide-react';
+import { AlertTriangle, Eye, Loader2, PackageCheck, Pencil, Printer, Receipt, RefreshCw, Truck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
@@ -19,6 +19,23 @@ const tripKanbanColumns: Array<{ id: TripKanbanStatus; title: string; tone: stri
 const normalizeList = <T,>(response: ListResponse<T> | T[]) => (
   Array.isArray(response) ? response : response.data || response.items || response.trips || []
 );
+
+async function loadAllTripsByStatus(status: TripKanbanStatus): Promise<Trip[]> {
+  const limit = 100;
+  const requestPage = (page: number) => apiRequest<ListResponse<Trip> | Trip[]>(
+    `/trips?${new URLSearchParams({ page: String(page), limit: String(limit), status }).toString()}`,
+  );
+  const firstResponse = await requestPage(1);
+  const firstItems = normalizeList(firstResponse);
+  if (Array.isArray(firstResponse)) return firstItems;
+  const total = firstResponse.meta?.total ?? firstResponse.total ?? firstItems.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  if (totalPages === 1) return firstItems;
+  const remainingResponses = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, index) => requestPage(index + 2)),
+  );
+  return [...firstItems, ...remainingResponses.flatMap(normalizeList)];
+}
 
 const formatDate = (value?: string | null) => (
   value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—'
@@ -47,15 +64,13 @@ export default function TripsPage() {
     setIsLoading(true);
     setError('');
     try {
-      const responses = await Promise.all(tripKanbanStatuses.map((status) => (
-        apiRequest<ListResponse<Trip> | Trip[]>(`/trips?${new URLSearchParams({ page: '1', limit: '100', status }).toString()}`)
-      )));
+      const responses = await Promise.all(tripKanbanStatuses.map(loadAllTripsByStatus));
       const merged = new Map<string, Trip>();
-      responses.flatMap(normalizeList).forEach((trip) => {
+      responses.flat().forEach((trip) => {
         merged.set(String(trip.id), trip);
       });
       setTrips([...merged.values()].sort((a, b) => (
-        new Date(b.departure_time || b.created_at || 0).getTime() - new Date(a.departure_time || b.created_at || 0).getTime()
+        new Date(b.departure_time || b.created_at || 0).getTime() - new Date(a.departure_time || a.created_at || 0).getTime()
       )));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không tải được bảng kê đơn đã đi.');
@@ -182,6 +197,7 @@ function TripCard({ trip, onOpen, onExpenses }: { trip: Trip; onOpen: () => void
       </button>
       <div className="mt-2 flex items-center gap-1">
         <ActionButton title="Xem chi tiết" icon={<Eye size={14} />} onClick={onOpen} />
+        <ActionButton title="Sửa chuyến / thêm bớt đơn" icon={<Pencil size={14} />} onClick={onOpen} />
         <ActionButton title="In bảng kê" icon={<Printer size={14} />} onClick={onOpen} />
         <ActionButton title="Chi phí" icon={<Receipt size={14} />} onClick={onExpenses} />
       </div>

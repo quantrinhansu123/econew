@@ -9,6 +9,7 @@ export interface ManifestSummary { id: string | number; manifest_code?: string |
 export interface WaybillSummary {
   id?: string | number;
   loading_position?: number | string | null;
+  package_count?: number | string | null;
   waybill_code?: string | null;
   sender_info?: string | null;
   receiver_info?: string | null;
@@ -26,7 +27,7 @@ export interface WaybillSummary {
 
 export interface ManifestDetail extends ManifestSummary {
   waybills?: WaybillSummary[];
-  manifest_waybills?: Array<{ loading_position?: number | string | null; waybill?: WaybillSummary | null }>;
+  manifest_waybills?: Array<{ waybill_id?: string | number | null; loading_position?: number | string | null; dispatch_fields?: Record<string, string | number | null | undefined> | null; waybill?: WaybillSummary | null }>;
 }
 
 export interface Trip {

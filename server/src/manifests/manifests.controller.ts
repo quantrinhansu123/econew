@@ -65,14 +65,14 @@ export class ManifestsController {
 
   @Post(':id/waybills')
   @RequireRoles(Roles.DISPATCHER, Roles.PACKER, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Add waybills to a draft manifest' })
+  @ApiOperation({ summary: 'Add inventory waybills to a manifest or its trip' })
   addWaybills(@Param('id') id: string, @Body() dto: AddWaybillsToManifestDto, @CurrentUser() currentUser: UserEntity) {
     return this.manifestsService.addWaybills(id, dto, currentUser);
   }
 
   @Delete(':id/waybills/:waybillId')
   @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Remove a waybill from a draft manifest' })
+  @ApiOperation({ summary: 'Remove a waybill from a manifest or its trip' })
   removeWaybill(@Param('id') id: string, @Param('waybillId') waybillId: string, @CurrentUser() currentUser: UserEntity) {
     return this.manifestsService.removeWaybill(id, waybillId, currentUser);
   }

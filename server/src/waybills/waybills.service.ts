@@ -55,6 +55,7 @@ export interface ReceiverContactSuggestion {
 
 const FINAL_STATUSES = [WaybillStatus.DELIVERED, WaybillStatus.RETURNED, WaybillStatus.CANCELLED];
 const INVENTORY_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE, WaybillStatus.MANIFEST_CLOSED, WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY];
+const INCOMPLETE_SPLIT_INVENTORY_STATUSES = [...INVENTORY_STATUSES, WaybillStatus.LOADED, WaybillStatus.IN_TRANSIT];
 const ALL_ORDER_LIST_STATUSES = [
   WaybillStatus.RECEIVED,
   WaybillStatus.IN_WAREHOUSE,
@@ -496,9 +497,12 @@ export class WaybillsService {
   async getInventoryTripLines(query: QueryWaybillsDto, currentUser: UserEntity) {
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 20);
+    const onlyIncompleteSplit = this.isTruthyQueryFlag(query.only_incomplete_split);
     const defaultStatuses = query.list_scope === 'all_orders'
       ? ALL_ORDER_LIST_STATUSES.join(',')
-      : INVENTORY_STATUSES.join(',');
+      : onlyIncompleteSplit
+        ? INCOMPLETE_SPLIT_INVENTORY_STATUSES.join(',')
+        : INVENTORY_STATUSES.join(',');
     const inventoryQuery = {
       ...query,
       status: query.status ?? defaultStatuses,
@@ -532,7 +536,6 @@ export class WaybillsService {
 
     this.applyIncompleteSplitFilter(qb, query.only_incomplete_split);
 
-    const onlyIncompleteSplit = this.isTruthyQueryFlag(query.only_incomplete_split);
     const needsSplits = Boolean(vendorId) || onlyIncompleteSplit || query.list_scope !== 'all_orders';
     const includeFreightTotal = isManager(currentUser.role_mask);
 
@@ -918,6 +921,7 @@ export class WaybillsService {
       waybill: WaybillRecord;
       loading_position: number | null;
       package_count: number;
+      is_fully_allocated: boolean;
       split_id: string;
       expected_arrival_at: Date | null;
       truck_id: string;
@@ -932,6 +936,7 @@ export class WaybillsService {
       truck: TruckEntity;
       package_count: number;
       total_packages: number;
+      is_fully_allocated: boolean;
       expected_arrival_at: Date;
       carrier_label: string | null;
     }> = [];
@@ -979,6 +984,7 @@ export class WaybillsService {
         truck,
         package_count: packageCount,
         total_packages: totalPackages,
+        is_fully_allocated: allocated + packageCount >= totalPackages,
         expected_arrival_at: expectedArrivalAt,
         carrier_label: carrierLabel,
       });
@@ -996,6 +1002,7 @@ export class WaybillsService {
         truck,
         package_count: packageCount,
         total_packages: totalPackages,
+        is_fully_allocated: isFullyAllocated,
         expected_arrival_at: expectedArrivalAt,
         carrier_label: carrierLabel,
       } = prepared;
@@ -1036,6 +1043,7 @@ export class WaybillsService {
         waybill,
         loading_position: split.loading_position,
         package_count: Number(split.package_count),
+        is_fully_allocated: isFullyAllocated,
         split_id: String(split.id),
         expected_arrival_at: split.expected_arrival_at,
         truck_id: String(line.truck_id),
@@ -1247,7 +1255,7 @@ export class WaybillsService {
     return trip;
   }
 
-  private async createClosedManifestForStack(rows: Array<{ waybill: WaybillRecord; loading_position: number | null }>, currentUser: UserEntity) {
+  private async createClosedManifestForStack(rows: Array<{ waybill: WaybillRecord; loading_position: number | null; package_count: number; is_fully_allocated?: boolean }>, currentUser: UserEntity) {
     const firstWaybill = rows[0]?.waybill;
     if (!firstWaybill) return null;
 
@@ -1275,13 +1283,19 @@ export class WaybillsService {
       waybill_id: String(row.waybill.id),
       loading_position: row.loading_position ?? index + 1,
       loaded_at: new Date(),
+      dispatch_fields: { so_luong: String(row.package_count) },
     })));
 
-    rows.forEach((row) => {
+    const fullyAllocatedWaybills = rows.filter((row) => row.is_fully_allocated !== false);
+    fullyAllocatedWaybills.forEach((row) => {
       row.waybill.current_state = WaybillStatus.MANIFEST_CLOSED as any;
+      row.waybill.status = WaybillStatus.MANIFEST_CLOSED as any;
+      row.waybill.manifest_id = String(savedManifest.id);
       row.waybill.loaded_at = row.waybill.loaded_at ?? new Date();
     });
-    await this.waybillsRepository.save(rows.map((row) => row.waybill as WaybillEntity));
+    if (fullyAllocatedWaybills.length) {
+      await this.waybillsRepository.save(fullyAllocatedWaybills.map((row) => row.waybill as WaybillEntity));
+    }
 
     return savedManifest;
   }

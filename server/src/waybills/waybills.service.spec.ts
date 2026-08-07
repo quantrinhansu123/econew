@@ -659,6 +659,31 @@ describe('WaybillsService', () => {
     expect(manifestWaybillsRepository.save).toHaveBeenCalledTimes(2);
   });
 
+  it('bulk stack một phần giữ số kiện còn lại trong tồn kho', async () => {
+    setupMixedDestinationBulkStack();
+    const partialWaybill = makeWaybill({
+      id: 'w1',
+      waybill_code: 'ECOHAN138',
+      package_count: 138,
+      current_state: WaybillStatus.IN_WAREHOUSE,
+      status: WaybillStatus.IN_WAREHOUSE,
+      origin_hub: { id: '1', code: 'HAN' },
+      dest_hub: { id: '2', code: 'HCM' },
+    });
+    waybillsRepository.findOne.mockResolvedValue(partialWaybill);
+
+    await service.bulkStackOntoTruck({
+      items: [{ waybill_id: 'w1', truck_id: 'truck-1', package_count: 38 }],
+    }, manager);
+
+    expect(partialWaybill.current_state).toBe(WaybillStatus.IN_WAREHOUSE);
+    expect(partialWaybill.status).toBe(WaybillStatus.IN_WAREHOUSE);
+    expect(waybillsRepository.save).not.toHaveBeenCalled();
+    expect(manifestWaybillsRepository.save).toHaveBeenCalledWith([
+      expect.objectContaining({ dispatch_fields: { so_luong: '38' } }),
+    ]);
+  });
+
   it('bulk stack keeps shared vendor cost allocation stable when selection order is reversed', async () => {
     const selectedVendor = { id: 'vendor-1', name: 'Công ty Anh Dũng', status: 'ACTIVE' };
     setupMixedDestinationBulkStack({ vendor_id: 'vendor-1', vendor: selectedVendor });
@@ -957,6 +982,10 @@ describe('WaybillsService', () => {
     });
     expect(result.meta).toMatchObject({ total_waybills: 1, total_freight: 120000 });
     expect(result.items[0]).toMatchObject({ remaining_packages: 2, trip_package_count: 2 });
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'waybill.current_state IN (:...statuses)',
+      { statuses: expect.arrayContaining([WaybillStatus.IN_TRANSIT]) },
+    );
   });
 
   it('all-orders does not silently limit a manager to the assigned hub', async () => {

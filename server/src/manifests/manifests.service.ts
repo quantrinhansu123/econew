@@ -188,7 +188,7 @@ export class ManifestsService {
   async addWaybills(id: string, dto: AddWaybillsToManifestDto, currentUser: UserEntity): Promise<ManifestRecord> {
     this.assertRole(currentUser, [Roles.DISPATCHER, Roles.PACKER, Roles.MANAGER, Roles.DIRECTOR]);
     const manifest = await this.findOne(id, currentUser);
-    await this.assertCanAddWaybills(manifest);
+    const trip = await this.assertCanAddWaybills(manifest);
 
     type ManifestAddLine = { waybill_id: string; package_count?: number; loading_position?: number };
     const rawLines: ManifestAddLine[] = dto.items?.length
@@ -217,7 +217,7 @@ export class ManifestsService {
     const waybillById = new Map(waybills.map((waybill) => [String(waybill.id), waybill]));
     for (const waybill of waybills) this.assertWaybillCanBeAdded(manifest, waybill);
 
-    const isClosed = manifest.status === ManifestStatus.CLOSED;
+    const isTransportManifest = manifest.status !== ManifestStatus.DRAFT;
     const now = new Date();
     let nextPosition = existingLinks.reduce((max, link) => Math.max(max, Number(link.loading_position ?? 0)), 0);
     const links: ManifestWaybillEntity[] = [];
@@ -238,13 +238,13 @@ export class ManifestsService {
         throw new BadRequestException(`Vận đơn ${waybill.waybill_code}: số kiện vượt quá còn lại (${remainingPackages})`);
       }
 
-      const loadingPosition = line.loading_position ?? (isClosed ? ++nextPosition : null);
+      const loadingPosition = line.loading_position ?? (isTransportManifest ? ++nextPosition : null);
       if (createLink) {
         links.push(this.manifestWaybillsRepository.create({
           manifest_id: id,
           waybill_id: line.waybill_id,
           loading_position: loadingPosition,
-          loaded_at: isClosed && packageCount >= remainingPackages ? now : null,
+          loaded_at: trip || (isTransportManifest && packageCount >= remainingPackages) ? now : null,
           dispatch_fields: this.buildInitialDispatchFields(waybill, packageCount),
         }));
       } else {
@@ -253,12 +253,12 @@ export class ManifestsService {
 
       splitsToSave.push(this.waybillSplitsRepository.create({
         waybill_id: line.waybill_id,
+        trip_id: trip ? String(trip.id) : null,
+        truck_id: trip?.truck_id ? String(trip.truck_id) : null,
         package_count: packageCount,
         loading_position: loadingPosition,
-        load_status: isClosed && packageCount >= remainingPackages
-          ? WaybillSplitLoadStatus.LOADED
-          : WaybillSplitLoadStatus.WAITING_LOAD,
-        expected_arrival_at: this.computeExpectedArrivalAt(waybill),
+        load_status: this.resolveAddedSplitStatus(trip, isTransportManifest, packageCount >= remainingPackages),
+        expected_arrival_at: trip?.expected_arrival_time ?? trip?.arrival_time ?? this.computeExpectedArrivalAt(waybill),
         created_by: currentUser.id,
       }));
 
@@ -266,9 +266,10 @@ export class ManifestsService {
       if (isFullyAllocated) {
         waybill.manifest_id = id;
         mutatedWaybillIds.add(line.waybill_id);
-        if (isClosed) {
-          waybill.current_state = WaybillState.MANIFEST_CLOSED;
-          waybill.status = WaybillState.MANIFEST_CLOSED;
+        if (isTransportManifest) {
+          const waybillState = this.resolveAddedWaybillState(trip);
+          waybill.current_state = waybillState;
+          waybill.status = waybillState;
           waybill.loaded_at = waybill.loaded_at ?? now;
           waybill.updated_by = currentUser.id;
           waybill.last_audit_action = 'MANIFEST_ADD_WAYBILL';
@@ -309,13 +310,29 @@ export class ManifestsService {
     this.assertRole(currentUser, [Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR]);
     const manifest = await this.findOne(id, currentUser);
     this.assertRemovableManifest(manifest);
+    const trip = await this.resolveManifestTrip(manifest);
     const waybill = await this.waybillsRepository.findOne({ where: { id: waybillId, deleted_at: IsNull() } as any }) as WaybillRecord | null;
     if (!waybill) throw new NotFoundException('Waybill not found');
+    if (trip) {
+      await this.waybillSplitsRepository.delete({ waybill_id: waybillId, trip_id: String(trip.id) });
+    }
     await this.manifestWaybillsRepository.delete({ manifest_id: id, waybill_id: waybillId });
     if (waybill.manifest_id === id) {
       waybill.manifest_id = null;
-      await this.waybillsRepository.save(waybill as any);
     }
+    const remainingSplits = await this.waybillSplitsRepository.find({ where: { waybill_id: waybillId } });
+    const allocatedPackages = remainingSplits.reduce((sum, row) => sum + Number(row.package_count ?? 0), 0);
+    if (allocatedPackages < this.resolveTotalPackages(waybill)) {
+      waybill.current_state = WaybillState.IN_WAREHOUSE;
+      waybill.status = WaybillState.IN_WAREHOUSE;
+      waybill.current_hub_id = String(manifest.origin_hub_id ?? trip?.start_hub_id ?? waybill.origin_hub_id);
+      if (allocatedPackages === 0) waybill.loaded_at = null;
+    }
+    waybill.updated_by = currentUser.id;
+    waybill.last_audit_action = 'MANIFEST_REMOVE_WAYBILL';
+    waybill.last_audit_user_id = currentUser.id;
+    waybill.last_audit_at = new Date();
+    await this.waybillsRepository.save(waybill as any);
     await this.refreshTotals(manifest, undefined, currentUser.id);
     return this.findOne(id, currentUser);
   }
@@ -365,6 +382,18 @@ export class ManifestsService {
     }
     trip.manifest_id = id;
     await this.tripsRepository.save(trip as TripEntity);
+    const manifestLinks = await this.manifestWaybillsRepository.find({ where: { manifest_id: id } });
+    const manifestWaybillIds = manifestLinks.map((link) => String(link.waybill_id)).filter(Boolean);
+    if (manifestWaybillIds.length) {
+      const unassignedSplits = await this.waybillSplitsRepository.find({
+        where: { waybill_id: In(manifestWaybillIds), trip_id: IsNull() } as any,
+      });
+      unassignedSplits.forEach((split) => {
+        split.trip_id = String(trip.id);
+        split.truck_id = trip.truck_id ? String(trip.truck_id) : split.truck_id;
+      });
+      if (unassignedSplits.length) await this.waybillSplitsRepository.save(unassignedSplits);
+    }
     Object.assign(manifest, { trip_id: dto.trip_id, status: ManifestStatus.ASSIGNED_TO_TRIP, assigned_trip_at: new Date(), updated_by: currentUser.id });
     const savedManifest = await this.manifestsRepository.save(manifest) as ManifestRecord;
     await this.enrichTransportSummaries([savedManifest]);
@@ -476,8 +505,32 @@ export class ManifestsService {
       relations: ['origin_hub', 'dest_hub', 'trips', 'trips.truck', 'trips.truck.driver', 'manifest_waybills', 'manifest_waybills.waybill', 'manifest_waybills.waybill.dest_hub'],
     }) as ManifestRecord | null;
     if (!manifest) throw new NotFoundException('Manifest not found');
+    await this.enrichManifestTripPackageCounts(manifest);
     this.sortManifestWaybills(manifest);
     return manifest;
+  }
+
+  private async enrichManifestTripPackageCounts(manifest: ManifestRecord): Promise<void> {
+    const tripId = manifest.trips?.[0]?.id ?? manifest.trip?.id ?? manifest.trip_id;
+    const links = manifest.manifest_waybills ?? [];
+    const waybillIds = links.map((link: ManifestWaybillEntity) => String(link.waybill_id)).filter(Boolean);
+    if (!tripId || !waybillIds.length) return;
+
+    const tripSplits = await this.waybillSplitsRepository.find({
+      select: { id: true, waybill_id: true, trip_id: true, package_count: true },
+      where: { trip_id: String(tripId), waybill_id: In(waybillIds) } as any,
+    });
+    const packageCounts = tripSplits.reduce((map, split) => {
+      const waybillId = String(split.waybill_id);
+      map.set(waybillId, (map.get(waybillId) ?? 0) + Number(split.package_count ?? 0));
+      return map;
+    }, new Map<string, number>());
+
+    links.forEach((link: ManifestWaybillEntity) => {
+      const packageCount = packageCounts.get(String(link.waybill_id));
+      if (packageCount == null) return;
+      link.dispatch_fields = { ...(link.dispatch_fields ?? {}), so_luong: String(packageCount) };
+    });
   }
 
   private sortManifestWaybills(manifest: ManifestRecord) {
@@ -637,9 +690,8 @@ export class ManifestsService {
   }
 
   private assertRemovableManifest(manifest: ManifestRecord) {
-    const allowed = [ManifestStatus.DRAFT, ManifestStatus.CLOSED];
-    if (!allowed.includes(manifest.status as ManifestStatus)) {
-      throw new ConflictException('Cannot remove waybills after manifest is assigned to a trip');
+    if (manifest.status === ManifestStatus.CANCELLED) {
+      throw new ConflictException('Không thể sửa bảng kê đã hủy');
     }
   }
 
@@ -715,30 +767,55 @@ export class ManifestsService {
     if (changed.length) await this.waybillsRepository.save(changed as any);
   }
 
-  private async assertCanAddWaybills(manifest: ManifestRecord) {
-    const tripId = manifest.trip_id ?? manifest.trip?.id;
-    if (tripId) {
-      const trip = await this.tripsRepository.findOne({ where: { id: String(tripId) } as any });
-      if (trip && [TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED].includes(trip.status as TripStatus)) {
-        throw new ConflictException('Không thể thêm đơn sau khi xe đã khởi hành');
-      }
-      if (trip?.status === TripStatus.PLANNED) return;
+  private async assertCanAddWaybills(manifest: ManifestRecord): Promise<TripRecord | null> {
+    const trip = await this.resolveManifestTrip(manifest);
+    if (trip && String(trip.status) === 'CANCELLED') {
+      throw new ConflictException('Không thể thêm đơn vào chuyến đã hủy');
     }
 
     const status = manifest.status as ManifestStatus;
-    if ([ManifestStatus.DRAFT, ManifestStatus.CLOSED, ManifestStatus.ASSIGNED_TO_TRIP].includes(status)) return;
-    if (status === ManifestStatus.IN_TRANSIT) {
-      throw new ConflictException('Không thể thêm đơn sau khi xe đã khởi hành');
-    }
+    if ([ManifestStatus.DRAFT, ManifestStatus.CLOSED, ManifestStatus.ASSIGNED_TO_TRIP, ManifestStatus.IN_TRANSIT, ManifestStatus.COMPLETED].includes(status)) return trip;
 
     throw new ConflictException('Không thể thêm đơn cho bảng kê ở trạng thái này');
   }
 
+  private async resolveManifestTrip(manifest: ManifestRecord): Promise<TripRecord | null> {
+    const embeddedTrip = manifest.trip ?? manifest.trips?.[0];
+    if (embeddedTrip?.id) return embeddedTrip as TripRecord;
+    const tripId = manifest.trip_id;
+    if (!tripId) return null;
+    return await this.tripsRepository.findOne({ where: { id: String(tripId) } as any }) as TripRecord | null;
+  }
+
+  private resolveAddedSplitStatus(
+    trip: TripRecord | null,
+    isTransportManifest: boolean,
+    isFullyAllocated: boolean,
+  ): WaybillSplitLoadStatus {
+    if (trip?.status === TripStatus.IN_TRANSIT) return WaybillSplitLoadStatus.IN_TRANSIT;
+    if (trip?.status === TripStatus.ARRIVED || trip?.status === TripStatus.COMPLETED) return WaybillSplitLoadStatus.ARRIVED;
+    if (trip || (isTransportManifest && isFullyAllocated)) return WaybillSplitLoadStatus.LOADED;
+    return WaybillSplitLoadStatus.WAITING_LOAD;
+  }
+
+  private resolveAddedWaybillState(trip: TripRecord | null): WaybillState {
+    if (trip?.status === TripStatus.IN_TRANSIT) return WaybillState.IN_TRANSIT;
+    if (trip?.status === TripStatus.ARRIVED || trip?.status === TripStatus.COMPLETED) return WaybillState.AT_DEST_HUB;
+    return WaybillState.MANIFEST_CLOSED;
+  }
+
   private assertWaybillCanBeAdded(manifest: ManifestRecord, waybill: WaybillRecord) {
     const status = this.getWaybillStatus(waybill);
-    const allowedStatuses = [WaybillState.RECEIVED, WaybillState.IN_WAREHOUSE];
+    const allowedStatuses = [
+      WaybillState.RECEIVED,
+      WaybillState.IN_WAREHOUSE,
+      WaybillState.MANIFEST_CLOSED,
+      WaybillState.LOADED,
+      WaybillState.IN_TRANSIT,
+      WaybillState.AT_DEST_HUB,
+    ];
     if (!allowedStatuses.includes(status)) {
-      throw new BadRequestException('Chỉ thêm được đơn ở trạng thái Đã tạo đơn hoặc Trong kho');
+      throw new BadRequestException('Trạng thái vận đơn không cho phép thêm phần kiện còn lại');
     }
     if (waybill.manifest_id && String(waybill.manifest_id) !== String(manifest.id)) {
       throw new ConflictException('Waybill already belongs to another manifest');

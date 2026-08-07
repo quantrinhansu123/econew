@@ -158,8 +158,10 @@ export class TripsService {
 
   async update(id: string, dto: UpdateTripDto, currentUser: UserEntity): Promise<TripEntity> {
     const trip = await this.findOne(id, currentUser);
-    if (trip.status !== TripStatus.PLANNED) throw new BadRequestException('Only PLANNED trips can be updated');
     if (dto.truck_id !== undefined) {
+      if (trip.status !== TripStatus.PLANNED) {
+        throw new BadRequestException('Chỉ được đổi xe khi chuyến chưa khởi hành');
+      }
       const truck = await this.validateTruck(dto.truck_id);
       if (trip.truck_id && trip.truck_id !== String(dto.truck_id)) {
         const oldTruck = await this.trucksRepository.findOne({ where: { id: trip.truck_id } });
