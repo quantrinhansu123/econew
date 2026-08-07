@@ -9,22 +9,22 @@ const MainLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden">
+    <div className="flex h-screen min-h-screen h-dvh min-h-dvh overflow-hidden bg-background text-foreground">
       {/* Sidebar */}
       <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
 
       {/* Main Content Area */}
       <div 
         className={clsx(
-          "flex-1 flex flex-col w-full min-w-0 transition-all duration-300",
+          "flex min-h-0 w-full min-w-0 flex-1 flex-col transition-all duration-300",
           sidebarOpen ? "lg:ml-64" : "lg:ml-[72px]"
         )}
       >
         <Topbar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
         {/* Scrollable Content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-20 lg:pb-6 custom-scrollbar">
-          <div className="w-full h-full flex flex-col">
+        <main className="custom-scrollbar flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] sm:p-4 sm:pb-[calc(5rem+env(safe-area-inset-bottom))] lg:p-6 lg:pb-6">
+          <div className="flex min-h-full w-full flex-col">
             <Outlet />
           </div>
         </main>

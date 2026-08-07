@@ -68,11 +68,11 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({
         </p>
       </div>
 
-      <div className="flex flex-col gap-3 shrink-0 text-muted-foreground/30" onClick={(e) => e.stopPropagation()}>
-        <button className="hover:text-amber-500 transition-colors" title="Đánh dấu">
+      <div className="flex shrink-0 flex-col gap-1 text-muted-foreground/30" onClick={(e) => e.stopPropagation()}>
+        <button className="flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-amber-50 hover:text-amber-500" title="Đánh dấu" aria-label={`Đánh dấu ${title}`}>
           <Star size={15} />
         </button>
-        <button className="hover:text-primary transition-colors" title="Hướng dẫn sử dụng">
+        <button className="flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-primary/5 hover:text-primary" title="Hướng dẫn sử dụng" aria-label={`Hướng dẫn ${title}`}>
           <HelpCircle size={15} />
         </button>
       </div>

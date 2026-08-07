@@ -65,13 +65,39 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   body {
+    margin: 0;
+    overscroll-behavior: none;
     font-family: var(--font-sans);
     background-color: var(--color-background);
     color: var(--color-foreground);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+
+  @supports (-webkit-touch-callout: none) {
+    @media (max-width: 767px) {
+      input:not([type='checkbox']):not([type='radio']),
+      select,
+      textarea {
+        font-size: 16px !important;
+      }
+    }
   }
 }
 

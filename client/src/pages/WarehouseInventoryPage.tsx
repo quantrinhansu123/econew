@@ -546,13 +546,13 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       )}
 
       {isAllOrders ? (
-        <div className="space-y-3">
-          <div className="rounded-xl border border-border bg-card px-4 py-2.5 text-[13px] text-muted-foreground">
+        <div className="space-y-2 sm:space-y-3">
+          <div className="hidden rounded-xl border border-border bg-card px-4 py-2.5 text-[13px] text-muted-foreground sm:block">
             <span className="font-extrabold text-foreground">Danh sách đơn</span>
             {' — '}
             Hiển thị toàn bộ vận đơn theo ngày và mã bill, có thể lọc theo khoảng ngày bốc hàng.
           </div>
-          <div className={clsx('grid grid-cols-1 gap-3', canViewPricing ? 'sm:grid-cols-2' : 'sm:grid-cols-1')}>
+          <div className={clsx('grid gap-2 sm:gap-3', canViewPricing ? 'grid-cols-2' : 'grid-cols-1')}>
             <FilterSummaryCard
               label="Tổng đơn (theo bộ lọc)"
               value={isLoading ? '…' : `${filterTotals.orderCount.toLocaleString('vi-VN')} đơn`}
@@ -595,9 +595,9 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       )}
 
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
-        <div className="p-3 border-b border-border bg-card shrink-0 space-y-3">
+        <div className="shrink-0 space-y-2 border-b border-border bg-card p-2 sm:space-y-3 sm:p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => window.history.back()} className="h-10 w-10 shrink-0 rounded-lg border border-border bg-muted/10 text-[13px] font-medium text-muted-foreground hover:bg-muted flex items-center justify-center gap-2 md:w-auto md:px-3"><ArrowLeft size={15} /><span className="hidden md:inline">Quay lại</span></button>
+            <button onClick={() => window.history.back()} aria-label="Quay lại" className={clsx('h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-muted/10 text-[13px] font-medium text-muted-foreground hover:bg-muted md:w-auto md:px-3', isAllOrders ? 'hidden md:flex' : 'flex')}><ArrowLeft size={15} /><span className="hidden md:inline">Quay lại</span></button>
             {!isAllOrders && (
               <>
                 <div className="relative min-w-0 flex-1 md:max-w-[460px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={filters.keyword} onChange={event => updateFilters({ keyword: event.target.value })} placeholder="Tìm bill, SĐT, tên/mã KH, mã hàng..." aria-label="Tìm toàn bộ dữ liệu vận đơn" className="w-full h-10 rounded-lg border border-border bg-muted/10 pl-9 pr-3 text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-primary/10" /></div>
@@ -607,7 +607,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             )}
             {isAllOrders && (
               <>
-                <div className="relative min-w-[220px] flex-1 md:max-w-[390px]">
+                <div className="relative min-w-0 basis-full flex-1 md:basis-auto md:max-w-[390px]">
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <input
                     value={filters.keyword}
@@ -621,7 +621,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                   value={filters.ma_kh}
                   onChange={(event) => updateFilters({ ma_kh: event.target.value })}
                   placeholder="Lọc mã khách"
-                  className="h-10 w-[160px] rounded-lg border border-border px-3 text-[13px] font-medium"
+                  className="h-10 min-w-0 flex-1 rounded-lg border border-border px-3 text-[13px] font-medium md:w-[160px] md:flex-none"
                 />
                 <select
                   value={filters.customerPaymentStatuses[0] || ''}
@@ -630,7 +630,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       customerPaymentStatuses: event.target.value ? [event.target.value] : [],
                     })
                   }
-                  className="h-10 w-[180px] rounded-lg border border-border px-3 text-[13px] font-medium"
+                  className="h-10 min-w-0 flex-1 rounded-lg border border-border px-3 text-[13px] font-medium md:w-[180px] md:flex-none"
                 >
                   <option value="">TT thanh toán: Tất cả</option>
                   {customerPaymentStatusOptions.map((opt) => (
@@ -663,7 +663,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                 )}
               </button>
             )}
-            {isAllOrders && <DateRangePicker value={{ from: filters.receivedFrom, to: filters.receivedTo }} onChange={({ from, to }) => updateFilters({ receivedFrom: from || '', receivedTo: to || '' })} placeholder="Từ ngày - Đến ngày" className="w-[18.5rem] shrink-0" />}
+            {isAllOrders && <DateRangePicker value={{ from: filters.receivedFrom, to: filters.receivedTo }} onChange={({ from, to }) => updateFilters({ receivedFrom: from || '', receivedTo: to || '' })} placeholder="Từ ngày - Đến ngày" className="w-full shrink-0 md:w-[18.5rem]" />}
             {isAllOrders && activeFilterCount > 0 && <button onClick={clearFilters} className="h-10 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100">× Xóa {activeFilterCount} bộ lọc</button>}
             <button
               type="button"
@@ -1655,9 +1655,9 @@ function FilterSummaryCard({ label, value, tone }: { label: string; value: strin
       ? 'border-amber-200 bg-amber-50 text-amber-800'
       : 'border-blue-200 bg-blue-50 text-blue-800';
   return (
-    <div className={clsx('rounded-2xl border p-4 shadow-sm', toneClass)}>
-      <p className="text-[11px] font-bold uppercase tracking-wide opacity-80">{label}</p>
-      <p className="mt-1 text-[20px] font-extrabold">{value}</p>
+    <div className={clsx('min-w-0 rounded-xl border p-2.5 shadow-sm sm:rounded-2xl sm:p-4', toneClass)}>
+      <p className="truncate text-[9px] font-bold uppercase tracking-wide opacity-80 sm:text-[11px]">{label}</p>
+      <p className="mt-0.5 truncate text-[15px] font-extrabold sm:mt-1 sm:text-[20px]">{value}</p>
     </div>
   );
 }

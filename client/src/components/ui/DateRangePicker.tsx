@@ -5,6 +5,7 @@ import { vi } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { Calendar } from './calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 export type DateRangeValue = {
   from?: string;
@@ -37,6 +38,7 @@ const toDateInputValue = (date?: Date) => {
 
 export function DateRangePicker({ value, onChange, placeholder = 'Chọn khoảng ngày', className = '', disabled }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 639px)');
   const selected = useMemo<DateRange>(() => ({ from: parseDate(value.from), to: parseDate(value.to) }), [value.from, value.to]);
   const label = selected.from && selected.to
     ? `${formatDate(selected.from)} - ${formatDate(selected.to)}`
@@ -71,13 +73,13 @@ export function DateRangePicker({ value, onChange, placeholder = 'Chọn khoản
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={8} className="z-[10000] w-auto overflow-hidden rounded-xl border border-border bg-white p-0 shadow-xl shadow-slate-900/10">
+      <PopoverContent align="start" sideOffset={8} collisionPadding={12} className="z-[10000] max-h-[calc(100dvh-6rem)] w-auto max-w-[calc(100vw-1.5rem)] overflow-auto rounded-xl border border-border bg-white p-0 shadow-xl shadow-slate-900/10">
         <Calendar
           mode="range"
           selected={selected}
           onSelect={handleSelect}
           locale={vi}
-          numberOfMonths={2}
+          numberOfMonths={isMobile ? 1 : 2}
           className="border-0 shadow-none"
         />
       </PopoverContent>

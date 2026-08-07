@@ -269,14 +269,15 @@ const Topbar: React.FC<TopbarProps> = ({ sidebarOpen, setSidebarOpen }) => {
   };
 
   return (
-    <header className="h-[55px] bg-card border-b border-border flex items-center justify-between px-4 lg:px-6 z-30 sticky top-0">
+    <header className="sticky top-0 z-30 flex h-[55px] shrink-0 items-center justify-between border-b border-border bg-card px-3 sm:px-4 lg:px-6">
       {/* Left side: Hamburger & Title */}
-      <div className="flex items-center gap-2 lg:gap-2.5">
+      <div className="flex min-w-0 items-center gap-2 lg:gap-2.5">
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-2 text-muted-foreground hover:bg-muted border border-border rounded-lg bg-card shadow-sm transition-colors shrink-0"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-muted"
+          aria-label={sidebarOpen ? 'Đóng menu' : 'Mở menu'}
         >
-          {sidebarOpen ? <PanelLeftClose size={12} /> : <PanelLeft size={12} />}
+          {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
         </button>
 
         <div className="hidden sm:flex items-center gap-2 lg:gap-2.5">
@@ -313,13 +314,13 @@ const Topbar: React.FC<TopbarProps> = ({ sidebarOpen, setSidebarOpen }) => {
             </React.Fragment>
           ))}
         </div>
-        <div className="sm:hidden font-semibold text-foreground text-sm">
+        <div className="min-w-0 truncate text-sm font-semibold text-foreground sm:hidden">
           {pageTitle}
         </div>
       </div>
 
       {/* Right side: Clock, Notifications, User */}
-      <div className="flex items-center gap-3 sm:gap-4">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-4">
         {/* Clock & Date (Hidden on mobile) */}
         <div className="hidden md:flex items-center bg-card border border-border shadow-sm px-4 py-1.5 rounded-full gap-3 text-[13px]">
           <div className="flex items-center gap-2">
@@ -341,9 +342,10 @@ const Topbar: React.FC<TopbarProps> = ({ sidebarOpen, setSidebarOpen }) => {
               setShowUserDropdown(false);
             }}
             className={clsx(
-              "relative p-2 text-muted-foreground hover:bg-accent rounded-full transition-colors",
+              "relative flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent",
               showNotifications && "bg-accent text-primary"
             )}
+            aria-label="Mở thông báo"
           >
             <Bell size={20} />
             {unreadCount > 0 && (
@@ -355,7 +357,7 @@ const Topbar: React.FC<TopbarProps> = ({ sidebarOpen, setSidebarOpen }) => {
 
           {/* Dropdown */}
           {showNotifications && (
-            <div className="absolute right-0 mt-2 w-[350px] bg-card rounded-xl shadow-xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+            <div className="absolute right-0 mt-2 w-[350px] max-w-[calc(100vw-1.5rem)] origin-top-right overflow-hidden rounded-xl border border-border bg-card shadow-xl animate-in fade-in zoom-in-95 duration-200">
               {/* Header */}
               <div className="p-3 border-b border-border flex items-center justify-between bg-card sticky top-0 z-10">
                 <div className="flex items-center gap-2">
@@ -455,15 +457,17 @@ const Topbar: React.FC<TopbarProps> = ({ sidebarOpen, setSidebarOpen }) => {
 
         {/* User Profile */}
         <div className="relative" ref={userDropdownRef}>
-          <div 
+          <button
+            type="button"
             onClick={() => {
               setShowUserDropdown(!showUserDropdown);
               setShowNotifications(false);
             }}
             className={clsx(
-              "flex items-center gap-3 pl-2 sm:pl-4 sm:border-l border-border cursor-pointer group transition-all duration-200",
+              "group flex min-h-10 min-w-10 items-center justify-center gap-3 rounded-lg sm:justify-start sm:rounded-none sm:border-l sm:border-border sm:pl-4 transition-all duration-200",
               showUserDropdown && "opacity-80"
             )}
+            aria-label="Mở menu tài khoản"
           >
             <div className="relative">
               <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center overflow-hidden shadow-sm shadow-primary/5">
@@ -482,7 +486,7 @@ const Topbar: React.FC<TopbarProps> = ({ sidebarOpen, setSidebarOpen }) => {
               </div>
               <span className="text-[10px] text-muted-foreground leading-tight font-medium">{roleLabel}</span>
             </div>
-          </div>
+          </button>
 
           {/* User Dropdown Menu */}
           {showUserDropdown && (

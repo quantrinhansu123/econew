@@ -84,7 +84,7 @@ export function FilterSelect(props: FilterSelectProps) {
         <button
           disabled={disabled}
           className={cn(
-            'flex h-9 min-w-[140px] items-center justify-between gap-2 rounded-lg border bg-card px-3 text-[13px] font-medium text-muted-foreground transition-all hover:bg-muted/20 focus:outline-none',
+            'flex h-10 min-w-[140px] items-center justify-between gap-2 rounded-lg border bg-card px-3 text-[13px] font-medium text-muted-foreground transition-all hover:bg-muted/20 focus:outline-none md:h-9',
             isActive ? 'border-primary text-primary shadow-sm shadow-primary/10 ring-1 ring-primary/10' : 'border-border',
             selectedValues.length > 0 && 'text-foreground',
             className,
@@ -101,11 +101,11 @@ export function FilterSelect(props: FilterSelectProps) {
           </span>
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[288px] overflow-hidden rounded-2xl border-border p-0 shadow-xl" align="start" sideOffset={4}>
+      <PopoverContent className="w-[min(288px,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border-border p-0 shadow-xl" align="start" sideOffset={4} collisionPadding={12}>
         <div className="border-b border-border bg-white p-2">
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={searchPlaceholder} className="h-9 w-full rounded-lg border border-border bg-muted/10 pl-9 pr-3 text-[13px] outline-none focus:ring-2 focus:ring-primary/10" />
+            <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={searchPlaceholder} className="h-10 w-full rounded-lg border border-border bg-muted/10 pl-9 pr-3 text-[13px] outline-none focus:ring-2 focus:ring-primary/10 md:h-9" />
           </div>
         </div>
         {props.multiple && (
@@ -127,7 +127,7 @@ export function FilterSelect(props: FilterSelectProps) {
                 key={option.value || 'all'}
                 type="button"
                 onClick={() => props.multiple ? toggleMultiValue(option.value) : setSingleValue(option.value)}
-                className={cn('flex h-9 w-full items-center justify-between rounded-lg px-2 text-left text-[13px] font-medium transition-colors hover:bg-slate-100', selected && 'bg-slate-100 text-primary')}
+                className={cn('flex h-10 w-full items-center justify-between rounded-lg px-2 text-left text-[13px] font-medium transition-colors hover:bg-slate-100 md:h-9', selected && 'bg-slate-100 text-primary')}
               >
                 <span className="flex min-w-0 items-center gap-2">
                   {props.multiple && option.value && <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border', selected ? 'border-primary bg-primary text-white' : 'border-border bg-white')}>{selected && <Check size={12} />}</span>}

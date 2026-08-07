@@ -46,20 +46,21 @@ const ModulePage: React.FC = () => {
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 w-full">
-      <div className="flex items-center gap-3 mb-4 sm:hidden">
+      <div className="mb-4 flex items-center gap-3 sm:hidden">
         <button
           onClick={() => navigate('/')}
-          className="p-2 -ml-2 text-muted-foreground hover:bg-accent rounded-lg flex items-center justify-center bg-card border border-border shadow-sm"
+          className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-sm hover:bg-accent"
+          aria-label="Quay lại trang chủ"
         >
           <ChevronLeft size={20} />
         </button>
         <h1 className="text-lg font-bold text-foreground">{currentItem?.label}</h1>
       </div>
 
-      <div className="bg-card rounded-xl shadow-sm border border-border p-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4 mb-6 relative z-10">
+      <div className="relative z-10 mb-4 flex flex-col items-stretch gap-2 rounded-xl border border-border bg-card p-2 shadow-sm sm:mb-6 sm:flex-row sm:items-center sm:gap-4">
         <button
           onClick={() => navigate('/')}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground text-[13px] font-medium transition-colors bg-card shadow-sm"
+          className="hidden h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 text-[13px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted sm:flex"
         >
           <ChevronLeft size={16} />
           Quay lại
@@ -69,7 +70,7 @@ const ModulePage: React.FC = () => {
           <button
             onClick={() => setActiveTab('tat-ca')}
             className={clsx(
-              'flex-1 sm:flex-none px-4 py-1.5 rounded-md text-[13px] font-bold transition-all duration-200 whitespace-nowrap',
+              'min-h-10 flex-1 whitespace-nowrap rounded-md px-4 text-[13px] font-bold transition-all duration-200 sm:min-h-9 sm:flex-none',
               activeTab === 'tat-ca'
                 ? 'bg-card text-primary shadow-sm ring-1 ring-black/5'
                 : 'text-muted-foreground hover:text-foreground',
@@ -80,7 +81,7 @@ const ModulePage: React.FC = () => {
           <button
             onClick={() => setActiveTab('danh-dau')}
             className={clsx(
-              'flex-1 sm:flex-none px-4 py-1.5 rounded-md text-[13px] font-bold transition-all duration-200 whitespace-nowrap',
+              'min-h-10 flex-1 whitespace-nowrap rounded-md px-4 text-[13px] font-bold transition-all duration-200 sm:min-h-9 sm:flex-none',
               activeTab === 'danh-dau'
                 ? 'bg-card text-primary shadow-sm ring-1 ring-black/5'
                 : 'text-muted-foreground hover:text-foreground',
@@ -92,7 +93,7 @@ const ModulePage: React.FC = () => {
             <button
               onClick={() => setActiveTab('khach-hang')}
               className={clsx(
-                'flex-1 sm:flex-none px-4 py-1.5 rounded-md text-[13px] font-bold transition-all duration-200 whitespace-nowrap',
+                'min-h-10 flex-1 whitespace-nowrap rounded-md px-4 text-[13px] font-bold transition-all duration-200 sm:min-h-9 sm:flex-none',
                 activeTab === 'khach-hang'
                   ? 'bg-card text-primary shadow-sm ring-1 ring-black/5'
                   : 'text-muted-foreground hover:text-foreground',
@@ -109,7 +110,7 @@ const ModulePage: React.FC = () => {
           </div>
           <input
             type="text"
-            className="w-full text-[13px] bg-transparent border border-border rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground/60"
+            className="h-10 w-full rounded-lg border border-border bg-transparent pl-9 pr-4 text-[13px] transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             placeholder={searchPlaceholder}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
