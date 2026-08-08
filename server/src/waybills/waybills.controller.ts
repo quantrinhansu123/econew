@@ -16,7 +16,7 @@ import { QueryReceiverContactsDto } from './dto/query-receiver-contacts.dto';
 import { QueryWaybillsDto } from './dto/query-waybills.dto';
 import { ReceiveWaybillDto } from './dto/receive-waybill.dto';
 import { UpdateCodFeeDto } from './dto/update-cod-fee.dto';
-import { CorrectWaybillStatusDto, UpdateWaybillStatusDto } from './dto/update-waybill-status.dto';
+import { CorrectWaybillStatusDto, UpdateLastMileCostDto, UpdateWaybillStatusDto } from './dto/update-waybill-status.dto';
 import { UpdateWaybillDto } from './dto/update-waybill.dto';
 import { BulkStackOntoTruckDto } from './dto/bulk-stack-onto-truck.dto';
 import { BulkUpdateCustomerPaymentStatusDto } from './dto/bulk-update-customer-payment-status.dto';
@@ -26,6 +26,7 @@ import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
 import { WaybillsService } from './waybills.service';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
 import { UpdateDeliveryPreparationDto } from './dto/update-delivery-preparation.dto';
+import { UpdateCodReconciliationDto } from './dto/update-cod-reconciliation.dto';
 
 @ApiTags('Waybills')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -67,6 +68,13 @@ export class WaybillsController {
     return this.waybillsService.updateDeliveryPreparation(id, dto, currentUser);
   }
 
+  @Patch(':id/last-mile-cost')
+  @RequireRoles(Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Cập nhật cước giao chặng cuối sau đối soát NCC' })
+  updateLastMileCost(@Param('id') id: string, @Body() dto: UpdateLastMileCostDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.updateLastMileCost(id, dto, currentUser);
+  }
+
   @Get('load-planning/board')
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Load planning board — waybill splits grouped by truck' })
@@ -75,7 +83,7 @@ export class WaybillsController {
   }
 
   @Get('inventory/trip-lines')
-  @RequireRoles(Roles.WAREHOUSE, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Inventory expanded by trip/truck split lines' })
   getInventoryTripLines(@Query() query: QueryWaybillsDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.getInventoryTripLines(query, currentUser);
@@ -252,6 +260,13 @@ export class WaybillsController {
   @ApiOperation({ summary: 'Update COD and fee amounts' })
   updateCodFee(@Param('id') id: string, @Body() dto: UpdateCodFeeDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.updateCodFee(id, dto, currentUser);
+  }
+
+  @Patch(':id/cod-reconciliation')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Xác nhận hoặc bỏ xác nhận đối soát một vận đơn COD tại bưu cục' })
+  updateCodReconciliation(@Param('id') id: string, @Body() dto: UpdateCodReconciliationDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.updateCodReconciliation(id, dto, currentUser);
   }
 
   @Patch(':id/cancel')

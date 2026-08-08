@@ -107,6 +107,11 @@ export interface WaybillInventoryItem {
   customer_payment_status?: CustomerPaymentStatus;
   customer_payment_note?: string | null;
   delivery_photo_url?: string | null;
+  delivery_assignment_type?: 'INTERNAL' | 'PARTNER' | null;
+  last_mile_vendor_id?: string | number | null;
+  last_mile_driver_name?: string | null;
+  last_mile_license_plate?: string | null;
+  last_mile_cost_amount?: number | string | null;
 }
 
 export interface WaybillInventoryDetail extends WaybillInventoryItem {

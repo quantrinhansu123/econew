@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsEnum, IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { WaybillStatus } from './waybill.enums';
 
 export class UpdateWaybillStatusDto {
@@ -36,6 +37,25 @@ export class UpdateWaybillStatusDto {
   @IsString()
   vendor_id?: string;
 
+  @ApiPropertyOptional({ description: 'Tên tài xế giao chặng cuối nhập tay' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  driver_name?: string;
+
+  @ApiPropertyOptional({ description: 'Biển kiểm soát giao chặng cuối nhập tay' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  license_plate?: string;
+
+  @ApiPropertyOptional({ description: 'Cước giao chặng cuối; có thể để 0 và đối soát sau' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  delivery_cost?: number;
+
   @ApiPropertyOptional({ description: 'Mã tuyến giao chặng cuối' })
   @IsOptional()
   @IsString()
@@ -46,6 +66,14 @@ export class UpdateWaybillStatusDto {
   @IsString()
   @MaxLength(500)
   failure_reason?: string;
+}
+
+export class UpdateLastMileCostDto {
+  @ApiPropertyOptional({ description: 'Cước giao chặng cuối sau đối soát' })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amount: number;
 }
 
 export class CorrectWaybillStatusDto {

@@ -5,8 +5,10 @@ import { clampPaginationLimit } from '../common/pagination';
 import { TripStatus, VendorTripPaymentStatus } from '../common/enums';
 import { Roles } from '../common/roles';
 import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
+import { ExpenseEntity } from '../expenses/expense.entity';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
+import { WaybillEntity } from '../waybills/waybill.entity';
 import { BulkUpdateTripVendorPaymentDto } from './dto/bulk-update-trip-vendor-payment.dto';
 import { CreateVendorPaymentDto } from './dto/create-vendor-payment.dto';
 import { QueryVendorDebtDto } from './dto/query-vendor-debt.dto';
@@ -27,7 +29,7 @@ const mutableFields: Array<keyof UpsertVendorDto> = ['code', 'name', 'service_ty
 
 type LedgerRow = {
   id: string;
-  type: 'TRIP' | 'PAYMENT' | 'DEBT';
+  type: 'TRIP' | 'COST' | 'PAYMENT' | 'DEBT';
   date: Date;
   amount: number;
   signed_amount: number;
@@ -47,6 +49,8 @@ export class VendorsService {
     @InjectRepository(VendorPaymentEntity) private readonly paymentsRepository: Repository<VendorPaymentEntity>,
     @InjectRepository(TripEntity) private readonly tripsRepository: Repository<TripEntity>,
     @InjectRepository(ManifestWaybillEntity) private readonly manifestWaybillsRepository: Repository<ManifestWaybillEntity>,
+    @InjectRepository(ExpenseEntity) private readonly expensesRepository: Repository<ExpenseEntity>,
+    @InjectRepository(WaybillEntity) private readonly waybillsRepository: Repository<WaybillEntity>,
   ) {}
 
   async create(dto: UpsertVendorDto, currentUser: UserEntity) {
@@ -445,6 +449,14 @@ export class VendorsService {
     );
   }
 
+  async refreshPayableBalance(vendorId: string): Promise<void> {
+    const vendor = await this.vendorsRepository.findOne({ where: { id: vendorId } });
+    if (!vendor) return;
+    const balance = (await this.computeBalancesForVendors([vendorId])).get(vendorId);
+    vendor.payable_balance = String(Math.max(0, balance?.remaining ?? 0));
+    await this.vendorsRepository.save(vendor);
+  }
+
   private async queryVendorTrips(vendorId: string, from?: Date, to?: Date): Promise<TripEntity[]> {
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .innerJoinAndSelect('trip.truck', 'truck')
@@ -542,11 +554,17 @@ export class VendorsService {
     for (const vendorId of vendorIds) {
       const trips = await this.queryVendorTrips(vendorId);
       const tripIncurred = trips.reduce((sum, t) => sum + this.tripCost(t), 0);
+      const [vendorExpenses, lastMileCosts] = await Promise.all([
+        this.expensesRepository.find({ where: { vendor_id: vendorId } }),
+        this.waybillsRepository.find({ where: { last_mile_vendor_id: vendorId } as any }),
+      ]);
+      const expenseIncurred = vendorExpenses.reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
+      const lastMileIncurred = lastMileCosts.reduce((sum, waybill) => sum + Number(waybill.last_mile_cost_amount ?? 0), 0);
       const stackDebts = await this.debtEntriesRepository.find({
         where: { vendor_id: vendorId, trip_id: IsNull() },
       });
       const stackIncurred = stackDebts.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0);
-      const totalIncurred = tripIncurred + stackIncurred;
+      const totalIncurred = tripIncurred + stackIncurred + expenseIncurred + lastMileIncurred;
       const payments = await this.paymentsRepository.find({ where: { vendor_id: vendorId } });
       const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
       map.set(vendorId, {
@@ -581,6 +599,44 @@ export class VendorsService {
         description: trip.manifest?.manifest_code ? `Chuyến #${trip.id} · ${trip.manifest.manifest_code}` : `Chi phí chuyến #${trip.id}`,
         trip_id: trip.id,
         license_plate: trip.truck?.bks || trip.truck?.license_plate || null,
+      });
+    }
+
+    const [vendorExpenses, lastMileCosts] = await Promise.all([
+      this.expensesRepository.find({
+        where: { vendor_id: vendorId },
+        relations: ['trip'],
+        order: { created_at: 'ASC' },
+      }),
+      this.waybillsRepository.find({
+        where: { last_mile_vendor_id: vendorId } as any,
+        order: { created_at: 'ASC' },
+      }),
+    ]);
+    for (const expense of vendorExpenses) {
+      const amount = Number(expense.amount ?? 0);
+      if (amount <= 0) continue;
+      events.push({
+        id: `expense-${expense.id}`,
+        type: 'COST',
+        date: expense.created_at,
+        amount,
+        signed_amount: amount,
+        description: expense.description || `Chi phí ${expense.category || 'khác'} · chuyến #${expense.trip_id}`,
+        trip_id: expense.trip_id,
+      });
+    }
+    for (const waybill of lastMileCosts) {
+      const amount = Number(waybill.last_mile_cost_amount ?? 0);
+      if (amount <= 0) continue;
+      events.push({
+        id: `last-mile-${waybill.id}`,
+        type: 'COST',
+        date: waybill.delivery_confirmed_at ?? waybill.created_at,
+        amount,
+        signed_amount: amount,
+        description: `Cước giao chặng cuối ${waybill.waybill_code}${waybill.last_mile_license_plate ? ` · BKS ${waybill.last_mile_license_plate}` : ''}`,
+        license_plate: waybill.last_mile_license_plate,
       });
     }
 

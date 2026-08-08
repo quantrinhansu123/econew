@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ImagePlus, Loader2, Trash2, X } from 'lucide-react';
 import { ApiError } from '../../../../lib/api';
+import { formatAmountInput, formatAmountInputFromNumber, parseAmountInput } from '../../../../lib/formatMoney';
 import { IMAGE_UPLOAD_ACCEPT, uploadWaybillImage } from '../../../../lib/uploadImage';
 import type { DeliveryResources, LastMileWaybill } from '../types';
 import type { DeliveryRouteOption } from '../../../../hooks/useDeliveryRoutes';
@@ -16,7 +17,7 @@ interface Props {
   currentUserId?: string | number | null;
   routes?: DeliveryRouteOption[];
   routesLoading?: boolean;
-  onConfirm: (status: DeliveryStatus, deliveryPhotoUrl?: string, assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string; route_code?: string }, failureReason?: string) => void;
+  onConfirm: (status: DeliveryStatus, deliveryPhotoUrl?: string, assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string; route_code?: string; driver_name?: string; license_plate?: string; delivery_cost?: number }, failureReason?: string) => void;
 }
 
 export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, error, resources, routes = [], routesLoading = false, currentUserId, onClose, onConfirm }: Props) {
@@ -27,6 +28,9 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
   const [driverId, setDriverId] = useState('');
   const [truckId, setTruckId] = useState('');
   const [vendorId, setVendorId] = useState('');
+  const [driverName, setDriverName] = useState('');
+  const [licensePlate, setLicensePlate] = useState('');
+  const [deliveryCost, setDeliveryCost] = useState('');
   const [routeCode, setRouteCode] = useState('');
   const [failureReason, setFailureReason] = useState('');
 
@@ -34,12 +38,16 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
     setPhotos(String(waybill?.delivery_photo_url || '').split('|').map((item) => item.trim()).filter(Boolean));
     setUploadError('');
     setAssignmentType(waybill?.delivery_assignment_type || 'INTERNAL');
-    setDriverId(String(waybill?.last_mile_driver_id || currentUserId || ''));
+    const currentDriver = resources?.drivers.find((driver) => String(driver.id) === String(currentUserId || ''));
+    setDriverId(String(waybill?.last_mile_driver_id || currentDriver?.id || ''));
     setTruckId(String(waybill?.last_mile_truck_id || ''));
     setVendorId(String(waybill?.last_mile_vendor_id || ''));
+    setDriverName(String(waybill?.last_mile_driver_name || waybill?.last_mile_driver?.name || currentDriver?.name || currentDriver?.username || ''));
+    setLicensePlate(String(waybill?.last_mile_license_plate || waybill?.last_mile_truck?.bks || waybill?.last_mile_truck?.license_plate || ''));
+    setDeliveryCost(formatAmountInputFromNumber(waybill?.last_mile_cost_amount));
     setRouteCode(String(waybill?.route_code || ''));
     setFailureReason(String(waybill?.last_delivery_failure_reason || ''));
-  }, [currentUserId, waybill]);
+  }, [currentUserId, resources, waybill]);
 
   if (!waybill) return null;
 
@@ -74,17 +82,24 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
         setUploadError('Phải chọn tuyến giao.');
         return;
       }
-      if (assignmentType === 'INTERNAL' && !driverId) {
-        setUploadError('Phải chọn tài xế nội bộ.');
+      if (assignmentType === 'INTERNAL' && !driverName.trim()) {
+        setUploadError('Phải nhập hoặc chọn tài xế nội bộ.');
         return;
       }
       if (assignmentType === 'PARTNER' && !vendorId) {
         setUploadError('Phải chọn đối tác giao hàng.');
         return;
       }
+      if (!licensePlate.trim()) {
+        setUploadError('Phải nhập biển kiểm soát giao chặng cuối.');
+        return;
+      }
       onConfirm(status, undefined, {
         assignment_type: assignmentType,
         route_code: routeCode,
+        driver_name: driverName.trim() || undefined,
+        license_plate: licensePlate.trim().toUpperCase(),
+        delivery_cost: parseAmountInput(deliveryCost),
         ...(assignmentType === 'INTERNAL' ? { driver_id: driverId, truck_id: truckId || undefined } : { vendor_id: vendorId }),
       });
       return;
@@ -126,11 +141,11 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
               </div>
               {assignmentType === 'INTERNAL' ? (
                 <div className="grid gap-2">
-                  <select value={driverId} onChange={(event) => setDriverId(event.target.value)} className="h-10 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">
+                  <select value={driverId} onChange={(event) => { const value = event.target.value; setDriverId(value); const driver = resources.drivers.find((item) => String(item.id) === value); if (driver) setDriverName(String(driver.name || driver.username || '')); }} className="h-10 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">
                     <option value="">Chọn tài xế</option>
                     {resources.drivers.map((driver) => <option key={String(driver.id)} value={String(driver.id)}>{driver.name || driver.username}{driver.phone ? ` · ${driver.phone}` : ''}</option>)}
                   </select>
-                  <select value={truckId} onChange={(event) => { const value = event.target.value; setTruckId(value); const truck = resources.trucks.find((item) => String(item.id) === value); if (truck?.driver_id) setDriverId(String(truck.driver_id)); }} className="h-10 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">
+                  <select value={truckId} onChange={(event) => { const value = event.target.value; setTruckId(value); const truck = resources.trucks.find((item) => String(item.id) === value); if (truck?.driver_id) setDriverId(String(truck.driver_id)); if (truck?.driver_name) setDriverName(truck.driver_name); if (truck) setLicensePlate(String(truck.bks || truck.license_plate || '')); }} className="h-10 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">
                     <option value="">Không chọn xe</option>
                     {resources.trucks.map((truck) => <option key={String(truck.id)} value={String(truck.id)}>{truck.bks || truck.license_plate}{truck.driver_name ? ` · ${truck.driver_name}` : ''}</option>)}
                   </select>
@@ -141,6 +156,20 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
                   {resources.vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{vendor.name || vendor.code}{vendor.phone ? ` · ${vendor.phone}` : ''}</option>)}
                 </select>
               )}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-[11px] font-bold text-muted-foreground">
+                  Tài xế
+                  <input value={driverName} onChange={(event) => setDriverName(event.target.value)} maxLength={255} placeholder="Nhập tên tài xế" className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none" />
+                </label>
+                <label className="text-[11px] font-bold text-muted-foreground">
+                  Biển kiểm soát
+                  <input value={licensePlate} onChange={(event) => setLicensePlate(event.target.value.toUpperCase())} maxLength={32} placeholder="VD: 51H-123.45" className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold uppercase text-foreground outline-none" />
+                </label>
+              </div>
+              <label className="block text-[11px] font-bold text-muted-foreground">
+                Cước giao chặng cuối
+                <input inputMode="numeric" value={deliveryCost} onChange={(event) => setDeliveryCost(formatAmountInput(event.target.value))} placeholder="Có thể để trống và nhập sau khi đối soát" className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-right text-[13px] font-extrabold text-foreground outline-none" />
+              </label>
             </div>
           )}
           {currentStatus === 'OUT_FOR_DELIVERY' && (
@@ -200,4 +229,3 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
     </div>
   );
 }
-

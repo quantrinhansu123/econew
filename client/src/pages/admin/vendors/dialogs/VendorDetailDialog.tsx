@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Building2, Edit, ExternalLink, Loader2, Package, Printer, Receipt, Truck, X } from 'lucide-react';
+import { Building2, Check, Edit, ExternalLink, Loader2, Package, Printer, Receipt, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../../lib/api';
@@ -38,6 +38,7 @@ const USER_PROFILE_KEY = 'eco_user_profile';
 const MANAGER = 32;
 const DIRECTOR = 64;
 const ACCOUNTANT = 16;
+const DISPATCHER = 8;
 
 const vendorExpenseTypes = [
   'Chi phí cố định',
@@ -145,6 +146,10 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
   const [inventoryTotal, setInventoryTotal] = useState(0);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [inventoryError, setInventoryError] = useState('');
+  const [editingDeliveryCostId, setEditingDeliveryCostId] = useState<string | null>(null);
+  const [deliveryCostDraft, setDeliveryCostDraft] = useState('');
+  const [deliveryCostSaving, setDeliveryCostSaving] = useState(false);
+  const [deliveryCostError, setDeliveryCostError] = useState('');
   const [deliveryBoard, setDeliveryBoard] = useState<LoadPlanningBoardResponse | null>(null);
   const [deliveryTotal, setDeliveryTotal] = useState(0);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
@@ -175,8 +180,10 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
 
   const canViewCost = useMemo(() => {
     const user = getStoredUser();
-    return ((user?.role_mask ?? 0) & (MANAGER | DIRECTOR)) !== 0;
+    return ((user?.role_mask ?? 0) & (DISPATCHER | ACCOUNTANT | MANAGER | DIRECTOR)) !== 0;
   }, []);
+
+  const canEditDeliveryCost = canViewCost;
 
   const canViewFinance = useMemo(() => {
     const user = getStoredUser();
@@ -189,6 +196,9 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
       setInventoryItems([]);
       setInventoryTotal(0);
       setInventoryError('');
+      setEditingDeliveryCostId(null);
+      setDeliveryCostDraft('');
+      setDeliveryCostError('');
       setDeliveryBoard(null);
       setDeliveryTotal(0);
       setDeliveryError('');
@@ -210,7 +220,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
   const statementData = useMemo(() => {
     const totalFreight = inventoryItems.reduce((sum, item) => sum + Number(item.freight_amount ?? item.cost_amount ?? 0), 0);
     const totalIncurred = ledgerBalance.total_incurred ?? ledgerEntries
-      .filter((entry) => String(entry.type) === 'TRIP')
+      .filter((entry) => String(entry.type) !== 'PAYMENT')
       .reduce((sum, entry) => sum + Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0)), 0);
     const totalPaid = ledgerBalance.total_paid ?? ledgerEntries
       .filter((entry) => String(entry.type) === 'PAYMENT')
@@ -333,6 +343,24 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
     if (!vendorId) return;
     onClose();
     navigate(`/warehouse/load-planning?vendor_id=${encodeURIComponent(vendorId)}`);
+  };
+
+  const saveDeliveryCost = async (waybillId: string | number) => {
+    const amount = parseAmountInput(deliveryCostDraft);
+    setDeliveryCostSaving(true);
+    setDeliveryCostError('');
+    try {
+      await apiRequest(`/waybills/${waybillId}/last-mile-cost`, { method: 'PATCH', body: { amount } });
+      setInventoryItems((current) => current.map((item) => String(item.id) === String(waybillId)
+        ? { ...item, last_mile_cost_amount: amount, allocated_freight: amount }
+        : item));
+      setEditingDeliveryCostId(null);
+      setDeliveryCostDraft('');
+    } catch {
+      setDeliveryCostError('Không cập nhật được cước giao chặng cuối.');
+    } finally {
+      setDeliveryCostSaving(false);
+    }
   };
 
   const reloadLedger = async () => {
@@ -462,6 +490,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
               </div>
             ) : (
               <div className="overflow-x-auto -mx-1">
+                {deliveryCostError && <p className="mx-1 mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-bold text-red-700">{deliveryCostError}</p>}
                 <table className="w-full min-w-[760px] border-collapse text-left text-[12px]">
                   <thead>
                     <tr className="border-b border-border text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
@@ -478,7 +507,9 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
                   <tbody>
                     {inventoryItems.map((order) => {
                       const state = String(order.current_state || '').toUpperCase();
-                      const freight = order.allocated_freight ?? order.freight_amount ?? order.cost_amount;
+                      const isLastMileOrder = String(order.last_mile_vendor_id || '') === vendorId;
+                      const freight = isLastMileOrder ? order.last_mile_cost_amount : (order.allocated_freight ?? order.freight_amount ?? order.cost_amount);
+                      const isEditingCost = editingDeliveryCostId === String(order.id);
                       return (
                         <tr key={`${order.id}-${order.split_id ?? '0'}`} className="border-b border-border/70 hover:bg-muted/20">
                           <td className="px-2 py-2.5 font-extrabold text-primary">
@@ -487,13 +518,24 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
                           <td className="px-2 py-2.5">{formatDate(order.received_at || order.created_at)}</td>
                           <td className="px-2 py-2.5">{statusLabel[state] || state || '—'}</td>
                           <td className="px-2 py-2.5">
-                            {[order.license_plate, order.trip_nha_xe].filter(Boolean).join(' · ') || '—'}
+                            {[order.last_mile_license_plate || order.license_plate, order.last_mile_driver_name || order.trip_nha_xe].filter(Boolean).join(' · ') || '—'}
                           </td>
                           <td className="px-2 py-2.5">{resolveNoiDen(order)}</td>
                           <td className="px-2 py-2.5 text-right">{order.trip_package_count ?? order.package_count ?? '—'}</td>
                           <td className="px-2 py-2.5">{order.payment_type || '—'}</td>
                           {canViewCost && (
-                            <td className="px-2 py-2.5 text-right font-bold">{formatMoney(freight)}</td>
+                            <td className="px-2 py-2.5 text-right font-bold">
+                              {isLastMileOrder && canEditDeliveryCost ? (
+                                isEditingCost ? <div className="flex min-w-[150px] items-center justify-end gap-1">
+                                  <input inputMode="numeric" value={deliveryCostDraft} onChange={(event) => setDeliveryCostDraft(formatAmountInput(event.target.value))} disabled={deliveryCostSaving} className="h-8 w-28 rounded-lg border border-border px-2 text-right text-[12px] font-extrabold outline-none" />
+                                  <button type="button" title="Lưu cước" onClick={() => void saveDeliveryCost(order.id)} disabled={deliveryCostSaving} className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white disabled:opacity-60">{deliveryCostSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}</button>
+                                  <button type="button" title="Hủy" onClick={() => setEditingDeliveryCostId(null)} disabled={deliveryCostSaving} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground"><X size={13} /></button>
+                                </div> : <div className="flex items-center justify-end gap-1">
+                                  <span>{formatMoney(freight)}</span>
+                                  <button type="button" title="Nhập cước đối soát" onClick={() => { setEditingDeliveryCostId(String(order.id)); setDeliveryCostDraft(formatAmountInput(String(freight || ''))); setDeliveryCostError(''); }} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-primary"><Edit size={13} /></button>
+                                </div>
+                              ) : formatMoney(freight)}
+                            </td>
                           )}
                         </tr>
                       );
@@ -655,7 +697,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
             <div className="mt-2 grid grid-cols-4 gap-2">
               <PrintMetric label="Đã chi" value={printMoney(statementData.totalPaid)} />
               <PrintMetric label="Số phiếu chi" value={ledgerEntries.filter((entry) => String(entry.type) === 'PAYMENT').length.toLocaleString('vi-VN')} />
-              <PrintMetric label="Số phát sinh" value={ledgerEntries.filter((entry) => String(entry.type) === 'TRIP').length.toLocaleString('vi-VN')} />
+              <PrintMetric label="Số phát sinh" value={ledgerEntries.filter((entry) => String(entry.type) !== 'PAYMENT').length.toLocaleString('vi-VN')} />
               <PrintMetric label="Sổ cái" value={ledgerEntries.length.toLocaleString('vi-VN')} />
             </div>
 
@@ -687,7 +729,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
                   return <tr key={String(entry.id)}>
                     <td className="border border-slate-300 px-2 py-2">{index + 1}</td>
                     <td className="border border-slate-300 px-2 py-2">{formatDate(entry.date)}</td>
-                    <td className="border border-slate-300 px-2 py-2">{isPayment ? 'Phiếu chi' : 'Phát sinh'}</td>
+                    <td className="border border-slate-300 px-2 py-2">{isPayment ? 'Phiếu chi' : String(entry.type) === 'TRIP' ? 'Phát sinh chuyến' : 'Chi phí phát sinh'}</td>
                     <td className="border border-slate-300 px-2 py-2">{entry.trip_id ? `#${entry.trip_id}${entry.license_plate ? ` · ${entry.license_plate}` : ''}` : '—'}</td>
                     <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0)))}</td>
                     <td className="border border-slate-300 px-2 py-2">{entry.description || '—'}</td>

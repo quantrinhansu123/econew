@@ -22,9 +22,12 @@ const status = (waybill: LastMileWaybill) => String(waybill.current_state || '')
 function buildGroups(waybills: LastMileWaybill[]): DispatchGroup[] {
   const grouped = new Map<string, LastMileWaybill[]>();
   waybills.filter((waybill) => status(waybill) === 'OUT_FOR_DELIVERY' && waybill.delivery_assignment_type).forEach((waybill) => {
-    const assignee = waybill.delivery_assignment_type === 'PARTNER'
-      ? `vendor:${waybill.last_mile_vendor_id || waybill.last_mile_vendor?.id || 'unknown'}`
-      : `truck:${waybill.last_mile_truck_id || waybill.last_mile_driver_id || 'unknown'}`;
+    const plate = String(waybill.last_mile_license_plate || waybill.last_mile_truck?.bks || waybill.last_mile_truck?.license_plate || '').trim().toUpperCase();
+    const assignee = plate
+      ? `plate:${plate}`
+      : waybill.delivery_assignment_type === 'PARTNER'
+        ? `vendor:${waybill.last_mile_vendor_id || waybill.last_mile_vendor?.id || 'unknown'}`
+        : `truck:${waybill.last_mile_truck_id || waybill.last_mile_driver_id || 'unknown'}`;
     const key = `${waybill.route_code || 'CHUA-TUYEN'}|${assignee}`;
     grouped.set(key, [...(grouped.get(key) || []), waybill]);
   });
@@ -32,8 +35,8 @@ function buildGroups(waybills: LastMileWaybill[]): DispatchGroup[] {
   return [...grouped.entries()].map(([key, items], groupIndex) => {
     const first = items[0];
     const routeCode = first.route_code || 'CHUA-TUYEN';
-    const plate = first.last_mile_truck?.bks || first.last_mile_truck?.license_plate || '';
-    const driverName = first.last_mile_driver?.name || first.last_mile_driver?.username || '';
+    const plate = first.last_mile_license_plate || first.last_mile_truck?.bks || first.last_mile_truck?.license_plate || '';
+    const driverName = first.last_mile_driver_name || first.last_mile_driver?.name || first.last_mile_driver?.username || '';
     const vendorName = first.last_mile_vendor?.name || first.last_mile_vendor?.code || '';
     const manifestCode = `BKPHAT-${String(first.dest_hub?.code || first.dest_hub_id || 'HUB').toUpperCase()}-${routeCode}-${String(groupIndex + 1).padStart(2, '0')}`;
     const links: DispatchLink[] = items.map((waybill, index) => ({

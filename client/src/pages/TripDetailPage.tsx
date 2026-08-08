@@ -18,7 +18,7 @@ import AddWaybillsToManifestDialog from './warehouse/manifests/dialogs/AddWaybil
 import { buildInventoryTripLinesQuery, filterManifestAddableInventoryRows, isIncompleteSplitRow } from './warehouse/inventory/inventoryTripLines';
 import type { WaybillInventoryItem } from './warehouse/inventory/types';
 import type { AddWaybillsFormState, LoadPlanningManifest } from './warehouse/manifests/types';
-import type { FilterOption, HubSummary, ListResponse, ManifestDetail, Trip, TripAction, TripCostFormState, TruckSummary, WaybillFilters, WaybillSummary } from './trips/types';
+import type { FilterOption, HubSummary, ListResponse, ManifestDetail, Trip, TripAction, TruckSummary, WaybillFilters, WaybillSummary } from './trips/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const DRIVER = 4;
@@ -118,7 +118,6 @@ export default function TripDetailPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [costDialogOpen, setCostDialogOpen] = useState(false);
-  const [costForm, setCostForm] = useState<TripCostFormState>({ fuel_actual: '', fuel_cost: '', other_costs: '' });
   const [detailManifest, setDetailManifest] = useState<ManifestDetail | null>(null);
   const [detailTruck, setDetailTruck] = useState<TruckSummary | null>(null);
   const [scheduleTrip, setScheduleTrip] = useState<Trip | null>(null);
@@ -142,7 +141,6 @@ export default function TripDetailPage() {
       const [tripPayload, hubsPayload] = await Promise.all([apiRequest<Trip>(`/trips/${id}`), apiRequest<ListResponse<HubSummary> | HubSummary[]>('/hubs/active').catch(() => [])]);
       setTrip(tripPayload);
       setHubs(normalizeList(hubsPayload, 'hubs'));
-      setCostForm({ fuel_actual: tripPayload.fuel_actual == null ? '' : String(tripPayload.fuel_actual), fuel_cost: tripPayload.fuel_cost == null ? '' : String(tripPayload.fuel_cost), other_costs: tripPayload.other_costs == null ? '' : String(tripPayload.other_costs) });
       const [manifestPayload, truckPayload] = await Promise.all([
         tripPayload.manifest_id ? apiRequest<ManifestDetail>(`/manifests/${tripPayload.manifest_id}`).catch(() => null) : Promise.resolve(null),
         tripPayload.truck_id ? apiRequest<TruckSummary>(`/trucks/${tripPayload.truck_id}`).catch(() => null) : Promise.resolve(null),
@@ -194,7 +192,6 @@ export default function TripDetailPage() {
   function clearFilters() { setFilters(prev => ({ ...prev, current_state: [], origin_hub_id: [], dest_hub_id: [], payment_type: [], page: 1 })); }
   function openAction(nextAction: TripAction) { if (!trip || isFinal || !canOperateTrip || (nextAction === 'cancel' && !canEditTrip)) return; setActionTrip(trip); setAction(nextAction); setActionError(''); }
   async function confirmAction() { if (!actionTrip || !action) return; setIsSubmitting(true); setActionError(''); try { await apiRequest<Trip>(`/trips/${actionTrip.id}/${action}`, { method: 'PATCH' }); setActionTrip(null); setAction(null); await loadTrip(); } catch (submitError) { setActionError(submitError instanceof ApiError ? submitError.message : 'Không cập nhật được trạng thái chuyến.'); } finally { setIsSubmitting(false); } }
-  async function submitCosts() { if (!trip || isFinal || !canUpdateCosts) return; setIsSubmitting(true); setActionError(''); try { await apiRequest<Trip>(`/trips/${trip.id}/costs`, { method: 'PATCH', body: { fuel_actual: Number(costForm.fuel_actual || 0), fuel_cost: Number(costForm.fuel_cost || 0), other_costs: Number(costForm.other_costs || 0) } }); setCostDialogOpen(false); await loadTrip(); } catch (submitError) { setActionError(submitError instanceof ApiError ? submitError.message : 'Không cập nhật được chi phí chuyến.'); } finally { setIsSubmitting(false); } }
   function openScheduleEditor() {
     if (!trip || !canEditTrip) return;
     setActionError('');
@@ -381,7 +378,7 @@ export default function TripDetailPage() {
             <button title="Mở bộ lọc" onClick={() => setIsFilterPanelOpen(true)} className="relative h-10 w-10 rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 flex items-center justify-center md:hidden"><Filter size={16} />{activeFilterCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white">{activeFilterCount}</span>}</button>
             {activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
             <div className="hidden flex-1 md:block" />
-            {canUpdateCosts && <button disabled={isFinal || !trip} onClick={() => { setActionError(''); setCostDialogOpen(true); }} className="h-10 rounded-lg bg-primary px-3 text-[13px] font-bold text-white hover:bg-primary/90 disabled:opacity-40"><span className="hidden md:inline">+ Cập nhật chi phí</span><Fuel className="md:hidden" size={16} /></button>}
+            {canUpdateCosts && <button disabled={isFinal || !trip} onClick={() => { setActionError(''); setCostDialogOpen(true); }} className="h-10 rounded-lg bg-primary px-3 text-[13px] font-bold text-white hover:bg-primary/90 disabled:opacity-40"><span className="hidden md:inline">+ Chi phí chuyến</span><Fuel className="md:hidden" size={16} /></button>}
           </div>
           <div className="hidden md:flex flex-wrap items-center gap-2">
             <FilterSelect multiple icon={Tag} placeholder="Trạng thái vận đơn" options={waybillStatusOptions} value={filters.current_state} onValueChange={value => updateFilter('current_state', value)} />
@@ -404,7 +401,7 @@ export default function TripDetailPage() {
       </div>
       <FilterPanel open={isFilterPanelOpen} activeCount={activeFilterCount} groups={filterPanelGroups} onClose={() => setIsFilterPanelOpen(false)} onApply={() => setIsFilterPanelOpen(false)} onClear={clearFilters} />
       <TripStatusActionDialog trip={actionTrip} action={action} isSubmitting={isSubmitting} error={actionError} onClose={() => { setActionTrip(null); setAction(null); }} onConfirm={confirmAction} />
-      <UpdateTripCostsDialog trip={costDialogOpen ? trip : null} formState={costForm} isSubmitting={isSubmitting} error={actionError} onClose={() => setCostDialogOpen(false)} onChange={(key, value) => setCostForm(prev => ({ ...prev, [key]: value }))} onSubmit={submitCosts} />
+      <UpdateTripCostsDialog trip={costDialogOpen ? trip : null} onClose={() => setCostDialogOpen(false)} onSaved={() => { void loadTrip(); }} />
       <TripManifestDetailDialog manifest={detailManifest} onClose={() => setDetailManifest(null)} />
       <TripTruckDetailDialog truck={detailTruck} onClose={() => setDetailTruck(null)} />
       <EditTripScheduleDialog trip={scheduleTrip} formState={scheduleForm} isSubmitting={isSubmitting} error={actionError} onChange={(key, value) => setScheduleForm(prev => ({ ...prev, [key]: value }))} onClose={() => setScheduleTrip(null)} onSubmit={submitSchedule} />
@@ -457,4 +454,3 @@ function HubBadge({ hubs, id, hub }: { hubs: HubSummary[]; id?: string | number 
 function TruckBadge({ trip, truck }: { trip: Trip; truck?: TruckSummary | null }) { return <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[12px] font-bold text-slate-700"><TruckIcon size={13} />{truck?.license_plate || trip.truck?.license_plate || `Truck #${normalizeId(trip.truck_id) || '—'}`}</span>; }
 function ManifestBadge({ trip, manifest }: { trip: Trip; manifest?: ManifestDetail | null }) { return <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[12px] font-bold text-emerald-700"><Package size={13} />{manifest?.manifest_code || trip.manifest?.manifest_code || `Manifest #${normalizeId(trip.manifest_id) || '—'}`}</span>; }
 function StateBlock({ icon, title, description }: { icon: ReactNode; title: string; description: string }) { return <div className="flex-1 min-h-[360px] flex flex-col items-center justify-center text-center text-muted-foreground"><div className="mb-3 text-primary">{icon}</div><h3 className="text-[14px] font-bold text-foreground">{title}</h3><p className="mt-1 text-[13px] max-w-md">{description}</p></div>; }
-

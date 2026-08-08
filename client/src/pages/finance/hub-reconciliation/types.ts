@@ -56,3 +56,19 @@ export interface ReconciliationFormState {
   total_remitted: string;
   remittance_status: RemittanceStatus;
 }
+
+export interface CodReconciliationWaybill {
+  id: string | number;
+  waybill_code?: string | null;
+  sender_info?: string | null;
+  receiver_info?: string | null;
+  origin_hub_id?: string | number | null;
+  dest_hub_id?: string | number | null;
+  current_state?: string | null;
+  payment_type?: string | null;
+  cod_amount?: string | number | null;
+  created_at?: string | null;
+  delivered_at?: string | null;
+  cod_reconciled_at?: string | null;
+  cod_reconciled_by?: string | number | null;
+}

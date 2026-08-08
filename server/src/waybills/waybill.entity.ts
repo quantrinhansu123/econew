@@ -106,6 +106,15 @@ export class WaybillEntity {
   @Column({ type: 'bigint', nullable: true })
   last_mile_vendor_id: string | null;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  last_mile_driver_name: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  last_mile_license_plate: string | null;
+
+  @Column({ type: 'decimal', default: 0 })
+  last_mile_cost_amount: string;
+
   @Column({ type: 'varchar', length: 32, default: 'PENDING_CONFIRMATION' })
   delivery_preparation_status: 'PENDING_CONFIRMATION' | 'READY' | 'SCHEDULED' | 'NEEDS_ACTION' | 'HOLD';
 
@@ -138,6 +147,12 @@ export class WaybillEntity {
 
   @Column({ type: 'decimal', default: 0 })
   cod_amount: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  cod_reconciled_at: Date | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  cod_reconciled_by: string | null;
 
   @Column({ type: 'int', default: 1 })
   package_count: number;

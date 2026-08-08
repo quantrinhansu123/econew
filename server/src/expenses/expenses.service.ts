@@ -6,6 +6,7 @@ import { clampPaginationLimit } from '../common/pagination';
 import { Roles, hasRole, isManager } from '../common/roles';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
+import { VendorsService } from '../vendors/vendors.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { QueryExpensesDto } from './dto/query-expenses.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
@@ -19,6 +20,7 @@ export class ExpensesService {
   constructor(
     @InjectRepository(ExpenseEntity) private readonly expensesRepository: Repository<ExpenseEntity>,
     @InjectRepository(TripEntity) private readonly tripsRepository: Repository<TripEntity>,
+    private readonly vendorsService: VendorsService,
   ) {}
 
   async create(dto: CreateExpenseDto, currentUser: UserEntity): Promise<ExpenseEntity> {
@@ -28,15 +30,19 @@ export class ExpensesService {
       throw new BadRequestException('Expenses can only be recorded for an assigned or departed trip');
     }
     if (dto.amount !== undefined && dto.amount < 0) throw new BadRequestException('Amount must not be negative');
+    const vendor = dto.vendor_id != null ? await this.getActiveVendor(String(dto.vendor_id)) : null;
     const expense = this.expensesRepository.create({
       trip_id: String(dto.trip_id),
       category: dto.category ?? 'OTHER',
       amount: String(dto.amount ?? 0),
       description: dto.description?.trim() || null,
+      vendor_id: vendor?.id ?? null,
       hub_id: dto.hub_id != null ? String(dto.hub_id) : currentUser.hub_id,
       created_by: currentUser.id,
     });
-    return this.expensesRepository.save(expense);
+    const saved = await this.expensesRepository.save(expense);
+    if (saved.vendor_id) await this.vendorsService.refreshPayableBalance(saved.vendor_id);
+    return saved;
   }
 
   async findAll(query: QueryExpensesDto, currentUser: UserEntity) {
@@ -44,6 +50,7 @@ export class ExpensesService {
     const limit = clampPaginationLimit(query.limit, 10);
     const qb = this.expensesRepository.createQueryBuilder('expense')
       .leftJoinAndSelect('expense.trip', 'trip')
+      .leftJoinAndSelect('expense.vendor', 'vendor')
       .orderBy('expense.created_at', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
@@ -59,6 +66,7 @@ export class ExpensesService {
     await this.getTrip(tripId);
     const qb = this.expensesRepository.createQueryBuilder('expense')
       .leftJoinAndSelect('expense.trip', 'trip')
+      .leftJoinAndSelect('expense.vendor', 'vendor')
       .where('expense.trip_id = :tripId', { tripId })
       .orderBy('expense.created_at', 'DESC');
     this.applyHubScope(qb, currentUser);
@@ -68,6 +76,7 @@ export class ExpensesService {
   async findOne(id: string, currentUser: UserEntity): Promise<ExpenseEntity> {
     const qb = this.expensesRepository.createQueryBuilder('expense')
       .leftJoinAndSelect('expense.trip', 'trip')
+      .leftJoinAndSelect('expense.vendor', 'vendor')
       .where('expense.id = :id', { id });
     this.applyHubScope(qb, currentUser);
     const expense = await qb.getOne();
@@ -78,6 +87,7 @@ export class ExpensesService {
   async update(id: string, dto: UpdateExpenseDto, currentUser: UserEntity): Promise<ExpenseEntity> {
     this.assertAnyRole(currentUser, EXPENSE_WRITE_ROLES);
     const expense = await this.findOne(id, currentUser);
+    const previousVendorId = expense.vendor_id;
     if (dto.trip_id !== undefined) {
       const nextTrip = await this.getTrip(String(dto.trip_id));
       if (!EXPENSE_CREATABLE_TRIP_STATUSES.includes(nextTrip.status)) {
@@ -93,19 +103,37 @@ export class ExpensesService {
     }
     if (dto.description !== undefined) expense.description = dto.description?.trim() || null;
     if (dto.hub_id !== undefined) expense.hub_id = String(dto.hub_id);
-    return this.expensesRepository.save(expense);
+    if (dto.vendor_id !== undefined) {
+      const vendor = await this.getActiveVendor(String(dto.vendor_id));
+      expense.vendor_id = vendor.id;
+      expense.vendor = vendor;
+    }
+    const saved = await this.expensesRepository.save(expense);
+    const affectedVendorIds = [...new Set([previousVendorId, saved.vendor_id].filter((value): value is string => Boolean(value)))];
+    await Promise.all(affectedVendorIds.map((vendorId) => this.vendorsService.refreshPayableBalance(vendorId)));
+    return saved;
   }
 
   async remove(id: string, currentUser: UserEntity): Promise<void> {
     this.assertAnyRole(currentUser, [Roles.MANAGER, Roles.DIRECTOR]);
     const expense = await this.findOne(id, currentUser);
+    const vendorId = expense.vendor_id;
     await this.expensesRepository.remove(expense);
+    if (vendorId) await this.vendorsService.refreshPayableBalance(vendorId);
   }
 
   private async getTrip(tripId: string): Promise<TripEntity> {
     const trip = await this.tripsRepository.findOne({ where: { id: tripId } });
     if (!trip) throw new NotFoundException('Trip not found');
     return trip;
+  }
+
+  private async getActiveVendor(vendorId: string) {
+    const vendor = await this.vendorsService.findOne(vendorId);
+    if (String(vendor.status || '').toUpperCase() !== 'ACTIVE') {
+      throw new BadRequestException('Vendor must be active');
+    }
+    return vendor;
   }
 
   private applyHubScope(qb: any, currentUser: UserEntity): void {

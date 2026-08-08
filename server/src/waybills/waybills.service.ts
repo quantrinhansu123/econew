@@ -22,7 +22,8 @@ import { QueryReceiverContactsDto } from './dto/query-receiver-contacts.dto';
 import { QueryWaybillsDto } from './dto/query-waybills.dto';
 import { ReceiveWaybillDto } from './dto/receive-waybill.dto';
 import { UpdateCodFeeDto } from './dto/update-cod-fee.dto';
-import { CorrectWaybillStatusDto, UpdateWaybillStatusDto } from './dto/update-waybill-status.dto';
+import { UpdateCodReconciliationDto } from './dto/update-cod-reconciliation.dto';
+import { CorrectWaybillStatusDto, UpdateLastMileCostDto, UpdateWaybillStatusDto } from './dto/update-waybill-status.dto';
 import { UpdateWaybillDto } from './dto/update-waybill.dto';
 import { WaybillPriority, WaybillStatus } from './dto/waybill.enums';
 import { TripEntity } from '../trips/trip.entity';
@@ -401,6 +402,20 @@ export class WaybillsService {
     return this.sanitize(saved as WaybillRecord, currentUser);
   }
 
+  async updateLastMileCost(id: string, dto: UpdateLastMileCostDto, currentUser: UserEntity) {
+    const waybill = await this.findEditable(id, currentUser);
+    if (!waybill.delivery_assignment_type) {
+      throw new BadRequestException('Vận đơn chưa được phân giao chặng cuối');
+    }
+    const before = this.buildAuditSnapshot(waybill);
+    waybill.last_mile_cost_amount = String(dto.amount);
+    waybill.updated_by = currentUser.id;
+    const saved = await this.waybillsRepository.save(waybill);
+    await this.recordWaybillChange(String(saved.id), 'LAST_MILE_COST_UPDATED', currentUser, before, saved);
+    if (saved.last_mile_vendor_id) await this.vendorsService.refreshPayableBalance(saved.last_mile_vendor_id);
+    return this.sanitize(saved, currentUser);
+  }
+
   private async activateScheduledDeliveryTasks(currentUser: UserEntity): Promise<void> {
     const cutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const qb = this.waybillsRepository.createQueryBuilder('waybill')
@@ -552,9 +567,28 @@ export class WaybillsService {
           originChanged,
         )
       : await this.waybillsRepository.save(waybill);
-    if (!destChanged && originChanged && saved.order_id) {
-      await this.ordersService.syncRoutingFromWaybill(String(saved.order_id), {
+    if (patch.package_count !== undefined) {
+      await this.synchronizeAllocatedPackageCount(String(saved.id), Math.max(1, Number(saved.package_count ?? 1)));
+    }
+    if (saved.order_id) {
+      await this.ordersService.syncFromWaybill(String(saved.order_id), {
+        ma_kh: saved.ma_kh ?? null,
+        sender_name: saved.sender_name,
+        sender_phone: saved.sender_phone ?? null,
+        sender_address: saved.sender_address ?? null,
+        receiver_company_name: saved.receiver_company_name ?? null,
+        receiver_name: saved.receiver_name ?? null,
+        receiver_phone: saved.receiver_phone ?? null,
+        receiver_address: saved.receiver_address ?? null,
         origin_hub_id: String(saved.origin_hub_id),
+        dest_hub_id: String(saved.dest_hub_id),
+        package_count: Math.max(1, Number(saved.package_count ?? 1)),
+        weight: Number(saved.weight ?? 0),
+        payment_type: String(saved.payment_type),
+        freight_amount: String(saved.freight_amount ?? saved.cost_amount ?? 0),
+        cod_amount: String(saved.cod_amount ?? 0),
+        cc_amount: String(saved.cc_amount ?? 0),
+        note: saved.note ?? null,
       });
     }
     await this.recordWaybillChange(String(saved.id), 'UPDATED', currentUser, auditBefore, saved);
@@ -574,6 +608,7 @@ export class WaybillsService {
   async updateStatus(id: string, dto: UpdateWaybillStatusDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
     const auditBefore = this.buildAuditSnapshot(waybill);
+    const previousLastMileVendorId = waybill.last_mile_vendor_id;
     if (dto.status === WaybillStatus.RETURNED && !dto.failure_reason?.trim()) {
       throw new BadRequestException('Phải nhập lý do giao hàng không thành công');
     }
@@ -584,7 +619,11 @@ export class WaybillsService {
       await this.applyLastMileAssignment(waybill, dto, currentUser);
     }
     const splitDeliveryResult = await this.updateSplitDeliveryStatus(waybill, dto, currentUser, auditBefore);
-    if (splitDeliveryResult) return splitDeliveryResult;
+    if (splitDeliveryResult) {
+      const affectedVendorIds = [...new Set([previousLastMileVendorId, splitDeliveryResult.last_mile_vendor_id].filter((value): value is string => Boolean(value)))];
+      await Promise.all(affectedVendorIds.map((vendorId) => this.vendorsService.refreshPayableBalance(vendorId)));
+      return splitDeliveryResult;
+    }
     const currentStatus = this.getStatus(waybill);
     if (!STATE_TRANSITIONS[currentStatus]?.includes(dto.status)) throw new BadRequestException('Invalid waybill state transition');
     if (dto.status === WaybillStatus.DELIVERED && !dto.delivery_photo_url && !waybill.delivery_photo_url) throw new BadRequestException('Delivery photo is required');
@@ -596,6 +635,8 @@ export class WaybillsService {
     if (dto.status === WaybillStatus.DELIVERED) Object.assign(waybill, { delivered_at: new Date(), delivery_time: new Date() });
     if (dto.status === WaybillStatus.RETURNED) waybill.returned_at = new Date();
     const saved = await this.saveWithAudit(waybill, currentUser, 'STATUS_CHANGE');
+    const affectedVendorIds = [...new Set([previousLastMileVendorId, saved.last_mile_vendor_id].filter((value): value is string => Boolean(value)))];
+    await Promise.all(affectedVendorIds.map((vendorId) => this.vendorsService.refreshPayableBalance(vendorId)));
     await this.recordWaybillChange(
       String(saved.id),
       dto.status === WaybillStatus.RETURNED ? 'DELIVERY_FAILED' : `DELIVERY_${dto.status}`,
@@ -692,6 +733,23 @@ export class WaybillsService {
     return this.sanitize(saved, currentUser);
   }
 
+  async updateCodReconciliation(id: string, dto: UpdateCodReconciliationDto, currentUser: UserEntity): Promise<WaybillRecord> {
+    const waybill = await this.waybillsRepository.findOne({
+      where: { id, deleted_at: IsNull() } as any,
+      relations: ['origin_hub', 'dest_hub'],
+    }) as WaybillRecord | null;
+    if (!waybill) throw new NotFoundException('Waybill not found');
+    if (waybill.payment_type !== PaymentType.COD) {
+      throw new BadRequestException('Chỉ vận đơn COD mới được xác nhận đối soát tại bưu cục');
+    }
+
+    waybill.cod_reconciled_at = dto.confirmed ? new Date() : null;
+    waybill.cod_reconciled_by = dto.confirmed ? currentUser.id : null;
+    waybill.updated_by = currentUser.id;
+    const saved = await this.waybillsRepository.save(waybill);
+    return this.sanitize(saved as WaybillRecord, currentUser) as WaybillRecord;
+  }
+
   async cancel(id: string, dto: CancelWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findMutable(id, currentUser);
     if (!MUTABLE_STATUSES.includes(this.getStatus(waybill))) throw new BadRequestException('Only RECEIVED or IN_WAREHOUSE waybills can be cancelled');
@@ -768,12 +826,12 @@ export class WaybillsService {
     const vendorId = query.vendor_id?.trim();
     if (vendorId) {
       qb.distinct(true)
-        .innerJoin('waybill_splits', 'vendor_split', 'vendor_split.waybill_id = waybill.id')
+        .leftJoin('waybill_splits', 'vendor_split', 'vendor_split.waybill_id = waybill.id')
         .leftJoin('trucks', 'vendor_split_truck', 'vendor_split_truck.id = vendor_split.truck_id')
         .leftJoin('trips', 'vendor_split_trip', 'vendor_split_trip.id = vendor_split.trip_id')
         .leftJoin('trucks', 'vendor_trip_truck', 'vendor_trip_truck.id = vendor_split_trip.truck_id')
         .andWhere(
-          '(vendor_split_truck.vendor_id = :vendorId OR vendor_trip_truck.vendor_id = :vendorId)',
+          '(waybill.last_mile_vendor_id = :vendorId OR vendor_split_truck.vendor_id = :vendorId OR vendor_trip_truck.vendor_id = :vendorId)',
           { vendorId },
         );
     }
@@ -854,6 +912,7 @@ export class WaybillsService {
     const items = waybills.flatMap((waybill) => {
       const sanitized = this.sanitize(waybill as WaybillRecord, currentUser);
       const waybillSplits = splitsByWaybill.get(waybill.id) ?? [];
+      const belongsToLastMileVendor = Boolean(vendorId) && String(waybill.last_mile_vendor_id || '') === vendorId;
 
       if (onlyIncompleteSplit) {
         const totalPackages = this.resolveTotalPackages(waybill as WaybillRecord);
@@ -861,6 +920,16 @@ export class WaybillsService {
         const remaining = totalPackages - allocated;
         if (remaining <= 0) return [];
         return [this.mapInventoryTripLine(sanitized, null, remaining)];
+      }
+
+      if (belongsToLastMileVendor) {
+        const line = this.mapInventoryTripLine(sanitized, null);
+        return [{
+          ...line,
+          license_plate: waybill.last_mile_license_plate,
+          trip_nha_xe: waybill.last_mile_driver_name,
+          allocated_freight: Number(waybill.last_mile_cost_amount ?? 0),
+        }];
       }
 
       if (!waybillSplits.length) {
@@ -1890,13 +1959,89 @@ export class WaybillsService {
 
   private resolveTotalPackages(waybill: WaybillRecord): number {
     const fromWaybill = Number(waybill.package_count ?? 0);
+    if (Number.isFinite(fromWaybill) && fromWaybill >= 1) return fromWaybill;
     const fromOrder = Number(waybill.order?.package_count ?? 0);
-    return Math.max(1, fromWaybill, fromOrder);
+    return Number.isFinite(fromOrder) && fromOrder >= 1 ? fromOrder : 1;
   }
 
-  private readonly totalPackagesSqlExpr = `GREATEST(1, COALESCE(waybill.package_count, 0), COALESCE(
+  /**
+   * Khi sửa tổng số kiện của bill, các dòng đã phân xe không được phép giữ tổng
+   * lớn hơn số mới. Giảm từ dòng phân mới nhất trước để giữ nguyên các chuyến
+   * cũ tối đa có thể, đồng thời cập nhật số lượng dùng bởi bảng kê/in bảng kê.
+   */
+  private async synchronizeAllocatedPackageCount(waybillId: string, totalPackages: number): Promise<void> {
+    const splits = await this.splitsRepository.find({
+      where: { waybill_id: waybillId },
+      relations: ['trip'],
+      order: { created_at: 'ASC', id: 'ASC' },
+    });
+    const allocatedPackages = splits.reduce((sum, split) => sum + Number(split.package_count ?? 0), 0);
+    if (allocatedPackages <= totalPackages) return;
+
+    let excess = allocatedPackages - totalPackages;
+    const changedSplits: WaybillSplitEntity[] = [];
+    const removedSplitIds: string[] = [];
+
+    for (let index = splits.length - 1; index >= 0 && excess > 0; index -= 1) {
+      const split = splits[index];
+      const packageCount = Math.max(0, Number(split.package_count ?? 0));
+      if (packageCount <= excess) {
+        excess -= packageCount;
+        removedSplitIds.push(String(split.id));
+        continue;
+      }
+      split.package_count = packageCount - excess;
+      excess = 0;
+      changedSplits.push(split);
+    }
+
+    if (changedSplits.length) await this.splitsRepository.save(changedSplits);
+    if (removedSplitIds.length) await this.splitsRepository.delete({ id: In(removedSplitIds) });
+
+    const removed = new Set(removedSplitIds);
+    const remainingSplits = splits.filter((split) => !removed.has(String(split.id)));
+    const quantityByManifest = remainingSplits.reduce<Map<string, number>>((map, split) => {
+      const manifestId = split.trip?.manifest_id ? String(split.trip.manifest_id) : '';
+      if (!manifestId) return map;
+      map.set(manifestId, (map.get(manifestId) ?? 0) + Number(split.package_count ?? 0));
+      return map;
+    }, new Map());
+
+    const links = await this.manifestWaybillsRepository.find({
+      where: { waybill_id: waybillId },
+      order: { manifest_id: 'ASC' },
+    });
+    if (!links.length) return;
+
+    const updatedLinks: ManifestWaybillEntity[] = [];
+    const removedLinks: Array<{ manifest_id: string; waybill_id: string }> = [];
+    let unmappedRemaining = remainingSplits.reduce((sum, split) => sum + Number(split.package_count ?? 0), 0)
+      - [...quantityByManifest.values()].reduce((sum, quantity) => sum + quantity, 0);
+
+    const mappedLinks = links.filter((link) => quantityByManifest.has(String(link.manifest_id)));
+    const unmappedLinks = links.filter((link) => !quantityByManifest.has(String(link.manifest_id)));
+    for (const link of [...mappedLinks, ...unmappedLinks]) {
+      const manifestId = String(link.manifest_id);
+      const mappedQuantity = quantityByManifest.get(manifestId);
+      const currentQuantity = Math.max(0, Number(link.dispatch_fields?.so_luong ?? 0));
+      const quantity = mappedQuantity ?? Math.min(currentQuantity, Math.max(0, unmappedRemaining));
+      if (mappedQuantity === undefined) unmappedRemaining = Math.max(0, unmappedRemaining - quantity);
+      if (quantity <= 0) {
+        removedLinks.push({ manifest_id: manifestId, waybill_id: waybillId });
+        continue;
+      }
+      link.dispatch_fields = { ...(link.dispatch_fields ?? {}), so_luong: String(quantity) };
+      updatedLinks.push(link);
+    }
+
+    if (updatedLinks.length) await this.manifestWaybillsRepository.save(updatedLinks);
+    for (const link of removedLinks) await this.manifestWaybillsRepository.delete(link);
+  }
+
+  private readonly totalPackagesSqlExpr = `GREATEST(1, COALESCE(
+    NULLIF(waybill.package_count, 0),
     (SELECT o.package_count FROM orders o WHERE o.id = waybill.order_id),
-    0
+    1
   ))`;
 
   private isTruthyQueryFlag(flag?: string): boolean {
@@ -1967,15 +2112,23 @@ export class WaybillsService {
     const routeCode = dto.route_code?.trim() || waybill.route_code?.trim();
     if (!routeCode) throw new BadRequestException('Phải chọn tuyến giao trước khi phân xe');
     waybill.route_code = routeCode;
+    const manualDriverName = dto.driver_name?.trim() || '';
+    const manualLicensePlate = dto.license_plate?.trim().toUpperCase() || '';
+    const deliveryCost = Number(dto.delivery_cost ?? waybill.last_mile_cost_amount ?? 0);
+    if (!Number.isFinite(deliveryCost) || deliveryCost < 0) throw new BadRequestException('Cước giao chặng cuối không hợp lệ');
+    if (!manualLicensePlate) throw new BadRequestException('Phải nhập biển kiểm soát giao chặng cuối');
 
     if (assignmentType === 'INTERNAL') {
       const driverId = String(dto.driver_id || ((currentUser.role_mask & Roles.DRIVER) !== 0 ? currentUser.id : '')).trim();
-      if (!driverId) throw new BadRequestException('Phải chọn tài xế nội bộ');
-      const driver = await this.usersRepository.findOne({ where: { id: driverId, is_active: true } as any });
-      if (!driver || (driver.role_mask & Roles.DRIVER) === 0) throw new BadRequestException('Tài xế nội bộ không hợp lệ');
-      if (driver.hub_id && String(driver.hub_id) !== String(waybill.dest_hub_id)) {
+      const driver = driverId
+        ? await this.usersRepository.findOne({ where: { id: driverId, is_active: true } as any })
+        : null;
+      if (driverId && (!driver || (driver.role_mask & Roles.DRIVER) === 0)) throw new BadRequestException('Tài xế nội bộ không hợp lệ');
+      if (driver?.hub_id && String(driver.hub_id) !== String(waybill.dest_hub_id)) {
         throw new BadRequestException('Tài xế không thuộc HUB đến của vận đơn');
       }
+      const driverName = manualDriverName || driver?.full_name?.trim() || '';
+      if (!driverName) throw new BadRequestException('Phải nhập hoặc chọn tài xế nội bộ');
 
       let truck: TruckEntity | null = null;
       if (dto.truck_id) {
@@ -1984,10 +2137,13 @@ export class WaybillsService {
       }
       Object.assign(waybill, {
         delivery_assignment_type: 'INTERNAL',
-        last_mile_driver_id: driverId,
+        last_mile_driver_id: driver?.id ?? null,
         last_mile_truck_id: truck?.id ?? null,
         last_mile_vendor_id: null,
-        xe_phat: truck?.bks || truck?.license_plate || driver.full_name,
+        last_mile_driver_name: driverName,
+        last_mile_license_plate: manualLicensePlate,
+        last_mile_cost_amount: String(deliveryCost),
+        xe_phat: manualLicensePlate,
       });
       return;
     }
@@ -2000,7 +2156,10 @@ export class WaybillsService {
       last_mile_driver_id: null,
       last_mile_truck_id: null,
       last_mile_vendor_id: vendor.id,
-      xe_phat: vendor.name || vendor.code || `NCC #${vendor.id}`,
+      last_mile_driver_name: manualDriverName || null,
+      last_mile_license_plate: manualLicensePlate,
+      last_mile_cost_amount: String(deliveryCost),
+      xe_phat: manualLicensePlate,
     });
   }
 
@@ -2813,6 +2972,9 @@ export class WaybillsService {
       last_mile_driver_id: this.auditText(waybill.last_mile_driver_id),
       last_mile_truck_id: this.auditText(waybill.last_mile_truck_id),
       last_mile_vendor_id: this.auditText(waybill.last_mile_vendor_id),
+      last_mile_driver_name: this.auditText(waybill.last_mile_driver_name),
+      last_mile_license_plate: this.auditText(waybill.last_mile_license_plate),
+      last_mile_cost_amount: this.auditNumber(waybill.last_mile_cost_amount),
       xe_phat: this.auditText(waybill.xe_phat),
       delivery_preparation_status: this.auditText(waybill.delivery_preparation_status),
       delivery_scheduled_at: waybill.delivery_scheduled_at?.toISOString() ?? null,
@@ -2975,9 +3137,9 @@ export class WaybillsService {
     }
     if (!isManager(currentUser.role_mask)) {
       delete result.cost_amount;
-      delete result.cod_amount;
       delete result.freight_amount;
       delete result.cc_amount;
+      if (!hasRole(currentUser.role_mask, Roles.ACCOUNTANT)) delete result.cod_amount;
     }
     delete result.deleted_at;
     return result as WaybillRecord;
@@ -2994,4 +3156,3 @@ export class WaybillsService {
     );
   }
 }
-
