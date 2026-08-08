@@ -7,7 +7,7 @@ services:
     runtime: node
     rootDir: server
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
-    startCommand: pnpm start:prod
+    startCommand: node --max-old-space-size=192 dist/scripts/run-migrations.js && exec node --max-old-space-size=320 dist/main.js
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV
@@ -33,7 +33,9 @@ services:
       - key: CORS_ORIGIN
         value: https://eco-webapp.vercel.app
       - key: DB_POOL_MAX
-        value: "10"
+        value: "3"
+      - key: MALLOC_ARENA_MAX
+        value: "2"
       - key: DB_CONNECTION_TIMEOUT_MS
         value: "10000"
       - key: DB_IDLE_TIMEOUT_MS
