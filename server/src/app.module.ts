@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { join } from 'path';
 import { AppController } from './app.controller';
 import { getDatabaseUrl, getDatabaseUrlHelp, isSupabaseDirectDatabaseUrl } from './database-url';
 import { AuthModule } from './auth/auth.module';
@@ -78,8 +77,6 @@ const getPositiveInteger = (value: string | undefined, fallback: number) => {
           },
           autoLoadEntities: true,
           synchronize: false,
-          migrations: [join(__dirname, 'migrations', '*.{js,ts}')],
-          migrationsRun: isProduction,
         };
       },
     }),

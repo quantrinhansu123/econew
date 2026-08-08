@@ -7,7 +7,7 @@ services:
     runtime: node
     rootDir: server
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
-    startCommand: pnpm migration:run && pnpm start:prod
+    startCommand: pnpm start:prod
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV
