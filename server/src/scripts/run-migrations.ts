@@ -9,6 +9,49 @@ const getPositiveInteger = (value: string | undefined, fallback: number) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const ensureDeliveryWorkflowSchema = async (dataSource: DataSource) => {
+  await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_assignment_type" varchar(16)`);
+  await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "last_mile_truck_id" bigint`);
+  await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "last_mile_vendor_id" bigint`);
+  await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_preparation_status" varchar(32) NOT NULL DEFAULT 'PENDING_CONFIRMATION'`);
+  await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_scheduled_at" TIMESTAMP`);
+  await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_hold_reason" varchar(500)`);
+  await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_confirmed_at" TIMESTAMP`);
+};
+
+const baselineLegacyDatabase = async (dataSource: DataSource): Promise<boolean> => {
+  const [{ waybills_exists: waybillsExists }] = await dataSource.query(
+    `SELECT to_regclass('public.waybills') IS NOT NULL AS waybills_exists`,
+  );
+  if (!waybillsExists) return false;
+
+  await dataSource.query(`
+    CREATE TABLE IF NOT EXISTS "migrations" (
+      "id" SERIAL NOT NULL,
+      "timestamp" bigint NOT NULL,
+      "name" character varying NOT NULL,
+      CONSTRAINT "PK_migrations_id" PRIMARY KEY ("id")
+    )
+  `);
+  const [{ count }] = await dataSource.query(`SELECT COUNT(*)::int AS count FROM "migrations"`);
+  if (Number(count) > 0) return false;
+
+  // Production existed before TypeORM migration tracking was enabled. Mark the
+  // already deployed schema as the baseline so non-idempotent initial migrations
+  // are not replayed against live tables.
+  for (const migration of dataSource.migrations) {
+    const name = migration.name || migration.constructor.name;
+    const timestampMatch = name.match(/(\d{13})$/);
+    if (!timestampMatch) throw new Error(`Migration name has no timestamp: ${name}`);
+    await dataSource.query(
+      `INSERT INTO "migrations" ("timestamp", "name") VALUES ($1, $2)`,
+      [timestampMatch[1], name],
+    );
+  }
+  console.log(`[migrations] Baselined legacy database with ${dataSource.migrations.length} migrations.`);
+  return true;
+};
+
 async function main() {
   const databaseUrl = getDatabaseUrl();
 
@@ -37,6 +80,9 @@ async function main() {
 
   try {
     await dataSource.initialize();
+    const wasBaselined = await baselineLegacyDatabase(dataSource);
+    await ensureDeliveryWorkflowSchema(dataSource);
+    if (wasBaselined) return;
     const executed = await dataSource.runMigrations({ transaction: 'each' });
 
     if (executed.length === 0) {
