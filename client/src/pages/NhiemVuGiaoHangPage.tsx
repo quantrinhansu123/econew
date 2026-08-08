@@ -232,26 +232,42 @@ export default function NhiemVuGiaoHangPage() {
           </p>
         </div>
       ) : (
-        <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-4">
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-white shadow-sm">
+          <div className="sticky top-0 z-10 hidden grid-cols-[minmax(145px,0.85fr)_minmax(250px,1.6fr)_minmax(210px,1.2fr)_minmax(135px,0.75fr)_minmax(180px,1fr)_minmax(190px,auto)] gap-3 border-b border-border bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-muted-foreground xl:grid">
+            <span>Vận đơn</span>
+            <span>Người nhận</span>
+            <span>Chuyến / xe</span>
+            <span>Hàng hóa</span>
+            <span>Trạng thái</span>
+            <span className="text-right">Thao tác</span>
+          </div>
           {displayedWaybills.map((waybill) => {
             const status = normalizeStatus(waybill);
             const preparation = waybill.delivery_preparation_status || 'PENDING_CONFIRMATION';
             const canStart = canDispatchDelivery(roleMask) && status === 'AT_DEST_HUB' && preparation === 'READY';
             const canPrepare = canPrepareDelivery(roleMask) && status === 'AT_DEST_HUB';
             const canDeliver = canCompleteDelivery(roleMask) && status === 'OUT_FOR_DELIVERY';
+            const preparationText = preparation === 'READY'
+              ? 'Sẵn sàng giao'
+              : preparation === 'SCHEDULED'
+                ? `Hẹn ${waybill.delivery_scheduled_at ? new Date(waybill.delivery_scheduled_at).toLocaleString('vi-VN') : ''}`
+                : preparation === 'NEEDS_ACTION'
+                  ? 'Cần xử lý trong ngày'
+                  : preparation === 'HOLD'
+                    ? `Lưu kho · ${waybill.delivery_hold_reason || 'chờ xử lý'}`
+                    : 'Chờ gọi xác nhận';
 
             return (
               <article
                 key={waybill.task_id || waybill.split_id || waybill.id}
-                className="rounded-xl border border-border bg-white p-3 shadow-sm"
+                className="grid gap-2 border-b border-border px-3 py-2.5 last:border-b-0 hover:bg-slate-50/70 xl:grid-cols-[minmax(145px,0.85fr)_minmax(250px,1.6fr)_minmax(210px,1.2fr)_minmax(135px,0.75fr)_minmax(180px,1fr)_minmax(190px,auto)] xl:items-center xl:gap-3"
               >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-wide text-primary">Mã vận đơn</p>
-                    <p className="text-lg font-extrabold text-foreground">{waybill.waybill_code}</p>
+                <div className="min-w-0">
+                    <p className="truncate text-[13px] font-extrabold text-primary" title={waybill.waybill_code}>{waybill.waybill_code}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
                     <span
                       className={clsx(
-                        'mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-black',
+                        'inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-black',
                         status === 'OUT_FOR_DELIVERY'
                           ? 'border-orange-200 bg-orange-50 text-orange-800'
                           : 'border-violet-200 bg-violet-50 text-violet-800',
@@ -259,79 +275,84 @@ export default function NhiemVuGiaoHangPage() {
                     >
                       {status === 'OUT_FOR_DELIVERY' ? 'Đang giao' : 'Tới hub đích'}
                     </span>
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    {canPrepare && (
-                      <button type="button" onClick={() => { setActionError(''); setPreparationWaybill(waybill); }} className="inline-flex h-10 items-center justify-center rounded-xl border px-4 text-[13px] font-extrabold text-foreground hover:bg-muted">
-                        {preparation === 'PENDING_CONFIRMATION' ? 'Gọi xác nhận / xử lý' : 'Sửa xử lý'}
-                      </button>
+                    {waybill.trip_package_count != null && waybill.order_total_packages != null && (
+                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                        {waybill.trip_package_count}/{waybill.order_total_packages} kiện
+                      </span>
                     )}
-                    {canStart && (
-                      <button
-                        type="button"
-                        onClick={() => setStatusWaybill(waybill)}
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-primary bg-primary/10 px-4 text-[13px] font-extrabold text-primary hover:bg-primary/15"
-                      >
-                        <Truck size={16} />
-                        Điều phối giao
-                      </button>
-                    )}
-                    <button type="button" title="Xem lịch sử" onClick={() => void openHistory(waybill)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border text-muted-foreground hover:text-primary"><History size={16}/></button>
-                    {canDeliver && (
-                      <button
-                        type="button"
-                        onClick={() => setStatusWaybill(waybill)}
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-[13px] font-extrabold text-white shadow-sm hover:bg-emerald-700"
-                      >
-                        <Truck size={16} />
-                        Giao hàng
-                      </button>
-                    )}
-                    {allowed && !canPrepare && !canStart && !canDeliver && (
-                      <span className="text-[12px] font-bold text-muted-foreground">Không thao tác được</span>
-                    )}
-                  </div>
+                    </div>
                 </div>
-                <div className="mt-3 grid gap-2 text-[13px]">
-                  <p className="font-bold text-foreground">{waybill.receiver_info}</p>
-                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-2 text-[12px] sm:grid-cols-4">
-                    <p><span className="block text-[10px] font-bold uppercase text-muted-foreground">Người gửi</span><b>{waybill.sender_name || waybill.sender_info || '—'}</b></p>
-                    <p><span className="block text-[10px] font-bold uppercase text-muted-foreground">Số kiện</span><b>{waybill.trip_package_count ?? waybill.package_count ?? '—'} kiện</b></p>
-                    <p><span className="block text-[10px] font-bold uppercase text-muted-foreground">Trọng lượng</span><b>{Number(waybill.weight || 0).toLocaleString('vi-VN')} kg</b></p>
-                    <p><span className="block text-[10px] font-bold uppercase text-muted-foreground">Thanh toán</span><b>{waybill.payment_type || '—'}</b></p>
-                  </div>
-                  <p className="text-[12px] font-bold text-muted-foreground">
+                <div className="min-w-0 text-[12px]">
+                  <p className="truncate font-bold text-foreground" title={waybill.receiver_info}>{waybill.receiver_info || '—'}</p>
+                  {waybill.receiver_address && (
+                    <p className="mt-1 flex min-w-0 items-center gap-1 text-muted-foreground" title={waybill.receiver_address}>
+                      <MapPin size={12} className="shrink-0" />
+                      <span className="truncate">{waybill.receiver_address}</span>
+                    </p>
+                  )}
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                    {waybill.receiver_phone && <span className="inline-flex items-center gap-1"><Phone size={11} />{waybill.receiver_phone}</span>}
+                    <span className="truncate">Gửi: {waybill.sender_name || waybill.sender_info || '—'}</span>
+                  </p>
+                </div>
+                <div className="min-w-0 text-[11px]">
+                  <p className="truncate font-extrabold text-slate-700" title={waybill.trip_label || undefined}>
                     {[waybill.origin_hub?.code || waybill.origin_hub_id, waybill.dest_hub?.code || waybill.dest_hub_id].filter(Boolean).join(' → ')}
                     {waybill.trip_id ? ` · Chuyến #${waybill.trip_id}` : ''}
-                    {waybill.trip_package_count != null && waybill.order_total_packages != null
-                      ? ` · ${waybill.trip_package_count}/${waybill.order_total_packages} kiện`
-                      : ''}
                   </p>
-                  <p className="text-[12px] font-bold text-slate-700">Nguồn hàng: {waybill.trip_label || (waybill.trip_id ? `Chuyến #${waybill.trip_id}${waybill.license_plate ? ` · Xe ${waybill.license_plate}` : ''}` : 'Nhập trực tiếp tại HUB')}</p>
-                  {status === 'AT_DEST_HUB' && <p className={clsx('text-[12px] font-extrabold', preparation === 'NEEDS_ACTION' ? 'text-red-700' : preparation === 'READY' ? 'text-emerald-700' : 'text-amber-700')}>
-                    {preparation === 'READY' ? 'Sẵn sàng giao' : preparation === 'SCHEDULED' ? `Lưu kho · hẹn ${waybill.delivery_scheduled_at ? new Date(waybill.delivery_scheduled_at).toLocaleString('vi-VN') : ''}` : preparation === 'NEEDS_ACTION' ? 'Cần xử lý: còn tối đa 1 ngày tới lịch giao' : preparation === 'HOLD' ? `Lưu kho chờ xử lý · ${waybill.delivery_hold_reason || ''}` : 'Chờ gọi xác nhận'}
+                  <p className="mt-1 truncate font-bold text-muted-foreground" title={waybill.trip_label || undefined}>
+                    {waybill.trip_label || (waybill.trip_id ? `${waybill.license_plate ? `Xe ${waybill.license_plate}` : 'Chưa có xe'}` : 'Nhập trực tiếp tại HUB')}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] xl:block">
+                  <p><b>{waybill.trip_package_count ?? waybill.package_count ?? '—'}</b> kiện</p>
+                  <p><b>{Number(waybill.weight || 0).toLocaleString('vi-VN')}</b> kg</p>
+                  <p className="font-bold text-muted-foreground">{waybill.payment_type || '—'}</p>
+                </div>
+                <div className="min-w-0 text-[11px]">
+                  {status === 'AT_DEST_HUB' && <p className={clsx('truncate font-extrabold', preparation === 'NEEDS_ACTION' ? 'text-red-700' : preparation === 'READY' ? 'text-emerald-700' : 'text-amber-700')} title={preparationText}>
+                    {preparationText}
                   </p>}
-                  {waybill.receiver_address && (
-                    <p className="flex items-start gap-1.5 text-muted-foreground">
-                      <MapPin size={14} className="mt-0.5 shrink-0" />
-                      {waybill.receiver_address}
-                    </p>
-                  )}
-                  {waybill.receiver_phone && (
-                    <p className="flex items-center gap-1.5 text-muted-foreground">
-                      <Phone size={14} />
-                      {waybill.receiver_phone}
-                    </p>
-                  )}
                   {status === 'OUT_FOR_DELIVERY' && (
-                    <p className="text-[12px] font-bold text-primary">
+                    <p className="truncate font-bold text-primary">
                       Tuyến {waybill.route_code || '—'} · {' '}
                       {waybill.delivery_assignment_type === 'PARTNER'
                         ? `Đối tác: ${waybill.last_mile_vendor?.name || waybill.last_mile_vendor?.code || '—'}`
                         : `Nội bộ: ${waybill.last_mile_driver?.name || waybill.last_mile_driver?.username || '—'}${waybill.last_mile_truck ? ` · ${waybill.last_mile_truck.bks || waybill.last_mile_truck.license_plate || ''}` : ''}`}
                     </p>
                   )}
-                  {waybill.last_delivery_failure_reason && <p className="text-[12px] font-bold text-red-700">Lần giao thất bại: {waybill.last_delivery_failure_reason}</p>}
+                  {waybill.last_delivery_failure_reason && <p className="mt-1 truncate font-bold text-red-700" title={waybill.last_delivery_failure_reason}>Thất bại: {waybill.last_delivery_failure_reason}</p>}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">
+                  {canPrepare && (
+                    <button type="button" onClick={() => { setActionError(''); setPreparationWaybill(waybill); }} className="inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-[11px] font-extrabold text-foreground hover:bg-muted">
+                      {preparation === 'PENDING_CONFIRMATION' ? 'Xác nhận / xử lý' : 'Sửa xử lý'}
+                    </button>
+                  )}
+                  {canStart && (
+                    <button
+                      type="button"
+                      onClick={() => setStatusWaybill(waybill)}
+                      className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-primary bg-primary/10 px-2.5 text-[11px] font-extrabold text-primary hover:bg-primary/15"
+                    >
+                      <Truck size={13} />
+                      Điều phối
+                    </button>
+                  )}
+                  <button type="button" title="Xem lịch sử" onClick={() => void openHistory(waybill)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border text-muted-foreground hover:text-primary"><History size={14}/></button>
+                  {canDeliver && (
+                    <button
+                      type="button"
+                      onClick={() => setStatusWaybill(waybill)}
+                      className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 text-[11px] font-extrabold text-white shadow-sm hover:bg-emerald-700"
+                    >
+                      <Truck size={13} />
+                      Giao hàng
+                    </button>
+                  )}
+                  {allowed && !canPrepare && !canStart && !canDeliver && (
+                    <span className="text-[11px] font-bold text-muted-foreground">Chỉ xem</span>
+                  )}
                 </div>
               </article>
             );
