@@ -12,9 +12,9 @@ describe('manifest dispatch print grouping', () => {
       dest_hub_id: 2,
       dest_hub: { id: 2, code: 'HCM', name: 'Hồ Chí Minh' },
       manifest_waybills: [
-        { waybill_id: 1, loading_position: 3, waybill: { id: 1, waybill_code: 'HCM-1', dest_hub_id: 2, dest_hub: { id: 2, code: 'HCM' } } },
-        { waybill_id: 2, loading_position: 1, waybill: { id: 2, waybill_code: 'DAN-1', dest_hub_id: 3, dest_hub: { id: 3, code: 'DAN' } } },
-        { waybill_id: 3, loading_position: 2, waybill: { id: 3, waybill_code: 'HCM-2', dest_hub_id: 2, dest_hub: { id: 2, code: 'HCM' } } },
+        { waybill_id: 1, loading_position: 3, dispatch_fields: { expected_arrival_at: '2026-08-10T09:00:00Z' }, waybill: { id: 1, waybill_code: 'HCM-1', dest_hub_id: 2, dest_hub: { id: 2, code: 'HCM' } } },
+        { waybill_id: 2, loading_position: 1, dispatch_fields: { expected_arrival_at: '2026-08-09T09:00:00Z' }, waybill: { id: 2, waybill_code: 'DAN-1', dest_hub_id: 3, dest_hub: { id: 3, code: 'DAN' } } },
+        { waybill_id: 3, loading_position: 2, dispatch_fields: { expected_arrival_at: '2026-08-10T09:00:00Z' }, waybill: { id: 3, waybill_code: 'HCM-2', dest_hub_id: 2, dest_hub: { id: 2, code: 'HCM' } } },
       ],
     };
 
@@ -29,6 +29,20 @@ describe('manifest dispatch print grouping', () => {
       ['DAN-1'],
       ['HCM-2', 'HCM-1'],
     ]);
+  });
+
+  it('orders printed HUB sheets by each HUB expected arrival time', () => {
+    const manifest: LoadPlanningManifest = {
+      id: 11,
+      manifest_waybills: [
+        { waybill_id: 1, loading_position: 1, dispatch_fields: { expected_arrival_at: '2026-08-10T18:00:00Z' }, waybill: { id: 1, dest_hub_id: 2, dest_hub: { id: 2, code: 'HCM' } } },
+        { waybill_id: 2, loading_position: 2, dispatch_fields: { expected_arrival_at: '2026-08-09T08:00:00Z' }, waybill: { id: 2, dest_hub_id: 3, dest_hub: { id: 3, code: 'KHANHHOA' } } },
+      ],
+    };
+
+    const groups = groupManifestPrintLinksByDestination(manifest, normalizeManifestPrintLinks(manifest));
+
+    expect(groups.map((group) => group.hub?.code)).toEqual(['KHANHHOA', 'HCM']);
   });
 
   it('falls back to the manifest destination for legacy rows without hub data', () => {

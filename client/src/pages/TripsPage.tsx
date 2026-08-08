@@ -243,6 +243,7 @@ function KanbanColumn({ title, count, tone, children }: { title: string; count: 
 
 function TripCard({ trip, onOpen, onEdit, onPrint, onExpenses, onPrimaryAction }: { trip: Trip; onOpen: () => void; onEdit: () => void; onPrint?: () => void; onExpenses: () => void; onPrimaryAction: () => void }) {
   const primaryAction = getPrimaryTripAction(trip.status);
+  const routeStops = trip.route_stops ?? [];
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm transition-colors hover:border-primary/30 hover:bg-blue-50/20">
       <button type="button" onClick={onOpen} className="w-full text-left">
@@ -260,6 +261,15 @@ function TripCard({ trip, onOpen, onEdit, onPrint, onExpenses, onPrimaryAction }
           <CompactCell label="Khởi hành" value={formatDate(trip.departure_time)} />
           <CompactCell label="Dự kiến đến" value={formatDate(trip.expected_arrival_time || trip.arrival_time)} />
         </div>
+        {routeStops.length > 1 && (
+          <div className="mt-1 flex flex-wrap gap-1 text-[9px] font-bold text-emerald-800">
+            {routeStops.map((stop) => (
+              <span key={String(stop.hub_id)} className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5">
+                {stop.hub_code || stop.hub_name || `HUB #${stop.hub_id}`}: {formatDate(stop.expected_arrival_at)}
+              </span>
+            ))}
+          </div>
+        )}
       </button>
       <div className="mt-1.5 flex items-center gap-1 border-t border-slate-100 pt-1.5">
         <ActionButton title="Xem chi tiết" icon={<Eye size={14} />} onClick={onOpen} />

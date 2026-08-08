@@ -43,8 +43,15 @@ export interface ManifestPrintDestinationGroup {
   key: string;
   hubId?: string | number | null;
   hub?: { id?: string | number | null; code?: string | null; name?: string | null } | null;
+  expectedArrivalAt?: string | number | Date | null;
   links: DispatchLink[];
 }
+
+const expectedArrivalTime = (value: unknown) => {
+  if (!value) return Number.MAX_SAFE_INTEGER;
+  const time = new Date(String(value)).getTime();
+  return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;
+};
 
 export function groupManifestPrintLinksByDestination(
   manifest: LoadPlanningManifest,
@@ -64,10 +71,28 @@ export function groupManifestPrintLinksByDestination(
         : name
           ? `name:${name}`
           : 'unknown';
-    const current: ManifestPrintDestinationGroup = groups.get(key) ?? { key, hubId, hub, links: [] };
+    const linkExpectedArrival = link.dispatch_fields?.expected_arrival_at
+      ?? link.waybill?.dispatch_fields?.expected_arrival_at
+      ?? null;
+    const current: ManifestPrintDestinationGroup = groups.get(key) ?? {
+      key,
+      hubId,
+      hub,
+      expectedArrivalAt: linkExpectedArrival,
+      links: [],
+    };
     current.links.push(link);
+    if (expectedArrivalTime(linkExpectedArrival) < expectedArrivalTime(current.expectedArrivalAt)) {
+      current.expectedArrivalAt = linkExpectedArrival;
+    }
     groups.set(key, current);
   });
 
-  return [...groups.values()];
+  return [...groups.values()].sort((left, right) => {
+    const byArrival = expectedArrivalTime(left.expectedArrivalAt) - expectedArrivalTime(right.expectedArrivalAt);
+    if (byArrival) return byArrival;
+    const leftLabel = String(left.hub?.code || left.hub?.name || left.hubId || '');
+    const rightLabel = String(right.hub?.code || right.hub?.name || right.hubId || '');
+    return leftLabel.localeCompare(rightLabel, 'vi', { numeric: true });
+  });
 }

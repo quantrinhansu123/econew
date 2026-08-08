@@ -839,14 +839,40 @@ export class TripsService {
       relations: ['waybill', 'waybill.dest_hub'],
     })) ?? [];
     for (const trip of trips) {
-      const destinations = splits
+      const stopsByHub = new Map<string, NonNullable<TripEntity['route_stops']>[number]>();
+      splits
         .filter((split) => String(split.trip_id) === String(trip.id))
-        .sort((a, b) => new Date(a.expected_arrival_at ?? 0).getTime() - new Date(b.expected_arrival_at ?? 0).getTime())
-        .map((split) => split.waybill?.dest_hub?.code || split.waybill?.dest_hub?.name || String(split.waybill?.dest_hub_id || ''))
-        .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index);
+        .forEach((split) => {
+          const hubId = String(split.waybill?.dest_hub_id || split.waybill?.dest_hub?.id || '').trim();
+          if (!hubId) return;
+          const expectedArrival = split.expected_arrival_at ? new Date(split.expected_arrival_at) : null;
+          const validExpectedArrival = expectedArrival && !Number.isNaN(expectedArrival.getTime())
+            ? expectedArrival
+            : null;
+          const current = stopsByHub.get(hubId);
+          if (!current) {
+            stopsByHub.set(hubId, {
+              hub_id: hubId,
+              hub_code: split.waybill?.dest_hub?.code?.trim() || null,
+              hub_name: split.waybill?.dest_hub?.name?.trim() || null,
+              expected_arrival_at: validExpectedArrival,
+            });
+            return;
+          }
+          if (validExpectedArrival && (!current.expected_arrival_at || validExpectedArrival < current.expected_arrival_at)) {
+            current.expected_arrival_at = validExpectedArrival;
+          }
+        });
+      trip.route_stops = [...stopsByHub.values()].sort((left, right) => {
+        const leftTime = left.expected_arrival_at?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const rightTime = right.expected_arrival_at?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return leftTime - rightTime || left.hub_id.localeCompare(right.hub_id, 'en', { numeric: true });
+      });
+      const destinations = trip.route_stops.map((stop) => stop.hub_code || stop.hub_name || stop.hub_id);
       const origin = trip.start_hub?.code || trip.start_hub?.name || String(trip.start_hub_id);
-      trip.route_label = [origin, ...destinations].join(' → ')
-        || `${origin} → ${trip.end_hub?.code || trip.end_hub_id}`;
+      trip.route_label = destinations.length
+        ? [origin, ...destinations].join(' → ')
+        : `${origin} → ${trip.end_hub?.code || trip.end_hub_id}`;
     }
   }
 

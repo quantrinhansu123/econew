@@ -8,6 +8,12 @@ import { TruckEntity } from '../trucks/truck.entity';
 @Entity('trips')
 export class TripEntity {
   route_label?: string;
+  route_stops?: Array<{
+    hub_id: string;
+    hub_code: string | null;
+    hub_name: string | null;
+    expected_arrival_at: Date | null;
+  }>;
 
   @PrimaryGeneratedColumn('increment', { type: 'bigint' })
   id: string;

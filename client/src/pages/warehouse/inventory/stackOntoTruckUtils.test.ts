@@ -4,6 +4,7 @@ import {
   buildStackFormRows,
   buildStackOntoTruckPayload,
   computeExpectedArrivalDate,
+  updateExpectedArrivalForHub,
   type StackOntoTruckFormRow,
   type StackOntoTruckSharedFields,
 } from './stackOntoTruckUtils';
@@ -39,6 +40,8 @@ describe('stack-onto-truck request payload', () => {
     const rows: StackOntoTruckFormRow[] = [{
       waybill_id: 'waybill-1',
       waybill_code: 'ECO-HAN-108960',
+      destination_hub_key: 'id:2',
+      destination_hub_label: 'HCM · Hồ Chí Minh',
       package_count: '242',
       max_package_count: 242,
       loading_position: '3',
@@ -83,6 +86,7 @@ describe('stack-onto-truck request payload', () => {
   it('allows stacking by vendor before the license plate is known', () => {
     const rows: StackOntoTruckFormRow[] = [{
       waybill_id: 'waybill-1', waybill_code: 'ECOHAN1', package_count: '1', max_package_count: 1,
+      destination_hub_key: 'id:2', destination_hub_label: 'HCM',
       loading_position: '', expected_arrival_label: '23/07/2026', delivery_instruction: 'Kho HCM',
     }];
     const shared: StackOntoTruckSharedFields = {
@@ -94,5 +98,22 @@ describe('stack-onto-truck request payload', () => {
 
     expect(payload.items[0]).not.toHaveProperty('truck_id');
     expect(payload).toMatchObject({ vendor_id: 'vendor-1', departure_time: expect.any(String) });
+  });
+});
+
+describe('stack-onto-truck multi-hub arrival', () => {
+  it('applies one arrival time to every order of the same destination hub only', () => {
+    const rows = buildStackFormRows([
+      { id: 'w1', dest_hub_id: '2', dest_hub: { id: '2', code: 'KHANHHOA' } },
+      { id: 'w2', dest_hub_id: '2', dest_hub: { id: '2', code: 'KHANHHOA' } },
+      { id: 'w3', dest_hub_id: '3', dest_hub: { id: '3', code: 'HCM' } },
+    ] as WaybillInventoryItem[], new Date(2026, 7, 8, 8));
+
+    const updated = updateExpectedArrivalForHub(rows, 'id:2', '2026-08-09T10:30');
+
+    expect(updated.filter((row) => row.destination_hub_key === 'id:2').map((row) => row.expected_arrival_at))
+      .toEqual(['2026-08-09T10:30', '2026-08-09T10:30']);
+    expect(updated.find((row) => row.destination_hub_key === 'id:3')?.expected_arrival_at)
+      .toBe(rows.find((row) => row.destination_hub_key === 'id:3')?.expected_arrival_at);
   });
 });

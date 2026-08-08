@@ -53,6 +53,12 @@ export interface Trip {
   end_hub?: HubSummary | null;
   created_at?: string | null;
   route_label?: string | null;
+  route_stops?: Array<{
+    hub_id: string | number;
+    hub_code?: string | null;
+    hub_name?: string | null;
+    expected_arrival_at?: string | null;
+  }>;
 }
 
 export interface ListResponse<T> {

@@ -20,6 +20,7 @@ import {
   buildStackFormRows,
   buildStackOntoTruckPayload,
   resolveDestinationHubLabel,
+  updateExpectedArrivalForHub,
   type StackOntoTruckFormRow,
   type StackOntoTruckSharedFields,
 } from '../stackOntoTruckUtils';
@@ -416,8 +417,8 @@ export default function StackOntoTruckDialog({
               <div className="mb-4 flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-[12px] font-bold text-blue-900">
                 <Building2 size={16} className="mt-0.5 shrink-0 text-primary" />
                 <span>
-                  Hệ thống tạo riêng một bảng kê cho mỗi HUB đến
-                  {destinationHubLabels.length ? `: ${destinationHubLabels.join(', ')}` : ''}.
+                  Một xe chỉ tạo một chuyến theo lộ trình
+                  {destinationHubLabels.length ? ` qua ${destinationHubLabels.join(' → ')}` : ''}; khi in sẽ tách một bảng kê cho mỗi HUB đến.
                 </span>
               </div>
 
@@ -449,7 +450,16 @@ export default function StackOntoTruckDialog({
                             <p className="mt-1 text-center text-[11px] font-medium text-muted-foreground">/ {row.max_package_count}</p>
                           </td>
                           <td className="border-r border-border px-3 py-3"><input type="number" min={1} value={row.loading_position} onChange={(e) => updateRow(row.waybill_id, { loading_position: e.target.value })} placeholder="VT" className="h-10 w-full min-w-[72px] rounded-lg border border-yellow-300 bg-yellow-50 px-2 text-center text-[14px] font-bold outline-none focus:border-primary" /></td>
-                          <td className="border-r border-border px-3 py-3"><input type="datetime-local" value={row.expected_arrival_at} onChange={(e) => updateRow(row.waybill_id, { expected_arrival_at: e.target.value })} className="h-10 min-w-[170px] rounded-lg border border-emerald-300 bg-emerald-50 px-2 text-[13px] font-bold text-emerald-900 outline-none focus:border-primary" /></td>
+                          <td className="border-r border-border px-3 py-3">
+                            <p className="mb-1 text-[10px] font-black uppercase text-emerald-800">{row.destination_hub_label}</p>
+                            <input
+                              type="datetime-local"
+                              value={row.expected_arrival_at}
+                              onChange={(e) => setRows((current) => updateExpectedArrivalForHub(current, row.destination_hub_key, e.target.value))}
+                              title={`Giờ dự kiến đến ${row.destination_hub_label}; áp dụng cho toàn bộ đơn cùng HUB`}
+                              className="h-10 min-w-[170px] rounded-lg border border-emerald-300 bg-emerald-50 px-2 text-[13px] font-bold text-emerald-900 outline-none focus:border-primary"
+                            />
+                          </td>
                           <td className="border-r border-border px-3 py-3">
                             <select value={row.delivery_instruction} onChange={(e) => updateRow(row.waybill_id, { delivery_instruction: e.target.value })} className="h-10 w-full min-w-[180px] rounded-lg border border-slate-300 bg-white px-2 text-[13px] font-bold outline-none focus:border-primary">
                               {!DELIVERY_INSTRUCTION_OPTIONS.some((option) => option === row.delivery_instruction) && (

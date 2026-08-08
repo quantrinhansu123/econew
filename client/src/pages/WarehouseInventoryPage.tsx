@@ -717,18 +717,18 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                     </option>
                   ))}
                 </select>
-                {filters.ma_kh.trim() && (
-                  <button
-                    type="button"
-                    disabled={isLedgerCustomerLoading}
-                    onClick={() => void openCustomerLedger(filters.ma_kh)}
-                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-[13px] font-bold text-violet-800 hover:bg-violet-100 disabled:opacity-60"
-                    title={`Xem chi tiết và bảng kê công nợ ${filters.ma_kh}`}
-                  >
-                    {isLedgerCustomerLoading ? <Loader2 size={15} className="animate-spin" /> : <ReceiptText size={15} />}
-                    <span>Bảng kê KH</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={!filters.ma_kh.trim() || isLedgerCustomerLoading}
+                  onClick={() => void openCustomerLedger(filters.ma_kh)}
+                  className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-[13px] font-bold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  title={filters.ma_kh.trim()
+                    ? `Xem chi tiết và bảng kê công nợ ${filters.ma_kh}`
+                    : 'Chọn mã khách để mở bảng kê KH'}
+                >
+                  {isLedgerCustomerLoading ? <Loader2 size={15} className="animate-spin" /> : <ReceiptText size={15} />}
+                  <span>Bảng kê KH</span>
+                </button>
                 <input
                   value={filters.noiDenKeyword}
                   onChange={(event) => updateFilters({ noiDenKeyword: event.target.value })}

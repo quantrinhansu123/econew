@@ -52,6 +52,7 @@ describe('TripsService', () => {
   let manifests: any;
   let manifestWaybills: any;
   let waybills: any;
+  let waybillSplits: any;
   let hubs: any;
   let vendorsService: any;
   let waybillsService: any;
@@ -86,6 +87,7 @@ describe('TripsService', () => {
     manifests = module.get(getRepositoryToken(ManifestEntity));
     manifestWaybills = module.get(getRepositoryToken(ManifestWaybillEntity));
     waybills = module.get(getRepositoryToken(WaybillEntity));
+    waybillSplits = module.get(getRepositoryToken(WaybillSplitEntity));
     hubs = module.get(getRepositoryToken(HubEntity));
   });
 
@@ -150,6 +152,25 @@ describe('TripsService', () => {
   });
 
   describe('findAll', () => {
+    it('returns one ordered route with the expected arrival time of every HUB stop', async () => {
+      const qb = new MockQb();
+      const trip = { id: '41', start_hub_id: '1', start_hub: { id: '1', code: 'HAN' } };
+      qb.getManyAndCount.mockResolvedValue([[trip], 1]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+      waybillSplits.find.mockResolvedValue([
+        { trip_id: '41', expected_arrival_at: new Date('2026-08-10T12:00:00Z'), waybill: { dest_hub_id: '3', dest_hub: { id: '3', code: 'HCM', name: 'Hồ Chí Minh' } } },
+        { trip_id: '41', expected_arrival_at: new Date('2026-08-09T12:00:00Z'), waybill: { dest_hub_id: '2', dest_hub: { id: '2', code: 'KHANHHOA', name: 'Khánh Hòa' } } },
+      ]);
+
+      const result = await service.findAll({ status: TripStatus.PLANNED }, manager);
+
+      expect(result.data[0].route_label).toBe('HAN → KHANHHOA → HCM');
+      expect(result.data[0].route_stops).toEqual([
+        expect.objectContaining({ hub_id: '2', hub_code: 'KHANHHOA', expected_arrival_at: new Date('2026-08-09T12:00:00Z') }),
+        expect.objectContaining({ hub_id: '3', hub_code: 'HCM', expected_arrival_at: new Date('2026-08-10T12:00:00Z') }),
+      ]);
+    });
+
     it('filter theo keyword, status, truck_id, hub, date range', async () => {
       const qb = new MockQb();
       qb.getManyAndCount.mockResolvedValue([[{ id: '1' }], 1]);

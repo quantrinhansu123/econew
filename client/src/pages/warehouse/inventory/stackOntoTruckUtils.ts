@@ -3,6 +3,8 @@ import type { WaybillInventoryItem } from './types';
 export interface StackOntoTruckFormRow {
   waybill_id: string;
   waybill_code: string;
+  destination_hub_key: string;
+  destination_hub_label: string;
   package_count: string;
   max_package_count: number;
   loading_position: string;
@@ -41,7 +43,7 @@ export interface StackOntoTruckPayload {
 
 export const DELIVERY_INSTRUCTION_OPTIONS = ['Lái xe giao tận nơi', 'Về chành'] as const;
 
-const cleanHubPart = (value?: string | null) => String(value || '').trim();
+const cleanHubPart = (value?: string | number | null) => String(value || '').trim();
 
 export function resolveDestinationHubLabel(waybill?: WaybillInventoryItem | null): string {
   const code = cleanHubPart(waybill?.dest_hub?.code);
@@ -54,6 +56,14 @@ export function resolveDestinationHubLabel(waybill?: WaybillInventoryItem | null
 
 export function buildDestinationInstruction(waybill?: WaybillInventoryItem | null): string {
   return `Kho ${resolveDestinationHubLabel(waybill)}`;
+}
+
+export function resolveDestinationHubKey(waybill?: WaybillInventoryItem | null): string {
+  const id = cleanHubPart(waybill?.dest_hub_id ?? waybill?.dest_hub?.id);
+  if (id) return `id:${id}`;
+  const code = cleanHubPart(waybill?.dest_hub?.code).toLocaleUpperCase('vi-VN');
+  if (code) return `code:${code}`;
+  return `name:${cleanHubPart(waybill?.dest_hub?.name).toLocaleLowerCase('vi-VN') || 'unknown'}`;
 }
 
 export function computeExpectedArrivalDate(base?: string | Date | null): Date {
@@ -79,6 +89,8 @@ export function buildStackFormRows(waybills: WaybillInventoryItem[], loadingDate
     return {
       waybill_id: String(waybill.id),
       waybill_code: waybill.waybill_code || waybill.code || `#${waybill.id}`,
+      destination_hub_key: resolveDestinationHubKey(waybill),
+      destination_hub_label: resolveDestinationHubLabel(waybill),
       package_count: String(Math.max(1, Number(waybill.remaining_packages ?? waybill.package_count ?? 1))),
       max_package_count: Math.max(1, Number(waybill.remaining_packages ?? waybill.package_count ?? 1)),
       loading_position: waybill.loading_position ? String(waybill.loading_position) : '',
@@ -130,6 +142,18 @@ export function buildStackOntoTruckPayload(
       ...(row.expected_arrival_at ? { expected_arrival_at: new Date(row.expected_arrival_at).toISOString() } : {}),
     })),
   };
+}
+
+export function updateExpectedArrivalForHub(
+  rows: StackOntoTruckFormRow[],
+  destinationHubKey: string,
+  expectedArrivalAt: string,
+): StackOntoTruckFormRow[] {
+  return rows.map((row) => (
+    row.destination_hub_key === destinationHubKey
+      ? { ...row, expected_arrival_at: expectedArrivalAt }
+      : row
+  ));
 }
 
 function toLocalDateTimeInput(value: Date): string {
