@@ -74,6 +74,7 @@ export interface WaybillDetail {
   delivery_photo_url?: string | null;
   received_at?: string | null;
   created_at?: string | null;
+  sent_date?: string | null;
   received_by?: UserSummary | null;
 }
 

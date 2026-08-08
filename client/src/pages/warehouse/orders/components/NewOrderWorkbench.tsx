@@ -248,8 +248,8 @@ export default function NewOrderWorkbench({
                     ))}
                   </CompactSelect>
                 </CompactField>
-                <CompactField label="Ngày gửi" className="col-span-6 sm:col-span-4 xl:col-span-3">
-                  <CompactInput type="date" value={form.ngayDi} onChange={(e) => setField('ngayDi', e.target.value)} />
+                <CompactField label="Ngày gửi trên bill" className="col-span-6 sm:col-span-4 xl:col-span-3">
+                  <CompactInput type="date" value={form.ngayDi} onChange={(e) => setField('ngayDi', e.target.value)} title="Được phép chọn ngày quá khứ; ngày lập phiếu vẫn được lưu riêng trong hệ thống" />
                 </CompactField>
 
                 <CompactField label="Tính cước theo" className="col-span-6 sm:col-span-3 xl:col-span-3">

@@ -47,14 +47,14 @@ export class WaybillsController {
   }
 
   @Get('delivery-tasks')
-  @RequireRoles(Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List last-mile tasks aggregated from all arrived trips' })
   getDeliveryTasks(@Query() query: QueryWaybillsDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.getDeliveryTasks(query, currentUser);
   }
 
   @Get('delivery-resources')
-  @RequireRoles(Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List drivers, internal trucks and partners available for last-mile assignment' })
   getDeliveryResources(@Query('hub_id') hubId: string | undefined, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.getDeliveryResources(hubId, currentUser);

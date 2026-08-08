@@ -3,6 +3,7 @@ import { ImagePlus, Loader2, Trash2, X } from 'lucide-react';
 import { ApiError } from '../../../../lib/api';
 import { IMAGE_UPLOAD_ACCEPT, uploadWaybillImage } from '../../../../lib/uploadImage';
 import type { DeliveryResources, LastMileWaybill } from '../types';
+import type { DeliveryRouteOption } from '../../../../hooks/useDeliveryRoutes';
 
 type DeliveryStatus = 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED';
 
@@ -13,10 +14,12 @@ interface Props {
   onClose: () => void;
   resources?: DeliveryResources;
   currentUserId?: string | number | null;
-  onConfirm: (status: DeliveryStatus, deliveryPhotoUrl?: string, assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string }) => void;
+  routes?: DeliveryRouteOption[];
+  routesLoading?: boolean;
+  onConfirm: (status: DeliveryStatus, deliveryPhotoUrl?: string, assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string; route_code?: string }, failureReason?: string) => void;
 }
 
-export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, error, resources, currentUserId, onClose, onConfirm }: Props) {
+export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, error, resources, routes = [], routesLoading = false, currentUserId, onClose, onConfirm }: Props) {
   const [photos, setPhotos] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -24,6 +27,8 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
   const [driverId, setDriverId] = useState('');
   const [truckId, setTruckId] = useState('');
   const [vendorId, setVendorId] = useState('');
+  const [routeCode, setRouteCode] = useState('');
+  const [failureReason, setFailureReason] = useState('');
 
   useEffect(() => {
     setPhotos(String(waybill?.delivery_photo_url || '').split('|').map((item) => item.trim()).filter(Boolean));
@@ -32,6 +37,8 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
     setDriverId(String(waybill?.last_mile_driver_id || currentUserId || ''));
     setTruckId(String(waybill?.last_mile_truck_id || ''));
     setVendorId(String(waybill?.last_mile_vendor_id || ''));
+    setRouteCode(String(waybill?.route_code || ''));
+    setFailureReason(String(waybill?.last_delivery_failure_reason || ''));
   }, [currentUserId, waybill]);
 
   if (!waybill) return null;
@@ -43,7 +50,7 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
   const labels: Record<DeliveryStatus, string> = {
     OUT_FOR_DELIVERY: 'Bàn giao tài xế chặng cuối',
     DELIVERED: 'Xác nhận giao thành công',
-    RETURNED: 'Xác nhận hoàn hàng',
+    RETURNED: 'Giao không thành công',
   };
 
   const handleFiles = async (files: FileList | null) => {
@@ -63,6 +70,10 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
 
   const submitStatus = (status: DeliveryStatus) => {
     if (status === 'OUT_FOR_DELIVERY') {
+      if (!routeCode) {
+        setUploadError('Phải chọn tuyến giao.');
+        return;
+      }
       if (assignmentType === 'INTERNAL' && !driverId) {
         setUploadError('Phải chọn tài xế nội bộ.');
         return;
@@ -73,6 +84,7 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
       }
       onConfirm(status, undefined, {
         assignment_type: assignmentType,
+        route_code: routeCode,
         ...(assignmentType === 'INTERNAL' ? { driver_id: driverId, truck_id: truckId || undefined } : { vendor_id: vendorId }),
       });
       return;
@@ -81,7 +93,11 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
       setUploadError('Giao thành công bắt buộc có ít nhất 1 ảnh.');
       return;
     }
-    onConfirm(status, photos.length ? photos.join('|') : undefined);
+    if (status === 'RETURNED' && !failureReason.trim()) {
+      setUploadError('Phải nhập lý do giao hàng không thành công.');
+      return;
+    }
+    onConfirm(status, photos.length ? photos.join('|') : undefined, undefined, failureReason.trim() || undefined);
   };
 
   return (
@@ -99,6 +115,11 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
           {currentStatus === 'AT_DEST_HUB' && resources && (
             <div className="space-y-3 rounded-xl border border-border bg-slate-50 p-3">
               <p className="font-black text-foreground">Phân giao chặng cuối</p>
+              <select value={routeCode} onChange={(event) => setRouteCode(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">
+                <option value="">{routesLoading ? 'Đang tải tuyến...' : 'Chọn tuyến giao'}</option>
+                {routeCode && !routes.some((route) => route.code === routeCode) && <option value={routeCode}>{routeCode} · Tuyến đang gán</option>}
+                {routes.map((route) => <option key={String(route.id)} value={route.code}>{route.code} · {route.name}</option>)}
+              </select>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setAssignmentType('INTERNAL')} className={`h-9 rounded-lg border text-[12px] font-black ${assignmentType === 'INTERNAL' ? 'border-primary bg-blue-50 text-primary' : 'border-border bg-white text-muted-foreground'}`}>Xe nội bộ</button>
                 <button type="button" onClick={() => setAssignmentType('PARTNER')} className={`h-9 rounded-lg border text-[12px] font-black ${assignmentType === 'PARTNER' ? 'border-primary bg-blue-50 text-primary' : 'border-border bg-white text-muted-foreground'}`}>Đối tác</button>
@@ -148,6 +169,12 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
                 </label>
               )}
             </div>
+          )}
+          {currentStatus === 'OUT_FOR_DELIVERY' && (
+            <label className="block rounded-xl border border-amber-200 bg-amber-50 p-3 text-[12px] font-bold text-amber-900">
+              Lý do nếu giao không thành công
+              <textarea value={failureReason} onChange={(event) => setFailureReason(event.target.value)} maxLength={500} className="mt-2 min-h-20 w-full rounded-lg border border-amber-200 bg-white p-2 text-[13px] font-medium text-foreground outline-none" placeholder="Ví dụ: Không liên lạc được, khách hẹn lại, sai địa chỉ..." />
+            </label>
           )}
           <div className="grid gap-2">
             {nextStatuses.map(status => (

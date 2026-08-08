@@ -22,6 +22,14 @@ const ACTION_LABELS: Record<string, string> = {
   COD_FEE_UPDATED: 'Cập nhật COD / cước',
   PHOTOS_UPDATED: 'Cập nhật ảnh bill',
   LEGACY_UPDATE: 'Đã cập nhật trước khi bật lịch sử',
+  DELIVERY_PREPARATION_READY: 'Khách xác nhận sẵn sàng giao',
+  DELIVERY_PREPARATION_SCHEDULED: 'Lưu kho và hẹn ngày giao',
+  DELIVERY_PREPARATION_HOLD: 'Lưu kho chờ xử lý',
+  DELIVERY_SCHEDULE_DUE: 'Đến hạn cần xử lý giao',
+  DELIVERY_ROUTE_ASSIGNED: 'Phân tuyến giao',
+  DELIVERY_OUT_FOR_DELIVERY: 'Điều phối xe đi giao',
+  DELIVERY_DELIVERED: 'Giao hàng thành công',
+  DELIVERY_FAILED: 'Giao hàng không thành công',
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -57,6 +65,21 @@ const FIELD_LABELS: Record<string, string> = {
   ngay_gui: 'Ngày gửi',
   phuong_thuc: 'Phương thức',
   so_anh: 'Số ảnh bill',
+  current_state: 'Trạng thái vận đơn',
+  route_code: 'Tuyến giao',
+  delivery_assignment_type: 'Hình thức giao',
+  last_mile_driver_id: 'Tài xế giao',
+  last_mile_truck_id: 'Xe giao',
+  last_mile_vendor_id: 'NCC giao',
+  xe_phat: 'Xe/NCC phát',
+  delivery_preparation_status: 'Trạng thái xử lý trước giao',
+  delivery_scheduled_at: 'Ngày hẹn giao',
+  delivery_hold_reason: 'Lý do lưu kho',
+  delivery_confirmed_at: 'Thời gian xác nhận',
+  last_delivery_failure_reason: 'Lý do giao không thành công',
+  sent_date: 'Ngày gửi trên bill',
+  split_status: 'Trạng thái phần hàng',
+  trip_id: 'Chuyến nguồn',
 };
 
 const MONEY_FIELDS = new Set(['cod_amount', 'freight_amount', 'cc_amount']);

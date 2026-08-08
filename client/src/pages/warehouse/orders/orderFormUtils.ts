@@ -357,6 +357,8 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     xePhat: String((waybill as { xe_phat?: string }).xe_phat ?? ''),
     buuTaPhat: parseNoteField(note, 'buu_ta_phat'),
     ngayDi:
+      formatDateInput(waybill.sent_date)
+      ||
       formatDateInput(parseNoteField(note, 'ngay_gui'))
       || formatDateInput(waybill.created_at || waybill.received_at),
     thueSuat: parseNoteField(note, 'thue_suat') || '0%',
@@ -376,7 +378,7 @@ export function waybillToBillItem(waybill: WaybillDetail): BillListItem {
   const sender = parseContactInfo(waybill.sender_info);
   return {
     id: String(waybill.id),
-    date: formatBillDate(waybill.created_at || waybill.received_at),
+    date: formatBillDate(waybill.sent_date || parseNoteField(note, 'ngay_gui') || waybill.created_at || waybill.received_at),
     createdAt: waybill.created_at || waybill.received_at || null,
     waybill_code: waybill.waybill_code || waybill.code || `#${waybill.id}`,
     package_count: Number(waybill.package_count) || 1,
@@ -505,6 +507,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
     cc_amount: paymentType === 'CC' ? totalFreight : 0,
     xe_lay: form.xeLay.trim() || undefined,
     xe_phat: form.xePhat.trim() || undefined,
+    sent_date: form.ngayDi || undefined,
     delivery_photo_url: joinWaybillImages(form.billImages) || undefined,
     noi_dung: form.noiDung.trim() || undefined,
     note: [

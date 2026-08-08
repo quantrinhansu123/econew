@@ -175,6 +175,7 @@ export class WaybillsService {
       xe_lay: dto.xe_lay?.trim() || null,
       xe_phat: dto.xe_phat?.trim() || null,
       expected_delivery_at: dto.expected_delivery_at ? new Date(dto.expected_delivery_at) : null,
+      sent_date: dto.sent_date || parseNoteField(dto.note, 'ngay_gui') || new Date().toISOString().slice(0, 10),
       received_at: null,
       received_by: null,
       created_by: currentUser.id,
@@ -561,20 +562,36 @@ export class WaybillsService {
 
   async updateStatus(id: string, dto: UpdateWaybillStatusDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
+    const auditBefore = this.buildAuditSnapshot(waybill);
+    if (dto.status === WaybillStatus.RETURNED && !dto.failure_reason?.trim()) {
+      throw new BadRequestException('Phải nhập lý do giao hàng không thành công');
+    }
     if (dto.status === WaybillStatus.OUT_FOR_DELIVERY && dto.assignment_type) {
+      if (!this.hasAnyRole(currentUser, [Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR])) {
+        throw new ForbiddenException('Chỉ điều phối hoặc quản lý được phân tuyến và phân xe giao');
+      }
       await this.applyLastMileAssignment(waybill, dto, currentUser);
     }
-    const splitDeliveryResult = await this.updateSplitDeliveryStatus(waybill, dto, currentUser);
+    const splitDeliveryResult = await this.updateSplitDeliveryStatus(waybill, dto, currentUser, auditBefore);
     if (splitDeliveryResult) return splitDeliveryResult;
     const currentStatus = this.getStatus(waybill);
     if (!STATE_TRANSITIONS[currentStatus]?.includes(dto.status)) throw new BadRequestException('Invalid waybill state transition');
     if (dto.status === WaybillStatus.DELIVERED && !dto.delivery_photo_url && !waybill.delivery_photo_url) throw new BadRequestException('Delivery photo is required');
     this.setStatus(waybill, dto.status);
     Object.assign(waybill, { updated_by: currentUser.id, note: dto.note ?? waybill.note });
+    if (dto.status === WaybillStatus.OUT_FOR_DELIVERY) waybill.last_delivery_failure_reason = null;
+    if (dto.status === WaybillStatus.RETURNED) waybill.last_delivery_failure_reason = dto.failure_reason!.trim();
     if (dto.delivery_photo_url) waybill.delivery_photo_url = normalizeWaybillPhotos(dto.delivery_photo_url);
     if (dto.status === WaybillStatus.DELIVERED) Object.assign(waybill, { delivered_at: new Date(), delivery_time: new Date() });
     if (dto.status === WaybillStatus.RETURNED) waybill.returned_at = new Date();
     const saved = await this.saveWithAudit(waybill, currentUser, 'STATUS_CHANGE');
+    await this.recordWaybillChange(
+      String(saved.id),
+      dto.status === WaybillStatus.RETURNED ? 'DELIVERY_FAILED' : `DELIVERY_${dto.status}`,
+      currentUser,
+      auditBefore,
+      saved,
+    );
     if (dto.status === WaybillStatus.DELIVERED) {
       await this.markTripAllocationDelivered(id, dto.trip_id);
     }
@@ -633,6 +650,7 @@ export class WaybillsService {
 
   async assignRoute(id: string, dto: AssignWaybillRouteDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findMutable(id, currentUser);
+    const auditBefore = this.buildAuditSnapshot(waybill);
     const currentStatus = this.getStatus(waybill);
     if (!ROUTE_ASSIGNABLE_STATUSES.includes(currentStatus)) {
       throw new BadRequestException('Route can only be assigned in warehouse or destination hub');
@@ -647,7 +665,9 @@ export class WaybillsService {
       });
     }
     Object.assign(waybill, { route_code: dto.route_code.trim(), note: dto.note ?? waybill.note, updated_by: currentUser.id });
-    return this.sanitize(await this.waybillsRepository.save(waybill), currentUser);
+    const saved = await this.waybillsRepository.save(waybill);
+    await this.recordWaybillChange(String(saved.id), 'DELIVERY_ROUTE_ASSIGNED', currentUser, auditBefore, saved);
+    return this.sanitize(saved, currentUser);
   }
 
   async updateCodFee(id: string, dto: UpdateCodFeeDto, currentUser: UserEntity): Promise<WaybillRecord> {
@@ -1933,6 +1953,9 @@ export class WaybillsService {
     }
     const assignmentType = dto.assignment_type;
     if (!assignmentType) throw new BadRequestException('Phải chọn hình thức phân giao nội bộ hoặc đối tác');
+    const routeCode = dto.route_code?.trim() || waybill.route_code?.trim();
+    if (!routeCode) throw new BadRequestException('Phải chọn tuyến giao trước khi phân xe');
+    waybill.route_code = routeCode;
 
     if (assignmentType === 'INTERNAL') {
       const driverId = String(dto.driver_id || ((currentUser.role_mask & Roles.DRIVER) !== 0 ? currentUser.id : '')).trim();
@@ -1974,6 +1997,7 @@ export class WaybillsService {
     waybill: WaybillRecord,
     dto: UpdateWaybillStatusDto,
     currentUser: UserEntity,
+    auditBefore: WaybillAuditSnapshot,
   ): Promise<WaybillRecord | null> {
     if (!dto.trip_id) return null;
     if (![WaybillStatus.OUT_FOR_DELIVERY, WaybillStatus.DELIVERED, WaybillStatus.RETURNED].includes(dto.status)) {
@@ -1999,6 +2023,7 @@ export class WaybillsService {
       throw new BadRequestException('Delivery photo is required');
     }
 
+    const previousSplitStatus = splits.map((split) => split.load_status).join(', ');
     const splitStatus = dto.status === WaybillStatus.OUT_FOR_DELIVERY
       ? WaybillSplitLoadStatus.OUT_FOR_DELIVERY
       : dto.status === WaybillStatus.DELIVERED
@@ -2008,6 +2033,8 @@ export class WaybillsService {
     await this.splitsRepository.save(splits);
 
     Object.assign(waybill, { updated_by: currentUser.id, note: dto.note ?? waybill.note });
+    if (dto.status === WaybillStatus.OUT_FOR_DELIVERY) waybill.last_delivery_failure_reason = null;
+    if (dto.status === WaybillStatus.RETURNED) waybill.last_delivery_failure_reason = dto.failure_reason!.trim();
     if (dto.delivery_photo_url) waybill.delivery_photo_url = normalizeWaybillPhotos(dto.delivery_photo_url);
 
     const allSplits = await this.splitsRepository.find({ where: { waybill_id: String(waybill.id) } });
@@ -2032,6 +2059,17 @@ export class WaybillsService {
     }
 
     const saved = await this.saveWithAudit(waybill, currentUser, 'SPLIT_DELIVERY_STATUS_CHANGE');
+    await this.recordWaybillChange(
+      String(saved.id),
+      dto.status === WaybillStatus.RETURNED ? 'DELIVERY_FAILED' : `DELIVERY_${dto.status}`,
+      currentUser,
+      auditBefore,
+      saved,
+      {
+        split_status: { old_value: previousSplitStatus || null, new_value: splitStatus },
+        trip_id: { old_value: dto.trip_id || null, new_value: dto.trip_id || null },
+      },
+    );
     if (dto.status === WaybillStatus.DELIVERED) {
       await this.completeTripWhenAllDelivered(String(dto.trip_id));
     }
@@ -2756,10 +2794,19 @@ export class WaybillsService {
       giao_hang: this.auditNoteField(note, 'giao_hang'),
       ngay_gui: this.auditNoteField(note, 'ngay_gui'),
       phuong_thuc: this.auditNoteField(note, 'phuong_thuc') || this.auditText(waybill.payment_type),
+      current_state: this.auditText(this.getStatus(waybill)),
+      route_code: this.auditText(waybill.route_code),
+      delivery_assignment_type: this.auditText(waybill.delivery_assignment_type),
+      last_mile_driver_id: this.auditText(waybill.last_mile_driver_id),
+      last_mile_truck_id: this.auditText(waybill.last_mile_truck_id),
+      last_mile_vendor_id: this.auditText(waybill.last_mile_vendor_id),
+      xe_phat: this.auditText(waybill.xe_phat),
       delivery_preparation_status: this.auditText(waybill.delivery_preparation_status),
       delivery_scheduled_at: waybill.delivery_scheduled_at?.toISOString() ?? null,
       delivery_hold_reason: this.auditText(waybill.delivery_hold_reason),
       delivery_confirmed_at: waybill.delivery_confirmed_at?.toISOString() ?? null,
+      last_delivery_failure_reason: this.auditText(waybill.last_delivery_failure_reason),
+      sent_date: this.auditText(waybill.sent_date || this.auditNoteField(note, 'ngay_gui')),
       so_anh: photoCount,
     };
   }
@@ -2785,10 +2832,12 @@ export class WaybillsService {
     currentUser: UserEntity,
     before?: WaybillAuditSnapshot,
     afterWaybill?: WaybillRecord,
+    additionalChanges: Record<string, WaybillFieldChange> = {},
   ): Promise<void> {
-    const changes = before && afterWaybill
+    const snapshotChanges = before && afterWaybill
       ? this.diffAuditSnapshots(before, this.buildAuditSnapshot(afterWaybill))
       : {};
+    const changes = { ...snapshotChanges, ...additionalChanges };
     if (action !== 'CREATED' && Object.keys(changes).length === 0) return;
 
     const changedByName = this.auditText(currentUser.full_name)

@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, Building2, CreditCard, History, Loader2, MapPin, PackageOpen, Phone, RefreshCw, Search, Truck } from 'lucide-react';
+import { AlertTriangle, Building2, CreditCard, History, Loader2, MapPin, PackageOpen, Phone, Printer, RefreshCw, Search, Truck } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
 import { getStoredAuthUser } from '../lib/authUser';
 import UpdateDeliveryStatusDialog from './delivery/last-mile/dialogs/UpdateDeliveryStatusDialog';
 import DeliveryPreparationDialog from './delivery/last-mile/dialogs/DeliveryPreparationDialog';
 import DeliveryHistoryDialog from './delivery/last-mile/dialogs/DeliveryHistoryDialog';
+import DeliveryDispatchManifestDialog from './delivery/last-mile/dialogs/DeliveryDispatchManifestDialog';
 import type { DeliveryResources, HubSummary, LastMileWaybill, ListResponse, WaybillHistoryItem } from './delivery/last-mile/types';
+import { useDeliveryRoutes } from '../hooks/useDeliveryRoutes';
 
 const WAREHOUSE = 1;
 const DRIVER = 4;
@@ -16,6 +18,9 @@ const MANAGER = 32;
 const DIRECTOR = 64;
 
 const canAct = (roleMask: number) => (roleMask & (WAREHOUSE | DRIVER | DISPATCHER | MANAGER | DIRECTOR)) !== 0;
+const canPrepareDelivery = (roleMask: number) => (roleMask & (WAREHOUSE | DISPATCHER | MANAGER | DIRECTOR)) !== 0;
+const canDispatchDelivery = (roleMask: number) => (roleMask & (DISPATCHER | MANAGER | DIRECTOR)) !== 0;
+const canCompleteDelivery = (roleMask: number) => (roleMask & (DRIVER | DISPATCHER | MANAGER | DIRECTOR)) !== 0;
 const normalizeStatus = (waybill: LastMileWaybill) => String(waybill.current_state || '').toUpperCase();
 
 const normalizeList = <T,>(response: ListResponse<T> | T[]) =>
@@ -32,6 +37,7 @@ export default function NhiemVuGiaoHangPage() {
   const [destHubId, setDestHubId] = useState(() => String(user?.hub_id || ''));
   const [originHubId, setOriginHubId] = useState('');
   const [paymentType, setPaymentType] = useState('');
+  const [preparationFilter, setPreparationFilter] = useState('');
   const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [waybills, setWaybills] = useState<LastMileWaybill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +50,15 @@ export default function NhiemVuGiaoHangPage() {
   const [historyWaybill, setHistoryWaybill] = useState<LastMileWaybill | null>(null);
   const [historyItems, setHistoryItems] = useState<WaybillHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
+  const { routes, isLoading: routesLoading } = useDeliveryRoutes(true, destHubId || String(user?.hub_id || ''));
+
+  const displayedWaybills = useMemo(() => preparationFilter
+    ? waybills.filter((waybill) => String(waybill.delivery_preparation_status || 'PENDING_CONFIRMATION') === preparationFilter)
+    : waybills, [preparationFilter, waybills]);
+  const dispatchManifestCount = useMemo(() => new Set(waybills
+    .filter((waybill) => normalizeStatus(waybill) === 'OUT_FOR_DELIVERY' && waybill.delivery_assignment_type)
+    .map((waybill) => `${waybill.route_code || ''}|${waybill.delivery_assignment_type}|${waybill.last_mile_truck_id || waybill.last_mile_vendor_id || waybill.last_mile_driver_id || ''}`)).size, [waybills]);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -109,17 +124,19 @@ export default function NhiemVuGiaoHangPage() {
   const confirmUpdateStatus = async (
     status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED',
     deliveryPhotoUrl?: string,
-    assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string },
+    assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string; route_code?: string },
+    failureReason?: string,
   ) => {
     if (!statusWaybill) return;
     setIsSubmitting(true);
     setActionError('');
     try {
-      const body: { status: string; delivery_photo_url?: string; trip_id?: string; split_id?: string } = { status };
+      const body: { status: string; delivery_photo_url?: string; trip_id?: string; split_id?: string; failure_reason?: string } = { status };
       if (deliveryPhotoUrl) body.delivery_photo_url = deliveryPhotoUrl;
       if (statusWaybill.trip_id) body.trip_id = String(statusWaybill.trip_id);
       if (statusWaybill.split_id) body.split_id = String(statusWaybill.split_id);
       Object.assign(body, assignment || {});
+      if (failureReason) body.failure_reason = failureReason;
       await apiRequest(`/waybills/${statusWaybill.id}/status`, { method: 'PATCH', body });
       setStatusWaybill(null);
       await loadTasks();
@@ -150,9 +167,9 @@ export default function NhiemVuGiaoHangPage() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
-        <h1 className="text-lg font-extrabold text-foreground">Nhiệm vụ giao hàng</h1>
+        <h1 className="text-lg font-extrabold text-foreground">Hàng tại HUB · Nhiệm vụ giao hàng</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Hàng đã nhập HUB đến — xác nhận người nhận, lưu kho hoặc điều phối giao chặng cuối.
+          Toàn bộ hàng đã nhập HUB đến — xác nhận người nhận, lưu kho, phân tuyến và điều phối giao chặng cuối.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <div className="relative min-w-[260px] flex-1">
@@ -182,6 +199,10 @@ export default function NhiemVuGiaoHangPage() {
             <option value="">Tất cả thanh toán</option>
             <option value="PP">PP</option><option value="CC">CC</option><option value="COD">COD</option>
           </FilterSelect>
+          <FilterSelect icon={<PackageOpen size={15} />} value={preparationFilter} onChange={setPreparationFilter} label="Xử lý giao">
+            <option value="">Tất cả xử lý</option><option value="PENDING_CONFIRMATION">Chờ gọi xác nhận</option><option value="READY">Sẵn sàng giao</option><option value="SCHEDULED">Lưu kho hẹn ngày</option><option value="NEEDS_ACTION">Cần xử lý</option><option value="HOLD">Lưu kho chờ xử lý</option>
+          </FilterSelect>
+          <button type="button" disabled={!dispatchManifestCount} onClick={() => setPrintOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-[12px] font-extrabold text-white disabled:opacity-50"><Printer size={15}/>In bảng kê phát ({dispatchManifestCount})</button>
           <button type="button" title="Làm mới" onClick={() => void loadTasks()} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground hover:text-primary"><RefreshCw size={16} /></button>
         </div>
         {!allowed && (
@@ -201,7 +222,7 @@ export default function NhiemVuGiaoHangPage() {
           <AlertTriangle className="mr-1 inline" size={16} />
           {error}
         </div>
-      ) : !waybills.length ? (
+      ) : !displayedWaybills.length ? (
         <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-white p-8 text-center">
           <PackageOpen className="text-muted-foreground" size={32} />
           <p className="mt-3 text-[14px] font-extrabold text-foreground">Chưa có nhiệm vụ giao hàng</p>
@@ -211,12 +232,12 @@ export default function NhiemVuGiaoHangPage() {
         </div>
       ) : (
         <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-4">
-          {waybills.map((waybill) => {
+          {displayedWaybills.map((waybill) => {
             const status = normalizeStatus(waybill);
             const preparation = waybill.delivery_preparation_status || 'PENDING_CONFIRMATION';
-            const canStart = allowed && status === 'AT_DEST_HUB' && preparation === 'READY';
-            const canPrepare = allowed && status === 'AT_DEST_HUB';
-            const canDeliver = allowed && status === 'OUT_FOR_DELIVERY';
+            const canStart = canDispatchDelivery(roleMask) && status === 'AT_DEST_HUB' && preparation === 'READY';
+            const canPrepare = canPrepareDelivery(roleMask) && status === 'AT_DEST_HUB';
+            const canDeliver = canCompleteDelivery(roleMask) && status === 'OUT_FOR_DELIVERY';
 
             return (
               <article
@@ -272,6 +293,12 @@ export default function NhiemVuGiaoHangPage() {
                 </div>
                 <div className="mt-3 grid gap-2 text-[13px]">
                   <p className="font-bold text-foreground">{waybill.receiver_info}</p>
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-2 text-[12px] sm:grid-cols-4">
+                    <p><span className="block text-[10px] font-bold uppercase text-muted-foreground">Người gửi</span><b>{waybill.sender_name || waybill.sender_info || '—'}</b></p>
+                    <p><span className="block text-[10px] font-bold uppercase text-muted-foreground">Số kiện</span><b>{waybill.trip_package_count ?? waybill.package_count ?? '—'} kiện</b></p>
+                    <p><span className="block text-[10px] font-bold uppercase text-muted-foreground">Trọng lượng</span><b>{Number(waybill.weight || 0).toLocaleString('vi-VN')} kg</b></p>
+                    <p><span className="block text-[10px] font-bold uppercase text-muted-foreground">Thanh toán</span><b>{waybill.payment_type || '—'}</b></p>
+                  </div>
                   <p className="text-[12px] font-bold text-muted-foreground">
                     {[waybill.origin_hub?.code || waybill.origin_hub_id, waybill.dest_hub?.code || waybill.dest_hub_id].filter(Boolean).join(' → ')}
                     {waybill.trip_id ? ` · Chuyến #${waybill.trip_id}` : ''}
@@ -297,11 +324,13 @@ export default function NhiemVuGiaoHangPage() {
                   )}
                   {status === 'OUT_FOR_DELIVERY' && (
                     <p className="text-[12px] font-bold text-primary">
+                      Tuyến {waybill.route_code || '—'} · {' '}
                       {waybill.delivery_assignment_type === 'PARTNER'
                         ? `Đối tác: ${waybill.last_mile_vendor?.name || waybill.last_mile_vendor?.code || '—'}`
                         : `Nội bộ: ${waybill.last_mile_driver?.name || waybill.last_mile_driver?.username || '—'}${waybill.last_mile_truck ? ` · ${waybill.last_mile_truck.bks || waybill.last_mile_truck.license_plate || ''}` : ''}`}
                     </p>
                   )}
+                  {waybill.last_delivery_failure_reason && <p className="text-[12px] font-bold text-red-700">Lần giao thất bại: {waybill.last_delivery_failure_reason}</p>}
                 </div>
               </article>
             );
@@ -314,6 +343,8 @@ export default function NhiemVuGiaoHangPage() {
         isSubmitting={isSubmitting}
         error={actionError}
         resources={resources}
+        routes={routes}
+        routesLoading={routesLoading}
         currentUserId={user?.id}
         onClose={() => {
           setStatusWaybill(null);
@@ -323,6 +354,7 @@ export default function NhiemVuGiaoHangPage() {
       />
       <DeliveryPreparationDialog waybill={preparationWaybill} busy={isSubmitting} error={actionError} onClose={() => { setPreparationWaybill(null); setActionError(''); }} onConfirm={confirmPreparation}/>
       <DeliveryHistoryDialog waybill={historyWaybill} items={historyItems} loading={historyLoading} onClose={() => setHistoryWaybill(null)}/>
+      <DeliveryDispatchManifestDialog open={printOpen} waybills={waybills} showPricing={isManager} onClose={() => setPrintOpen(false)}/>
     </div>
   );
 }

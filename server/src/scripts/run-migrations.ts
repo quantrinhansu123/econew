@@ -17,6 +17,20 @@ const ensureDeliveryWorkflowSchema = async (dataSource: DataSource) => {
   await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_scheduled_at" TIMESTAMP`);
   await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_hold_reason" varchar(500)`);
   await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_confirmed_at" TIMESTAMP`);
+  await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "sent_date" date`);
+  await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "last_delivery_failure_reason" varchar(500)`);
+  await dataSource.query(`
+    UPDATE "waybills"
+    SET "sent_date" = COALESCE(
+      CASE
+        WHEN substring(COALESCE("note", '') from 'ngay_gui=([0-9]{4}-[0-9]{2}-[0-9]{2})') <> ''
+        THEN substring(COALESCE("note", '') from 'ngay_gui=([0-9]{4}-[0-9]{2}-[0-9]{2})')::date
+        ELSE NULL
+      END,
+      "created_at"::date
+    )
+    WHERE "sent_date" IS NULL
+  `);
 };
 
 const baselineLegacyDatabase = async (dataSource: DataSource): Promise<boolean> => {

@@ -244,6 +244,17 @@ describe('WaybillsService', () => {
     expect(result.sender_info).toBe('A | HN');
   });
 
+  it('create keeps a past sent date separate from the system creation time', async () => {
+    waybillsRepository.findOne.mockResolvedValue(null);
+    const result = await service.create({
+      waybill_code: 'ECOHAN2', sender_name: 'A', origin_hub_id: '1', dest_hub_id: '2',
+      sent_date: '2026-07-31',
+    }, manager);
+
+    expect(result.sent_date).toBe('2026-07-31');
+    expect(result.created_at).not.toBe(result.sent_date);
+  });
+
   it('create stores an empty receiver name without shifting phone and address fields', async () => {
     waybillsRepository.findOne.mockResolvedValue(null);
     const result = await service.create({
@@ -1254,6 +1265,7 @@ describe('WaybillsService', () => {
     await service.updateStatus('1', {
       status: WaybillStatus.OUT_FOR_DELIVERY,
       assignment_type: 'INTERNAL',
+      route_code: 'HCM-Q1',
       driver_id: 'd1',
       truck_id: 'x1',
     }, manager);
@@ -1265,6 +1277,7 @@ describe('WaybillsService', () => {
       last_mile_truck_id: 'x1',
       last_mile_vendor_id: null,
       xe_phat: '51A-12345',
+      route_code: 'HCM-Q1',
     });
   });
 
@@ -1276,6 +1289,7 @@ describe('WaybillsService', () => {
     await service.updateStatus('1', {
       status: WaybillStatus.OUT_FOR_DELIVERY,
       assignment_type: 'PARTNER',
+      route_code: 'HCM-Q2',
       vendor_id: 'v1',
     }, manager);
 
@@ -1286,6 +1300,17 @@ describe('WaybillsService', () => {
       last_mile_vendor_id: 'v1',
       xe_phat: 'Đối tác HCM',
     });
+  });
+
+  it('bắt buộc và lưu lý do khi giao hàng không thành công', async () => {
+    const waybill = makeWaybill({ current_state: WaybillStatus.OUT_FOR_DELIVERY, status: WaybillStatus.OUT_FOR_DELIVERY });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+
+    await expect(service.updateStatus('1', { status: WaybillStatus.RETURNED }, manager)).rejects.toThrow(BadRequestException);
+    await service.updateStatus('1', { status: WaybillStatus.RETURNED, failure_reason: 'Khách hẹn lại ngày khác' }, manager);
+
+    expect((waybill as any).last_delivery_failure_reason).toBe('Khách hẹn lại ngày khác');
+    expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ action: 'DELIVERY_FAILED' }));
   });
 
   it('correctStatus mở lại chuyến khi sửa nhầm đơn đã giao', async () => {

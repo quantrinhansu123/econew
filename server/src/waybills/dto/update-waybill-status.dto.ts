@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { WaybillStatus } from './waybill.enums';
 
 export class UpdateWaybillStatusDto {
@@ -35,6 +35,17 @@ export class UpdateWaybillStatusDto {
   @IsOptional()
   @IsString()
   vendor_id?: string;
+
+  @ApiPropertyOptional({ description: 'Mã tuyến giao chặng cuối' })
+  @IsOptional()
+  @IsString()
+  route_code?: string;
+
+  @ApiPropertyOptional({ description: 'Bắt buộc khi giao thất bại/hoàn hàng' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  failure_reason?: string;
 }
 
 export class CorrectWaybillStatusDto {

@@ -40,7 +40,12 @@ export interface LastMileWaybill {
   split_id?: string | number | null;
   waybill_code: string;
   sender_info: string;
+  sender_name?: string | null;
+  sender_phone?: string | null;
+  sender_address?: string | null;
   receiver_info: string;
+  receiver_name?: string | null;
+  receiver_company_name?: string | null;
   receiver_address?: string | null;
   receiver_phone?: string | null;
   weight: number | string | null;
@@ -48,6 +53,11 @@ export interface LastMileWaybill {
   width: number | string | null;
   height: number | string | null;
   volumetric_weight: number | string | null;
+  the_tich_m3?: number | string | null;
+  package_count?: number | string | null;
+  cod_amount?: number | string | null;
+  freight_amount?: number | string | null;
+  note?: string | null;
   payment_type: PaymentType | string;
   cost_amount?: number | string | null;
   current_state: WaybillState | string;
@@ -75,6 +85,10 @@ export interface LastMileWaybill {
   delivery_scheduled_at?: string | null;
   delivery_hold_reason?: string | null;
   delivery_confirmed_at?: string | null;
+  route_code?: string | null;
+  last_delivery_failure_reason?: string | null;
+  sent_date?: string | null;
+  created_at?: string | null;
 }
 
 export interface WaybillHistoryItem {

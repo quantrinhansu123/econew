@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateWaybillDto {
   @ApiProperty({ description: 'Số bill nhập tay' }) @IsString() @IsNotEmpty() waybill_code: string;
@@ -55,4 +55,8 @@ export class CreateWaybillDto {
   @IsString()
   xe_phat?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() expected_delivery_at?: string;
+  @ApiPropertyOptional({ description: 'Ngày gửi hiển thị trên bill; được phép là ngày quá khứ' })
+  @IsOptional()
+  @IsDateString()
+  sent_date?: string;
 }

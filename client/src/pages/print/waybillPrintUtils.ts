@@ -174,7 +174,7 @@ export function buildWaybillPrintData(
     ? calculatedCollection || storedPayment
     : cod;
   const createdAt = waybill.received_at || (waybill as { created_at?: string }).created_at;
-  const sentAt = parseNoteField(note, 'ngay_gui') || createdAt;
+  const sentAt = waybill.sent_date || parseNoteField(note, 'ngay_gui') || createdAt;
 
   return {
     waybillCode: waybill.waybill_code || waybill.code || String(waybill.id),

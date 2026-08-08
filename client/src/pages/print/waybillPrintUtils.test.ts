@@ -133,6 +133,16 @@ describe('buildWaybillPrintData receiver fields', () => {
     expect(data.ngayGuiDon).toBe('22/07/2026');
   });
 
+  it('prefers the editable sent_date field on the bill', () => {
+    const data = buildWaybillPrintData(waybill({
+      created_at: '2026-08-08T10:00:00+07:00',
+      sent_date: '2026-07-31',
+      note: 'ngay_gui=2026-08-01',
+    }));
+
+    expect(data.ngayGuiDon).toBe('31/07/2026');
+  });
+
   it('shows main freight, extra services and their sum when pricing is enabled', () => {
     const data = buildWaybillPrintData(waybill({
       payment_type: 'CC',

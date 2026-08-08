@@ -118,6 +118,9 @@ export class WaybillEntity {
   @Column({ type: 'timestamp', nullable: true })
   delivery_confirmed_at: Date | null;
 
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  last_delivery_failure_reason: string | null;
+
   @Column({ type: 'text', nullable: true })
   delivery_photo_url: string | null;
 
@@ -189,6 +192,9 @@ export class WaybillEntity {
 
   @Column({ type: 'bigint', nullable: true })
   updated_by: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  sent_date: string | null;
 
   @CreateDateColumn({ type: 'timestamp' })
   created_at: Date;
