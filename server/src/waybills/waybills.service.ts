@@ -73,6 +73,17 @@ const ALL_ORDER_LIST_STATUSES = [
 ];
 const MUTABLE_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE];
 const ROUTE_ASSIGNABLE_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE, WaybillStatus.AT_DEST_HUB];
+
+const currentVietnamDate = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+};
 const parseNoteField = (note: string | null | undefined, key: string) => {
   const match = (note || '').match(new RegExp(`${key}=([^|]+)`, 'i'));
   return match?.[1]?.trim() || '';
@@ -175,7 +186,7 @@ export class WaybillsService {
       xe_lay: dto.xe_lay?.trim() || null,
       xe_phat: dto.xe_phat?.trim() || null,
       expected_delivery_at: dto.expected_delivery_at ? new Date(dto.expected_delivery_at) : null,
-      sent_date: dto.sent_date || parseNoteField(dto.note, 'ngay_gui') || new Date().toISOString().slice(0, 10),
+      sent_date: dto.sent_date || parseNoteField(dto.note, 'ngay_gui') || currentVietnamDate(),
       received_at: null,
       received_by: null,
       created_by: currentUser.id,
@@ -2546,6 +2557,8 @@ export class WaybillsService {
     const toDate = query.received_to ?? query.to_date;
     if (fromDate) qb.andWhere('COALESCE(waybill.received_at, waybill.created_at) >= :fromDate', { fromDate });
     if (toDate) qb.andWhere('COALESCE(waybill.received_at, waybill.created_at) <= :toDate', { toDate });
+    if (query.sent_from) qb.andWhere('waybill.sent_date >= :sentFrom', { sentFrom: query.sent_from });
+    if (query.sent_to) qb.andWhere('waybill.sent_date <= :sentTo', { sentTo: query.sent_to });
   }
 
   private parseList(value?: string | null): string[] {

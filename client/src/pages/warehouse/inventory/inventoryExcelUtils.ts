@@ -355,7 +355,7 @@ function billDimensions(waybill: WaybillInventoryItem): [number | string, number
 
 function billSentDate(waybill: WaybillInventoryItem): string {
   const entered = noteField(waybill, 'ngay_gui');
-  return formatInventoryDate(entered || waybill.created_at || waybill.received_at);
+  return formatInventoryDate(waybill.sent_date || entered || waybill.created_at || waybill.received_at);
 }
 
 function billFreight(waybill: WaybillInventoryItem): number | string {

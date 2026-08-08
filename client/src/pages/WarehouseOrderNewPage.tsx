@@ -127,8 +127,8 @@ export default function WarehouseOrderNewPage() {
     try {
       const query = new URLSearchParams({ limit: String(requestLimit), page: '1' });
       if (dateFilter) {
-        query.set('from_date', dateFilter);
-        query.set('to_date', `${dateFilter}T23:59:59.999`);
+        query.set('sent_from', dateFilter);
+        query.set('sent_to', dateFilter);
       }
       const response = await apiRequest<
         WaybillDetail[] | {

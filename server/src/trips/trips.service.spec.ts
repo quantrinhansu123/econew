@@ -271,23 +271,26 @@ describe('TripsService', () => {
   const mockFindOne = (trip: any) => jest.spyOn(service, 'findOne').mockResolvedValue(trip);
 
   describe('update', () => {
-    it('cho phép sửa ngày quá khứ sau khi xe đã đến', async () => {
-      const departure = new Date('2025-08-07T01:00:00Z');
-      const arrival = new Date('2025-08-08T01:00:00Z');
-      mockFindOne({
-        id: '1',
-        status: TripStatus.ARRIVED,
-        departure_time: new Date('2026-08-06T01:00:00Z'),
-        arrival_time: new Date('2026-08-06T12:00:00Z'),
-      });
+    it.each([TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED])(
+      'cho phép sửa ngày quá khứ khi chuyến ở trạng thái %s',
+      async (status) => {
+        const departure = new Date('2025-08-07T01:00:00Z');
+        const arrival = new Date('2025-08-08T01:00:00Z');
+        mockFindOne({
+          id: '1',
+          status,
+          departure_time: new Date('2026-08-06T01:00:00Z'),
+          arrival_time: new Date('2026-08-06T12:00:00Z'),
+        });
 
-      const result = await service.update('1', { departure_time: departure, arrival_time: arrival }, manager);
+        const result = await service.update('1', { departure_time: departure, arrival_time: arrival }, manager);
 
-      expect(result.departure_time).toEqual(departure);
-      expect(result.arrival_time).toEqual(arrival);
-      expect(result.expected_arrival_time).toEqual(arrival);
-      expect(trips.save).toHaveBeenCalledWith(expect.objectContaining({ status: TripStatus.ARRIVED }));
-    });
+        expect(result.departure_time).toEqual(departure);
+        expect(result.arrival_time).toEqual(arrival);
+        expect(result.expected_arrival_time).toEqual(arrival);
+        expect(trips.save).toHaveBeenCalledWith(expect.objectContaining({ status }));
+      },
+    );
 
     it('không cho đổi xe sau khi chuyến đã khởi hành', async () => {
       mockFindOne({ id: '1', status: TripStatus.IN_TRANSIT, truck_id: '5' });

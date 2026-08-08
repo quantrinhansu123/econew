@@ -162,6 +162,7 @@ export function isValidVnPhone(raw: string): boolean {
 
 export function validateNewOrderForm(form: NewOrderFormState, _volumetricWeight: number): string {
   if (!form.soBill.trim()) return 'Số bill là bắt buộc.';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(form.ngayDi)) return 'Ngày gửi trên bill là bắt buộc.';
   if (!form.nguoiGui.trim()) return 'Người gửi là bắt buộc.';
   if (form.dienThoaiKh.trim() && !isValidVnPhone(form.dienThoaiKh)) {
     return 'Điện thoại khách hàng không hợp lệ.';

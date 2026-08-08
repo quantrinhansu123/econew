@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptyOrderForm } from './orderFormData';
+import { emptyOrderForm, todayInputValue } from './orderFormData';
 import {
   calcCuocChinhAmount,
   normalizeBillingUnit,
@@ -29,6 +29,15 @@ describe('new order defaults', () => {
   it('normalizes legacy Cân values to Kg', () => {
     expect(normalizeBillingUnit('Cân')).toBe('Kg');
     expect(normalizeBillingUnit('kg')).toBe('Kg');
+  });
+
+  it('uses the Vietnam calendar date instead of the UTC date', () => {
+    expect(todayInputValue(new Date('2026-08-07T17:30:00.000Z'))).toBe('2026-08-08');
+  });
+
+  it('allows a past sent date and requires a sent date', () => {
+    expect(validateNewOrderForm({ ...validOrderForm(), ngayDi: '2026-07-31' }, 0)).toBe('');
+    expect(validateNewOrderForm({ ...validOrderForm(), ngayDi: '' }, 0)).toBe('Ngày gửi trên bill là bắt buộc.');
   });
 
   it.each(['4.6', '4,6'])('reads %s as the same decimal volume', (value) => {

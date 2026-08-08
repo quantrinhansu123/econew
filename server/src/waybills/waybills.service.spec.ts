@@ -899,10 +899,12 @@ describe('WaybillsService', () => {
   it('findAll applies keyword/status/hub/priority/date filters', async () => {
     const qb = createQueryBuilder();
     waybillsRepository.createQueryBuilder.mockReturnValue(qb);
-    await service.findAll({ keyword: 'ECO', status: WaybillStatus.RECEIVED, origin_hub_id: '1', dest_hub_id: '2', priority: WaybillPriority.HIGH, from_date: '2026-01-01', to_date: '2026-01-31' }, manager);
+    await service.findAll({ keyword: 'ECO', status: WaybillStatus.RECEIVED, origin_hub_id: '1', dest_hub_id: '2', priority: WaybillPriority.HIGH, from_date: '2026-01-01', to_date: '2026-01-31', sent_from: '2025-12-31', sent_to: '2026-01-15' }, manager);
     expect(qb.andWhere).toHaveBeenCalledWith('waybill.current_state IN (:...statuses)', { statuses: [WaybillStatus.RECEIVED] });
     expect(qb.andWhere).toHaveBeenCalledWith('waybill.origin_hub_id = :originHubId', { originHubId: '1' });
     expect(qb.andWhere).toHaveBeenCalledWith('waybill.priority IN (:...priorities)', { priorities: [WaybillPriority.HIGH] });
+    expect(qb.andWhere).toHaveBeenCalledWith('waybill.sent_date >= :sentFrom', { sentFrom: '2025-12-31' });
+    expect(qb.andWhere).toHaveBeenCalledWith('waybill.sent_date <= :sentTo', { sentTo: '2026-01-15' });
   });
 
   it.each(['ECOHAN108962', 'ECO-HAN-108962'])(

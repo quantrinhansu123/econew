@@ -20,6 +20,8 @@ export class QueryWaybillsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() route_code?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() from_date?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() to_date?: string;
+  @ApiPropertyOptional({ description: 'Ngày gửi trên bill từ ngày (YYYY-MM-DD)' }) @IsOptional() @IsString() sent_from?: string;
+  @ApiPropertyOptional({ description: 'Ngày gửi trên bill đến ngày (YYYY-MM-DD)' }) @IsOptional() @IsString() sent_to?: string;
   @ApiPropertyOptional({ description: 'Alias for from_date used by inventory filters' }) @IsOptional() @IsString() received_from?: string;
   @ApiPropertyOptional({ description: 'Alias for to_date used by inventory filters' }) @IsOptional() @IsString() received_to?: string;
   @ApiPropertyOptional({ description: 'Only waybills with remaining unallocated packages (1/true)' }) @IsOptional() @IsString() only_incomplete_split?: string;

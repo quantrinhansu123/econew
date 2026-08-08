@@ -33,6 +33,25 @@ describe('bulk waybill creation', () => {
     expect(created.form.soBill).toBe('ECOHAN108971');
   });
 
+  it('keeps the past sent date from the Excel row in the create payload', async () => {
+    const createWaybill = vi.fn().mockResolvedValue({
+      id: '1',
+      waybill_code: 'ECOHAN108969',
+    } as CreatedWaybill);
+
+    await createBulkWaybillWithFreshCode({
+      form: { ...bulkForm(), ngayDi: '2026-07-31' },
+      autoAssignedWaybillCode: false,
+      getNextWaybillCode: vi.fn(),
+      createWaybill,
+    });
+
+    expect(createWaybill).toHaveBeenCalledWith(expect.objectContaining({
+      sent_date: '2026-07-31',
+      note: expect.stringContaining('ngay_gui=2026-07-31'),
+    }));
+  });
+
   it('gets another fresh code and retries after a duplicate race', async () => {
     const getNextWaybillCode = vi.fn()
       .mockResolvedValueOnce('ECOHAN108971')

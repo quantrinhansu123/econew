@@ -75,6 +75,7 @@ export interface WaybillInventoryItem {
   actual_weight?: number | string | null;
   priority?: PriorityLevel | null;
   received_at?: string | null;
+  sent_date?: string | null;
   created_at?: string | null;
   received_by?: UserSummary | null;
   route_code?: string | null;

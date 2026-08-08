@@ -19,7 +19,16 @@ export const PHUONG_THUC_OPTIONS = [
   'Đã thanh toán',
 ];
 
-export const todayInputValue = () => new Date().toISOString().slice(0, 10);
+export const todayInputValue = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+};
 
 export const emptyOrderForm = (): NewOrderFormState => ({
   maKh: '',

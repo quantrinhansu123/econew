@@ -34,7 +34,7 @@ export default function NhiemVuGiaoHangPage() {
 
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('AT_DEST_HUB,OUT_FOR_DELIVERY');
-  const [destHubId, setDestHubId] = useState(() => String(user?.hub_id || ''));
+  const [destHubId, setDestHubId] = useState(() => isManager ? '' : String(user?.hub_id || ''));
   const [originHubId, setOriginHubId] = useState('');
   const [paymentType, setPaymentType] = useState('');
   const [preparationFilter, setPreparationFilter] = useState('');
@@ -51,7 +51,8 @@ export default function NhiemVuGiaoHangPage() {
   const [historyItems, setHistoryItems] = useState<WaybillHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
-  const { routes, isLoading: routesLoading } = useDeliveryRoutes(true, destHubId || String(user?.hub_id || ''));
+  const selectedTaskHubId = String(statusWaybill?.dest_hub_id || destHubId || (!isManager ? user?.hub_id : '') || '');
+  const { routes, isLoading: routesLoading } = useDeliveryRoutes(true, selectedTaskHubId);
 
   const displayedWaybills = useMemo(() => preparationFilter
     ? waybills.filter((waybill) => String(waybill.delivery_preparation_status || 'PENDING_CONFIRMATION') === preparationFilter)
@@ -115,11 +116,11 @@ export default function NhiemVuGiaoHangPage() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (destHubId) params.set('hub_id', destHubId);
+    if (selectedTaskHubId) params.set('hub_id', selectedTaskHubId);
     void apiRequest<DeliveryResources>(`/waybills/delivery-resources?${params.toString()}`)
       .then(setResources)
       .catch(() => setResources({ drivers: [], trucks: [], vendors: [] }));
-  }, [destHubId]);
+  }, [selectedTaskHubId]);
 
   const confirmUpdateStatus = async (
     status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED',
