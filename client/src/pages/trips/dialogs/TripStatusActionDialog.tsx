@@ -12,7 +12,7 @@ const actionDescriptions: Record<TripAction, string> = {
   start: 'Chuyến xe sẽ chuyển sang trạng thái đang vận chuyển và ghi nhận thời điểm khởi hành.',
   arrive: 'Chuyến xe sẽ được ghi nhận đã đến hub đích và cập nhật thời điểm đến.',
   complete: 'Chuyến xe sẽ được đóng hoàn tất; xe có thể quay lại trạng thái sẵn sàng nếu không còn chuyến đang chạy.',
-  cancel: 'Chuyến xe sẽ bị hủy và không tiếp tục xử lý trong luồng vận chuyển.',
+  cancel: 'Chuyến chờ khởi hành sẽ bị hủy; các kiện đang giữ trên chuyến được trả lại danh sách tồn kho.',
 };
 
 interface Props {

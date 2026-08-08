@@ -105,6 +105,10 @@ const headerToKey = (() => {
   }
   // Tương thích mẫu nhập cũ trước khi tách riêng tỉnh, quận và phường.
   map.set(normalizeHeader('Huyện'), 'huyen');
+  map.set(normalizeHeader('Số cân (kg)'), 'klKg');
+  map.set(normalizeHeader('Trọng lượng thực'), 'klKg');
+  map.set(normalizeHeader('Trọng lượng quy đổi'), 'klQuyDoi');
+  map.set(normalizeHeader('TL quy đổi'), 'klQuyDoi');
   map.set(normalizeHeader('Số khối (m3)'), 'm3');
   map.set(normalizeHeader('Số khối m3'), 'm3');
   return map;
@@ -250,11 +254,13 @@ export function resolveBulkHubId(hubs: HubSummary[], raw: string) {
 
 function hasWeightInput(values: OrderBulkRow) {
   const kg = parseDecimalNumber(values.klKg);
+  const convertedKg = parseDecimalNumber(values.klQuyDoi);
   const m3 = parseDecimalNumber(values.m3);
   const l = parseDecimalNumber(values.chieuDai);
   const w = parseDecimalNumber(values.chieuRong);
   const h = parseDecimalNumber(values.chieuCao);
   if (kg > 0) return true;
+  if (convertedKg > 0) return true;
   if (m3 > 0) return true;
   return l > 0 && w > 0 && h > 0;
 }
@@ -339,6 +345,7 @@ export function bulkRowToOrderForm(
     ngayDi: values.ngayDi,
     donGiaDonVi: values.donGiaDonVi || defaults.donGiaDonVi || 'Kg',
     klKg: values.klKg,
+    klQuyDoi: values.klQuyDoi,
     chieuDai: values.chieuDai || '0',
     chieuRong: values.chieuRong || '0',
     chieuCao: values.chieuCao || '0',
@@ -356,7 +363,7 @@ export function bulkRowToOrderForm(
   const volumetric = calcVolumetricWeight(base.chieuDai, base.chieuRong, base.chieuCao);
   return applyPricingToForm({
     ...base,
-    klQuyDoi: volumetric || base.klQuyDoi,
+    klQuyDoi: base.klQuyDoi || volumetric || base.klKg,
   });
 }
 
@@ -414,7 +421,9 @@ export function applyServerNextCodesToBulkRows(
 }
 
 export function buildBulkCreatePayload(form: NewOrderFormState) {
-  const volumetricWeight = parseDecimalNumber(calcVolumetricWeight(form.chieuDai, form.chieuRong, form.chieuCao));
+  const volumetricWeight = parseDecimalNumber(form.klQuyDoi)
+    || parseDecimalNumber(calcVolumetricWeight(form.chieuDai, form.chieuRong, form.chieuCao))
+    || parseDecimalNumber(form.klKg);
   return buildCreatePayload(form, volumetricWeight);
 }
 

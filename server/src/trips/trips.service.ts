@@ -281,6 +281,84 @@ export class TripsService {
     return this.tripsRepository.save(trip);
   }
 
+  async cancelTrip(id: string, currentUser: UserEntity): Promise<TripEntity> {
+    const trip = await this.findOne(id, currentUser);
+    if (trip.status !== TripStatus.PLANNED) {
+      throw new BadRequestException('Chỉ được hủy chuyến đang chờ khởi hành');
+    }
+
+    const manifest = trip.manifest_id
+      ? await this.manifestsRepository.findOne({ where: { id: trip.manifest_id } })
+      : null;
+    const [manifestLinks, tripSplits] = await Promise.all([
+      trip.manifest_id
+        ? this.manifestWaybillsRepository.find({
+          where: { manifest_id: trip.manifest_id },
+          relations: ['waybill', 'waybill.order'],
+        })
+        : Promise.resolve([]),
+      this.waybillSplitsRepository.find({
+        where: { trip_id: String(trip.id) } as any,
+        relations: ['waybill', 'waybill.order'],
+      }),
+    ]);
+    const releasedWaybills = new Map<string, WaybillEntity>();
+    manifestLinks.forEach((link) => {
+      if (link.waybill) releasedWaybills.set(String(link.waybill.id), link.waybill);
+    });
+    tripSplits.forEach((split) => {
+      if (split.waybill) releasedWaybills.set(String(split.waybill.id), split.waybill);
+    });
+
+    await this.waybillSplitsRepository.delete({ trip_id: String(trip.id) } as any);
+    if (trip.manifest_id) {
+      await this.manifestWaybillsRepository.delete({ manifest_id: trip.manifest_id } as any);
+    }
+
+    const releasedAt = new Date();
+    const waybillsToSave: WaybillEntity[] = [];
+    for (const waybill of releasedWaybills.values()) {
+      const remainingSplits = await this.waybillSplitsRepository.find({
+        where: { waybill_id: String(waybill.id) },
+      });
+      const allocatedPackages = remainingSplits.reduce(
+        (sum, split) => sum + Number(split.package_count ?? 0),
+        0,
+      );
+      const orderPackages = Number(waybill.order?.package_count ?? 0);
+      const totalPackages = Math.max(1, Number(waybill.package_count ?? 0), orderPackages);
+      if (allocatedPackages >= totalPackages) continue;
+
+      waybill.current_state = WaybillState.IN_WAREHOUSE;
+      waybill.current_hub_id = String(trip.start_hub_id || waybill.origin_hub_id);
+      if (allocatedPackages === 0) waybill.loaded_at = null;
+      waybill.updated_by = currentUser.id;
+      waybill.last_audit_action = 'TRIP_CANCEL_RELEASE_TO_INVENTORY';
+      waybill.last_audit_user_id = currentUser.id;
+      waybill.last_audit_at = releasedAt;
+      waybillsToSave.push(waybill);
+    }
+    if (waybillsToSave.length) await this.waybillsRepository.save(waybillsToSave);
+
+    if (manifest) {
+      manifest.status = ManifestStatus.CANCELLED;
+      await this.manifestsRepository.save(manifest);
+    }
+    if (trip.truck_id) {
+      const activeTrips = await this.tripsRepository.count({
+        where: {
+          truck_id: trip.truck_id,
+          status: In(ACTIVE_TRIP_STATUSES),
+          id: Not(trip.id),
+        } as any,
+      });
+      if (activeTrips === 0) await this.setTruckStatus(trip.truck_id, TruckStatus.AVAILABLE);
+    }
+
+    trip.status = TripStatus.CANCELLED;
+    return this.tripsRepository.save(trip);
+  }
+
   async updateCosts(id: string, dto: UpdateTripCostsDto, currentUser: UserEntity): Promise<TripEntity> {
     this.assertNonNegative(dto.fuel_actual, dto.fuel_cost, dto.other_costs);
     const trip = await this.findOne(id, currentUser);

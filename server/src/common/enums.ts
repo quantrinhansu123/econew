@@ -28,6 +28,7 @@ export enum TripStatus {
   IN_TRANSIT = 'IN_TRANSIT',
   ARRIVED = 'ARRIVED',
   COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
 }
 
 export enum VendorTripPaymentStatus {

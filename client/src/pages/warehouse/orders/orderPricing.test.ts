@@ -66,4 +66,16 @@ describe('order payment pricing', () => {
     expect(payload.volumetric_weight).toBe(3.37);
     expect(payload.the_tich_m3).toBe(0.1);
   });
+
+  it('falls back to actual weight for Kg pricing when converted weight is empty', () => {
+    const pricing = calcOrderPricing({
+      ...sampleOrderForm(),
+      donGiaDonVi: 'Kg',
+      donGia: '5.000',
+      klKg: '297',
+      klQuyDoi: '',
+    });
+
+    expect(pricing.tongCuoc).toBe('1.485.000');
+  });
 });

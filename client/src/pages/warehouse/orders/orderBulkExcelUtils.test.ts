@@ -5,6 +5,8 @@ import {
   annotateBulkRows,
   applyServerNextCodesToBulkRows,
   assignBulkWaybillCodes,
+  buildBulkCreatePayload,
+  bulkRowToOrderForm,
   enrichOrderBulkRowsWithCustomers,
   parseOrderBulkWorkbook,
   validateOrderBulkRow,
@@ -78,6 +80,43 @@ describe('order bulk Excel template', () => {
     expect(receiverPhoneColumn).toBeDefined();
     expect(orderBulkHeaderLabel(receiverPhoneColumn!)).toBe('ĐT người nhận');
     expect(ORDER_BULK_TEMPLATE_NOTES.dienThoaiNhan).toContain('không bắt buộc');
+  });
+
+  it('includes converted weight and uses it for Kg pricing', () => {
+    const convertedWeightColumn = ORDER_BULK_COLUMNS.find(
+      (column) => column.key === 'klQuyDoi',
+    );
+    expect(convertedWeightColumn?.label).toBe('Trọng lượng quy đổi (kg)');
+
+    const headers = ORDER_BULK_COLUMNS.map(orderBulkHeaderLabel);
+    const valuesByKey: Partial<Record<(typeof ORDER_BULK_COLUMNS)[number]['key'], string>> = {
+      bcGui: 'HAN',
+      bcDen: 'HCM',
+      maKh: 'ALPHATIC',
+      nguoiGui: 'Công ty ABC',
+      dichVu: 'Tiêu chuẩn 72h',
+      giaoHang: 'Văn phòng',
+      ngayDi: '31/07/2026',
+      donGiaDonVi: 'Kg',
+      klKg: '297',
+      klQuyDoi: '312',
+      phuongThuc: 'Công nợ tháng',
+      donGia: '5000',
+    };
+    const parsed = parseOrderBulkWorkbook(workbookBuffer([
+      headers,
+      ORDER_BULK_COLUMNS.map((column) => valuesByKey[column.key] ?? ''),
+    ]));
+    const form = bulkRowToOrderForm(parsed[0].values, [
+      { id: '1', code: 'HAN', name: 'Bưu cục Hà Nội' },
+      { id: '2', code: 'HCM', name: 'Bưu cục Hồ Chí Minh' },
+    ], {});
+    const payload = buildBulkCreatePayload(form);
+
+    expect(form.cuocChinh).toBe('1.560.000');
+    expect(payload.weight).toBe(297);
+    expect(payload.volumetric_weight).toBe(312);
+    expect(payload.freight_amount).toBe(1_560_000);
   });
 
   it('skips only the unchanged built-in sample row', () => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, CheckCircle2, Eye, Loader2, PackageCheck, Pencil, Printer, Receipt, RefreshCw, Truck } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Eye, Loader2, PackageCheck, Pencil, Printer, Receipt, RefreshCw, Truck, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
@@ -126,6 +126,13 @@ export default function TripsPage() {
     setActionError('');
   }
 
+  function openCancelAction(trip: Trip) {
+    if (trip.status !== 'PLANNED') return;
+    setActionTrip(trip);
+    setAction('cancel');
+    setActionError('');
+  }
+
   async function confirmAction() {
     if (!actionTrip || !action) return;
     setIsSubmitting(true);
@@ -172,6 +179,7 @@ export default function TripsPage() {
             onPrint={(manifestId) => window.open(`/print/manifest/${manifestId}`, '_blank', 'noopener')}
             onExpenses={(id) => navigate(`/trips/${id}/expenses`)}
             onPrimaryAction={openPrimaryAction}
+            onCancelAction={openCancelAction}
           />
         )}
       </section>
@@ -194,6 +202,7 @@ function TripKanbanBoard({
   onPrint,
   onExpenses,
   onPrimaryAction,
+  onCancelAction,
 }: {
   tripsByStatus: Record<TripKanbanStatus, Trip[]>;
   onOpen: (id: string | number) => void;
@@ -201,6 +210,7 @@ function TripKanbanBoard({
   onPrint: (manifestId: string | number) => void;
   onExpenses: (id: string | number) => void;
   onPrimaryAction: (trip: Trip) => void;
+  onCancelAction: (trip: Trip) => void;
 }) {
   return (
     <div className="min-h-0 flex-1 overflow-auto p-2 custom-scrollbar">
@@ -218,6 +228,7 @@ function TripKanbanBoard({
                       onPrint={trip.manifest_id ? () => onPrint(trip.manifest_id!) : undefined}
                       onExpenses={() => onExpenses(trip.id)}
                       onPrimaryAction={() => onPrimaryAction(trip)}
+                      onCancelAction={() => onCancelAction(trip)}
                     />
                   ))
                 : <EmptyColumn title="Chưa có chuyến" />}
@@ -241,7 +252,7 @@ function KanbanColumn({ title, count, tone, children }: { title: string; count: 
   );
 }
 
-function TripCard({ trip, onOpen, onEdit, onPrint, onExpenses, onPrimaryAction }: { trip: Trip; onOpen: () => void; onEdit: () => void; onPrint?: () => void; onExpenses: () => void; onPrimaryAction: () => void }) {
+function TripCard({ trip, onOpen, onEdit, onPrint, onExpenses, onPrimaryAction, onCancelAction }: { trip: Trip; onOpen: () => void; onEdit: () => void; onPrint?: () => void; onExpenses: () => void; onPrimaryAction: () => void; onCancelAction: () => void }) {
   const primaryAction = getPrimaryTripAction(trip.status);
   const routeStops = trip.route_stops ?? [];
   return (
@@ -277,6 +288,7 @@ function TripCard({ trip, onOpen, onEdit, onPrint, onExpenses, onPrimaryAction }
         <ActionButton title="Chi phí" icon={<Receipt size={14} />} onClick={onExpenses} />
         <ActionButton title="Sửa bảng kê" icon={<Pencil size={14} />} onClick={onEdit} disabled={!trip.manifest_id || trip.status === 'CANCELLED'} />
         <ActionButton title={primaryActionLabel(trip.status)} icon={primaryAction ? <Truck size={14} /> : <CheckCircle2 size={14} />} onClick={primaryAction ? onPrimaryAction : undefined} disabled={!primaryAction} />
+        {trip.status === 'PLANNED' && <ActionButton title="Hủy chuyến và trả đơn về tồn kho" icon={<XCircle size={14} />} onClick={onCancelAction} danger />}
       </div>
     </article>
   );
@@ -310,8 +322,8 @@ function TripStatusBadge({ status }: { status?: string | null }) {
   return <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-extrabold ${className}`}>{tripStatusLabel(status)}</span>;
 }
 
-function ActionButton({ icon, title, onClick, disabled = false }: { icon: ReactNode; title: string; onClick?: () => void; disabled?: boolean }) {
-  return <button type="button" title={title} aria-label={title} onClick={onClick} disabled={disabled} className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-white text-muted-foreground hover:bg-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-35">{icon}</button>;
+function ActionButton({ icon, title, onClick, disabled = false, danger = false }: { icon: ReactNode; title: string; onClick?: () => void; disabled?: boolean; danger?: boolean }) {
+  return <button type="button" title={title} aria-label={title} onClick={onClick} disabled={disabled} className={clsx('inline-flex h-7 w-7 items-center justify-center rounded-md border bg-white disabled:cursor-not-allowed disabled:opacity-35', danger ? 'border-red-200 text-red-500 hover:bg-red-50 hover:text-red-700' : 'border-border text-muted-foreground hover:bg-muted hover:text-primary')}>{icon}</button>;
 }
 
 function StateBlock({ icon, title }: { icon: ReactNode; title: string }) {

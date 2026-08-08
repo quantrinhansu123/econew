@@ -42,6 +42,7 @@ const repo = () => ({
   find: jest.fn(),
   count: jest.fn(),
   update: jest.fn(),
+  delete: jest.fn(),
   createQueryBuilder: jest.fn(),
 });
 
@@ -408,6 +409,63 @@ describe('TripsService', () => {
     it('trip không phải ARRIVED → BadRequestException', async () => {
       mockFindOne({ status: TripStatus.IN_TRANSIT });
       await expect(service.completeTrip('1', dispatcher)).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('cancelTrip', () => {
+    it('hủy chuyến chờ khởi hành và trả toàn bộ kiện về tồn kho', async () => {
+      mockFindOne({
+        id: '44',
+        status: TripStatus.PLANNED,
+        manifest_id: '10',
+        truck_id: '5',
+        start_hub_id: '1',
+      });
+      const waybill = {
+        id: '100',
+        package_count: 3,
+        current_state: WaybillState.MANIFEST_CLOSED,
+        current_hub_id: null,
+        loaded_at: new Date(),
+        origin_hub_id: '1',
+        order: null,
+      };
+      manifests.findOne.mockResolvedValue({ id: '10', status: ManifestStatus.ASSIGNED_TO_TRIP });
+      manifestWaybills.find.mockResolvedValue([{ manifest_id: '10', waybill_id: '100', waybill }]);
+      waybillSplits.find
+        .mockResolvedValueOnce([{ trip_id: '44', waybill_id: '100', package_count: 3, waybill }])
+        .mockResolvedValueOnce([]);
+      trips.count.mockResolvedValue(0);
+      trucks.findOne.mockResolvedValue({ id: '5', status: TruckStatus.ASSIGNED });
+
+      const result = await service.cancelTrip('44', dispatcher);
+
+      expect(result.status).toBe(TripStatus.CANCELLED);
+      expect(waybillSplits.delete).toHaveBeenCalledWith({ trip_id: '44' });
+      expect(manifestWaybills.delete).toHaveBeenCalledWith({ manifest_id: '10' });
+      expect(waybills.save).toHaveBeenCalledWith([
+        expect.objectContaining({
+          current_state: WaybillState.IN_WAREHOUSE,
+          current_hub_id: '1',
+          loaded_at: null,
+          last_audit_action: 'TRIP_CANCEL_RELEASE_TO_INVENTORY',
+        }),
+      ]);
+      expect(manifests.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: ManifestStatus.CANCELLED }),
+      );
+      expect(trucks.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: TruckStatus.AVAILABLE }),
+      );
+    });
+
+    it('không cho hủy chuyến đã khởi hành', async () => {
+      mockFindOne({ id: '44', status: TripStatus.IN_TRANSIT });
+
+      await expect(service.cancelTrip('44', dispatcher)).rejects.toThrow(
+        'Chỉ được hủy chuyến đang chờ khởi hành',
+      );
+      expect(waybillSplits.delete).not.toHaveBeenCalled();
     });
   });
 

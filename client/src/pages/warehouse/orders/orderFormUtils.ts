@@ -81,8 +81,9 @@ export function getBillingQuantity(form: NewOrderFormState): number {
   const unit = normalizeBillingUnit(form.donGiaDonVi).toLowerCase();
   if (isVolumeBillingUnit(unit)) return parseDecimalNumber(form.m3);
   if (unit === 'trọn gói' || unit === 'tron goi' || unit === 'chuyến' || unit === 'chuyen' || unit === 'lô' || unit === 'lo') return 1;
-  // Cước theo Kg luôn dùng trọng lượng quy đổi. Trọng lượng thực chỉ phục vụ xếp xe.
-  return parseDecimalNumber(form.klQuyDoi);
+  // Cước theo Kg ưu tiên trọng lượng quy đổi. File Excel cũ chưa có cột này
+  // vẫn phải tính được cước từ trọng lượng thực.
+  return parseDecimalNumber(form.klQuyDoi) || parseDecimalNumber(form.klKg);
 }
 
 /** Cước chính = đơn giá × số lượng (theo ĐVT) */

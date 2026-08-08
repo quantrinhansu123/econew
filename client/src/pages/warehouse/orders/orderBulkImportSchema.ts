@@ -18,6 +18,7 @@ export type OrderBulkFieldKey =
   | 'ngayDi'
   | 'donGiaDonVi'
   | 'klKg'
+  | 'klQuyDoi'
   | 'chieuDai'
   | 'chieuRong'
   | 'chieuCao'
@@ -55,6 +56,7 @@ export const ORDER_BULK_TEMPLATE_NOTES: Partial<Record<OrderBulkFieldKey, string
   dichVu: 'bắt buộc',
   giaoHang: 'bắt buộc',
   ngayDi: 'bắt buộc; nhập dd/mm/yyyy',
+  klQuyDoi: 'dùng tính cước theo Kg; để trống sẽ lấy trọng lượng thực',
   nvgn: 'tự nhảy',
   phuongThuc: 'bắt buộc',
 };
@@ -78,7 +80,8 @@ export const ORDER_BULK_COLUMNS: OrderBulkColumn[] = [
   { key: 'giaoHang', label: 'Giao hàng', required: true, sample: 'Văn phòng' },
   { key: 'ngayDi', label: 'Ngày gửi', required: true, sample: '' },
   { key: 'donGiaDonVi', label: 'Tính cước theo', required: false, sample: 'Kg' },
-  { key: 'klKg', label: 'Số cân (kg)', required: false, sample: '50' },
+  { key: 'klKg', label: 'Trọng lượng thực (kg)', required: false, sample: '50' },
+  { key: 'klQuyDoi', label: 'Trọng lượng quy đổi (kg)', required: false, sample: '50' },
   { key: 'chieuDai', label: 'Dài (cm)', required: false, sample: '60' },
   { key: 'chieuRong', label: 'Rộng (cm)', required: false, sample: '40' },
   { key: 'chieuCao', label: 'Cao (cm)', required: false, sample: '25' },
@@ -104,7 +107,8 @@ export const ORDER_BULK_INSTRUCTIONS = [
   'Ngày gửi*: bắt buộc nhập theo dd/mm/yyyy. Hệ thống giữ nguyên ngày đã nhập, không tự lùi ngày.',
   'NVGN: để trống để hệ thống tự điền.',
   'Toàn bộ thông tin nhận có thể để trống. Nếu có dữ liệu HCM trong Mã KH, hệ thống vẫn tự điền để người dùng chọn dùng hoặc sửa.',
-  'Cần có ít nhất một trong: Số cân (kg), bộ Dài/Rộng/Cao (cm), hoặc Số khối (m³).',
+  'Cần có ít nhất một trong: Trọng lượng thực (kg), trọng lượng quy đổi (kg), bộ Dài/Rộng/Cao (cm), hoặc Số khối (m³).',
+  'Nếu tính cước theo Kg: ưu tiên Trọng lượng quy đổi; nếu để trống thì dùng Trọng lượng thực để tính cước.',
   'Nếu nhập ĐT người nhận thì phải đúng định dạng SĐT Việt Nam; có thể viết liền, cách hoặc có dấu chấm/gạch.',
   'Ảnh bill/hàng hóa: nhập tối đa 4 URL ảnh công khai vào các cột URL ảnh 1–4.',
   'Dòng mẫu được hệ thống tự bỏ qua; nhập dữ liệu thật từ dòng kế tiếp.',

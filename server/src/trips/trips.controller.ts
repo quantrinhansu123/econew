@@ -114,6 +114,13 @@ export class TripsController {
     return this.tripsService.completeTrip(id, currentUser);
   }
 
+  @Patch(':id/cancel')
+  @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Cancel a planned trip and release its waybills back to inventory' })
+  cancelTrip(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
+    return this.tripsService.cancelTrip(id, currentUser);
+  }
+
   @Patch(':id/costs')
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Update trip costs' })

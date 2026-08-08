@@ -50,9 +50,9 @@ const getAvailableTripActions = (status?: string | null): TripAction[] => {
     case 'PLANNED':
       return ['start', 'cancel'];
     case 'IN_TRANSIT':
-      return ['arrive', 'cancel'];
+      return ['arrive'];
     case 'ARRIVED':
-      return ['complete', 'cancel'];
+      return ['complete'];
     default:
       return [];
   }
@@ -192,7 +192,7 @@ export default function TripDetailPage() {
 
   function updateFilter<K extends keyof WaybillFilters>(key: K, value: WaybillFilters[K]) { setFilters(prev => ({ ...prev, [key]: value, page: key === 'page' ? Number(value) : 1 })); }
   function clearFilters() { setFilters(prev => ({ ...prev, current_state: [], origin_hub_id: [], dest_hub_id: [], payment_type: [], page: 1 })); }
-  function openAction(nextAction: TripAction) { if (!trip || isFinal || !canOperateTrip) return; setActionTrip(trip); setAction(nextAction); setActionError(''); }
+  function openAction(nextAction: TripAction) { if (!trip || isFinal || !canOperateTrip || (nextAction === 'cancel' && !canEditTrip)) return; setActionTrip(trip); setAction(nextAction); setActionError(''); }
   async function confirmAction() { if (!actionTrip || !action) return; setIsSubmitting(true); setActionError(''); try { await apiRequest<Trip>(`/trips/${actionTrip.id}/${action}`, { method: 'PATCH' }); setActionTrip(null); setAction(null); await loadTrip(); } catch (submitError) { setActionError(submitError instanceof ApiError ? submitError.message : 'Không cập nhật được trạng thái chuyến.'); } finally { setIsSubmitting(false); } }
   async function submitCosts() { if (!trip || isFinal || !canUpdateCosts) return; setIsSubmitting(true); setActionError(''); try { await apiRequest<Trip>(`/trips/${trip.id}/costs`, { method: 'PATCH', body: { fuel_actual: Number(costForm.fuel_actual || 0), fuel_cost: Number(costForm.fuel_cost || 0), other_costs: Number(costForm.other_costs || 0) } }); setCostDialogOpen(false); await loadTrip(); } catch (submitError) { setActionError(submitError instanceof ApiError ? submitError.message : 'Không cập nhật được chi phí chuyến.'); } finally { setIsSubmitting(false); } }
   function openScheduleEditor() {
@@ -431,7 +431,7 @@ function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, is
         {canEditTrip && <button type="button" onClick={openScheduleEditor} className="h-8 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[11px] font-bold text-primary"><Pencil size={13} className="mr-1 inline" />Sửa ngày chuyến</button>}
         {canEditTrip && trip.manifest_id && String(trip.status || '') !== 'CANCELLED' && <button type="button" onClick={openAddWaybills} className="h-8 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-bold text-emerald-700"><Plus size={13} className="mr-1 inline" />Thêm đơn tồn</button>}
         {getAvailableTripActions(trip.status).filter(action => action !== 'arrive' || canConfirmEarlyArrival(trip)).map(action => (
-          <button key={action} type="button" disabled={!canOperateTrip} onClick={() => openAction(action)} className={clsx('h-8 rounded-lg border px-2 text-[11px] font-bold disabled:opacity-40', action === 'cancel' ? 'border-red-200 bg-red-50 text-red-600' : 'border-primary/20 bg-blue-50 text-primary')}>
+          <button key={action} type="button" disabled={!canOperateTrip || (action === 'cancel' && !canEditTrip)} onClick={() => openAction(action)} className={clsx('h-8 rounded-lg border px-2 text-[11px] font-bold disabled:opacity-40', action === 'cancel' ? 'border-red-200 bg-red-50 text-red-600' : 'border-primary/20 bg-blue-50 text-primary')}>
             {action === 'start' ? 'Khởi hành' : action === 'arrive' ? 'Đến hub' : action === 'complete' ? 'Hoàn tất' : 'Hủy'}
           </button>
         ))}
