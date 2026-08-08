@@ -322,7 +322,7 @@ export function getAllOrdersFixedColumnIds(): InventoryColumnId[] {
 }
 
 const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
-  received_at: 'Ngày nhận',
+  received_at: 'Ngày gửi',
   customer_name: 'Tên khách',
   ma_kh: 'Mã KH',
   waybill_code: 'Bill',

@@ -33,6 +33,18 @@ describe('all-orders inventory query', () => {
     expect(params.has('hub_id')).toBe(false);
   });
 
+  it('filters the all-orders list by sent date instead of import date', () => {
+    const params = new URLSearchParams(buildInventoryTripLinesQuery(
+      { ...filters, receivedFrom: '2026-07-31', receivedTo: '2026-07-31' },
+      { listScope: 'all_orders' },
+    ));
+
+    expect(params.get('sent_from')).toBe('2026-07-31');
+    expect(params.get('sent_to')).toBe('2026-07-31');
+    expect(params.has('received_from')).toBe(false);
+    expect(params.has('received_to')).toBe(false);
+  });
+
   it('sorts by creation time and uses descending id as a stable tie breaker', () => {
     const rows = sortAllOrdersByCreatedAt([
       item('9', '2026-08-06T10:00:00.000Z'),

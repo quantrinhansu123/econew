@@ -55,8 +55,12 @@ export function buildInventoryTripLinesQuery(
     page: String(filters.page),
     limit: String(filters.limit),
   });
-  if (filters.receivedFrom) params.set('received_from', filters.receivedFrom);
-  if (filters.receivedTo) params.set('received_to', filters.receivedTo);
+  if (filters.receivedFrom) {
+    params.set(options?.listScope === 'all_orders' ? 'sent_from' : 'received_from', filters.receivedFrom);
+  }
+  if (filters.receivedTo) {
+    params.set(options?.listScope === 'all_orders' ? 'sent_to' : 'received_to', filters.receivedTo);
+  }
   if (options?.onlyIncompleteSplit) {
     params.set('only_incomplete_split', '1');
   }

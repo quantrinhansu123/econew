@@ -1156,7 +1156,11 @@ function InventoryRow({
           </td>
         );
       case 'received_at':
-        return <td className={`${cellClass} text-muted-foreground`}>{formatDate(waybill.received_at || waybill.created_at)}</td>;
+        return (
+          <td className={`${cellClass} text-muted-foreground`}>
+            {formatDate(isAllOrders ? waybill.sent_date : (waybill.received_at || waybill.created_at))}
+          </td>
+        );
       case 'receiver_phone':
         return <td className={clsx(cellClass, 'font-bold text-primary')}>{resolveReceiverPhone(waybill)}</td>;
       case 'noi_den':
@@ -1520,7 +1524,7 @@ function AllOrdersCompactTable({
                 onClick={() => onDetail(waybill)}
               >
                 <td className={`${cellClass} text-center font-bold text-slate-500`}>{index + 1}</td>
-                <td className={`${cellClass} text-slate-600`}>{formatDate(waybill.created_at)}</td>
+                <td className={`${cellClass} text-slate-600`}>{formatDate(waybill.sent_date)}</td>
                 <td className={`${cellClass} font-extrabold text-primary`} title={displayCode(waybill)}>{displayCode(waybill)}</td>
                 <td className={`${cellClass} font-semibold`} title={resolveMaKh(waybill)} onClick={(event) => event.stopPropagation()}>
                   {resolveMaKh(waybill) !== '—' ? (
@@ -1605,7 +1609,10 @@ function InventoryCard({ waybill, isAllOrders, canUpdate, canEdit, openActionMen
             : displayValue(waybill.package_count || waybill.declared_package_count)
         } />
         <MobileInfo label="Cân nặng" value={displayValue(waybill.actual_weight || waybill.weight, ' kg')} />
-        <MobileInfo label="Ngày nhận" value={formatDate(waybill.received_at || waybill.created_at)} />
+        <MobileInfo
+          label={isAllOrders ? 'Ngày gửi' : 'Ngày nhận'}
+          value={formatDate(isAllOrders ? waybill.sent_date : (waybill.received_at || waybill.created_at))}
+        />
       </div>
 
       <div className="mt-3 border-t border-border pt-3">

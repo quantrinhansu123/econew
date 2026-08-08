@@ -86,8 +86,8 @@ const moneyValue = (value: number | string | null | undefined, zeroIsEmpty = fal
 export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId: InventoryColumnId): string {
   switch (columnId) {
     case 'received_at':
-      return waybill.received_at || waybill.created_at
-        ? formatInventoryDate(String(waybill.received_at || waybill.created_at))
+      return waybill.sent_date
+        ? formatInventoryDate(String(waybill.sent_date))
         : EMPTY_VALUE;
     case 'customer_name':
       return resolveCustomerName(waybill);
