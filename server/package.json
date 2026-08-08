@@ -8,10 +8,11 @@
     "start": "nest start",
     "dev": "nest start --watch",
     "start:dev": "nest start --watch",
-    "start:prod": "node dist/main.js",
+    "start:prod": "pnpm migration:run:prod && node dist/main.js",
     "typeorm": "node -r ts-node/register ./node_modules/typeorm/cli.js -d src/data-source.ts",
     "migration:generate": "pnpm typeorm migration:generate src/migrations/InitialSchema",
     "migration:run": "pnpm typeorm migration:run",
+    "migration:run:prod": "node ./node_modules/typeorm/cli.js -d dist/data-source.js migration:run",
     "migration:revert": "pnpm typeorm migration:revert",
     "admin:create": "ts-node src/scripts/create-admin.ts",
     "test": "jest"

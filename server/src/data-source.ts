@@ -73,7 +73,7 @@ export default new DataSource({
     AttendanceLocationEntity,
     AttendanceLogEntity,
   ],
-  migrations: ['src/migrations/*.ts'],
+  migrations: [__filename.endsWith('.js') ? 'dist/migrations/*.js' : 'src/migrations/*.ts'],
   synchronize: false,
 });
 
