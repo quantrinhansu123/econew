@@ -1,12 +1,18 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddLastMileAssignment1794000000000 implements MigrationInterface {
-  name = 'AddLastMileAssignment1794000000000';
+export class RepairDeliveryWorkflowSchema1796000000000 implements MigrationInterface {
+  name = 'RepairDeliveryWorkflowSchema1796000000000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_assignment_type" varchar(16)`);
     await queryRunner.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "last_mile_truck_id" bigint`);
     await queryRunner.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "last_mile_vendor_id" bigint`);
+
+    await queryRunner.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_preparation_status" varchar(32) NOT NULL DEFAULT 'PENDING_CONFIRMATION'`);
+    await queryRunner.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_scheduled_at" TIMESTAMP`);
+    await queryRunner.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_hold_reason" varchar(500)`);
+    await queryRunner.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "delivery_confirmed_at" TIMESTAMP`);
+
     await queryRunner.query(`
       DO $$
       BEGIN
@@ -25,6 +31,7 @@ export class AddLastMileAssignment1794000000000 implements MigrationInterface {
       END
       $$;
     `);
+
     await queryRunner.query(`
       DO $$
       BEGIN
@@ -45,11 +52,8 @@ export class AddLastMileAssignment1794000000000 implements MigrationInterface {
     `);
   }
 
-  async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "waybills" DROP CONSTRAINT IF EXISTS "FK_waybills_last_mile_vendor"`);
-    await queryRunner.query(`ALTER TABLE "waybills" DROP CONSTRAINT IF EXISTS "FK_waybills_last_mile_truck"`);
-    await queryRunner.query(`ALTER TABLE "waybills" DROP COLUMN IF EXISTS "last_mile_vendor_id"`);
-    await queryRunner.query(`ALTER TABLE "waybills" DROP COLUMN IF EXISTS "last_mile_truck_id"`);
-    await queryRunner.query(`ALTER TABLE "waybills" DROP COLUMN IF EXISTS "delivery_assignment_type"`);
+  async down(_queryRunner: QueryRunner): Promise<void> {
+    // Intentionally left as a no-op: this migration repairs schema drift and
+    // must not remove columns that may have been created by earlier migrations.
   }
 }
