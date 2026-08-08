@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
-import { AlertTriangle, Building2, CreditCard, History, Loader2, MapPin, PackageOpen, Phone, Printer, RefreshCw, Search, Truck } from 'lucide-react';
+import type { CSSProperties, ReactNode } from 'react';
+import { AlertTriangle, Building2, Columns3, CreditCard, History, Loader2, MapPin, PackageOpen, Phone, Printer, RefreshCw, Search, Truck } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
 import { getStoredAuthUser } from '../lib/authUser';
@@ -25,6 +25,35 @@ const normalizeStatus = (waybill: LastMileWaybill) => String(waybill.current_sta
 
 const normalizeList = <T,>(response: ListResponse<T> | T[]) =>
   Array.isArray(response) ? response : response.items || response.data || response.waybills || [];
+
+type DeliveryColumnId = 'waybill' | 'receiver' | 'trip' | 'packages' | 'actualWeight' | 'cbm' | 'payment' | 'status' | 'actions';
+
+const DELIVERY_COLUMNS: Array<{ id: DeliveryColumnId; label: string; width: string; required?: boolean }> = [
+  { id: 'waybill', label: 'Vận đơn', width: 'minmax(145px,0.85fr)', required: true },
+  { id: 'receiver', label: 'Người nhận', width: 'minmax(250px,1.6fr)' },
+  { id: 'trip', label: 'Chuyến / xe', width: 'minmax(210px,1.2fr)' },
+  { id: 'packages', label: 'Số kiện', width: '90px' },
+  { id: 'actualWeight', label: 'Kg thực tế', width: '100px' },
+  { id: 'cbm', label: 'CBM', width: '90px' },
+  { id: 'payment', label: 'Thanh toán', width: '90px' },
+  { id: 'status', label: 'Trạng thái', width: 'minmax(180px,1fr)' },
+  { id: 'actions', label: 'Thao tác', width: 'minmax(190px,auto)', required: true },
+];
+const DELIVERY_COLUMN_STORAGE_KEY = 'eco_delivery_task_columns_v1';
+const defaultDeliveryColumnIds = DELIVERY_COLUMNS.map((column) => column.id);
+
+const loadDeliveryColumnIds = (): DeliveryColumnId[] => {
+  if (typeof window === 'undefined') return defaultDeliveryColumnIds;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DELIVERY_COLUMN_STORAGE_KEY) || '[]') as DeliveryColumnId[];
+    const allowed = new Set(DELIVERY_COLUMNS.map((column) => column.id));
+    const selected = parsed.filter((id) => allowed.has(id));
+    for (const column of DELIVERY_COLUMNS) if (column.required && !selected.includes(column.id)) selected.push(column.id);
+    return selected.length ? DELIVERY_COLUMNS.filter((column) => selected.includes(column.id)).map((column) => column.id) : defaultDeliveryColumnIds;
+  } catch {
+    return defaultDeliveryColumnIds;
+  }
+};
 
 export default function NhiemVuGiaoHangPage() {
   const user = useMemo(() => getStoredAuthUser(), []);
@@ -51,15 +80,29 @@ export default function NhiemVuGiaoHangPage() {
   const [historyItems, setHistoryItems] = useState<WaybillHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
+  const [columnMenuOpen, setColumnMenuOpen] = useState(false);
+  const [visibleColumnIds, setVisibleColumnIds] = useState<DeliveryColumnId[]>(loadDeliveryColumnIds);
   const selectedTaskHubId = String(statusWaybill?.dest_hub_id || destHubId || (!isManager ? user?.hub_id : '') || '');
   const { routes, isLoading: routesLoading } = useDeliveryRoutes(true, selectedTaskHubId);
+  const visibleColumns = DELIVERY_COLUMNS.filter((column) => visibleColumnIds.includes(column.id));
+  const deliveryGridStyle = { '--delivery-grid': visibleColumns.map((column) => column.width).join(' ') } as CSSProperties;
+
+  const toggleColumn = (column: typeof DELIVERY_COLUMNS[number]) => {
+    if (column.required) return;
+    setVisibleColumnIds((current) => {
+      const next = current.includes(column.id) ? current.filter((id) => id !== column.id) : [...current, column.id];
+      const ordered = DELIVERY_COLUMNS.filter((item) => next.includes(item.id)).map((item) => item.id);
+      localStorage.setItem(DELIVERY_COLUMN_STORAGE_KEY, JSON.stringify(ordered));
+      return ordered;
+    });
+  };
 
   const displayedWaybills = useMemo(() => preparationFilter
     ? waybills.filter((waybill) => String(waybill.delivery_preparation_status || 'PENDING_CONFIRMATION') === preparationFilter)
     : waybills, [preparationFilter, waybills]);
-  const dispatchManifestCount = useMemo(() => new Set(waybills
+  const dispatchManifestCount = useMemo(() => new Set(displayedWaybills
     .filter((waybill) => normalizeStatus(waybill) === 'OUT_FOR_DELIVERY' && waybill.delivery_assignment_type)
-    .map((waybill) => `${waybill.route_code || ''}|${waybill.delivery_assignment_type}|${waybill.last_mile_truck_id || waybill.last_mile_vendor_id || waybill.last_mile_driver_id || ''}`)).size, [waybills]);
+    .map((waybill) => `${waybill.route_code || ''}|${String(waybill.last_mile_license_plate || waybill.last_mile_truck?.bks || waybill.last_mile_truck?.license_plate || waybill.last_mile_vendor_id || waybill.last_mile_driver_id || '').trim().toUpperCase()}`)).size, [displayedWaybills]);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -125,7 +168,7 @@ export default function NhiemVuGiaoHangPage() {
   const confirmUpdateStatus = async (
     status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED',
     deliveryPhotoUrl?: string,
-    assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string; route_code?: string },
+    assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string; route_code?: string; driver_name?: string; license_plate?: string; delivery_cost?: number },
     failureReason?: string,
   ) => {
     if (!statusWaybill) return;
@@ -167,6 +210,7 @@ export default function NhiemVuGiaoHangPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
+      <style>{'@media (min-width: 1280px) { .delivery-task-grid { grid-template-columns: var(--delivery-grid); } }'}</style>
       <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
         <h1 className="text-lg font-extrabold text-foreground">Hàng tại HUB · Nhiệm vụ giao hàng</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
@@ -203,6 +247,16 @@ export default function NhiemVuGiaoHangPage() {
           <FilterSelect icon={<PackageOpen size={15} />} value={preparationFilter} onChange={setPreparationFilter} label="Xử lý giao">
             <option value="">Tất cả xử lý</option><option value="PENDING_CONFIRMATION">Chờ gọi xác nhận</option><option value="READY">Sẵn sàng giao</option><option value="SCHEDULED">Lưu kho hẹn ngày</option><option value="NEEDS_ACTION">Cần xử lý</option><option value="HOLD">Lưu kho chờ xử lý</option>
           </FilterSelect>
+          <div className="relative">
+            <button type="button" onClick={() => setColumnMenuOpen((open) => !open)} className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[12px] font-extrabold text-foreground hover:bg-muted"><Columns3 size={15}/>Cột</button>
+            {columnMenuOpen && <div className="absolute right-0 top-11 z-30 w-56 rounded-xl border border-border bg-white p-2 shadow-xl">
+              <p className="px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-muted-foreground">Cột hiển thị</p>
+              {DELIVERY_COLUMNS.map((column) => <label key={column.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] font-bold text-foreground hover:bg-muted/60">
+                <input type="checkbox" checked={visibleColumnIds.includes(column.id)} disabled={column.required} onChange={() => toggleColumn(column)} className="h-4 w-4 rounded border-border text-primary" />
+                {column.label}
+              </label>)}
+            </div>}
+          </div>
           <button type="button" disabled={!dispatchManifestCount} onClick={() => setPrintOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-[12px] font-extrabold text-white disabled:opacity-50"><Printer size={15}/>In bảng kê phát ({dispatchManifestCount})</button>
           <button type="button" title="Làm mới" onClick={() => void loadTasks()} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground hover:text-primary"><RefreshCw size={16} /></button>
         </div>
@@ -233,13 +287,8 @@ export default function NhiemVuGiaoHangPage() {
         </div>
       ) : (
         <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-white shadow-sm">
-          <div className="sticky top-0 z-10 hidden grid-cols-[minmax(145px,0.85fr)_minmax(250px,1.6fr)_minmax(210px,1.2fr)_minmax(135px,0.75fr)_minmax(180px,1fr)_minmax(190px,auto)] gap-3 border-b border-border bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-muted-foreground xl:grid">
-            <span>Vận đơn</span>
-            <span>Người nhận</span>
-            <span>Chuyến / xe</span>
-            <span>Hàng hóa</span>
-            <span>Trạng thái</span>
-            <span className="text-right">Thao tác</span>
+          <div style={deliveryGridStyle} className="delivery-task-grid sticky top-0 z-10 hidden gap-3 border-b border-border bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-muted-foreground xl:grid">
+            {visibleColumns.map((column) => <span key={column.id} className={column.id === 'actions' ? 'text-right' : ''}>{column.label}</span>)}
           </div>
           {displayedWaybills.map((waybill) => {
             const status = normalizeStatus(waybill);
@@ -260,8 +309,10 @@ export default function NhiemVuGiaoHangPage() {
             return (
               <article
                 key={waybill.task_id || waybill.split_id || waybill.id}
-                className="grid gap-2 border-b border-border px-3 py-2.5 last:border-b-0 hover:bg-slate-50/70 xl:grid-cols-[minmax(145px,0.85fr)_minmax(250px,1.6fr)_minmax(210px,1.2fr)_minmax(135px,0.75fr)_minmax(180px,1fr)_minmax(190px,auto)] xl:items-center xl:gap-3"
+                style={deliveryGridStyle}
+                className="delivery-task-grid grid gap-2 border-b border-border px-3 py-2.5 last:border-b-0 hover:bg-slate-50/70 xl:items-center xl:gap-3"
               >
+                {visibleColumnIds.includes('waybill') && (
                 <div className="min-w-0">
                     <p className="truncate text-[13px] font-extrabold text-primary" title={waybill.waybill_code}>{waybill.waybill_code}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -282,6 +333,8 @@ export default function NhiemVuGiaoHangPage() {
                     )}
                     </div>
                 </div>
+                )}
+                {visibleColumnIds.includes('receiver') && (
                 <div className="min-w-0 text-[12px]">
                   <p className="truncate font-bold text-foreground" title={waybill.receiver_info}>{waybill.receiver_info || '—'}</p>
                   {waybill.receiver_address && (
@@ -295,6 +348,8 @@ export default function NhiemVuGiaoHangPage() {
                     <span className="truncate">Gửi: {waybill.sender_name || waybill.sender_info || '—'}</span>
                   </p>
                 </div>
+                )}
+                {visibleColumnIds.includes('trip') && (
                 <div className="min-w-0 text-[11px]">
                   <p className="truncate font-extrabold text-slate-700" title={waybill.trip_label || undefined}>
                     {[waybill.origin_hub?.code || waybill.origin_hub_id, waybill.dest_hub?.code || waybill.dest_hub_id].filter(Boolean).join(' → ')}
@@ -304,11 +359,12 @@ export default function NhiemVuGiaoHangPage() {
                     {waybill.trip_label || (waybill.trip_id ? `${waybill.license_plate ? `Xe ${waybill.license_plate}` : 'Chưa có xe'}` : 'Nhập trực tiếp tại HUB')}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] xl:block">
-                  <p><b>{waybill.trip_package_count ?? waybill.package_count ?? '—'}</b> kiện</p>
-                  <p><b>{Number(waybill.weight || 0).toLocaleString('vi-VN')}</b> kg</p>
-                  <p className="font-bold text-muted-foreground">{waybill.payment_type || '—'}</p>
-                </div>
+                )}
+                {visibleColumnIds.includes('packages') && <div className="text-[11px] font-extrabold"><span className="mr-1 text-muted-foreground xl:hidden">Số kiện:</span>{waybill.trip_package_count ?? waybill.package_count ?? '—'}</div>}
+                {visibleColumnIds.includes('actualWeight') && <div className="text-[11px] font-extrabold"><span className="mr-1 text-muted-foreground xl:hidden">Kg thực tế:</span>{Number(waybill.actual_weight ?? waybill.weight ?? 0).toLocaleString('vi-VN')} kg</div>}
+                {visibleColumnIds.includes('cbm') && <div className="text-[11px] font-extrabold"><span className="mr-1 text-muted-foreground xl:hidden">CBM:</span>{Number(waybill.the_tich_m3 ?? 0).toLocaleString('vi-VN', { maximumFractionDigits: 4 })}</div>}
+                {visibleColumnIds.includes('payment') && <div className="text-[11px] font-bold text-muted-foreground"><span className="mr-1 xl:hidden">Thanh toán:</span>{waybill.payment_type || '—'}</div>}
+                {visibleColumnIds.includes('status') && (
                 <div className="min-w-0 text-[11px]">
                   {status === 'AT_DEST_HUB' && <p className={clsx('truncate font-extrabold', preparation === 'NEEDS_ACTION' ? 'text-red-700' : preparation === 'READY' ? 'text-emerald-700' : 'text-amber-700')} title={preparationText}>
                     {preparationText}
@@ -317,12 +373,14 @@ export default function NhiemVuGiaoHangPage() {
                     <p className="truncate font-bold text-primary">
                       Tuyến {waybill.route_code || '—'} · {' '}
                       {waybill.delivery_assignment_type === 'PARTNER'
-                        ? `Đối tác: ${waybill.last_mile_vendor?.name || waybill.last_mile_vendor?.code || '—'}`
-                        : `Nội bộ: ${waybill.last_mile_driver?.name || waybill.last_mile_driver?.username || '—'}${waybill.last_mile_truck ? ` · ${waybill.last_mile_truck.bks || waybill.last_mile_truck.license_plate || ''}` : ''}`}
+                        ? `Đối tác: ${waybill.last_mile_vendor?.name || waybill.last_mile_vendor?.code || '—'}${waybill.last_mile_license_plate ? ` · ${waybill.last_mile_license_plate}` : ''}`
+                        : `Nội bộ: ${waybill.last_mile_driver_name || waybill.last_mile_driver?.name || waybill.last_mile_driver?.username || '—'}${waybill.last_mile_license_plate ? ` · ${waybill.last_mile_license_plate}` : ''}`}
                     </p>
                   )}
                   {waybill.last_delivery_failure_reason && <p className="mt-1 truncate font-bold text-red-700" title={waybill.last_delivery_failure_reason}>Thất bại: {waybill.last_delivery_failure_reason}</p>}
                 </div>
+                )}
+                {visibleColumnIds.includes('actions') && (
                 <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">
                   {canPrepare && (
                     <button type="button" onClick={() => { setActionError(''); setPreparationWaybill(waybill); }} className="inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-[11px] font-extrabold text-foreground hover:bg-muted">
@@ -354,6 +412,7 @@ export default function NhiemVuGiaoHangPage() {
                     <span className="text-[11px] font-bold text-muted-foreground">Chỉ xem</span>
                   )}
                 </div>
+                )}
               </article>
             );
           })}
@@ -376,7 +435,7 @@ export default function NhiemVuGiaoHangPage() {
       />
       <DeliveryPreparationDialog waybill={preparationWaybill} busy={isSubmitting} error={actionError} onClose={() => { setPreparationWaybill(null); setActionError(''); }} onConfirm={confirmPreparation}/>
       <DeliveryHistoryDialog waybill={historyWaybill} items={historyItems} loading={historyLoading} onClose={() => setHistoryWaybill(null)}/>
-      <DeliveryDispatchManifestDialog open={printOpen} waybills={waybills} showPricing={isManager} onClose={() => setPrintOpen(false)}/>
+      <DeliveryDispatchManifestDialog open={printOpen} waybills={displayedWaybills} showPricing={isManager} onClose={() => setPrintOpen(false)}/>
     </div>
   );
 }

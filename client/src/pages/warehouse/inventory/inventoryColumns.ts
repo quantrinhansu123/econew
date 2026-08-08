@@ -258,23 +258,42 @@ export const ALL_ORDERS_SENDER_COLUMN_IDS: InventoryColumnId[] = [
   'ma_kh',
   'waybill_code',
   'cong_sg',
+  'package_count',
   'service_type',
   'noi_den',
   'receiver_address',
   'bill_images',
   'order_status',
-  'package_count',
+  'trip_label',
   'billing_unit',
   'billing_qty_detail',
+  'order_code',
+  'loaded_at',
+  'receiver_district',
+  'receiver_ward',
+  'receiver_phone',
+  'user_note',
+  'sender_info',
+  'receiver_info',
+  'current_hub',
+  'dest_hub',
+  'weight',
+  'volumetric_weight',
+  'volume',
+  'priority',
 ];
 
 /** Cột nhóm thanh toán / cước phí */
 export const ALL_ORDERS_FINANCIAL_COLUMN_IDS: InventoryColumnId[] = [
   'unit_price',
   'surcharge',
+  'transit_fee',
+  'freight',
   'total_amount',
   'thu_ho_khach',
   'payment_method',
+  'payment_type',
+  'cod_amount',
   'customer_payment_status',
   'customer_payment_note',
 ];
@@ -289,36 +308,79 @@ export const ALL_ORDERS_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>
   ma_kh: 100,
   waybill_code: 120,
   cong_sg: 160,
+  package_count: 90,
   service_type: 120,
   noi_den: 110,
   receiver_address: 250,
   bill_images: 90,
   order_status: 115,
-  package_count: 100,
+  trip_label: 220,
   billing_unit: 110,
   billing_qty_detail: 150,
+  order_code: 120,
+  loaded_at: 105,
+  receiver_district: 130,
+  receiver_ward: 130,
+  receiver_phone: 130,
+  user_note: 180,
+  sender_info: 180,
+  receiver_info: 220,
+  current_hub: 140,
+  dest_hub: 140,
+  weight: 120,
+  volumetric_weight: 145,
+  volume: 100,
+  priority: 110,
   unit_price: 100,
   surcharge: 150,
+  transit_fee: 120,
+  freight: 120,
   total_amount: 120,
   thu_ho_khach: 120,
   payment_method: 145,
+  payment_type: 100,
+  cod_amount: 120,
   customer_payment_status: 115,
   customer_payment_note: 140,
   actions: 112,
 };
 
-export const ALL_ORDERS_FIXED_COLUMN_IDS: InventoryColumnId[] = [
-  ...ALL_ORDERS_PREFIX_COLUMN_IDS,
+export const ALL_ORDERS_SELECTABLE_COLUMN_IDS: InventoryColumnId[] = [
   ...ALL_ORDERS_SENDER_COLUMN_IDS,
   ...ALL_ORDERS_FINANCIAL_COLUMN_IDS,
+];
+
+export const ALL_ORDERS_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
+  ...ALL_ORDERS_PREFIX_COLUMN_IDS,
+  'received_at',
+  'customer_name',
+  'ma_kh',
+  'waybill_code',
+  'cong_sg',
+  'package_count',
+  'service_type',
+  'noi_den',
+  'receiver_address',
+  'bill_images',
+  'order_status',
+  'trip_label',
+  'billing_unit',
+  'billing_qty_detail',
+  'unit_price',
+  'surcharge',
+  'total_amount',
+  'thu_ho_khach',
+  'payment_method',
+  'customer_payment_status',
+  'customer_payment_note',
   ...ALL_ORDERS_SUFFIX_COLUMN_IDS,
 ];
 
-/** @deprecated Dùng ALL_ORDERS_FIXED_COLUMN_IDS */
-export const ALL_ORDERS_DEFAULT_COLUMN_IDS = ALL_ORDERS_FIXED_COLUMN_IDS;
+/** @deprecated Danh sách đơn hiện cho phép người dùng tùy chọn cột. */
+export const ALL_ORDERS_FIXED_COLUMN_IDS = ALL_ORDERS_DEFAULT_COLUMN_IDS;
 
 export function getAllOrdersFixedColumnIds(): InventoryColumnId[] {
-  return [...ALL_ORDERS_FIXED_COLUMN_IDS];
+  return [...ALL_ORDERS_DEFAULT_COLUMN_IDS];
 }
 
 const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
@@ -327,6 +389,7 @@ const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   ma_kh: 'Mã KH',
   waybill_code: 'Bill',
   cong_sg: 'Nội dung',
+  trip_label: 'Chuyến / xe',
   service_type: 'Dịch vụ',
   noi_den: 'Nơi đến',
   receiver_address: 'Địa chỉ nhận',
@@ -361,7 +424,7 @@ export function resolveVisibleColumnViews(
   canViewPricing: boolean,
 ): InventoryColumnView[] {
   const ids = variant === 'all-orders'
-    ? getAllOrdersFixedColumnIds()
+    ? normalizeAllOrdersVisibleColumnIds(visibleColumnIds)
     : normalizeInventoryVisibleColumnIds(visibleColumnIds, canViewPricing);
   return ids
     .map((id) => {
@@ -387,16 +450,34 @@ export function resolveVisibleColumnViews(
 }
 
 export function getAllOrdersDefaultVisibleColumnIds(): InventoryColumnId[] {
-  return getAllOrdersFixedColumnIds();
+  return [...ALL_ORDERS_DEFAULT_COLUMN_IDS];
+}
+
+export const ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v1';
+
+export function normalizeAllOrdersVisibleColumnIds(ids: InventoryColumnId[]): InventoryColumnId[] {
+  const selected = new Set(ids.filter((id) => ALL_ORDERS_SELECTABLE_COLUMN_IDS.includes(id)));
+  selected.add('waybill_code');
+  return [
+    ...ALL_ORDERS_PREFIX_COLUMN_IDS,
+    ...ALL_ORDERS_SELECTABLE_COLUMN_IDS.filter((id) => selected.has(id)),
+    ...ALL_ORDERS_SUFFIX_COLUMN_IDS,
+  ];
 }
 
 export function loadAllOrdersVisibleColumnIds(): InventoryColumnId[] {
-  return getAllOrdersFixedColumnIds();
+  if (typeof window === 'undefined') return getAllOrdersDefaultVisibleColumnIds();
+  const raw = localStorage.getItem(ALL_ORDERS_COLUMN_STORAGE_KEY);
+  if (!raw) return getAllOrdersDefaultVisibleColumnIds();
+  try {
+    return normalizeAllOrdersVisibleColumnIds(JSON.parse(raw) as InventoryColumnId[]);
+  } catch {
+    return getAllOrdersDefaultVisibleColumnIds();
+  }
 }
 
 export function saveAllOrdersVisibleColumnIds(ids: InventoryColumnId[]) {
-  void ids;
-  /* Danh sách đơn: cột cố định theo mockup, không lưu tùy chỉnh */
+  localStorage.setItem(ALL_ORDERS_COLUMN_STORAGE_KEY, JSON.stringify(normalizeAllOrdersVisibleColumnIds(ids)));
 }
 
 export function getDefaultVisibleColumnIds(canViewPricing: boolean): InventoryColumnId[] {

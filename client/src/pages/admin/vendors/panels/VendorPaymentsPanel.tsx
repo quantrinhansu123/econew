@@ -7,7 +7,7 @@ import { formatMoney, isDateInRange } from '../../../warehouse/customers/utils/c
 export interface VendorPaymentFilters {
   fromDate: string;
   toDate: string;
-  entryType: '' | 'TRIP' | 'PAYMENT';
+  entryType: '' | 'TRIP' | 'COST' | 'PAYMENT';
 }
 
 export interface VendorLedgerEntry {
@@ -76,7 +76,7 @@ export default function VendorPaymentsPanel({
     let totalPaid = 0;
     for (const entry of filteredEntries) {
       const signed = Number(entry.signed_amount ?? entry.amount ?? 0) || 0;
-      if (String(entry.type) === 'TRIP') totalIncurred += Math.abs(signed);
+      if (String(entry.type) !== 'PAYMENT') totalIncurred += Math.abs(signed);
       else if (String(entry.type) === 'PAYMENT') totalPaid += Math.abs(signed);
     }
     return { totalIncurred, totalPaid, remaining: totalIncurred - totalPaid };
@@ -162,6 +162,7 @@ export default function VendorPaymentsPanel({
             >
               <option value="">Tất cả</option>
               <option value="TRIP">Phát sinh chuyến</option>
+              <option value="COST">Chi phí phát sinh</option>
               <option value="PAYMENT">Phiếu chi</option>
             </select>
           </label>
@@ -192,7 +193,7 @@ export default function VendorPaymentsPanel({
         <div className="space-y-4">
           {grouped.map(([key, group]) => {
             const dayIncurred = group.items
-              .filter((entry) => String(entry.type) === 'TRIP')
+              .filter((entry) => String(entry.type) !== 'PAYMENT')
               .reduce((sum, entry) => sum + Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0)), 0);
             const dayPaid = group.items
               .filter((entry) => String(entry.type) === 'PAYMENT')
@@ -209,6 +210,7 @@ export default function VendorPaymentsPanel({
                 </div>
                 <div className="divide-y divide-border/70">
                   {group.items.map((entry) => {
+                    const isPayment = String(entry.type) === 'PAYMENT';
                     const isTrip = String(entry.type) === 'TRIP';
                     const amount = Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0));
                     return (
@@ -219,10 +221,10 @@ export default function VendorPaymentsPanel({
                               <span
                                 className={clsx(
                                   'rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase',
-                                  isTrip ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800',
+                                  isPayment ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800',
                                 )}
                               >
-                                {isTrip ? 'Phát sinh chuyến' : 'Phiếu chi'}
+                                {isPayment ? 'Phiếu chi' : isTrip ? 'Phát sinh chuyến' : 'Chi phí phát sinh'}
                               </span>
                               <span className="text-[15px] font-extrabold text-foreground">{formatMoney(amount, '0 đ')}</span>
                             </div>
@@ -244,7 +246,7 @@ export default function VendorPaymentsPanel({
                             {entry.description}
                           </p>
                         )}
-                        {!isTrip && entry.payment_id && (
+                        {isPayment && entry.payment_id && (
                           <p className="mt-1 inline-flex items-center gap-1 text-[12px] font-bold text-muted-foreground">
                             <Banknote size={12} />
                             Phiếu chi #{entry.payment_id}

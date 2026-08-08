@@ -35,4 +35,10 @@ export class CreateExpenseDto {
   @Type(() => Number)
   @IsInt()
   hub_id?: number;
+
+  @ApiPropertyOptional({ description: 'Nhà cung cấp phát sinh khoản chi' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  vendor_id?: number;
 }

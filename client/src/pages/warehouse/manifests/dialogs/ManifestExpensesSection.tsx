@@ -13,13 +13,27 @@ import type { LoadPlanningManifest } from '../types';
 interface ManifestExpense {
   id: string | number;
   trip_id: string | number;
+  vendor_id?: string | number | null;
+  vendor?: VendorSummary | null;
   category?: string | null;
   amount?: string | number | null;
   description?: string | null;
   created_at?: string | null;
 }
 
+interface VendorSummary {
+  id: string | number;
+  code?: string | null;
+  name?: string | null;
+}
+
+interface ListResponse<T> {
+  data?: T[];
+  items?: T[];
+}
+
 interface ExpenseFormState {
+  vendor_id: string;
   category: string;
   amount: string;
   description: string;
@@ -52,7 +66,8 @@ const CLOSED_MANIFEST_STATUSES = new Set([
   'COMPLETED',
 ]);
 
-const emptyForm = (): ExpenseFormState => ({ category: 'OTHER', amount: '', description: '' });
+const emptyForm = (): ExpenseFormState => ({ vendor_id: '', category: 'OTHER', amount: '', description: '' });
+const normalizeList = <T,>(response: ListResponse<T> | T[]) => Array.isArray(response) ? response : response.items || response.data || [];
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return '—';
@@ -83,6 +98,7 @@ export default function ManifestExpensesSection({
   const manifestStatus = String(manifest.status || '').trim().toUpperCase();
   const isClosed = CLOSED_MANIFEST_STATUSES.has(manifestStatus);
   const [expenses, setExpenses] = useState<ManifestExpense[]>([]);
+  const [vendors, setVendors] = useState<VendorSummary[]>([]);
   const [isLoading, setIsLoading] = useState(Boolean(tripId));
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -93,9 +109,15 @@ export default function ManifestExpensesSection({
   useEffect(() => {
     if (!tripId) return undefined;
     let cancelled = false;
-    void apiRequest<ManifestExpense[]>(`/trips/${tripId}/expenses`)
-      .then((response) => {
-        if (!cancelled) setExpenses(Array.isArray(response) ? response : []);
+    void Promise.all([
+      apiRequest<ManifestExpense[]>(`/trips/${tripId}/expenses`),
+      apiRequest<ListResponse<VendorSummary> | VendorSummary[]>('/vendors/active?limit=100'),
+    ])
+      .then(([expenseResponse, vendorResponse]) => {
+        if (!cancelled) {
+          setExpenses(Array.isArray(expenseResponse) ? expenseResponse : []);
+          setVendors(normalizeList(vendorResponse));
+        }
       })
       .catch((requestError) => {
         if (!cancelled) setError(requestError instanceof ApiError ? requestError.message : 'Không tải được chi phí bảng kê.');
@@ -116,6 +138,11 @@ export default function ManifestExpensesSection({
   const legacyOtherCosts = tripCost > 0 && rawOtherCosts === tripCost ? 0 : rawOtherCosts;
   const incidentalCost = fuelCost + legacyOtherCosts + expenseTotal;
   const provisionalCost = tripCost + incidentalCost;
+  const waybills = manifest.waybills?.length
+    ? manifest.waybills
+    : (manifest.manifest_waybills || []).map((link) => link.waybill).filter(Boolean);
+  const provisionalRevenue = waybills.reduce((sum, waybill) => sum + Number(waybill?.cost_amount ?? 0), 0);
+  const provisionalProfit = provisionalRevenue - provisionalCost;
 
   const loadExpenses = async () => {
     if (!tripId) return;
@@ -140,6 +167,7 @@ export default function ManifestExpensesSection({
   const openEdit = (expense: ManifestExpense) => {
     setEditingId(String(expense.id));
     setForm({
+      vendor_id: String(expense.vendor_id || expense.vendor?.id || ''),
       category: expense.category || 'OTHER',
       amount: formatAmountInputFromNumber(expense.amount),
       description: expense.description || '',
@@ -163,6 +191,7 @@ export default function ManifestExpensesSection({
     setError('');
     try {
       const body = {
+        ...(form.vendor_id ? { vendor_id: Number(form.vendor_id) } : {}),
         category: form.category,
         amount,
         description: form.description.trim() || undefined,
@@ -222,10 +251,12 @@ export default function ManifestExpensesSection({
         )}
       </div>
 
-      <div className="grid gap-2 border-b border-slate-100 bg-white p-4 sm:grid-cols-3">
+      <div className="grid gap-2 border-b border-slate-100 bg-white p-4 sm:grid-cols-2 xl:grid-cols-5">
+        <CostMetric label="Doanh thu sơ bộ" value={formatMoney(provisionalRevenue)} />
         <CostMetric label="Cước chuyến / NCC" value={formatMoney(tripCost)} />
         <CostMetric label="Chi phí phát sinh" value={formatMoney(incidentalCost)} />
-        <CostMetric label="Tổng chi phí sơ bộ" value={formatMoney(provisionalCost)} highlight />
+        <CostMetric label="Tổng chi phí sơ bộ" value={formatMoney(provisionalCost)} />
+        <CostMetric label="Lãi / lỗ sơ bộ" value={formatMoney(provisionalProfit)} tone={provisionalProfit < 0 ? 'loss' : 'profit'} />
       </div>
 
       {!isClosed && (
@@ -239,7 +270,19 @@ export default function ManifestExpensesSection({
 
       {isFormOpen && (
         <div className="border-b border-emerald-100 bg-emerald-50/40 p-4">
-          <div className="grid gap-3 md:grid-cols-[200px_180px_1fr_auto] md:items-end">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[220px_190px_180px_1fr_auto] xl:items-end">
+            <label className="text-[12px] font-bold text-slate-600">
+              Nhà cung cấp (NCC)
+              <select
+                value={form.vendor_id}
+                onChange={(event) => setForm((previous) => ({ ...previous, vendor_id: event.target.value }))}
+                disabled={isSaving}
+                className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-800 outline-none focus:border-emerald-500"
+              >
+                <option value="">Không gắn NCC</option>
+                {vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{vendor.code ? `${vendor.code} · ` : ''}{vendor.name || `NCC #${vendor.id}`}</option>)}
+              </select>
+            </label>
             <label className="text-[12px] font-bold text-slate-600">
               Loại chi phí
               <select
@@ -306,11 +349,12 @@ export default function ManifestExpensesSection({
           ) : (
             <table className="w-full min-w-[720px] text-left text-[12px]">
               <thead className="bg-slate-50 text-[11px] font-black uppercase tracking-wide text-slate-500">
-                <tr><th className="px-4 py-3">Loại chi</th><th className="px-4 py-3">Nội dung</th><th className="px-4 py-3">Ngày nhập</th><th className="px-4 py-3 text-right">Số tiền</th><th className="w-24 px-4 py-3 text-center">Thao tác</th></tr>
+                <tr><th className="px-4 py-3">NCC</th><th className="px-4 py-3">Loại chi</th><th className="px-4 py-3">Nội dung</th><th className="px-4 py-3">Ngày nhập</th><th className="px-4 py-3 text-right">Số tiền</th><th className="w-24 px-4 py-3 text-center">Thao tác</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {expenses.map((expense) => (
                   <tr key={expense.id} className="hover:bg-slate-50/70">
+                    <td className="px-4 py-3 font-black text-primary">{expense.vendor?.code || expense.vendor?.name || '—'}</td>
                     <td className="px-4 py-3 font-black text-slate-800">{CATEGORY_LABELS[String(expense.category || '')] || expense.category || 'Khác'}</td>
                     <td className="max-w-[360px] px-4 py-3 font-semibold text-slate-600">{expense.description || '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-500">{formatDateTime(expense.created_at)}</td>
@@ -336,11 +380,11 @@ export default function ManifestExpensesSection({
   );
 }
 
-function CostMetric({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
+function CostMetric({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'profit' | 'loss' }) {
   return (
-    <div className={`rounded-2xl border px-4 py-3 ${highlight ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50/60'}`}>
+    <div className={`rounded-2xl border px-4 py-3 ${tone === 'profit' ? 'border-emerald-200 bg-emerald-50' : tone === 'loss' ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50/60'}`}>
       <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</p>
-      <p className={`mt-1 text-[16px] font-black ${highlight ? 'text-emerald-700' : 'text-slate-900'}`}>{value}</p>
+      <p className={`mt-1 text-[16px] font-black ${tone === 'profit' ? 'text-emerald-700' : tone === 'loss' ? 'text-red-700' : 'text-slate-900'}`}>{value}</p>
     </div>
   );
 }

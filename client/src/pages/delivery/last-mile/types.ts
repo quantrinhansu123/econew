@@ -49,6 +49,7 @@ export interface LastMileWaybill {
   receiver_address?: string | null;
   receiver_phone?: string | null;
   weight: number | string | null;
+  actual_weight?: number | string | null;
   length: number | string | null;
   width: number | string | null;
   height: number | string | null;
@@ -70,6 +71,9 @@ export interface LastMileWaybill {
   delivery_assignment_type?: 'INTERNAL' | 'PARTNER' | null;
   last_mile_truck_id?: string | number | null;
   last_mile_vendor_id?: string | number | null;
+  last_mile_driver_name?: string | null;
+  last_mile_license_plate?: string | null;
+  last_mile_cost_amount?: number | string | null;
   last_mile_truck?: { id: string | number; license_plate?: string | null; bks?: string | null; loai_xe?: string | null } | null;
   last_mile_vendor?: { id: string | number; code?: string | null; name?: string | null; phone?: string | null } | null;
   driver?: UserSummary | null;
@@ -129,4 +133,3 @@ export interface LastMileFilters {
   page: number;
   limit: number;
 }
-

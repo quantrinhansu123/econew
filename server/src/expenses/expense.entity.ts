@@ -2,6 +2,7 @@ import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGenerat
 import { HubEntity } from '../hubs/hub.entity';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
+import { VendorEntity } from '../vendors/vendor.entity';
 
 @Entity('expenses')
 export class ExpenseEntity {
@@ -19,6 +20,9 @@ export class ExpenseEntity {
 
   @Column({ type: 'varchar', nullable: true })
   description: string | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  vendor_id: string | null;
 
   @Column({ type: 'bigint', nullable: true })
   hub_id: string | null;
@@ -40,4 +44,8 @@ export class ExpenseEntity {
   @ManyToOne(() => UserEntity, { nullable: true })
   @JoinColumn({ name: 'created_by' })
   creator: UserEntity | null;
+
+  @ManyToOne(() => VendorEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'vendor_id' })
+  vendor: VendorEntity | null;
 }

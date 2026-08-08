@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { TripStatus } from '../common/enums';
 import { Roles } from '../common/roles';
 import { TripEntity } from '../trips/trip.entity';
+import { VendorsService } from '../vendors/vendors.service';
 import { ExpenseEntity } from './expense.entity';
 import { ExpensesService } from './expenses.service';
 
@@ -43,6 +44,7 @@ describe('ExpensesService', () => {
         ExpensesService,
         { provide: getRepositoryToken(ExpenseEntity), useFactory: repo },
         { provide: getRepositoryToken(TripEntity), useFactory: repo },
+        { provide: VendorsService, useValue: { findOne: jest.fn(), refreshPayableBalance: jest.fn() } },
       ],
     }).compile();
 

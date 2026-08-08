@@ -11,7 +11,7 @@ import { WaybillSplitLoadStatus } from './dto/waybill-split-load-status.enum';
 import { WaybillSplitEntity } from './waybill-split.entity';
 import { WaybillEntity } from './waybill.entity';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
-import { TripStatus } from '../common/enums';
+import { PaymentType, TripStatus } from '../common/enums';
 
 const manager = { id: 'u1', role_mask: Roles.MANAGER, hub_id: '1' } as any;
 const warehouse = { id: 'u2', role_mask: Roles.WAREHOUSE, hub_id: '1' } as any;
@@ -179,11 +179,13 @@ describe('WaybillsService', () => {
     ordersService = {
       createFromWaybillEntry: jest.fn().mockResolvedValue({ id: 'o1', order_code: 'DH20260101-001' }),
       syncRoutingFromWaybill: jest.fn().mockResolvedValue(undefined),
+      syncFromWaybill: jest.fn().mockResolvedValue(undefined),
     };
     vendorsService = {
       findOne: jest.fn(),
       resolveDefaultVendorId: jest.fn(),
       addPayableDebt: jest.fn(),
+      refreshPayableBalance: jest.fn(),
     };
     service = new WaybillsService(
       waybillsRepository,
@@ -417,6 +419,105 @@ describe('WaybillsService', () => {
       id: '1',
       waybill_code: 'ECOHAN7',
     }));
+  });
+
+  it('update synchronizes revised bill values to the linked order', async () => {
+    const existing = makeWaybill({
+      order_id: 'o1',
+      sender_name: 'Người gửi cũ',
+      sender_phone: '0900000000',
+      sender_address: 'Hà Nội',
+      receiver_name: 'Người nhận cũ',
+      receiver_phone: '0911111111',
+      receiver_address: 'Hồ Chí Minh',
+      package_count: 154,
+      weight: 4125,
+      payment_type: 'PP',
+      note: 'ma_kh=KH01|content=Hàng cũ',
+    });
+    waybillsRepository.findOne.mockResolvedValue(existing);
+
+    const result = await service.update('1', {
+      sender_name: 'Người gửi mới',
+      receiver_company_name: 'Công ty nhận mới',
+      receiver_name: 'Người nhận mới',
+      receiver_phone: '0988888888',
+      receiver_address: 'Thủ Đức, Hồ Chí Minh',
+      package_count: 86,
+      weight: 4000,
+      freight_amount: 120000,
+      cod_amount: 500000,
+      cc_amount: 120000,
+      note: 'ma_kh=KH01|content=Hàng mới',
+    }, manager);
+
+    expect(result.package_count).toBe(86);
+    expect(ordersService.syncFromWaybill).toHaveBeenCalledWith('o1', expect.objectContaining({
+      sender_name: 'Người gửi mới',
+      receiver_company_name: 'Công ty nhận mới',
+      receiver_name: 'Người nhận mới',
+      receiver_phone: '0988888888',
+      receiver_address: 'Thủ Đức, Hồ Chí Minh',
+      package_count: 86,
+      weight: 4000,
+      freight_amount: '120000',
+      cod_amount: '500000',
+      cc_amount: '120000',
+      note: 'ma_kh=KH01|content=Hàng mới',
+    }));
+  });
+
+  it('update reduces an allocated trip split and manifest quantity when package count decreases', async () => {
+    const existing = makeWaybill({ package_count: 112, order_id: 'o1' });
+    const split = {
+      id: 's120',
+      waybill_id: '1',
+      trip_id: '45',
+      package_count: 112,
+      created_at: new Date('2026-08-08T10:00:00Z'),
+      trip: { id: '45', manifest_id: 'm45' },
+    } as WaybillSplitEntity;
+    const manifestLink = {
+      manifest_id: 'm45',
+      waybill_id: '1',
+      dispatch_fields: { so_luong: '112', ghi_chu_1: 'Giữ nguyên' },
+    } as unknown as ManifestWaybillEntity;
+    waybillsRepository.findOne.mockResolvedValue(existing);
+    splitsRepository.find.mockResolvedValue([split]);
+    manifestWaybillsRepository.find.mockResolvedValue([manifestLink]);
+
+    await service.update('1', { package_count: 86 }, manager);
+
+    expect(splitsRepository.save).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 's120', package_count: 86 }),
+    ]);
+    expect(splitsRepository.delete).not.toHaveBeenCalled();
+    expect(manifestWaybillsRepository.save).toHaveBeenCalledWith([
+      expect.objectContaining({
+        manifest_id: 'm45',
+        dispatch_fields: expect.objectContaining({ so_luong: '86', ghi_chu_1: 'Giữ nguyên' }),
+      }),
+    ]);
+  });
+
+  it('update removes excess from the newest allocated split first', async () => {
+    const existing = makeWaybill({ package_count: 112 });
+    const firstSplit = {
+      id: 's1', waybill_id: '1', package_count: 70,
+      created_at: new Date('2026-08-08T09:00:00Z'), trip: null,
+    } as WaybillSplitEntity;
+    const newestSplit = {
+      id: 's2', waybill_id: '1', package_count: 42,
+      created_at: new Date('2026-08-08T10:00:00Z'), trip: null,
+    } as WaybillSplitEntity;
+    waybillsRepository.findOne.mockResolvedValue(existing);
+    splitsRepository.find.mockResolvedValue([firstSplit, newestSplit]);
+
+    await service.update('1', { package_count: 86 }, manager);
+
+    expect(firstSplit.package_count).toBe(70);
+    expect(newestSplit.package_count).toBe(16);
+    expect(splitsRepository.save).toHaveBeenCalledWith([newestSplit]);
   });
 
   it('update persists a mutable destination to the FK, relation, and linked order', async () => {
@@ -1027,6 +1128,28 @@ describe('WaybillsService', () => {
     );
   });
 
+  it('inventory uses the revised waybill package count when the linked order is stale', async () => {
+    const qb = createQueryBuilder();
+    qb.getMany.mockResolvedValue([makeWaybill({
+      package_count: 86,
+      order: { id: 'o1', package_count: 154 },
+    })]);
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+    splitsRepository.find.mockResolvedValue([]);
+
+    const result = await service.getInventoryTripLines(
+      { page: 1, limit: 10, only_incomplete_split: '1' },
+      manager,
+    );
+
+    expect(result.items[0]).toMatchObject({
+      package_count: 86,
+      remaining_packages: 86,
+      trip_package_count: 86,
+      order_total_packages: 86,
+    });
+  });
+
   it('all-orders does not silently limit a manager to the assigned hub', async () => {
     const qb = createQueryBuilder();
     waybillsRepository.createQueryBuilder.mockReturnValue(qb);
@@ -1124,6 +1247,25 @@ describe('WaybillsService', () => {
   it('updateCodFee blocks negative numbers', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
     await expect(service.updateCodFee('1', { cod_amount: -1 }, accountant)).rejects.toThrow(BadRequestException);
+  });
+
+  it('confirms a COD waybill for hub reconciliation', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ payment_type: PaymentType.COD }));
+
+    const result = await service.updateCodReconciliation('1', { confirmed: true }, accountant);
+
+    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      cod_reconciled_at: expect.any(Date),
+      cod_reconciled_by: accountant.id,
+      updated_by: accountant.id,
+    }));
+    expect(result.cod_reconciled_at).toEqual(expect.any(Date));
+  });
+
+  it('rejects hub COD reconciliation for a non-COD waybill', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ payment_type: PaymentType.PP }));
+
+    await expect(service.updateCodReconciliation('1', { confirmed: true }, accountant)).rejects.toThrow(BadRequestException);
   });
 
   it('ACCOUNTANT can update COD after MANIFEST_CLOSED and WAREHOUSE cannot', async () => {
@@ -1270,6 +1412,9 @@ describe('WaybillsService', () => {
       route_code: 'HCM-Q1',
       driver_id: 'd1',
       truck_id: 'x1',
+      driver_name: 'Tài xế A',
+      license_plate: '51A-12345',
+      delivery_cost: 150000,
     }, manager);
 
     expect(waybill).toMatchObject({
@@ -1278,6 +1423,9 @@ describe('WaybillsService', () => {
       last_mile_driver_id: 'd1',
       last_mile_truck_id: 'x1',
       last_mile_vendor_id: null,
+      last_mile_driver_name: 'Tài xế A',
+      last_mile_license_plate: '51A-12345',
+      last_mile_cost_amount: '150000',
       xe_phat: '51A-12345',
       route_code: 'HCM-Q1',
     });
@@ -1293,6 +1441,8 @@ describe('WaybillsService', () => {
       assignment_type: 'PARTNER',
       route_code: 'HCM-Q2',
       vendor_id: 'v1',
+      driver_name: 'Tài xế đối tác',
+      license_plate: '50H-67890',
     }, manager);
 
     expect(waybill).toMatchObject({
@@ -1300,7 +1450,9 @@ describe('WaybillsService', () => {
       last_mile_driver_id: null,
       last_mile_truck_id: null,
       last_mile_vendor_id: 'v1',
-      xe_phat: 'Đối tác HCM',
+      last_mile_driver_name: 'Tài xế đối tác',
+      last_mile_license_plate: '50H-67890',
+      xe_phat: '50H-67890',
     });
   });
 
@@ -1378,6 +1530,15 @@ describe('WaybillsService', () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ cod_amount: 10, freight_amount: 20, cc_amount: 30 }));
     const result = await service.findOne('1', warehouse);
     expect(result).not.toHaveProperty('cod_amount');
+    expect(result).not.toHaveProperty('freight_amount');
+    expect(result).not.toHaveProperty('cc_amount');
+  });
+
+  it('response exposes only COD amount to accountant for hub reconciliation', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ cod_amount: 10, cost_amount: 15, freight_amount: 20, cc_amount: 30 }));
+    const result = await service.findOne('1', accountant);
+    expect(result.cod_amount).toBe(10);
+    expect(result).not.toHaveProperty('cost_amount');
     expect(result).not.toHaveProperty('freight_amount');
     expect(result).not.toHaveProperty('cc_amount');
   });

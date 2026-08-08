@@ -1,9 +1,7 @@
 import { SlidersHorizontal, X } from 'lucide-react';
 import type { InventoryColumnId } from './inventoryColumns';
 import {
-  ALL_ORDERS_DISALLOWED_COLUMN_IDS,
-  ALL_ORDERS_FINANCIAL_COLUMN_IDS,
-  ALL_ORDERS_SENDER_COLUMN_IDS,
+  ALL_ORDERS_SELECTABLE_COLUMN_IDS,
   INVENTORY_DEFAULT_COLUMN_IDS,
   INVENTORY_COLUMNS,
   resolveAllOrdersColumnLabel,
@@ -39,17 +37,15 @@ export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPrici
       .filter((column): column is (typeof INVENTORY_COLUMNS)[number] => Boolean(column)),
     ...INVENTORY_COLUMNS.filter((column) => !INVENTORY_DEFAULT_COLUMN_IDS.includes(column.id)),
   ];
-  const options = orderedInventoryColumns.filter((col) => {
-    if (col.id === 'actions' || col.id === 'stt') return false;
-    if (mode === 'all-orders') {
-      if (ALL_ORDERS_DISALLOWED_COLUMN_IDS.includes(col.id)) return false;
-      return (
-        col.id === 'waybill_code' ||
-        [...ALL_ORDERS_SENDER_COLUMN_IDS, ...ALL_ORDERS_FINANCIAL_COLUMN_IDS].includes(col.id)
-      );
-    }
-    return !col.managerOnly || canViewPricing;
-  });
+  const options = mode === 'all-orders'
+    ? ALL_ORDERS_SELECTABLE_COLUMN_IDS
+      .map((id) => INVENTORY_COLUMNS.find((column) => column.id === id))
+      .filter((column): column is (typeof INVENTORY_COLUMNS)[number] => Boolean(column))
+    : orderedInventoryColumns.filter((col) => (
+      col.id !== 'actions'
+      && col.id !== 'stt'
+      && (!col.managerOnly || canViewPricing)
+    ));
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4">

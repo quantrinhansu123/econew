@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ALL_ORDERS_DEFAULT_COLUMN_IDS,
   INVENTORY_DEFAULT_COLUMN_IDS,
   getDefaultVisibleColumnIds,
+  normalizeAllOrdersVisibleColumnIds,
   normalizeInventoryVisibleColumnIds,
   resolvePrintColumnIds,
   resolveNoiDen,
@@ -101,6 +103,42 @@ describe('inventory visible columns', () => {
     );
 
     expect(views.find((column) => column.id === 'bill_images')?.label).toBe('Hình ảnh');
+  });
+});
+
+describe('all orders visible columns', () => {
+  it('moves package count next to content and shows the carrying trip after status', () => {
+    expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('package_count')).toBe(
+      ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('cong_sg') + 1,
+    );
+    expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('trip_label')).toBe(
+      ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('order_status') + 1,
+    );
+  });
+
+  it('keeps required columns and preserves the canonical order for selected details', () => {
+    expect(normalizeAllOrdersVisibleColumnIds(['volume', 'trip_label', 'package_count'])).toEqual([
+      'stt',
+      'waybill_code',
+      'package_count',
+      'trip_label',
+      'volume',
+      'actions',
+    ]);
+  });
+
+  it('resolves only the columns selected for the all-orders table', () => {
+    const selected = normalizeAllOrdersVisibleColumnIds(['waybill_code', 'package_count', 'trip_label']);
+    const views = resolveVisibleColumnViews(selected, 'all-orders', true);
+
+    expect(views.map((column) => column.id)).toEqual([
+      'stt',
+      'waybill_code',
+      'package_count',
+      'trip_label',
+      'actions',
+    ]);
+    expect(views.find((column) => column.id === 'trip_label')?.label).toBe('Chuyến / xe');
   });
 });
 

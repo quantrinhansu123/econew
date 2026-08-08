@@ -96,8 +96,6 @@ export interface WaybillFilters {
 export interface FilterOption { value: string; label: string; }
 export type TripAction = 'start' | 'arrive' | 'complete' | 'cancel';
 
-export interface TripCostFormState { fuel_actual: string; fuel_cost: string; other_costs: string; }
-
 export interface TripCreateHubSummary {
   id: string | number;
   code?: string | null;
@@ -162,6 +160,8 @@ export interface TripExpense {
   amount?: number | string | null;
   description?: string | null;
   hub_id?: string | number | null;
+  vendor_id?: string | number | null;
+  vendor?: VendorSummary | null;
   created_at?: string | null;
   [key: string]: unknown;
 }

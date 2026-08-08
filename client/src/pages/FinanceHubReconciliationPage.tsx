@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronLeft, ChevronRight, DollarSign, Edit, Eye, Filter, Loader2, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, DollarSign, Edit, Eye, Filter, Loader2, PackageSearch, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
@@ -10,7 +10,7 @@ import type { AuthUserProfile } from './login/types';
 import AddEditReconciliationDialog from './finance/hub-reconciliation/dialogs/AddEditReconciliationDialog';
 import HubReconciliationDetailDialog from './finance/hub-reconciliation/dialogs/HubReconciliationDetailDialog';
 import UpdateRemittanceStatusDialog from './finance/hub-reconciliation/dialogs/UpdateRemittanceStatusDialog';
-import type { FilterOption, HubReconciliation, HubReconciliationFilters, HubSummary, ListResponse, ReconciliationFormState, RemittanceStatus } from './finance/hub-reconciliation/types';
+import type { CodReconciliationWaybill, FilterOption, HubReconciliation, HubReconciliationFilters, HubSummary, ListResponse, ReconciliationFormState, RemittanceStatus } from './finance/hub-reconciliation/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const ACCOUNTANT = 16;
@@ -59,6 +59,9 @@ export default function FinanceHubReconciliationPage() {
   const navigate = useNavigate();
   const [filters, setFilters] = useState<HubReconciliationFilters>(defaultFilters);
   const [items, setItems] = useState<HubReconciliation[]>([]);
+  const [codWaybills, setCodWaybills] = useState<CodReconciliationWaybill[]>([]);
+  const [codError, setCodError] = useState('');
+  const [confirmingCodId, setConfirmingCodId] = useState<string | null>(null);
   const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,14 +89,24 @@ export default function FinanceHubReconciliationPage() {
     setError('');
     try {
       const query = buildQuery(filters);
-      const [listResponse, hubResponse] = await Promise.all([
+      const codParams = new URLSearchParams({ payment_type: 'COD', list_scope: 'all_orders', page: '1', limit: '100' });
+      if (filters.hub_id) codParams.set('dest_hub_id', filters.hub_id);
+      if (filters.date_from) codParams.set('from_date', filters.date_from);
+      if (filters.date_to) codParams.set('to_date', filters.date_to);
+      setCodError('');
+      const [listResponse, hubResponse, codResponse] = await Promise.all([
         apiRequest<ListResponse<HubReconciliation> | HubReconciliation[]>(`/finance/hub-reconciliation?${query}`).catch(async () => apiRequest<ListResponse<HubReconciliation> | HubReconciliation[]>(`/finance/reconciliations?${query}`)),
         apiRequest<ListResponse<HubSummary> | HubSummary[]>('/hubs/active').catch(() => [] as HubSummary[]),
+        apiRequest<ListResponse<CodReconciliationWaybill> | CodReconciliationWaybill[]>(`/waybills?${codParams.toString()}`).catch((requestError) => {
+          setCodError(getErrorMessage(requestError));
+          return [] as CodReconciliationWaybill[];
+        }),
       ]);
       const rows = normalizeList(listResponse);
       setItems(rows);
       setTotal(normalizeTotal(listResponse, rows.length));
       setHubs(normalizeList(hubResponse));
+      setCodWaybills(normalizeList(codResponse));
     } catch (loadError) {
       setError(getErrorMessage(loadError));
       setItems([]);
@@ -111,9 +124,31 @@ export default function FinanceHubReconciliationPage() {
     return items.filter(item => [hubLabel(item), item.reconciliation_date, item.remittance_status, String(item.hub_id)].some(value => value.toLowerCase().includes(keyword)));
   }, [filters.keyword, items]);
 
+  const filteredCodWaybills = useMemo(() => {
+    const keyword = filters.keyword.trim().toLowerCase();
+    const rows = keyword
+      ? codWaybills.filter((item) => [item.waybill_code, item.sender_info, item.receiver_info, item.current_state].some((value) => String(value || '').toLowerCase().includes(keyword)))
+      : codWaybills;
+    return [...rows].sort((left, right) => Number(Boolean(left.cod_reconciled_at)) - Number(Boolean(right.cod_reconciled_at)) || String(right.created_at || '').localeCompare(String(left.created_at || '')));
+  }, [codWaybills, filters.keyword]);
+
   const updateFilters = (patch: Partial<HubReconciliationFilters>) => setFilters(current => ({ ...current, ...patch }));
   const setFormField = <K extends keyof ReconciliationFormState>(key: K, value: ReconciliationFormState[K]) => setFormState(current => ({ ...current, [key]: value }));
   const clearFilters = () => setFilters(current => ({ ...defaultFilters, keyword: current.keyword, limit: current.limit }));
+
+  const confirmCodWaybill = async (waybill: CodReconciliationWaybill) => {
+    if (!canManageFinance || waybill.cod_reconciled_at) return;
+    setConfirmingCodId(String(waybill.id));
+    setCodError('');
+    try {
+      const updated = await apiRequest<CodReconciliationWaybill>(`/waybills/${waybill.id}/cod-reconciliation`, { method: 'PATCH', body: { confirmed: true } });
+      setCodWaybills((current) => current.map((item) => String(item.id) === String(waybill.id) ? { ...item, ...updated, cod_reconciled_at: updated.cod_reconciled_at || new Date().toISOString() } : item));
+    } catch (requestError) {
+      setCodError(getErrorMessage(requestError));
+    } finally {
+      setConfirmingCodId(null);
+    }
+  };
 
   const validateForm = () => {
     if (!formState.hub_id) return 'Bưu cục/kho là bắt buộc.';
@@ -209,6 +244,15 @@ export default function FinanceHubReconciliationPage() {
         </div>
       </div>
 
+      <CodWaybillsPanel
+        waybills={filteredCodWaybills}
+        hubs={hubs}
+        canConfirm={canManageFinance}
+        confirmingId={confirmingCodId}
+        error={codError}
+        onConfirm={(waybill) => void confirmCodWaybill(waybill)}
+      />
+
       <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
         {isLoading ? <StateBlock icon={<Loader2 className="animate-spin" size={22} />} title="Đang tải phiên đối soát" description="Hệ thống đang lấy dữ liệu tiền mặt bưu cục từ API." /> : error ? <StateBlock icon={<AlertTriangle size={22} />} title="Không tải được dữ liệu" description={error} /> : !filteredItems.length ? <StateBlock icon={<DollarSign size={22} />} title="Chưa có phiên đối soát" description="Thử đổi bộ lọc hoặc tạo phiên đối soát tiền mặt mới." /> : <>
           <table className="hidden md:table min-w-[1280px] text-left border-collapse">
@@ -255,3 +299,42 @@ function Line({ label, value }: { label: string; value: string }) {
   return <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">{label}</span><span className="font-bold text-foreground">{value}</span></div>;
 }
 
+function CodWaybillsPanel({ waybills, hubs, canConfirm, confirmingId, error, onConfirm }: {
+  waybills: CodReconciliationWaybill[];
+  hubs: HubSummary[];
+  canConfirm: boolean;
+  confirmingId: string | null;
+  error: string;
+  onConfirm: (waybill: CodReconciliationWaybill) => void;
+}) {
+  const hubName = (id?: string | number | null) => hubs.find((hub) => String(hub.id) === String(id))?.code || (id ? `Hub #${id}` : '—');
+  const pendingCount = waybills.filter((waybill) => !waybill.cod_reconciled_at).length;
+  const formatDateTime = (value?: string | null) => value ? new Date(value).toLocaleString('vi-VN') : '—';
+
+  return <section className="shrink-0 border-b border-border bg-slate-50/60 p-3">
+    <div className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-100 bg-amber-50 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <PackageSearch size={17} className="text-amber-700" />
+          <div><p className="text-[13px] font-extrabold text-foreground">Vận đơn COD tại bưu cục</p><p className="text-[11px] font-bold text-amber-700">{pendingCount} đơn chờ xác nhận · {waybills.length} đơn theo bộ lọc</p></div>
+        </div>
+      </div>
+      {error && <p className="border-b border-red-100 bg-red-50 px-4 py-2 text-[12px] font-bold text-red-700">{error}</p>}
+      {!waybills.length ? <div className="flex min-h-24 items-center justify-center px-4 text-[12px] font-bold text-muted-foreground">Không có vận đơn COD theo bộ lọc hiện tại.</div> : <div className="max-h-64 overflow-auto custom-scrollbar">
+        <table className="w-full min-w-[1050px] border-collapse text-left text-[12px]">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wide text-muted-foreground"><tr>{['Mã vận đơn','Người gửi','Người nhận','Hub đến','Tiền COD','Trạng thái đơn','Đối soát COD','Thao tác'].map((header) => <th key={header} className="px-3 py-2.5 font-extrabold">{header}</th>)}</tr></thead>
+          <tbody className="divide-y divide-border/70">{waybills.map((waybill) => <tr key={String(waybill.id)} className="hover:bg-slate-50/70">
+            <td className="px-3 py-2.5 font-extrabold text-primary">{waybill.waybill_code || `#${waybill.id}`}</td>
+            <td className="max-w-[180px] truncate px-3 py-2.5">{waybill.sender_info || '—'}</td>
+            <td className="max-w-[220px] truncate px-3 py-2.5">{waybill.receiver_info || '—'}</td>
+            <td className="px-3 py-2.5 font-bold">{hubName(waybill.dest_hub_id)}</td>
+            <td className="px-3 py-2.5 font-black text-amber-700">{money(waybill.cod_amount)} đ</td>
+            <td className="px-3 py-2.5 font-bold">{waybill.current_state || '—'}</td>
+            <td className="px-3 py-2.5">{waybill.cod_reconciled_at ? <div><span className="inline-flex rounded-full bg-emerald-50 px-2 py-1 font-extrabold text-emerald-700">Đã xác nhận</span><p className="mt-1 text-[10px] text-muted-foreground">{formatDateTime(waybill.cod_reconciled_at)}</p></div> : <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 font-extrabold text-amber-700">Chờ xác nhận</span>}</td>
+            <td className="px-3 py-2.5"><button type="button" onClick={() => onConfirm(waybill)} disabled={!canConfirm || Boolean(waybill.cod_reconciled_at) || confirmingId === String(waybill.id)} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 font-extrabold text-white disabled:opacity-45">{confirmingId === String(waybill.id) ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}{waybill.cod_reconciled_at ? 'Đã xác nhận' : 'Xác nhận'}</button></td>
+          </tr>)}</tbody>
+        </table>
+      </div>}
+    </div>
+  </section>;
+}

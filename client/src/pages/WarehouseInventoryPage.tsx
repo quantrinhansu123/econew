@@ -35,6 +35,7 @@ import {
   getStorageAgeRowClass,
   loadVisibleColumnIds,
   loadAllOrdersVisibleColumnIds,
+  normalizeAllOrdersVisibleColumnIds,
   normalizeInventoryVisibleColumnIds,
   resolveVisibleColumnViews,
   resolveCongSg,
@@ -61,6 +62,7 @@ import {
   resolveOrderStatusBadge,
   resolveUserNote,
   saveVisibleColumnIds,
+  saveAllOrdersVisibleColumnIds,
   type InventoryColumnId,
   type InventoryColumnView,
 } from './warehouse/inventory/inventoryColumns';
@@ -767,10 +769,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             </button>
             <button
               onClick={() => setIsColumnPickerOpen(true)}
-              className={clsx(
-                'inline-flex h-10 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground hover:bg-muted',
-                isAllOrders && 'hidden',
-              )}
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground hover:bg-muted"
             >
               <SlidersHorizontal size={16} />
               <span className="hidden sm:inline">Cột</span>
@@ -855,7 +854,13 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
           {isLoading ? <StateCard compact icon={<Loader2 className="animate-spin" size={24} />} title="Đang tải dữ liệu" description={isAllOrders ? 'Hệ thống đang lấy danh sách đơn từ API.' : 'Hệ thống đang lấy danh sách vận đơn tồn kho từ API.'} /> : displayedWaybills.length === 0 ? <StateCard compact icon={<Package size={24} />} title={isAllOrders ? 'Không có đơn phù hợp' : 'Chưa có đơn cần chia'} description={isAllOrders ? 'Thử bỏ bớt bộ lọc tìm kiếm hoặc bộ lọc tại tiêu đề cột.' : 'Tất cả đơn tồn kho đã phân hết kiện lên xe, hoặc thử đổi bộ lọc.'} /> : (
             <>
-              <table className={clsx('hidden md:table border-collapse', isAllOrders ? 'w-[2820px] table-fixed text-[12px]' : 'w-full min-w-[1280px] text-left')}>
+              <table
+                className={clsx('hidden md:table border-collapse', isAllOrders ? 'table-fixed text-[12px]' : 'w-full min-w-[1280px] text-left')}
+                style={isAllOrders ? {
+                  width: visibleColumns.reduce((sum, column) => sum + (ALL_ORDERS_COLUMN_WIDTHS[column.id] || 120), 0),
+                  minWidth: '100%',
+                } : undefined}
+              >
                 {isAllOrders && (
                   <colgroup>
                     {visibleColumns.map((column) => (
@@ -956,19 +961,21 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         />
       )}
       <SplitOrderDialog isOpen={isBoardOpen} isClosing={isBoardClosing} waybill={null} onClose={closeBoard} />
-      {!isAllOrders && (
       <InventoryColumnPicker
         isOpen={isColumnPickerOpen}
         visibleIds={visibleColumnIds}
         canViewPricing={canViewPricing}
+        mode={isAllOrders ? 'all-orders' : 'inventory'}
         onChange={(ids) => {
-          const normalizedIds = normalizeInventoryVisibleColumnIds(ids, canViewPricing);
+          const normalizedIds = isAllOrders
+            ? normalizeAllOrdersVisibleColumnIds(ids)
+            : normalizeInventoryVisibleColumnIds(ids, canViewPricing);
           setVisibleColumnIds(normalizedIds);
-          saveVisibleColumnIds(normalizedIds);
+          if (isAllOrders) saveAllOrdersVisibleColumnIds(normalizedIds);
+          else saveVisibleColumnIds(normalizedIds);
         }}
         onClose={() => setIsColumnPickerOpen(false)}
       />
-      )}
       <CustomerDetailDialog
         customer={ledgerCustomer}
         loading={isLedgerCustomerLoading}
@@ -1789,7 +1796,6 @@ function FilterSummaryCard({ label, value, tone }: { label: string; value: strin
 
 function Alert({ message, tone = 'amber' }: { message: string; tone?: 'amber' | 'red' }) { return <div className={clsx('flex gap-2 rounded-2xl border px-4 py-3 text-[13px] font-bold', tone === 'red' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800')}><AlertTriangle size={16} className="mt-0.5 shrink-0" />{message}</div>; }
 function StateCard({ icon, title, description, compact = false }: { icon: ReactNode; title: string; description: string; compact?: boolean }) { return <div className={clsx('flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-white text-center', compact ? 'm-5 min-h-[320px] p-6' : 'min-h-[420px] p-8')}><div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">{icon}</div><h3 className="text-base font-black text-foreground">{title}</h3><p className="mt-2 max-w-md text-[13px] leading-6 text-muted-foreground">{description}</p></div>; }
-
 
 
 

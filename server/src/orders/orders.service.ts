@@ -8,6 +8,27 @@ import { CreateWaybillDto } from '../waybills/dto/create-waybill.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import { OrderEntity } from './order.entity';
 
+type WaybillOrderSync = Pick<
+  OrderEntity,
+  | 'ma_kh'
+  | 'sender_name'
+  | 'sender_phone'
+  | 'sender_address'
+  | 'receiver_company_name'
+  | 'receiver_name'
+  | 'receiver_phone'
+  | 'receiver_address'
+  | 'origin_hub_id'
+  | 'dest_hub_id'
+  | 'package_count'
+  | 'weight'
+  | 'payment_type'
+  | 'freight_amount'
+  | 'cod_amount'
+  | 'cc_amount'
+  | 'note'
+>;
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -89,6 +110,10 @@ export class OrdersService {
     if (route.dest_hub_id !== undefined) patch.dest_hub_id = String(route.dest_hub_id);
     if (!Object.keys(patch).length) return;
     await this.ordersRepository.update({ id }, patch);
+  }
+
+  async syncFromWaybill(id: string, values: WaybillOrderSync): Promise<void> {
+    await this.ordersRepository.update({ id }, values);
   }
 
   private async generateUniqueCode(): Promise<string> {
