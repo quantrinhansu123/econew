@@ -162,9 +162,9 @@ export function isValidVnPhone(raw: string): boolean {
 }
 
 export function validateNewOrderForm(form: NewOrderFormState, _volumetricWeight: number): string {
+  void _volumetricWeight;
   if (!form.soBill.trim()) return 'Số bill là bắt buộc.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(form.ngayDi)) return 'Ngày gửi trên bill là bắt buộc.';
-  if (!form.nguoiGui.trim()) return 'Người gửi là bắt buộc.';
   if (form.dienThoaiKh.trim() && !isValidVnPhone(form.dienThoaiKh)) {
     return 'Điện thoại khách hàng không hợp lệ.';
   }
@@ -480,18 +480,12 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
   return {
     waybill_code: form.soBill.trim().toUpperCase(),
     sender_name: form.nguoiGui.trim(),
-    // API Render cũ còn IsNotEmpty; một khoảng trắng giữ tương thích và được
-    // backend mới trim thành null. Khi đọc lại form cũng trim nên ô vẫn trống.
-    sender_phone: normalizeVnPhone(form.dienThoaiKh.trim()) || ' ',
-    // Giữ trống khi hồ sơ khách không có địa chỉ. Khoảng trắng giúp API Render
-    // cũ vượt IsNotEmpty; backend mới trim thành null và form/in bill vẫn trống.
-    sender_address: form.diaChiGui.trim() || ' ',
-    // Khoảng trắng giúp frontend mới vẫn tạo/sửa được đơn trong lúc backend cũ
-    // trên Render còn dùng IsNotEmpty cho các trường người nhận.
-    receiver_name: form.nguoiNhan.trim() || ' ',
+    sender_phone: normalizeVnPhone(form.dienThoaiKh.trim()),
+    sender_address: form.diaChiGui.trim(),
+    receiver_name: form.nguoiNhan.trim(),
     receiver_company_name: form.tenCongTyNhan.trim() || undefined,
-    receiver_phone: normalizeVnPhone(form.dienThoaiNhan.trim()) || ' ',
-    receiver_address: form.diaChiNhan.trim() || ' ',
+    receiver_phone: normalizeVnPhone(form.dienThoaiNhan.trim()),
+    receiver_address: form.diaChiNhan.trim(),
     noi_den: receiverProvince || undefined,
     origin_hub_id: form.originHubId,
     dest_hub_id: form.destHubId,

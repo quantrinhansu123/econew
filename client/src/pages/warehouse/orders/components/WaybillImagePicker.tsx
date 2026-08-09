@@ -4,15 +4,17 @@ import { ImagePreviewModal } from '../../../../components/ImagePreviewModal';
 import { ApiError } from '../../../../lib/api';
 import { IMAGE_UPLOAD_ACCEPT, uploadWaybillImage } from '../../../../lib/uploadImage';
 import { MAX_WAYBILL_IMAGES } from '../../../../lib/waybillImages';
+import { clsx } from 'clsx';
 
 interface Props {
   value: string[];
   onChange: (urls: string[]) => void;
   onUploadingChange?: (uploading: boolean) => void;
   disabled?: boolean;
+  className?: string;
 }
 
-export default function WaybillImagePicker({ value, onChange, onUploadingChange, disabled }: Props) {
+export default function WaybillImagePicker({ value, onChange, onUploadingChange, disabled, className }: Props) {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export default function WaybillImagePicker({ value, onChange, onUploadingChange,
   };
 
   return (
-    <div className="col-span-12 rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
+    <div className={clsx('rounded-lg border border-slate-200 bg-slate-50/70 p-2.5', className)}>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="flex items-center gap-1.5 text-[12px] font-black text-slate-800">

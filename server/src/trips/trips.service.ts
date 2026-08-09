@@ -192,6 +192,42 @@ export class TripsService {
       trip.arrival_time = arrivalTime;
       trip.expected_arrival_time = arrivalTime;
     }
+    if (dto.route_stops !== undefined) {
+      const tripSplits = (await this.waybillSplitsRepository.find({
+        where: { trip_id: String(trip.id) } as any,
+        relations: ['waybill'],
+      })) ?? [];
+      const splitHubIds = new Set(tripSplits
+        .map((split) => String(split.waybill?.dest_hub_id || '').trim())
+        .filter(Boolean));
+      const submittedHubIds = new Set(dto.route_stops.map((stop) => String(stop.hub_id)));
+      const allowedHubIds = splitHubIds.size ? splitHubIds : new Set([String(trip.end_hub_id)]);
+      if ([...submittedHubIds].some((hubId) => !allowedHubIds.has(hubId))) {
+        throw new BadRequestException('HUB dự kiến đến không thuộc chuyến xe này');
+      }
+      if ([...allowedHubIds].some((hubId) => !submittedHubIds.has(hubId))) {
+        throw new BadRequestException('Cần nhập ngày dự kiến đến cho tất cả HUB trên chuyến');
+      }
+
+      const expectedByHub = new Map<string, Date>();
+      dto.route_stops.forEach((stop) => {
+        const expectedArrival = this.normalizeDate(stop.expected_arrival_at, 'expected_arrival_at');
+        this.validateTripTimes(departureTime, expectedArrival, false);
+        expectedByHub.set(String(stop.hub_id), expectedArrival);
+      });
+      tripSplits.forEach((split) => {
+        const hubId = String(split.waybill?.dest_hub_id || '').trim();
+        const expectedArrival = expectedByHub.get(hubId);
+        if (expectedArrival) split.expected_arrival_at = expectedArrival;
+      });
+      if (tripSplits.length) await this.waybillSplitsRepository.save(tripSplits);
+
+      const finalExpectedArrival = new Date(Math.max(...[...expectedByHub.values()].map((date) => date.getTime())));
+      trip.expected_arrival_time = finalExpectedArrival;
+      if ([TripStatus.PLANNED, TripStatus.IN_TRANSIT].includes(trip.status)) {
+        trip.arrival_time = finalExpectedArrival;
+      }
+    }
     return this.tripsRepository.save(trip);
   }
 

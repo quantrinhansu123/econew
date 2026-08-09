@@ -25,7 +25,7 @@ describe('receiver company on order form', () => {
     expect(waybillToOrderForm({ id: '1', note: payload.note } as any, []).coVat).toBe(true);
   });
 
-  it('allows sender phone and address to remain visually empty on legacy APIs', () => {
+  it('sends empty optional sender fields without placeholder whitespace', () => {
     const payload = buildCreatePayload({
       ...emptyOrderForm(),
       dienThoaiKh: '',
@@ -33,10 +33,8 @@ describe('receiver company on order form', () => {
       nguoiGui: 'Tên người gửi',
     }, 0);
 
-    expect(payload.sender_phone).toBeTruthy();
-    expect(payload.sender_phone.trim()).toBe('');
-    expect(payload.sender_address).toBeTruthy();
-    expect(payload.sender_address.trim()).toBe('');
+    expect(payload.sender_phone).toBe('');
+    expect(payload.sender_address).toBe('');
   });
 
   it('saves the manually entered receiver company separately from the contact', () => {
@@ -55,7 +53,7 @@ describe('receiver company on order form', () => {
     expect(payload.note).not.toContain('receiver_company_name=');
   });
 
-  it('keeps an empty receiver name compatible with legacy APIs', () => {
+  it('keeps an empty receiver name optional', () => {
     const payload = buildCreatePayload({
       ...emptyOrderForm(),
       nguoiNhan: '',
@@ -66,7 +64,7 @@ describe('receiver company on order form', () => {
     expect(payload.receiver_name.trim()).toBe('');
   });
 
-  it('keeps all empty receiver fields visually blank while remaining compatible with legacy APIs', () => {
+  it('keeps all empty receiver fields optional', () => {
     const payload = buildCreatePayload({
       ...emptyOrderForm(),
       nguoiNhan: '',

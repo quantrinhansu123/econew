@@ -167,7 +167,7 @@ export class WaybillsService {
     } as any) as unknown as WaybillRecord;
 
     Object.assign(record, {
-      sender_name: dto.sender_name,
+      sender_name: dto.sender_name?.trim() || null,
       sender_phone: dto.sender_phone?.trim() || null,
       sender_address: dto.sender_address?.trim() || null,
       receiver_company_name: dto.receiver_company_name?.trim() || null,
@@ -1286,6 +1286,8 @@ export class WaybillsService {
       const expectedArrivalAt = this.resolveStackExpectedArrivalAt(
         stackDepartureTime,
         line.expected_arrival_at,
+        waybill.dest_hub?.code,
+        waybill.dest_hub?.name,
       );
       const carrierLabel = truck?.nha_xe?.trim()
         || truck?.vendor?.name?.trim()
@@ -1845,6 +1847,7 @@ export class WaybillsService {
       ngay_boc: this.formatDispatchDate(waybill.loaded_at ?? waybill.received_at ?? waybill.created_at),
       ngay_toi: this.formatDispatchDate(split.expected_arrival_at ?? this.computeExpectedArrivalAt(
         split.created_at ?? waybill.loaded_at ?? waybill.received_at ?? waybill.created_at ?? new Date(),
+        hubCode,
       )),
       ma_tinh: hubCode,
       ten_cty: companyName,
@@ -1878,9 +1881,9 @@ export class WaybillsService {
     return parts[1] ?? '';
   }
 
-  private computeExpectedArrivalAt(base: Date | string = new Date()): Date {
+  private computeExpectedArrivalAt(base: Date | string = new Date(), hubCode?: string | null): Date {
     const date = base instanceof Date ? new Date(base.getTime()) : new Date(base);
-    date.setDate(date.getDate() + 3);
+    date.setDate(date.getDate() + this.expectedArrivalOffsetDays(hubCode));
     return date;
   }
 
@@ -1916,14 +1919,32 @@ export class WaybillsService {
     });
   }
 
-  private resolveStackExpectedArrivalAt(departureTime: Date, explicit?: Date | string | null): Date {
+  private resolveStackExpectedArrivalAt(
+    departureTime: Date,
+    explicit?: Date | string | null,
+    hubCode?: string | null,
+    hubName?: string | null,
+  ): Date {
     const expectedArrival = explicit
       ? new Date(explicit)
-      : new Date(departureTime.getTime() + 3 * 24 * 60 * 60 * 1000);
+      : new Date(departureTime.getTime() + this.expectedArrivalOffsetDays(hubCode, hubName) * 24 * 60 * 60 * 1000);
     if (Number.isNaN(expectedArrival.getTime()) || expectedArrival.getTime() <= departureTime.getTime()) {
       throw new BadRequestException('Expected arrival time must be after stack departure time');
     }
     return expectedArrival;
+  }
+
+  private expectedArrivalOffsetDays(hubCode?: string | null, hubName?: string | null): number {
+    const key = `${hubCode || ''}${hubName || ''}`
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[đĐ]/g, 'D')
+      .replace(/[^A-Za-z0-9]/g, '')
+      .toUpperCase();
+    if (['DANANG', 'QUANGNAM', 'QUANGBINH', 'NGHEAN'].some((value) => key.includes(value))) return 1;
+    if (['KHANHHOA', 'BINHDINH', 'NINHTHUAN', 'BINHTHUAN'].some((value) => key.includes(value))) return 2;
+    if (key.includes('HCM') || key.includes('HOCHIMINH')) return 3;
+    return 3;
   }
 
   private formatDispatchDate(value: Date | string | null | undefined): string | null {

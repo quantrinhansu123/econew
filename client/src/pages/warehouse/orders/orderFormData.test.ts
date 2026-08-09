@@ -63,6 +63,14 @@ describe('new order defaults', () => {
     expect(validateNewOrderForm({ ...validOrderForm(), nguoiNhan: '' }, 0)).toBe('');
   });
 
+  it('allows an order without sender information', () => {
+    expect(validateNewOrderForm({
+      ...validOrderForm(),
+      nguoiGui: '',
+      diaChiGui: '',
+    }, 0)).toBe('');
+  });
+
   it('allows an order without any receiver information', () => {
     expect(validateNewOrderForm({
       ...validOrderForm(),

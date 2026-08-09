@@ -1,4 +1,5 @@
 import type { WaybillInventoryItem } from './types';
+import { expectedArrivalForHub } from '../../trips/tripScheduleUtils';
 
 export interface StackOntoTruckFormRow {
   waybill_id: string;
@@ -66,26 +67,28 @@ export function resolveDestinationHubKey(waybill?: WaybillInventoryItem | null):
   return `name:${cleanHubPart(waybill?.dest_hub?.name).toLocaleLowerCase('vi-VN') || 'unknown'}`;
 }
 
-export function computeExpectedArrivalDate(base?: string | Date | null): Date {
-  const date = base ? new Date(base) : new Date();
-  if (Number.isNaN(date.getTime())) return new Date(Date.now() + 3 * 86400000);
-  const next = new Date(date.getTime());
-  next.setDate(next.getDate() + 3);
-  return next;
+export function computeExpectedArrivalDate(
+  base?: string | Date | null,
+  hub?: { code?: string | null; name?: string | null } | null,
+): Date {
+  return expectedArrivalForHub(base, { hub_code: hub?.code, hub_name: hub?.name });
 }
 
-export function formatExpectedArrivalLabel(base?: string | Date | null): string {
+export function formatExpectedArrivalLabel(
+  base?: string | Date | null,
+  hub?: { code?: string | null; name?: string | null } | null,
+): string {
   return new Intl.DateTimeFormat('vi-VN', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
-  }).format(computeExpectedArrivalDate(base));
+  }).format(computeExpectedArrivalDate(base, hub));
 }
 
 export function buildStackFormRows(waybills: WaybillInventoryItem[], loadingDate: Date = new Date()): StackOntoTruckFormRow[] {
-  const expected = computeExpectedArrivalDate(loadingDate);
-  const localExpected = new Date(expected.getTime() - expected.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
   return waybills.map((waybill) => {
+    const expected = computeExpectedArrivalDate(loadingDate, waybill.dest_hub);
+    const localExpected = new Date(expected.getTime() - expected.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
     return {
       waybill_id: String(waybill.id),
       waybill_code: waybill.waybill_code || waybill.code || `#${waybill.id}`,
@@ -94,7 +97,7 @@ export function buildStackFormRows(waybills: WaybillInventoryItem[], loadingDate
       package_count: String(Math.max(1, Number(waybill.remaining_packages ?? waybill.package_count ?? 1))),
       max_package_count: Math.max(1, Number(waybill.remaining_packages ?? waybill.package_count ?? 1)),
       loading_position: waybill.loading_position ? String(waybill.loading_position) : '',
-      expected_arrival_label: formatExpectedArrivalLabel(loadingDate),
+      expected_arrival_label: formatExpectedArrivalLabel(loadingDate, waybill.dest_hub),
       expected_arrival_at: localExpected,
       delivery_instruction: buildDestinationInstruction(waybill),
     };
@@ -160,4 +163,3 @@ function toLocalDateTimeInput(value: Date): string {
   const shifted = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
   return shifted.toISOString().slice(0, 16);
 }
-

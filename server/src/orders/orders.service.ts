@@ -40,7 +40,7 @@ export class OrdersService {
     const paymentType = dto.cc_amount && dto.cc_amount > 0 ? PaymentType.CC : PaymentType.PP;
     const order = this.ordersRepository.create({
       order_code: orderCode,
-      sender_name: dto.sender_name,
+      sender_name: dto.sender_name?.trim() || null,
       sender_phone: dto.sender_phone?.trim() || null,
       sender_address: dto.sender_address?.trim() || null,
       receiver_company_name: dto.receiver_company_name?.trim() || null,
