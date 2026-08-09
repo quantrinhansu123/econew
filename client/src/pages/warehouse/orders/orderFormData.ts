@@ -9,7 +9,21 @@ export const ORDER_TABS = [
 export const LOAI_BP_OPTIONS = ['CPN', 'Hỏa tốc', 'Tiết kiệm'];
 export const DICH_VU_OPTIONS = ['Tiêu chuẩn 72h', 'Nhanh 48h', 'Chậm 4-6 ngày'] as const;
 export const GIO_OPTIONS = ['8h', '10h', '12h', '14h', '16h', '18h'];
-export const GIAO_HANG_OPTIONS = ['Tận nơi', 'Văn phòng', 'Lấy tại kho'];
+export const GIAO_HANG_OPTIONS = ['Tận nơi', 'Nhận tại kho ECO'] as const;
+
+export function normalizeDeliveryMethod(value?: string | null): string {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Tận nơi';
+
+  const normalized = raw.toLocaleLowerCase('vi-VN');
+  if (normalized.includes('kho') || normalized.includes('gọi ra lấy') || normalized.includes('goi ra lay')) {
+    return 'Nhận tại kho ECO';
+  }
+  if (normalized.includes('tận nơi') || normalized.includes('tan noi') || normalized === 'văn phòng') {
+    return 'Tận nơi';
+  }
+  return raw;
+}
 export const DON_GIA_DON_VI_OPTIONS = ['Kg', 'Khối', 'Trọn gói', 'Chuyến', 'Lô'];
 export const PHUONG_THUC_OPTIONS = [
   'Công nợ',

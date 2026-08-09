@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WaybillDetail } from '../warehouse/orders/types';
-import { buildWaybillPrintData } from './waybillPrintUtils';
+import { buildWaybillPrintData, formatPhoneForPrint } from './waybillPrintUtils';
 
 const waybill = (overrides: Partial<WaybillDetail> = {}): WaybillDetail => ({
   id: '108964',
@@ -24,8 +24,14 @@ describe('buildWaybillPrintData receiver fields', () => {
 
     expect(data.tenCongTyNhan).toBe('CÔNG TY NHẬN HÀNG');
     expect(data.tenLienHeNhan).toBe('Nguyễn Văn Nhận');
-    expect(data.sdtNhan).toBe('0938938112');
+    expect(data.sdtNhan).toBe('0938 938 112');
     expect(data.maBcNhan).toBe('HCM');
+  });
+
+  it('adds readable spacing to phone numbers on the printed bill', () => {
+    expect(formatPhoneForPrint('0908809863')).toBe('0908 809 863');
+    expect(formatPhoneForPrint('0908 809 863')).toBe('0908 809 863');
+    expect(formatPhoneForPrint('+84908809863')).toBe('+84 908 809 863');
   });
 
   it('prints the destination HUB code separately from the final delivery address', () => {
@@ -56,7 +62,7 @@ describe('buildWaybillPrintData receiver fields', () => {
 
     expect(data.tenCongTyNhan).toBe('');
     expect(data.tenLienHeNhan).toBe('Nguyễn Văn Nhận');
-    expect(data.sdtNhan).toBe('0938938112');
+    expect(data.sdtNhan).toBe('0938 938 112');
   });
 
   it('does not mistake an unprefixed ward for the receiver province', () => {
@@ -110,6 +116,11 @@ describe('buildWaybillPrintData receiver fields', () => {
 
     expect(data.noiDungHang).toBe('TZ-10-2; TZ-15-2');
     expect(data.moTaHang).toBe('TZ-10-2; TZ-15-2');
+  });
+
+  it('prints the selected delivery method and normalizes the old warehouse option', () => {
+    expect(buildWaybillPrintData(waybill({ note: 'giao_hang=Tận nơi' })).giaoHang).toBe('Tận nơi');
+    expect(buildWaybillPrintData(waybill({ note: 'giao_hang=Lấy tại kho' })).giaoHang).toBe('Nhận tại kho ECO');
   });
 
   it('prints converted weight and CBM instead of actual loading weight', () => {

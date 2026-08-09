@@ -19,8 +19,9 @@ const printData: WaybillPrintData = {
   quanHuyenNhan: 'Bình Chánh',
   phuongXaNhan: 'Xã Tân Kiên',
   tinhNhan: 'HCM',
-  sdtNhan: '0938938112',
+  sdtNhan: '0938 938 112',
   moTaHang: 'Mã PK',
+  giaoHang: 'Nhận tại kho ECO',
   soKien: '1',
   trongLuongQuyDoi: '10.00',
   cbm: '2.00',
@@ -49,8 +50,8 @@ describe('waybill invoice layout', () => {
     expect(html).toContain('scale=4');
     expect(html).toContain('eco-phone-numbers');
     expect(html.match(/0946 936 999/g)).toHaveLength(1);
-    expect(html.match(/0888\.805\.625/g)).toHaveLength(1);
-    expect(html).not.toContain('0969 444 816');
+    expect(html.match(/0869 444 816/g)).toHaveLength(1);
+    expect(html).not.toContain('0888.805.625');
     expect(html).not.toContain('D.vụ GTGT:');
     expect(html).toContain('eco-band--receiver-summary');
     expect(html).not.toContain('eco-band--receiver-summary eco-band--top');
@@ -70,10 +71,12 @@ describe('waybill invoice layout', () => {
     expect(receiverContact.indexOf('Số điện thoại:')).toBeLessThan(receiverContact.indexOf('Tên liên hệ:'));
     expect(html).toContain('Nguyễn Văn Nhận');
     expect(html).toContain('<span class="eco-mini-label">Tên liên hệ:</span><span class="eco-mini-value">Nguyễn Văn Nhận</span>');
-    expect(html.match(/0938938112/g)).toHaveLength(1);
+    expect(html.match(/0938 938 112/g)).toHaveLength(1);
     expect(html).not.toContain('Mã KH nhận:');
     expect(html).not.toContain('0901111222');
     expect(html).not.toContain('Trọng lượng thực');
+    expect(html).toContain('<b>Giao hàng:</b> Nhận tại kho ECO');
+    expect(html).not.toContain('<b>Mô tả hàng hoá:</b>');
     expect(html).toContain('Trọng lượng quy đổi');
     expect(html).toContain('CBM');
     expect(html).toContain('<span class="eco-stat-value">10.00</span>');

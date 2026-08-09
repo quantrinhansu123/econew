@@ -1,5 +1,5 @@
 import type { HubSummary, PaymentType, WaybillDetail } from './types';
-import { emptyOrderForm } from './orderFormData';
+import { emptyOrderForm, normalizeDeliveryMethod } from './orderFormData';
 import type { BillListItem, NewOrderFormState } from './orderFormTypes';
 import { canonicalProvinceLabel, extractProvinceFromAddress } from '../../../lib/vietnamProvince';
 import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
@@ -333,7 +333,7 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     loaiBp: parseNoteField(note, 'loai_bp') || 'CPN',
     dichVu: parseNoteField(note, 'dich_vu') || 'Tiêu chuẩn 72h',
     gio: parseNoteField(note, 'gio') || '16h',
-    giaoHang: parseNoteField(note, 'giao_hang') || 'Tận nơi',
+    giaoHang: normalizeDeliveryMethod(parseNoteField(note, 'giao_hang')),
     klKg: String(waybill.weight ?? ''),
     soKien: String(waybill.package_count ?? 1),
     klQuyDoi: String(waybill.volumetric_weight ?? waybill.weight ?? ''),

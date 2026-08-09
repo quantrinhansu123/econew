@@ -4,6 +4,7 @@ import { formatMoney, parseAmountInput } from '../../lib/formatMoney';
 import { canonicalProvinceLabel, extractProvinceFromAddress } from '../../lib/vietnamProvince';
 import { extractVietnamAddressParts } from '../../lib/vietnamAddressParts';
 import { resolveWaybillDisplayNote } from '../../lib/waybillSpecialGoods';
+import { normalizeDeliveryMethod } from '../warehouse/orders/orderFormData';
 
 export interface WaybillPrintData {
   waybillCode: string;
@@ -23,6 +24,7 @@ export interface WaybillPrintData {
   tinhNhan: string;
   sdtNhan: string;
   moTaHang: string;
+  giaoHang: string;
   soKien: string;
   trongLuongQuyDoi: string;
   cbm: string;
@@ -111,6 +113,27 @@ function formatDate(d?: string | null) {
   return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
 }
 
+export function formatPhoneForPrint(input?: string | null) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+
+  const compact = raw.replace(/[^\d+]/g, '');
+  if (/^0\d{9}$/.test(compact)) {
+    return `${compact.slice(0, 4)} ${compact.slice(4, 7)} ${compact.slice(7)}`;
+  }
+  if (/^0\d{10}$/.test(compact)) {
+    return `${compact.slice(0, 4)} ${compact.slice(4, 7)} ${compact.slice(7)}`;
+  }
+  if (/^\+84\d{9}$/.test(compact)) {
+    return `${compact.slice(0, 3)} ${compact.slice(3, 6)} ${compact.slice(6, 9)} ${compact.slice(9)}`;
+  }
+  if (/^84\d{9}$/.test(compact)) {
+    return `${compact.slice(0, 2)} ${compact.slice(2, 5)} ${compact.slice(5, 8)} ${compact.slice(8)}`;
+  }
+
+  return raw.replace(/\s+/g, ' ');
+}
+
 function parseM3FromNote(note: string) {
   const match = note.match(/dimensions_cm=([^|]+)/);
   if (!match) return 0;
@@ -131,6 +154,7 @@ export function buildWaybillPrintData(
   const ghiChu = userNoteFromStoredNote(note);
   const dichVu = parseNoteField(note, 'dich_vu');
   const loaiBp = parseNoteField(note, 'loai_bp');
+  const giaoHang = normalizeDeliveryMethod(parseNoteField(note, 'giao_hang'));
 
   const receiverName = (waybill as { receiver_name?: string }).receiver_name || receiver.name || '';
   const receiverCompanyName =
@@ -184,7 +208,7 @@ export function buildWaybillPrintData(
     diaChiGui: (waybill as { sender_address?: string }).sender_address || sender.address,
     quanHuyenGui: '',
     tinhGui: waybill.origin_hub?.code?.toUpperCase() || waybill.origin_hub?.name || '',
-    sdtGui: (waybill as { sender_phone?: string }).sender_phone || sender.phone,
+    sdtGui: formatPhoneForPrint((waybill as { sender_phone?: string }).sender_phone || sender.phone),
     maBcNhan: waybill.dest_hub?.code?.toUpperCase() || '',
     tenCongTyNhan: receiverCompanyName,
     tenLienHeNhan: receiverName,
@@ -197,8 +221,9 @@ export function buildWaybillPrintData(
       || parseNoteField(note, 'phuong_xa')
       || receiverAddressParts.ward,
     tinhNhan: canonicalProvinceLabel(receiverProvince),
-    sdtNhan: (waybill as { receiver_phone?: string }).receiver_phone || receiver.phone,
+    sdtNhan: formatPhoneForPrint((waybill as { receiver_phone?: string }).receiver_phone || receiver.phone),
     moTaHang: noiDung,
+    giaoHang,
     soKien: String(waybill.package_count ?? 1),
     trongLuongQuyDoi: formatNum(volumetricWeight, 2) || '0.00',
     cbm: formatNum(m3, 2) || '0.00',

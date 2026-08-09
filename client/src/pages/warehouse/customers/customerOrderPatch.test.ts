@@ -115,7 +115,7 @@ describe('customer order autofill', () => {
 
     expect(patch).toMatchObject({
       dichVu: 'Nhanh 48h',
-      giaoHang: 'Lấy tại kho',
+      giaoHang: 'Nhận tại kho ECO',
       donGiaDonVi: 'Khối',
       phuongThuc: 'Người nhận thanh toán',
       specialGoods: ['HIGH_VALUE', 'FRAGILE'],

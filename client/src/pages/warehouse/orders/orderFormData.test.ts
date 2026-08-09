@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { emptyOrderForm, todayInputValue } from './orderFormData';
+import {
+  emptyOrderForm,
+  GIAO_HANG_OPTIONS,
+  normalizeDeliveryMethod,
+  todayInputValue,
+} from './orderFormData';
 import {
   calcCuocChinhAmount,
   normalizeBillingUnit,
@@ -24,6 +29,12 @@ describe('new order defaults', () => {
     const form = emptyOrderForm();
     expect(form.giaoHang).toBe('Tận nơi');
     expect(form.donGiaDonVi).toBe('Kg');
+  });
+
+  it('only offers the two requested delivery methods and normalizes old values', () => {
+    expect(GIAO_HANG_OPTIONS).toEqual(['Tận nơi', 'Nhận tại kho ECO']);
+    expect(normalizeDeliveryMethod('Lấy tại kho')).toBe('Nhận tại kho ECO');
+    expect(normalizeDeliveryMethod('Văn phòng')).toBe('Tận nơi');
   });
 
   it('normalizes legacy Cân values to Kg', () => {
