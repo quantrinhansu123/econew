@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { CalendarDays, Check, Edit3, Loader2, Package, Printer, Trash2, X } from 'lucide-react';
 import { DateTimePicker } from '../../../../components/ui/DateTimePicker';
 import { resolveWaybillDisplayNote } from '../../../../lib/waybillSpecialGoods';
-import { hubDeliveryLabelFromWaybill, parseDeliveryPhotos } from '../manifestHubUtils';
+import { getTripStatus, hubDeliveryLabelFromWaybill, parseDeliveryPhotos } from '../manifestHubUtils';
 import { canRemoveWaybillsFromManifest } from '../types';
 import type { BadgeConfig, LoadPlanningManifest, ManifestWaybill } from '../types';
 import ManifestExpensesSection from './ManifestExpensesSection';
@@ -45,6 +45,7 @@ export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isS
   if (!isOpen) return null;
   const waybills = extractWaybills(manifest);
   const mayRemoveWaybill = canManage && canRemoveWaybillsFromManifest(manifest);
+  const displayStatus = manifest ? getTripStatus(manifest) : '';
 
   return <div className="manifest-detail-print-root fixed inset-0 z-[9999] flex justify-end print:static print:block print:bg-white">
     <style>{`@media print { body > *:not(.manifest-detail-print-root) { display: none !important; } .manifest-detail-print-root { display: block !important; position: static !important; inset: auto !important; background: #fff !important; } .manifest-detail-print-panel { display: block !important; width: 100% !important; max-width: none !important; height: auto !important; min-height: 0 !important; border: 0 !important; box-shadow: none !important; } .manifest-detail-print-toolbar { display: none !important; } .manifest-detail-print-main { display: block !important; overflow: visible !important; padding: 0 !important; } }`}</style>
@@ -61,7 +62,7 @@ export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isS
       <main className="manifest-detail-print-main min-h-0 flex-1 overflow-auto p-5 custom-scrollbar">
         {isLoading ? <State label="Đang tải chi tiết bảng kê..." /> : !manifest ? <State label="Không tìm thấy bảng kê." /> : <div className="space-y-4">
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <Info label="Trạng thái" value={badge(manifest.status, statusConfig[String(manifest.status || '')])} />
+            <Info label="Trạng thái" value={badge(displayStatus, statusConfig[displayStatus])} />
             <Info label="Hub đi" value={display(manifest.origin_hub?.code || manifest.origin_hub?.name || manifest.origin_hub_id)} />
             <Info label="Hub đến" value={display(manifest.dest_hub?.code || manifest.dest_hub?.name || manifest.dest_hub_id)} />
             <Info label="Seal" value={display(manifest.seal_code)} mono />

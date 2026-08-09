@@ -46,6 +46,13 @@ const statusConfig: Record<string, BadgeConfig> = {
   ASSIGNED: { label: 'Đã gán chuyến', className: 'bg-indigo-50 text-indigo-700' },
   ASSIGNED_TO_TRIP: { label: 'Đã gán chuyến', className: 'bg-indigo-50 text-indigo-700' },
   IN_TRANSIT: { label: 'Đang chạy', className: 'bg-amber-50 text-amber-700' },
+  DEPARTED: { label: 'Đã khởi hành', className: 'bg-amber-50 text-amber-700' },
+  ARRIVED: { label: 'Đã đến', className: 'bg-emerald-50 text-emerald-700' },
+  AT_DEST_HUB: { label: 'Đã đến', className: 'bg-emerald-50 text-emerald-700' },
+  COMPLETED: { label: 'Hoàn tất', className: 'bg-slate-100 text-slate-700' },
+  DELIVERED: { label: 'Hoàn tất', className: 'bg-slate-100 text-slate-700' },
+  DONE: { label: 'Hoàn tất', className: 'bg-slate-100 text-slate-700' },
+  FINISHED: { label: 'Hoàn tất', className: 'bg-slate-100 text-slate-700' },
   CANCELLED: { label: 'Đã hủy', className: 'bg-red-50 text-red-600' },
 };
 const statusOptions: FilterOption[] = [
@@ -122,6 +129,12 @@ const formatManifestSubline = (manifest: LoadPlanningManifest) => {
     ASSIGNED_TO_TRIP: 'Đã xếp lên xe',
     IN_TRANSIT: 'Đang chạy',
     DEPARTED: 'Đã khởi hành',
+    ARRIVED: 'Đã đến',
+    AT_DEST_HUB: 'Đã đến',
+    COMPLETED: 'Hoàn tất',
+    DELIVERED: 'Hoàn tất',
+    DONE: 'Hoàn tất',
+    FINISHED: 'Hoàn tất',
   };
   const parts = [
     tripStatusText[tripStatus] || null,
@@ -589,8 +602,6 @@ function FilterBottomSheet({ isOpen, draftFilters, setDraftFilters, openGroups, 
   return <div className="fixed inset-0 z-50 flex items-end justify-center md:hidden"><div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} /><div className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-border bg-background shadow-2xl"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><p className="text-[11px] font-bold uppercase tracking-wider text-primary">Bộ lọc</p><h2 className="text-lg font-extrabold text-foreground">Đóng xếp hàng</h2></div><button onClick={onClose} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-white text-muted-foreground"><X size={18} /></button></div><div className="flex-1 overflow-auto p-4 custom-scrollbar">{groups.map(group => <FilterGroup key={group.id} id={group.id} title={group.title} isOpen={openGroups.includes(group.id)} search={groupSearch[group.id] || ''} options={group.options} value={draftFilters[group.key]} onToggle={() => toggleGroup(group.id)} onSearch={value => setGroupSearch(prev => ({ ...prev, [group.id]: value }))} onChange={value => setArray(group.key, value)} />)}<div className="mt-3 rounded-2xl border border-border bg-white p-4"><p className="mb-3 text-[13px] font-extrabold text-foreground">Khoảng thời gian</p><div className="grid gap-3"><input type="date" value={draftFilters.date_from} onChange={event => setDraftFilters(prev => ({ ...prev, date_from: event.target.value }))} className="h-11 rounded-xl border border-border px-3 text-[13px] font-bold outline-none" /><input type="date" value={draftFilters.date_to} onChange={event => setDraftFilters(prev => ({ ...prev, date_to: event.target.value }))} className="h-11 rounded-xl border border-border px-3 text-[13px] font-bold outline-none" /></div></div></div><div className="border-t border-border bg-white p-4"><button onClick={onApply} className="h-11 w-full rounded-xl bg-primary text-[13px] font-extrabold text-white">Áp dụng</button></div></div></div>;
 }
 function FilterGroup({ id, title, isOpen, search, options, value, onToggle, onSearch, onChange }: { id: string; title: string; isOpen: boolean; search: string; options: FilterOption[]; value: string[]; onToggle: () => void; onSearch: (value: string) => void; onChange: (value: string[]) => void }) { const filtered = options.filter(option => option.label.toLowerCase().includes(search.toLowerCase())); return <div className="mb-3 rounded-2xl border border-border bg-white"><button onClick={onToggle} className="flex w-full items-center justify-between px-4 py-3 text-left"><span className="text-[13px] font-extrabold text-foreground">{title}</span><ChevronDown size={16} className={clsx('text-muted-foreground transition-transform', isOpen && 'rotate-180')} /></button>{isOpen && <div className="border-t border-border p-3"><div className="relative mb-3"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={search} onChange={event => onSearch(event.target.value)} placeholder={`Tìm ${title.toLowerCase()}`} className="h-10 w-full rounded-xl border border-border pl-9 pr-3 text-[13px] outline-none" /></div><div className="mb-2 flex items-center gap-2"><button onClick={() => onChange(options.map(option => option.value))} className="text-[12px] font-bold text-primary">Chọn tất cả</button><button onClick={() => onChange([])} className="text-[12px] font-bold text-red-500">Xóa chọn</button></div><div className="max-h-52 overflow-auto custom-scrollbar">{filtered.map(option => <label key={`${id}-${option.value}`} className="flex items-center gap-2 rounded-lg px-2 py-2 text-[13px] font-medium hover:bg-muted/60"><input type="checkbox" checked={value.includes(option.value)} onChange={() => onChange(value.includes(option.value) ? value.filter(item => item !== option.value) : [...value, option.value])} className="h-4 w-4 rounded border-border" /><span>{option.label}</span></label>)}</div></div>}</div>; }
-
-
 
 
 
