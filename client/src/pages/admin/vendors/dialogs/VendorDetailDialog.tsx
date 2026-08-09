@@ -30,6 +30,7 @@ interface Props {
   vendor: Vendor | null;
   loading?: boolean;
   canManage: boolean;
+  initialTab?: VendorDetailTabId;
   onClose: () => void;
   onEdit: (vendor: Vendor) => void;
 }
@@ -138,10 +139,10 @@ const formatJson = (value: unknown): string => {
   return String(value);
 };
 
-export default function VendorDetailDialog({ vendor, loading, canManage, onClose, onEdit }: Props) {
+export default function VendorDetailDialog({ vendor, loading, canManage, initialTab = 'chi-tiet', onClose, onEdit }: Props) {
   const navigate = useNavigate();
   const vendorId = vendor?.id != null ? String(vendor.id) : '';
-  const [activeTab, setActiveTab] = useState<VendorDetailTabId>('chi-tiet');
+  const [activeTab, setActiveTab] = useState<VendorDetailTabId>(initialTab);
   const [inventoryItems, setInventoryItems] = useState<WaybillInventoryItem[]>([]);
   const [inventoryTotal, setInventoryTotal] = useState(0);
   const [inventoryLoading, setInventoryLoading] = useState(false);
@@ -192,6 +193,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, onClose
 
   useEffect(() => {
     if (!vendor) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveTab('chi-tiet');
       setInventoryItems([]);
       setInventoryTotal(0);

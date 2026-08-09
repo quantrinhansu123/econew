@@ -19,20 +19,21 @@ const manifest = (tripStatus: string): LoadPlanningManifest => ({
 });
 
 describe('manifest HUB lanes', () => {
-  it('maps a planned HAN to HCM trip to the origin and destination contexts', () => {
+  it('does not show a planned trip before departure', () => {
     const planned = manifest('PLANNED');
 
-    expect(resolveManifestBoardGroup(planned, 'HAN')).toBe('departed');
-    expect(resolveManifestBoardGroup(planned, 'HCM')).toBe('expected');
-    expect(filterActiveOutboundFromHub([planned], 'HAN')).toEqual([planned]);
-    expect(filterExpectedInboundToHub([planned], 'HCM')).toEqual([planned]);
+    expect(resolveManifestBoardGroup(planned, 'HAN')).toBe('other');
+    expect(resolveManifestBoardGroup(planned, 'HCM')).toBe('other');
+    expect(filterActiveOutboundFromHub([planned], 'HAN')).toEqual([]);
+    expect(filterExpectedInboundToHub([planned], 'HCM')).toEqual([]);
   });
 
-  it('excludes an arrived trip from both active lanes', () => {
+  it('keeps arrived and completed trips in the departure and destination lanes', () => {
     const arrived = manifest('ARRIVED');
+    const completed = manifest('COMPLETED');
 
     expect(resolveManifestBoardGroup(arrived, 'HCM')).toBe('arrived');
-    expect(filterActiveOutboundFromHub([arrived], 'HAN')).toEqual([]);
-    expect(filterExpectedInboundToHub([arrived], 'HCM')).toEqual([]);
+    expect(filterActiveOutboundFromHub([arrived, completed], 'HAN')).toEqual([arrived, completed]);
+    expect(filterExpectedInboundToHub([arrived, completed], 'HCM')).toEqual([arrived, completed]);
   });
 });

@@ -45,9 +45,13 @@ export interface IncomingTrip {
   total_m3?: number | string | null;
   planned_total_volume?: number | string | null;
   total_collect?: number | string | null;
+  total_revenue?: number | string | null;
+  expense_total?: number | string | null;
   license_plate?: string | null;
   driver_name?: string | null;
   driver_phone?: string | null;
+  vendor_id?: string | number | null;
+  vendor_code?: string | null;
   vendor_name?: string | null;
   vehicle_type?: string | null;
   vendor_payment_status?: string | null;
@@ -63,7 +67,7 @@ export interface IncomingTrip {
     ten_lai_xe?: string | null;
     loai_xe?: string | null;
     nha_xe?: string | null;
-    vendor?: { name?: string | null } | null;
+    vendor?: { id?: string | number | null; code?: string | null; name?: string | null } | null;
     driver?: { name?: string | null; phone?: string | null } | null;
   } | null;
 }

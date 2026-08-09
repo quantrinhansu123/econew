@@ -427,6 +427,7 @@ export class TripsService {
       .leftJoinAndSelect('manifest.dest_hub', 'manifest_dest_hub')
       .leftJoinAndSelect('trip.start_hub', 'start_hub')
       .leftJoinAndSelect('trip.end_hub', 'end_hub')
+      .leftJoinAndSelect('trip.expenses', 'trip_expenses')
       .where('trip.status = :status', { status: TripStatus.IN_TRANSIT });
 
     if (hubId) {
@@ -463,6 +464,7 @@ export class TripsService {
       .leftJoinAndSelect('manifest.dest_hub', 'manifest_dest_hub')
       .leftJoinAndSelect('trip.start_hub', 'start_hub')
       .leftJoinAndSelect('trip.end_hub', 'end_hub')
+      .leftJoinAndSelect('trip.expenses', 'trip_expenses')
       .orderBy('trip.departure_time', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
@@ -570,6 +572,8 @@ export class TripsService {
       vendor_name: trip.truck?.vendor?.name?.trim()
         || trip.truck?.nha_xe?.trim()
         || null,
+      vendor_id: trip.truck?.vendor?.id ?? trip.truck?.vendor_id ?? null,
+      vendor_code: trip.truck?.vendor?.code?.trim() || null,
       vehicle_type: trip.truck?.loai_xe?.trim() || null,
       waybill_count: waybills.length,
       planned_total_weight: weight,
@@ -904,6 +908,8 @@ export class TripsService {
     const weight = waybills.reduce((sum, waybill) => sum + Number(waybill.weight ?? 0), 0);
     const volume = waybills.reduce((sum, waybill) => sum + Number(waybill.the_tich_m3 ?? 0), 0);
     const total_collect = waybills.reduce((sum, waybill) => sum + this.calcWaybillCollectAmount(waybill), 0);
+    const total_revenue = waybills.reduce((sum, waybill) => sum + Number(waybill.cost_amount ?? 0), 0);
+    const expense_total = (trip.expenses ?? []).reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
     return {
       ...trip,
       manifest_code: trip.manifest?.manifest_code ?? null,
@@ -912,6 +918,8 @@ export class TripsService {
       planned_total_weight: weight,
       planned_total_volume: volume,
       total_collect,
+      total_revenue,
+      expense_total,
       license_plate: trip.truck?.license_plate ?? trip.truck?.bks ?? null,
       driver_name: trip.driver_name?.trim()
         || trip.truck?.ten_lai_xe?.trim()
@@ -923,6 +931,8 @@ export class TripsService {
       vendor_name: trip.truck?.vendor?.name?.trim()
         || trip.truck?.nha_xe?.trim()
         || null,
+      vendor_id: trip.truck?.vendor?.id ?? trip.truck?.vendor_id ?? null,
+      vendor_code: trip.truck?.vendor?.code?.trim() || null,
       vehicle_type: trip.truck?.loai_xe?.trim() || null,
     };
   }

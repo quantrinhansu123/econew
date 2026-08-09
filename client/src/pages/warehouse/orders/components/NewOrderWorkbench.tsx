@@ -153,7 +153,7 @@ export default function NewOrderWorkbench({
                 <section className="rounded-lg border border-blue-200/80 bg-blue-50/30 p-2.5">
                   <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-primary">Thông tin người gửi <span className="normal-case font-semibold text-slate-400">(không bắt buộc)</span></p>
                   <div className="grid grid-cols-12 items-end gap-x-2 gap-y-1.5">
-                    <CompactField label="Mã KH" className="col-span-12 sm:col-span-4">
+                    <CompactField label="Mã KH" className="col-span-12">
                       <CustomerMaKhCombobox value={form.maKh} onValueChange={(code) => setField('maKh', code)} onCustomerSelect={onCustomerSelect} disabled={isSubmitting} />
                       {customerPriceList && (
                         <button type="button" title={customerPriceList.name} onClick={() => window.open(customerPriceList.url, '_blank', 'noopener,noreferrer')} className="mt-1 inline-flex max-w-full items-center gap-1 text-[10px] font-extrabold text-primary hover:underline">
@@ -161,10 +161,10 @@ export default function NewOrderWorkbench({
                         </button>
                       )}
                     </CompactField>
-                    <CompactField label="Điện thoại" className="col-span-6 sm:col-span-4">
+                    <CompactField label="Điện thoại" className="col-span-6">
                       <CompactInput value={form.dienThoaiKh} onChange={(e) => setField('dienThoaiKh', e.target.value)} />
                     </CompactField>
-                    <CompactField label="Người gửi" className="col-span-6 sm:col-span-4">
+                    <CompactField label="Người gửi" className="col-span-6">
                       <CompactInput value={form.nguoiGui} onChange={(e) => setField('nguoiGui', e.target.value)} />
                     </CompactField>
                     <CompactField label="Địa chỉ gửi" className="col-span-12">

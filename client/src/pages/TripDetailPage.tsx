@@ -9,7 +9,6 @@ import { FilterSelect } from '../components/ui/FilterSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
 import type { AuthUserProfile } from './login/types';
 import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
-import UpdateTripCostsDialog from './trips/dialogs/UpdateTripCostsDialog';
 import TripManifestDetailDialog from './trips/dialogs/TripManifestDetailDialog';
 import TripTruckDetailDialog from './trips/dialogs/TripTruckDetailDialog';
 import EditTripScheduleDialog, { type TripScheduleFormState } from './trips/dialogs/EditTripScheduleDialog';
@@ -117,7 +116,6 @@ export default function TripDetailPage() {
   const [actionError, setActionError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
-  const [costDialogOpen, setCostDialogOpen] = useState(false);
   const [detailManifest, setDetailManifest] = useState<ManifestDetail | null>(null);
   const [detailTruck, setDetailTruck] = useState<TruckSummary | null>(null);
   const [scheduleTrip, setScheduleTrip] = useState<Trip | null>(null);
@@ -372,6 +370,8 @@ export default function TripDetailPage() {
     window.open(`/print/manifest/${trip.manifest_id}`, '_blank', 'noopener');
   }
 
+  const costManifestId = trip?.manifest_id ?? manifest?.id ?? null;
+
   return (
     <div className="h-full min-h-0 flex flex-col gap-2">
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
@@ -382,7 +382,7 @@ export default function TripDetailPage() {
             <button title="Mở bộ lọc" onClick={() => setIsFilterPanelOpen(true)} className="relative h-10 w-10 rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 flex items-center justify-center md:hidden"><Filter size={16} />{activeFilterCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white">{activeFilterCount}</span>}</button>
             {activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
             <div className="hidden flex-1 md:block" />
-            {canUpdateCosts && <button disabled={isFinal || !trip} onClick={() => { setActionError(''); setCostDialogOpen(true); }} className="h-10 rounded-lg bg-primary px-3 text-[13px] font-bold text-white hover:bg-primary/90 disabled:opacity-40"><span className="hidden md:inline">+ Chi phí chuyến</span><Fuel className="md:hidden" size={16} /></button>}
+            {canUpdateCosts && <button disabled={!costManifestId} title={costManifestId ? 'Mở chi tiết bảng kê để nhập chi phí' : 'Chuyến chưa có bảng kê'} onClick={() => costManifestId && navigate(`/warehouse/manifests?openManifestId=${encodeURIComponent(String(costManifestId))}`)} className="h-10 rounded-lg bg-primary px-3 text-[13px] font-bold text-white hover:bg-primary/90 disabled:opacity-40"><span className="hidden md:inline">+ Chi phí chuyến</span><Fuel className="md:hidden" size={16} /></button>}
           </div>
           <div className="hidden md:flex flex-wrap items-center gap-2">
             <FilterSelect multiple icon={Tag} placeholder="Trạng thái vận đơn" options={waybillStatusOptions} value={filters.current_state} onValueChange={value => updateFilter('current_state', value)} />
@@ -405,7 +405,6 @@ export default function TripDetailPage() {
       </div>
       <FilterPanel open={isFilterPanelOpen} activeCount={activeFilterCount} groups={filterPanelGroups} onClose={() => setIsFilterPanelOpen(false)} onApply={() => setIsFilterPanelOpen(false)} onClear={clearFilters} />
       <TripStatusActionDialog trip={actionTrip} action={action} isSubmitting={isSubmitting} error={actionError} onClose={() => { setActionTrip(null); setAction(null); }} onConfirm={confirmAction} />
-      <UpdateTripCostsDialog trip={costDialogOpen ? trip : null} onClose={() => setCostDialogOpen(false)} onSaved={() => { void loadTrip(); }} />
       <TripManifestDetailDialog manifest={detailManifest} onClose={() => setDetailManifest(null)} />
       <TripTruckDetailDialog truck={detailTruck} onClose={() => setDetailTruck(null)} />
       <EditTripScheduleDialog trip={scheduleTrip} formState={scheduleForm} isSubmitting={isSubmitting} error={actionError} onDepartureChange={(value) => setScheduleForm(prev => ({ ...prev, departure_time: value }))} onRouteStopChange={(hubId, value) => setScheduleForm(prev => ({ ...prev, route_stops: prev.route_stops.map(stop => stop.hub_id === hubId ? { ...stop, expected_arrival_at: value } : stop) }))} onClose={() => setScheduleTrip(null)} onSubmit={submitSchedule} />

@@ -1,59 +1,55 @@
 import { utils, writeFile, type CellObject, type WorkBook, type WorkSheet } from 'xlsx';
 import type { IncomingTrip } from './types';
 import {
-  formatTripArrivalDate,
-  getDriverCollectedAmount,
+  formatNumber,
+  formatTripDepartureDate,
   getDriverName,
   getDriverPhone,
   getManifestCode,
-  getOriginHub,
-  getPaymentNote,
   getPlateLabel,
   getRouteLabel,
+  getTotalVolume,
   getTotalWeight,
-  getTripOtherCosts,
-  getTripPaidAmount,
-  getTripPayableAmount,
-  getTripReceivableAmount,
-  getTripStatusLabel,
-  getVehicleType,
+  getTripProvisionalProfit,
+  getTripWaitingPaymentDays,
+  getVendorCode,
   getVendorName,
   getVendorPaymentStatusLabel,
+  getVehicleType,
   getWaybillCount,
 } from './incomingTripUtils';
 
 const HEADERS = [
-  'Ngày đến', 'Giờ', 'Xuất phát', 'Bảng kê', 'Tuyến', 'BKS', 'Số đơn', 'Kg',
-  'Tài xế', 'SĐT', 'Nhà cung cấp', 'Loại xe', 'Phải trả', 'Đã trả', 'Phí khác',
-  'Phải thu', 'Lái xe đã thu', 'Ghi chú', 'Trạng thái thanh toán', 'Trạng thái chuyến',
+  'STT', 'Ngày khởi hành', 'Tuyến', 'Mã Bảng kê', 'NCC & loại xe', 'BKS',
+  'Đơn / trọng lượng / CBM', 'Tài xế và SĐT', 'Lợi nhuận sơ bộ',
+  'Số ngày chờ TT', 'Trạng thái Thanh toán', 'Thao tác',
 ] as const;
 
-const COLUMN_WIDTHS = [13, 8, 12, 20, 18, 15, 10, 12, 20, 15, 20, 15, 15, 15, 15, 15, 17, 28, 22, 18];
-const MONEY_COLUMN_INDEXES = new Set([12, 13, 14, 15, 16]);
+const COLUMN_WIDTHS = [7, 20, 18, 22, 28, 16, 26, 24, 19, 18, 24, 12];
+const MONEY_COLUMN_INDEXES = new Set([8]);
 
-function mapTripRow(trip: IncomingTrip): Array<string | number> {
-  const arrival = formatTripArrivalDate(trip);
+function mapTripRow(trip: IncomingTrip, index: number): Array<string | number> {
+  const departure = formatTripDepartureDate(trip);
+  const vendor = [getVendorCode(trip), getVendorName(trip), getVehicleType(trip)]
+    .filter((value, valueIndex, values) => value && value !== '—' && values.indexOf(value) === valueIndex)
+    .join(' · ');
+  const driver = [getDriverName(trip), getDriverPhone(trip)]
+    .filter((value) => value && value !== '—')
+    .join(' · ');
+  const waitingDays = getTripWaitingPaymentDays(trip);
   return [
-    arrival.day,
-    arrival.time || '',
-    getOriginHub(trip),
-    getManifestCode(trip),
+    index + 1,
+    departure.full === 'Chưa có ngày' ? '' : departure.full,
     getRouteLabel(trip),
+    getManifestCode(trip),
+    vendor,
     getPlateLabel(trip),
-    Number(getWaybillCount(trip)),
-    Number(getTotalWeight(trip)),
-    getDriverName(trip),
-    getDriverPhone(trip),
-    getVendorName(trip),
-    getVehicleType(trip),
-    getTripPayableAmount(trip),
-    getTripPaidAmount(trip),
-    getTripOtherCosts(trip),
-    getTripReceivableAmount(trip),
-    getDriverCollectedAmount(trip),
-    getPaymentNote(trip),
+    `${Number(getWaybillCount(trip)).toLocaleString('vi-VN')} đơn · ${formatNumber(getTotalWeight(trip))} kg · ${formatNumber(getTotalVolume(trip), 2)} m³`,
+    driver,
+    getTripProvisionalProfit(trip),
+    waitingDays == null ? '' : waitingDays,
     getVendorPaymentStatusLabel(trip),
-    getTripStatusLabel(trip),
+    '',
   ];
 }
 
@@ -63,10 +59,10 @@ function styleWorksheet(worksheet: WorkSheet, rowCount: number) {
     { s: { r: 0, c: 0 }, e: { r: 0, c: HEADERS.length - 1 } },
     { s: { r: 1, c: 0 }, e: { r: 1, c: HEADERS.length - 1 } },
   ];
-  worksheet['!autofilter'] = { ref: `A3:T${Math.max(3, rowCount + 3)}` };
+  worksheet['!autofilter'] = { ref: `A3:L${Math.max(3, rowCount + 3)}` };
   worksheet['!rows'] = [{ hpt: 26 }, { hpt: 20 }, { hpt: 32 }];
 
-  const range = utils.decode_range(worksheet['!ref'] || 'A1:T3');
+  const range = utils.decode_range(worksheet['!ref'] || 'A1:L3');
   for (let row = range.s.r; row <= range.e.r; row += 1) {
     for (let column = range.s.c; column <= range.e.c; column += 1) {
       const ref = utils.encode_cell({ r: row, c: column });
@@ -114,13 +110,8 @@ export function buildIncomingTripsExcelWorkbook(
   if (!trips.length) return null;
   const totalRow: Array<string | number> = Array(HEADERS.length).fill('');
   totalRow[0] = 'TỔNG CỘNG';
-  totalRow[6] = trips.reduce((sum, trip) => sum + Number(getWaybillCount(trip)), 0);
-  totalRow[7] = trips.reduce((sum, trip) => sum + Number(getTotalWeight(trip)), 0);
-  totalRow[12] = trips.reduce((sum, trip) => sum + getTripPayableAmount(trip), 0);
-  totalRow[13] = trips.reduce((sum, trip) => sum + getTripPaidAmount(trip), 0);
-  totalRow[14] = trips.reduce((sum, trip) => sum + getTripOtherCosts(trip), 0);
-  totalRow[15] = trips.reduce((sum, trip) => sum + getTripReceivableAmount(trip), 0);
-  totalRow[16] = trips.reduce((sum, trip) => sum + getDriverCollectedAmount(trip), 0);
+  totalRow[6] = `${trips.reduce((sum, trip) => sum + Number(getWaybillCount(trip)), 0).toLocaleString('vi-VN')} đơn · ${formatNumber(trips.reduce((sum, trip) => sum + Number(getTotalWeight(trip)), 0))} kg · ${formatNumber(trips.reduce((sum, trip) => sum + Number(getTotalVolume(trip)), 0), 2)} m³`;
+  totalRow[8] = trips.reduce((sum, trip) => sum + getTripProvisionalProfit(trip), 0);
 
   const rows: Array<Array<string | number>> = [
     [title],

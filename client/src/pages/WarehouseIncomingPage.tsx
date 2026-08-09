@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { ApiError, apiRequest } from '../lib/api';
+import VendorDetailDialog from './admin/vendors/dialogs/VendorDetailDialog';
+import type { Vendor, VendorListResponse } from './admin/vendors/types';
 import { IncomingTripTable } from './warehouse/incoming/IncomingTripTable';
 import { IncomingExpectedTripCards } from './warehouse/incoming/IncomingExpectedTripCards';
 import { IncomingTripsPageLayout } from './warehouse/incoming/IncomingTripsPageLayout';
@@ -11,12 +14,13 @@ import {
   collectPaymentStatusOptions,
   collectPlateOptions,
   collectStatusOptions,
-  collectVendorOptions,
+  collectVendorCodeOptions,
   filterTripsByDateRange,
   filterTripsByPaymentStatuses,
   filterTripsByPlates,
   filterTripsByStatuses,
-  filterTripsByVendors,
+  filterTripsByKeyword,
+  filterTripsByVendorCode,
   formatFilterDateRangeLabel,
   hasActiveIncomingFilters,
   getManifestId,
@@ -44,45 +48,26 @@ export default function WarehouseIncomingPage({
 }: WarehouseIncomingPageProps = {}) {
   const navigate = useNavigate();
   const { trips, isLoading, error, updatedAt, refresh } = useIncomingTrips({ source: mode });
+  const [keyword, setKeyword] = useState('');
   const [filterFromDate, setFilterFromDate] = useState('');
   const [filterToDate, setFilterToDate] = useState('');
-  const [enabledVendors, setEnabledVendors] = useState<Set<string>>(new Set());
+  const [vendorCode, setVendorCode] = useState('');
   const [enabledPlates, setEnabledPlates] = useState<Set<string>>(new Set());
   const [enabledStatuses, setEnabledStatuses] = useState<Set<string>>(new Set());
   const [enabledPaymentStatuses, setEnabledPaymentStatuses] = useState<Set<IncomingVendorPaymentStatus>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
+  const [ledgerVendor, setLedgerVendor] = useState<Vendor | null>(null);
+  const [isLedgerVendorLoading, setIsLedgerVendorLoading] = useState(false);
   const [exportError, setExportError] = useState('');
 
   const actions = useIncomingTripActions(refresh);
 
-  const vendorOptions = useMemo(() => collectVendorOptions(trips), [trips]);
+  const vendorCodeOptions = useMemo(() => collectVendorCodeOptions(trips), [trips]);
   const plateOptions = useMemo(() => collectPlateOptions(trips), [trips]);
   const statusOptions = useMemo(() => collectStatusOptions(trips), [trips]);
   const statusValues = useMemo(() => statusOptions.map((option) => option.value), [statusOptions]);
   const paymentStatusOptions = useMemo(() => collectPaymentStatusOptions(trips), [trips]);
   const paymentStatusValues = useMemo(() => paymentStatusOptions.map((option) => option.value), [paymentStatusOptions]);
-
-  useEffect(() => {
-    // Đồng bộ các lựa chọn khi API trả thêm/bớt nhà cung cấp.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setEnabledVendors((previous) => {
-      const next = new Set(previous);
-      let changed = false;
-      vendorOptions.forEach((vendor) => {
-        if (!next.has(vendor)) {
-          next.add(vendor);
-          changed = true;
-        }
-      });
-      [...next].forEach((vendor) => {
-        if (!vendorOptions.includes(vendor)) {
-          next.delete(vendor);
-          changed = true;
-        }
-      });
-      return changed ? next : previous;
-    });
-  }, [vendorOptions]);
 
   useEffect(() => {
     // Đồng bộ các lựa chọn khi API trả thêm/bớt biển số.
@@ -150,15 +135,6 @@ export default function WarehouseIncomingPage({
     });
   }, [paymentStatusValues]);
 
-  const handleVendorToggle = useCallback((vendor: string) => {
-    setEnabledVendors((previous) => {
-      const next = new Set(previous);
-      if (next.has(vendor)) next.delete(vendor);
-      else next.add(vendor);
-      return next;
-    });
-  }, []);
-
   const handlePlatesChange = useCallback((plates: string[]) => {
     setEnabledPlates(new Set(plates));
   }, []);
@@ -172,22 +148,24 @@ export default function WarehouseIncomingPage({
   }, []);
 
   const handleClearFilters = useCallback(() => {
+    setKeyword('');
     setFilterFromDate('');
     setFilterToDate('');
-    setEnabledVendors(new Set(vendorOptions));
+    setVendorCode('');
     setEnabledPlates(new Set(plateOptions));
     setEnabledStatuses(new Set(statusValues));
     setEnabledPaymentStatuses(new Set(paymentStatusValues));
-  }, [vendorOptions, plateOptions, statusValues, paymentStatusValues]);
+  }, [plateOptions, statusValues, paymentStatusValues]);
 
   const filteredTrips = useMemo(() => {
-    let result = filterTripsByDateRange(trips, filterFromDate, filterToDate);
+    let result = filterTripsByKeyword(trips, keyword);
+    result = filterTripsByDateRange(result, filterFromDate, filterToDate);
     result = filterTripsByPlates(result, enabledPlates, plateOptions);
     result = filterTripsByStatuses(result, enabledStatuses, statusValues);
     result = filterTripsByPaymentStatuses(result, enabledPaymentStatuses, paymentStatusValues);
-    result = filterTripsByVendors(result, enabledVendors, vendorOptions);
+    result = filterTripsByVendorCode(result, vendorCode);
     return result;
-  }, [trips, filterFromDate, filterToDate, enabledPlates, plateOptions, enabledStatuses, statusValues, enabledPaymentStatuses, paymentStatusValues, enabledVendors, vendorOptions]);
+  }, [trips, keyword, filterFromDate, filterToDate, enabledPlates, plateOptions, enabledStatuses, statusValues, enabledPaymentStatuses, paymentStatusValues, vendorCode]);
 
   const summary = useMemo(() => summarizeIncomingTrips(filteredTrips), [filteredTrips]);
   const displayTrips = useMemo(() => sortTrips(filteredTrips), [filteredTrips]);
@@ -198,8 +176,8 @@ export default function WarehouseIncomingPage({
   const filtersActive = hasActiveIncomingFilters(
     filterFromDate,
     filterToDate,
-    enabledVendors,
-    vendorOptions,
+    keyword,
+    vendorCode,
     enabledPlates,
     plateOptions,
     enabledStatuses,
@@ -225,7 +203,8 @@ export default function WarehouseIncomingPage({
         enabledPlates.size !== plateOptions.length ? `${enabledPlates.size}/${plateOptions.length} BKS` : '',
         enabledStatuses.size !== statusValues.length ? `${enabledStatuses.size}/${statusValues.length} trạng thái chuyến` : '',
         enabledPaymentStatuses.size !== paymentStatusValues.length ? `${enabledPaymentStatuses.size}/${paymentStatusValues.length} trạng thái thanh toán` : '',
-        enabledVendors.size !== vendorOptions.length ? `${enabledVendors.size}/${vendorOptions.length} nhà cung cấp` : '',
+        vendorCode ? `Mã NCC ${vendorCode}` : '',
+        keyword.trim() ? `Tìm kiếm “${keyword.trim()}”` : '',
       ].filter(Boolean).join(' · ');
       const success = downloadIncomingTripsExcel(displayTrips, filterSummary, {
         title: title.toLocaleUpperCase('vi-VN'),
@@ -237,7 +216,33 @@ export default function WarehouseIncomingPage({
     } finally {
       setIsExporting(false);
     }
-  }, [displayTrips, enabledPaymentStatuses, enabledPlates, enabledStatuses, enabledVendors, filterFromDate, filterToDate, mode, paymentStatusValues.length, plateOptions.length, statusValues.length, title, vendorOptions.length]);
+  }, [displayTrips, enabledPaymentStatuses, enabledPlates, enabledStatuses, filterFromDate, filterToDate, keyword, mode, paymentStatusValues.length, plateOptions.length, statusValues.length, title, vendorCode]);
+
+  const handleOpenVendorLedger = useCallback(async () => {
+    const code = vendorCode.trim();
+    if (!code) return;
+    setExportError('');
+    setIsLedgerVendorLoading(true);
+    try {
+      const params = new URLSearchParams({ page: '1', limit: '100', keyword: code });
+      const response = await apiRequest<VendorListResponse | Vendor[]>(`/vendors?${params.toString()}`);
+      const vendors = Array.isArray(response) ? response : response.items || response.data || response.vendors || [];
+      const vendor = vendors.find((item) => item.code?.trim().toLocaleUpperCase('vi-VN') === code.toLocaleUpperCase('vi-VN'));
+      if (!vendor) {
+        setExportError(`Không tìm thấy mã NCC ${code}.`);
+        return;
+      }
+      try {
+        setLedgerVendor(await apiRequest<Vendor>(`/vendors/${vendor.id}`));
+      } catch {
+        setLedgerVendor(vendor);
+      }
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : `Không mở được bảng kê NCC ${code}.`);
+    } finally {
+      setIsLedgerVendorLoading(false);
+    }
+  }, [vendorCode]);
 
   const handleViewManifest = useCallback((trip: IncomingTrip) => {
     const manifestId = getManifestId(trip);
@@ -260,13 +265,17 @@ export default function WarehouseIncomingPage({
         error={exportError || error}
         updatedAt={updatedAt}
         compact={mode === 'expected-arrivals'}
+        keyword={keyword}
+        onKeywordChange={setKeyword}
         filterFromDate={filterFromDate}
         filterToDate={filterToDate}
         onFilterFromDateChange={setFilterFromDate}
         onFilterToDateChange={setFilterToDate}
-        vendorOptions={vendorOptions}
-        enabledVendors={enabledVendors}
-        onVendorToggle={handleVendorToggle}
+        vendorCodeOptions={vendorCodeOptions}
+        vendorCode={vendorCode}
+        onVendorCodeChange={setVendorCode}
+        onOpenVendorLedger={handleOpenVendorLedger}
+        isVendorLedgerLoading={isLedgerVendorLoading}
         plateOptions={plateOptions}
         enabledPlates={enabledPlates}
         onPlatesChange={handlePlatesChange}
@@ -329,6 +338,15 @@ export default function WarehouseIncomingPage({
       <IncomingTripDetailDialog
         trip={viewTrip}
         onClose={actions.closeView}
+      />
+      <VendorDetailDialog
+        key={ledgerVendor ? `vendor-ledger-${ledgerVendor.id}` : 'vendor-ledger-closed'}
+        vendor={ledgerVendor}
+        loading={isLedgerVendorLoading}
+        canManage={false}
+        initialTab="thanh-toan"
+        onClose={() => setLedgerVendor(null)}
+        onEdit={() => undefined}
       />
     </>
   );

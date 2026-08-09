@@ -7,6 +7,7 @@ describe('incoming trips Excel export', () => {
     const trips: IncomingTrip[] = [{
       id: '9',
       status: 'IN_TRANSIT',
+      departure_time: '2026-07-22T11:11:00.000Z',
       expected_arrival_time: '2026-07-23T11:11:00.000Z',
       manifest_code: 'BK-001',
       start_hub: { id: '1', code: 'HAN' },
@@ -22,18 +23,19 @@ describe('incoming trips Excel export', () => {
       vendor_paid_amount: 50000,
       other_costs: 10000,
       total_collect: 180000,
+      total_revenue: 180000,
     }];
 
     const workbook = buildIncomingTripsExcelWorkbook(trips, 'Tất cả ngày');
     const sheet = workbook?.Sheets['Chuyen xe'];
 
-    expect(sheet?.A3?.v).toBe('Ngày đến');
+    expect(sheet?.A3?.v).toBe('STT');
     expect(sheet?.D4?.v).toBe('BK-001');
     expect(sheet?.F4?.v).toBe('39H-1234');
-    expect(sheet?.G4?.v).toBe(3);
-    expect(sheet?.M4?.v).toBe(120000);
+    expect(sheet?.G4?.v).toContain('3 đơn');
+    expect(sheet?.I4?.v).toBe(50000);
     expect(sheet?.A5?.v).toBe('TỔNG CỘNG');
-    expect(sheet?.P5?.v).toBe(180000);
+    expect(sheet?.I5?.v).toBe(50000);
   });
 
   it('returns null when there is no trip to export', () => {

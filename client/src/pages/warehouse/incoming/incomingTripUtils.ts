@@ -102,6 +102,15 @@ export const getTotalWeight = (trip: IncomingTrip) => (
   trip.planned_total_weight ?? trip.total_weight ?? getManifest(trip)?.total_weight ?? 0
 );
 
+export const getTotalVolume = (trip: IncomingTrip) => (
+  trip.planned_total_volume
+  ?? trip.total_m3
+  ?? trip.total_volumetric_weight
+  ?? getManifest(trip)?.total_m3
+  ?? getManifest(trip)?.total_volumetric_weight
+  ?? 0
+);
+
 export const getOriginHub = (trip: IncomingTrip) => (
   formatHub(trip.origin_hub || trip.start_hub || getManifest(trip)?.origin_hub, trip.origin_hub_id || trip.start_hub_id || getManifest(trip)?.origin_hub_id)
 );
@@ -132,6 +141,16 @@ export const getVendorName = (trip: IncomingTrip) => (
   || trip.truck?.vendor?.name?.trim()
   || trip.truck?.nha_xe?.trim()
   || '—'
+);
+
+export const getVendorCode = (trip: IncomingTrip) => (
+  trip.vendor_code?.trim()
+  || trip.truck?.vendor?.code?.trim()
+  || ''
+);
+
+export const getVendorId = (trip: IncomingTrip) => (
+  trip.vendor_id ?? trip.truck?.vendor?.id ?? null
 );
 
 export const getVehicleType = (trip: IncomingTrip) => (
@@ -172,6 +191,25 @@ export const formatTripArrivalDate = (trip: IncomingTrip) => {
   };
 };
 
+export const formatTripDepartureDate = (trip: IncomingTrip) => {
+  const source = trip.departure_time;
+  if (!source) return { day: '—', time: '', full: 'Chưa có ngày' };
+  const date = new Date(source);
+  if (Number.isNaN(date.getTime())) return { day: '—', time: '', full: 'Chưa có ngày' };
+  return {
+    day: new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date),
+    time: new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(date),
+    full: new Intl.DateTimeFormat('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(date),
+  };
+};
+
 export const filterTripsByDate = (trips: IncomingTrip[], filterDate: string) => {
   if (!filterDate) return trips;
   return trips.filter((trip) => getTripDateKey(trip) === filterDate);
@@ -195,6 +233,45 @@ export const collectVendorOptions = (trips: IncomingTrip[]) => {
     if (name && name !== '—') names.add(name);
   });
   return [...names].sort((left, right) => left.localeCompare(right, 'vi'));
+};
+
+export interface IncomingVendorCodeOption {
+  value: string;
+  label: string;
+}
+
+export const collectVendorCodeOptions = (trips: IncomingTrip[]): IncomingVendorCodeOption[] => {
+  const options = new Map<string, IncomingVendorCodeOption>();
+  trips.forEach((trip) => {
+    const code = getVendorCode(trip);
+    if (!code) return;
+    const name = getVendorName(trip);
+    options.set(code.toLocaleUpperCase('vi-VN'), {
+      value: code,
+      label: name && name !== '—' ? `${code} · ${name}` : code,
+    });
+  });
+  return [...options.values()].sort((left, right) => left.value.localeCompare(right.value, 'vi'));
+};
+
+export const filterTripsByVendorCode = (trips: IncomingTrip[], vendorCode: string) => {
+  const normalized = vendorCode.trim().toLocaleUpperCase('vi-VN');
+  if (!normalized) return trips;
+  return trips.filter((trip) => getVendorCode(trip).toLocaleUpperCase('vi-VN') === normalized);
+};
+
+export const filterTripsByKeyword = (trips: IncomingTrip[], keyword: string) => {
+  const normalized = keyword.trim().toLocaleLowerCase('vi-VN');
+  if (!normalized) return trips;
+  return trips.filter((trip) => [
+    getManifestCode(trip),
+    getPlateLabel(trip),
+    getRouteLabel(trip),
+    getDriverName(trip),
+    getDriverPhone(trip),
+    getVendorCode(trip),
+    getVendorName(trip),
+  ].some((value) => value.toLocaleLowerCase('vi-VN').includes(normalized)));
 };
 
 export const getPlateFilterKey = (trip: IncomingTrip) => {
@@ -321,9 +398,39 @@ export const getTripReceivableAmount = (trip: IncomingTrip) => getTotalCollect(t
 
 export const getTripPayableAmount = (trip: IncomingTrip) => normalizeNumber(trip.trip_cost);
 
+export const isDepartedManifestTrip = (trip: IncomingTrip) => (
+  ['IN_TRANSIT', 'DEPARTED', 'ARRIVED', 'COMPLETED'].includes(normalizeTripStatus(trip.status))
+);
+
 export const getTripPaidAmount = (trip: IncomingTrip) => normalizeNumber(trip.vendor_paid_amount);
 
 export const getTripOtherCosts = (trip: IncomingTrip) => normalizeNumber(trip.other_costs);
+
+export const getTripExpenseTotal = (trip: IncomingTrip) => normalizeNumber(trip.expense_total);
+
+export const getTripRevenueAmount = (trip: IncomingTrip) => (
+  trip.total_revenue == null ? getTripReceivableAmount(trip) : normalizeNumber(trip.total_revenue)
+);
+
+export const getTripProvisionalProfit = (trip: IncomingTrip) => {
+  const tripCost = getTripPayableAmount(trip);
+  const rawOtherCosts = getTripOtherCosts(trip);
+  const legacyOtherCosts = tripCost > 0 && rawOtherCosts === tripCost ? 0 : rawOtherCosts;
+  return getTripRevenueAmount(trip)
+    - tripCost
+    - normalizeNumber(trip.fuel_cost)
+    - legacyOtherCosts
+    - getTripExpenseTotal(trip);
+};
+
+export const getTripWaitingPaymentDays = (trip: IncomingTrip, now = new Date()) => {
+  if (!trip.departure_time) return null;
+  const departure = new Date(trip.departure_time);
+  if (Number.isNaN(departure.getTime()) || Number.isNaN(now.getTime())) return null;
+  const departureDay = new Date(departure.getFullYear(), departure.getMonth(), departure.getDate()).getTime();
+  const currentDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Math.max(0, Math.floor((currentDay - departureDay) / 86_400_000));
+};
 
 export const getDriverCollectedAmount = (trip: IncomingTrip) => getTotalCollect(trip);
 
@@ -336,14 +443,33 @@ export interface IncomingTripSummary {
   expectedArriving: number;
   arrived: number;
   totalCollect: number;
+  totalPayable: number;
+  payableManifestCount: number;
 }
 
-export const summarizeIncomingTrips = (trips: IncomingTrip[]): IncomingTripSummary => ({
-  total: trips.length,
-  expectedArriving: trips.filter(isExpectedArrivingTrip).length,
-  arrived: trips.filter(isArrivedTrip).length,
-  totalCollect: trips.reduce((sum, trip) => sum + getTotalCollect(trip), 0),
-});
+export const summarizeIncomingTrips = (trips: IncomingTrip[]): IncomingTripSummary => {
+  const manifests = new Map<string, IncomingTrip>();
+  trips.forEach((trip) => {
+    const manifestKey = String(
+      getManifestId(trip)
+      ?? trip.manifest_code
+      ?? trip.manifest?.manifest_code
+      ?? `trip:${trip.id}`,
+    );
+    const current = manifests.get(manifestKey);
+    if (!current || isDepartedManifestTrip(trip)) manifests.set(manifestKey, trip);
+  });
+  const manifestTrips = [...manifests.values()];
+  const payableTrips = manifestTrips.filter(isDepartedManifestTrip);
+  return {
+    total: trips.length,
+    expectedArriving: trips.filter(isExpectedArrivingTrip).length,
+    arrived: trips.filter(isArrivedTrip).length,
+    totalCollect: manifestTrips.reduce((sum, trip) => sum + getTotalCollect(trip), 0),
+    totalPayable: payableTrips.reduce((sum, trip) => sum + getTripPayableAmount(trip), 0),
+    payableManifestCount: payableTrips.length,
+  };
+};
 
 export const formatFilterDateLabel = (filterDate: string) => {
   if (!filterDate) return 'Tất cả ngày';
@@ -363,8 +489,8 @@ export const formatFilterDateRangeLabel = (fromDate: string, toDate: string) => 
 export const hasActiveIncomingFilters = (
   fromDate: string,
   toDate: string,
-  enabledVendors: Set<string>,
-  allVendors: string[],
+  keyword: string,
+  vendorCode: string,
   enabledPlates: Set<string>,
   allPlates: string[],
   enabledStatuses: Set<string>,
@@ -373,7 +499,8 @@ export const hasActiveIncomingFilters = (
   allPaymentStatuses?: string[],
 ) => (
   Boolean(fromDate || toDate)
-  || (allVendors.length > 0 && enabledVendors.size !== allVendors.length)
+  || Boolean(keyword.trim())
+  || Boolean(vendorCode.trim())
   || (allPlates.length > 0 && enabledPlates.size !== allPlates.length)
   || (allStatuses.length > 0 && enabledStatuses.size !== allStatuses.length)
   || (allPaymentStatuses && allPaymentStatuses.length > 0 && enabledPaymentStatuses

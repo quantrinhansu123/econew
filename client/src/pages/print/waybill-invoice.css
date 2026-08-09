@@ -85,7 +85,7 @@
 }
 
 .waybill-invoice::after {
-  top: 78mm;
+  top: 72mm;
   left: calc(var(--eco-a5-split) + 50mm + var(--eco-line-strong-width));
   border-left: var(--eco-line);
 }
@@ -130,8 +130,23 @@
 
 .eco-a5-header .eco-a5-brand {
   width: 60mm;
+  padding-left: 0;
   position: absolute;
   inset: 0 auto 0 0;
+}
+
+.eco-a5-header .eco-a5-brand::after {
+  content: 'Express & Exacting';
+  width: 30mm;
+  position: absolute;
+  top: 22.6mm;
+  left: 0;
+  color: #e3262e;
+  font-size: calc(10pt * var(--eco-a5-scale));
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .eco-a5-header .eco-a5-title {
@@ -163,18 +178,24 @@
   width: 45mm;
   height: 28mm;
   margin: 0;
+  position: absolute;
+  top: 0.8mm;
+  left: -1mm;
   display: block;
-  align-self: flex-start;
-  transform: translateX(-4mm);
   object-fit: contain;
+  object-position: left center;
+  clip-path: inset(0 0 25% 0);
 }
 
 .eco-a5-template .eco-phone {
-  margin-top: -0.8mm;
-  align-self: flex-start;
+  width: 60mm;
+  margin: 0;
+  position: absolute;
+  bottom: 0.5mm;
+  left: 0;
   font-size: var(--fs-phone);
   font-weight: 700;
-  line-height: 1.08;
+  line-height: 1;
   text-align: center;
   white-space: nowrap;
 }
@@ -250,7 +271,7 @@
 
 /* Người gửi / người nhận */
 .eco-a5-people-row {
-  min-height: 44mm;
+  min-height: 38mm;
   display: grid;
   grid-template-columns: var(--eco-a5-split) 1fr;
   grid-template-rows: auto minmax(13mm, auto) auto auto;
@@ -463,7 +484,7 @@
 .eco-a5-left-panel {
   min-width: 0;
   display: grid;
-  grid-template-rows: 6mm 11mm minmax(0, 1fr);
+  grid-template-rows: 12mm 8mm minmax(0, 1fr);
 }
 
 .eco-a5-goods-code {
@@ -488,8 +509,8 @@
 
 .eco-stat-cell {
   min-width: 0;
-  min-height: 11mm;
-  padding: 0 0 1mm;
+  min-height: 8mm;
+  padding: 0;
   display: flex;
   flex-direction: column;
   border-right: var(--eco-line);
@@ -502,7 +523,7 @@
 }
 
 .eco-stat-cell > div {
-  padding: 0.6mm 0.5mm;
+  padding: 0.35mm 0.5mm 0;
 }
 
 .eco-stat-value {

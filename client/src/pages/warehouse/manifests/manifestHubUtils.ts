@@ -7,6 +7,7 @@ export const ACTIVE_TRIP_STATUSES = ['PLANNED', 'ASSIGNED', 'ASSIGNED_TO_TRIP', 
 // Kept as an alias because older callers use this name for the whole active lane.
 export const IN_TRANSIT_TRIP_STATUSES = ACTIVE_TRIP_STATUSES;
 export const ARRIVED_TRIP_STATUSES = ['ARRIVED', 'COMPLETED', 'AT_DEST_HUB', 'DELIVERED', 'DONE', 'FINISHED'];
+export const TRANSIT_BOARD_TRIP_STATUSES = ['IN_TRANSIT', 'DEPARTED', ...ARRIVED_TRIP_STATUSES];
 
 export function isArrivedTripStatus(status?: string | null): boolean {
   const normalized = String(status || '').trim().toUpperCase();
@@ -55,9 +56,10 @@ export function getTripStatus(manifest: LoadPlanningManifest): string {
 export function isInTransitManifest(manifest: LoadPlanningManifest): boolean {
   const tripStatus = getTripStatus(manifest);
   if (isArrivedTripStatus(tripStatus)) return false;
-  if (isActiveTripStatus(tripStatus)) return true;
+  const normalizedTripStatus = tripStatus.trim().toUpperCase();
+  if (normalizedTripStatus === 'IN_TRANSIT' || normalizedTripStatus === 'DEPARTED') return true;
   const manifestStatus = String(manifest.status || '').trim().toUpperCase();
-  return manifestStatus === 'IN_TRANSIT' || manifestStatus === 'ASSIGNED_TO_TRIP';
+  return manifestStatus === 'IN_TRANSIT';
 }
 
 export type ManifestBoardGroup = 'departed' | 'expected' | 'arrived' | 'other';
@@ -99,6 +101,12 @@ export function isArrivedManifest(manifest: LoadPlanningManifest): boolean {
   return isArrivedTripStatus(getTripStatus(manifest));
 }
 
+export function isTransitBoardManifest(manifest: LoadPlanningManifest): boolean {
+  const tripStatus = getTripStatus(manifest).trim().toUpperCase();
+  if (TRANSIT_BOARD_TRIP_STATUSES.includes(tripStatus)) return true;
+  return isArrivedTripStatus(tripStatus);
+}
+
 export function isDepartedNotArrivedManifest(manifest: LoadPlanningManifest): boolean {
   return !isArrivedManifest(manifest) && isInTransitManifest(manifest);
 }
@@ -118,13 +126,13 @@ function sortActiveManifests(manifests: LoadPlanningManifest[]): LoadPlanningMan
 
 export function filterActiveOutboundFromHub(manifests: LoadPlanningManifest[], origin: HubViewCode): LoadPlanningManifest[] {
   return sortActiveManifests(
-    manifests.filter((manifest) => isOutboundFromHub(manifest, origin) && isDepartedNotArrivedManifest(manifest)),
+    manifests.filter((manifest) => isOutboundFromHub(manifest, origin) && isTransitBoardManifest(manifest)),
   );
 }
 
 export function filterExpectedInboundToHub(manifests: LoadPlanningManifest[], destination: HubViewCode): LoadPlanningManifest[] {
   return sortActiveManifests(
-    manifests.filter((manifest) => isInboundToHub(manifest, destination) && isDepartedNotArrivedManifest(manifest)),
+    manifests.filter((manifest) => isInboundToHub(manifest, destination) && isTransitBoardManifest(manifest)),
   );
 }
 
@@ -157,7 +165,7 @@ export function departedColumnTitle(hub: HubViewCode): string {
 }
 
 export function expectedArrivalColumnTitle(hub: HubViewCode): string {
-  return hub === 'HAN' ? 'Xe dự kiến tới Hà Nội' : 'Xe dự kiến tới HCM';
+  return hub === 'HAN' ? 'Xe từ TP.HCM tới Hà Nội' : 'Xe từ Hà Nội tới TP.HCM';
 }
 
 export function arrivedColumnTitle(hub: HubViewCode): string {
