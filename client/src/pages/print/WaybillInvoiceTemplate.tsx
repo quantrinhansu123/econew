@@ -40,18 +40,18 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           <img src={WAYBILL_PRINT_LOGO_SRC} alt="" className="eco-logo" />
           <div className="eco-phone">
             <span className="eco-phone-label">Hotline</span>{' '}
-            <span className="eco-phone-numbers">0946 936 999 - 0888.805.625</span>
+            <span className="eco-phone-numbers">0946 936 999 - 0869 444 816</span>
           </div>
         </div>
         <div className="eco-a5-title">
           <h1>VẬN TẢI ECO</h1>
           <h2>VẬN CHUYỂN HÀNG HÓA BẮC - NAM</h2>
-          <div className="eco-origin-code">Mã BC gửi: <b>{value(data.maBcGui)}</b></div>
+          <div className="eco-origin-code eco-header-post-code">Mã BC gửi: <b>{value(data.maBcGui)}</b></div>
         </div>
         <div className="eco-a5-barcode">
           <img src={barcodeUrl} alt="" className="eco-barcode-img" />
           <div className="eco-code">{displayWaybillCode}</div>
-          <div className="eco-code-meta">
+          <div className="eco-code-meta eco-header-post-code">
             <span>Mã BC nhận: <b>{value(data.maBcNhan)}</b></span>
           </div>
         </div>
@@ -101,7 +101,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
 
       <div className="eco-a5-row eco-a5-main-row">
         <div className="eco-a5-left-panel">
-          <div className="eco-a5-goods-code"><b>Mô tả hàng hoá:</b> {value(data.noiDungHang)}</div>
+          <div className="eco-a5-goods-code"><b>Giao hàng:</b> {value(data.giaoHang)}</div>
           <div className="eco-stats-grid">
             <StatCell label="Số kiện" value={data.soKien} />
             <StatCell label="Trọng lượng quy đổi" value={data.trongLuongQuyDoi} />

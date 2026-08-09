@@ -77,7 +77,7 @@ export const ORDER_BULK_COLUMNS: OrderBulkColumn[] = [
   { key: 'soBill', label: 'Số bill', required: false, sample: '' },
   { key: 'soKien', label: 'Số kiện', required: false, sample: '1' },
   { key: 'dichVu', label: 'Dịch vụ', required: true, sample: 'Tiêu chuẩn 72h' },
-  { key: 'giaoHang', label: 'Giao hàng', required: true, sample: 'Văn phòng' },
+  { key: 'giaoHang', label: 'Giao hàng', required: true, sample: 'Tận nơi' },
   { key: 'ngayDi', label: 'Ngày gửi', required: true, sample: '' },
   { key: 'donGiaDonVi', label: 'Tính cước theo', required: false, sample: 'Kg' },
   { key: 'klKg', label: 'Trọng lượng thực (kg)', required: false, sample: '50' },

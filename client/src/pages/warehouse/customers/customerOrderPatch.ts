@@ -3,6 +3,7 @@ import type { NewOrderFormState } from '../orders/orderFormTypes';
 import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
 import { normalizeWaybillSpecialGoods } from '../../../lib/waybillSpecialGoods';
 import { canonicalProvinceLabel } from '../../../lib/vietnamProvince';
+import { normalizeDeliveryMethod } from '../orders/orderFormData';
 
 const str = (v: string | null | undefined) => (v ?? '').trim();
 
@@ -41,7 +42,7 @@ function mapLoaiBp(priceTable: string | null | undefined): string | undefined {
 
 function mapGiaoHang(addressHcm: string | null | undefined): string | undefined {
   const a = str(addressHcm).toLowerCase();
-  if (a.includes('gọi ra lấy') || a.includes('goi ra lay')) return 'Lấy tại kho';
+  if (a.includes('gọi ra lấy') || a.includes('goi ra lay')) return 'Nhận tại kho ECO';
   if (a.includes('tận nơi') || a.includes('tan noi')) return 'Tận nơi';
   return undefined;
 }
@@ -160,9 +161,9 @@ export function customerToOrderPatch(customer: CustomerRecord): Partial<NewOrder
   const loaiBp = mapLoaiBp(customer.price_table);
   if (loaiBp) patch.loaiBp = loaiBp;
 
-  patch.giaoHang = str(customer.default_delivery_method)
-    || mapGiaoHang(customer.address_hcm)
-    || 'Tận nơi';
+  patch.giaoHang = normalizeDeliveryMethod(
+    str(customer.default_delivery_method) || mapGiaoHang(customer.address_hcm),
+  );
   patch.donGiaDonVi = str(customer.default_billing_unit) || 'Kg';
 
   if (customer.price_table && !dichVu) {

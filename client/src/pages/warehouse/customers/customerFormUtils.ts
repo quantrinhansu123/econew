@@ -2,6 +2,7 @@ import type { CustomerFormState, CustomerRecord } from './customerFormTypes';
 import type { CustomerListItem } from './types';
 import { normalizeWaybillSpecialGoods, serializeWaybillSpecialGoods } from '../../../lib/waybillSpecialGoods';
 import { canonicalProvinceLabel } from '../../../lib/vietnamProvince';
+import { normalizeDeliveryMethod } from '../orders/orderFormData';
 
 const str = (v: string | null | undefined) => v ?? '';
 
@@ -25,7 +26,9 @@ export function customerToForm(source: CustomerListItem | CustomerRecord): Custo
     price_list_url: str(source.price_list_url),
     price_list_name: str(source.price_list_name),
     default_service: str(source.default_service),
-    default_delivery_method: str(source.default_delivery_method),
+    default_delivery_method: source.default_delivery_method
+      ? normalizeDeliveryMethod(source.default_delivery_method)
+      : '',
     default_billing_unit: str(source.default_billing_unit),
     default_payment_method: str(source.default_payment_method),
     default_special_goods: normalizeWaybillSpecialGoods(source.default_special_goods),

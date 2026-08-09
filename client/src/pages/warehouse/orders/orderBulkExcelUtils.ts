@@ -1,5 +1,5 @@
 import { read, SSF, utils, writeFile } from 'xlsx';
-import { emptyOrderForm } from './orderFormData';
+import { emptyOrderForm, normalizeDeliveryMethod } from './orderFormData';
 import type { NewOrderFormState } from './orderFormTypes';
 import {
   applyPricingToForm,
@@ -341,7 +341,7 @@ export function bulkRowToOrderForm(
     soBill: values.soBill.trim().toUpperCase(),
     soKien: values.soKien || defaults.soKien || '1',
     dichVu: values.dichVu || defaults.dichVu || 'Tiêu chuẩn 72h',
-    giaoHang: values.giaoHang || defaults.giaoHang || 'Văn phòng',
+    giaoHang: normalizeDeliveryMethod(values.giaoHang || defaults.giaoHang),
     ngayDi: values.ngayDi,
     donGiaDonVi: values.donGiaDonVi || defaults.donGiaDonVi || 'Kg',
     klKg: values.klKg,

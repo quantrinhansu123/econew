@@ -21,9 +21,11 @@ describe('waybill invoice marked layout', () => {
     expect(css).toMatch(
       /\.waybill-invoice,\s*\.waybill-invoice \*\s*\{[^}]*font-family:\s*Arial,\s*sans-serif\s*!important;/s,
     );
-    expect(css).toMatch(
-      /\.eco-a5-header\s*\{[^}]*grid-template-columns:\s*55mm minmax\(0,\s*1fr\) 57mm;/s,
-    );
+    expect(css).toMatch(/\.eco-a5-header\s*\{[^}]*position:\s*relative;[^}]*display:\s*block;/s);
+    expect(css).toMatch(/\.eco-a5-header \.eco-a5-brand\s*\{[^}]*width:\s*60mm;[^}]*position:\s*absolute;[^}]*inset:\s*0 auto 0 0;/s);
+    expect(css).toMatch(/\.eco-a5-header \.eco-a5-title\s*\{[^}]*width:\s*85mm;[^}]*position:\s*absolute;[^}]*inset:\s*0 auto 0 30mm;/s);
+    expect(css).toMatch(/\.eco-a5-header \.eco-a5-barcode\s*\{[^}]*width:\s*90mm;[^}]*position:\s*absolute;[^}]*inset:\s*0 0 0 auto;/s);
+    expect(css).toMatch(/\.eco-a5-template \.eco-logo\s*\{[^}]*transform:\s*translateX\(-4mm\);/s);
     expect(css).toMatch(/--fs-subtitle:\s*calc\(17pt \* var\(--eco-a5-scale\)\);/s);
     expect(css).toMatch(/\.eco-a5-title h2\s*\{[^}]*white-space:\s*nowrap;/s);
     expect(css).toMatch(
@@ -43,17 +45,17 @@ describe('waybill invoice marked layout', () => {
     const totalRule = css.match(/\.eco-a5-template \.eco-total\s*\{[^}]*\}/s)?.[0] || '';
     expect(totalRule).not.toContain('border-top');
     expect(css).toMatch(
-      /\.eco-note-cell--contents p\s*\{[^}]*font-size:\s*var\(--fs-base\);[^}]*font-weight:\s*400;/s,
+      /\.eco-note-cell--contents p\s*\{[^}]*font-size:\s*var\(--fs-row\);[^}]*font-weight:\s*400;/s,
     );
     expect(css).toMatch(/\.eco-a5-people-row\s*\{[^}]*align-content:\s*start;/s);
     expect(css).toMatch(
-      /\.eco-band--receiver-details\s*\{[^}]*justify-content:\s*flex-start;[^}]*gap:\s*0\.5mm;[^}]*font-size:\s*var\(--fs-row\);[^}]*line-height:\s*1\.3;/s,
+      /\.eco-band--receiver-details\s*\{[^}]*justify-content:\s*flex-start;[^}]*gap:\s*1mm;[^}]*font-size:\s*var\(--fs-row\);[^}]*line-height:\s*1\.45;/s,
     );
     expect(css).toMatch(
       /\.eco-band--receiver-details \.eco-mini-line--ward\s*\{[^}]*grid-template-columns:\s*max-content minmax\(0,\s*1fr\);[^}]*column-gap:\s*1\.2mm;/s,
     );
     expect(css).toMatch(
-      /\.eco-two-col-line--receiver-contact\s*\{[^}]*grid-template-columns:\s*42mm minmax\(0,\s*1fr\);[^}]*column-gap:\s*0\.8mm;/s,
+      /\.eco-two-col-line--receiver-contact\s*\{[^}]*grid-template-columns:\s*47mm minmax\(0,\s*1fr\);[^}]*column-gap:\s*2\.5mm;/s,
     );
     expect(css).toMatch(
       /\.eco-a5-people-row \.eco-mini-line--address\s*\{[^}]*grid-template-columns:\s*max-content minmax\(0,\s*1fr\);/s,
@@ -69,10 +71,10 @@ describe('waybill invoice marked layout', () => {
       /\.eco-two-col-line--dest \.eco-mini-value\s*\{[^}]*overflow-wrap:\s*normal;[^}]*white-space:\s*nowrap;/s,
     );
     expect(css).toMatch(
-      /\.eco-origin-code\s*\{[^}]*position:\s*absolute;[^}]*bottom:\s*0\.8mm;[^}]*font-size:\s*var\(--fs-row\);/s,
+      /\.eco-header-post-code\s*\{[^}]*position:\s*absolute;[^}]*bottom:\s*0\.8mm;[^}]*font-size:\s*var\(--fs-row\);/s,
     );
     expect(css).toMatch(
-      /\.eco-stat-value\s*\{[^}]*font-size:\s*var\(--fs-base\);[^}]*font-weight:\s*400;/s,
+      /\.eco-stat-value\s*\{[^}]*font-size:\s*var\(--fs-row\);[^}]*font-weight:\s*400;/s,
     );
     expect(css).toMatch(
       /\.eco-a5-goods-code\s*\{[^}]*font-size:\s*var\(--fs-sm\);[^}]*font-weight:\s*400;/s,
@@ -85,7 +87,7 @@ describe('waybill invoice marked layout', () => {
   it('fits the printed invoice inside safe printer margins on one page', () => {
     expect(css).toMatch(/@page\s*\{[^}]*size:\s*A4 portrait;[^}]*margin:\s*5mm;/s);
     expect(css).toMatch(
-      /@media print\s*\{[\s\S]*?\.waybill-paper-preview\s*\{[^}]*width:\s*189mm\s*!important;[^}]*height:\s*128mm\s*!important;/s,
+      /@media print\s*\{[\s\S]*?\.waybill-paper-preview\s*\{[^}]*width:\s*189mm\s*!important;[^}]*height:\s*140mm\s*!important;/s,
     );
     expect(css).toMatch(
       /@media print\s*\{[\s\S]*?\.waybill-invoice\s*\{[^}]*transform:\s*scale\(0\.94\);[^}]*transform-origin:\s*top left;/s,
@@ -108,10 +110,10 @@ describe('waybill invoice marked layout', () => {
 
     expect(noteHeadingRule).not.toContain('border-bottom');
     expect(css).toMatch(
-      /\.waybill-invoice::before\s*\{[^}]*top:\s*25mm;[^}]*left:\s*calc\(var\(--eco-a5-split\) \+ var\(--eco-line-strong-width\)\);[^}]*border-left:\s*var\(--eco-line-strong\);/s,
+      /\.waybill-invoice::before\s*\{[^}]*top:\s*34mm;[^}]*left:\s*calc\(var\(--eco-a5-split\) \+ var\(--eco-line-strong-width\)\);[^}]*border-left:\s*var\(--eco-line-strong\);/s,
     );
     expect(css).toMatch(
-      /\.waybill-invoice::after\s*\{[^}]*top:\s*61mm;[^}]*left:\s*calc\(var\(--eco-a5-split\) \+ 50mm \+ var\(--eco-line-strong-width\)\);[^}]*border-left:\s*var\(--eco-line\);/s,
+      /\.waybill-invoice::after\s*\{[^}]*top:\s*78mm;[^}]*left:\s*calc\(var\(--eco-a5-split\) \+ 50mm \+ var\(--eco-line-strong-width\)\);[^}]*border-left:\s*var\(--eco-line\);/s,
     );
     expect(css).toMatch(
       /\.eco-note-grid::after\s*\{[^}]*top:\s*0;[^}]*bottom:\s*0;[^}]*left:\s*50%;[^}]*border-left:\s*var\(--eco-line\);/s,
@@ -120,5 +122,7 @@ describe('waybill invoice marked layout', () => {
     expect(paymentMethodRule).not.toContain('border-right');
     expect(extraInfoRule).not.toContain('border-right');
     expect(footerServiceRule).not.toContain('border-right');
+    const statLabelRule = css.match(/\.eco-stat-cell > div\s*\{[^}]*\}/s)?.[0] || '';
+    expect(statLabelRule).not.toContain('border-bottom');
   });
 });
