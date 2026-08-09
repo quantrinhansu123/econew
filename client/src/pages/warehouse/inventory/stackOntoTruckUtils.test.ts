@@ -33,6 +33,17 @@ describe('stack-onto-truck expected arrival', () => {
     expect(result.getMonth()).toBe(6);
     expect(result.getDate()).toBe(23);
   });
+
+  it('uses destination-specific defaults while stacking', () => {
+    const loadingDate = new Date(2026, 7, 8, 8, 0, 0);
+    const rows = buildStackFormRows([
+      { id: 'w1', dest_hub: { id: '2', code: 'DANANG', name: 'Đà Nẵng' } },
+      { id: 'w2', dest_hub: { id: '3', code: 'KHANHHOA', name: 'Khánh Hòa' } },
+      { id: 'w3', dest_hub: { id: '4', code: 'HCM', name: 'Hồ Chí Minh' } },
+    ] as WaybillInventoryItem[], loadingDate);
+
+    expect(rows.map((row) => new Date(row.expected_arrival_at!).getDate())).toEqual([9, 10, 11]);
+  });
 });
 
 describe('stack-onto-truck request payload', () => {

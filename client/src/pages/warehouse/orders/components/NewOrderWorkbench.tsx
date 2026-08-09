@@ -12,7 +12,7 @@ import type { BillListItem, NewOrderFormState } from '../orderFormTypes';
 import type { CustomerRecord } from '../../customers/customerFormTypes';
 import { VIETNAM_PROVINCES_63 } from '../../../../lib/vietnamProvince';
 import { WAYBILL_SPECIAL_GOODS_OPTIONS } from '../../../../lib/waybillSpecialGoods';
-import { CompactField, CompactInput, CompactSelect, FormSection } from './CompactField';
+import { CompactField, CompactInput, CompactSelect, CompactTextarea, FormSection } from './CompactField';
 import BillListSidebar from './BillListSidebar';
 import CustomerMaKhCombobox from './CustomerMaKhCombobox';
 import ReceiverPhoneCombobox from './ReceiverPhoneCombobox';
@@ -105,7 +105,7 @@ export default function NewOrderWorkbench({
           <FormSection title="Thông tin đơn hàng">
             <div className="space-y-2.5">
               <div className="grid grid-cols-12 items-end gap-x-2.5 gap-y-2">
-                <CompactField label="HUB gửi" className="col-span-12 xl:col-span-6">
+                <CompactField label="HUB gửi" className="col-span-12 sm:col-span-4">
                   <CompactSelect value={form.originHubId} onChange={(e) => setField('originHubId', e.target.value)}>
                     <option value="">Chọn HUB gửi</option>
                     {hubOptions.map((o) => (
@@ -115,7 +115,7 @@ export default function NewOrderWorkbench({
                     ))}
                   </CompactSelect>
                 </CompactField>
-                <CompactField label="HUB đến (nơi tập kết)" className="col-span-12 xl:col-span-6">
+                <CompactField label="HUB đến (nơi tập kết)" className="col-span-12 sm:col-span-8">
                   <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-1.5">
                     <CompactSelect
                       value={form.destHubId}
@@ -149,72 +149,59 @@ export default function NewOrderWorkbench({
               </div>
 
               <GroupTitle>Khách hàng</GroupTitle>
-              <div className="grid grid-cols-12 items-end gap-x-2.5 gap-y-2">
-                <CompactField label="Mã KH" className="col-span-12 sm:col-span-4 xl:col-span-2">
-                  <CustomerMaKhCombobox
-                    value={form.maKh}
-                    onValueChange={(code) => setField('maKh', code)}
-                    onCustomerSelect={onCustomerSelect}
-                    disabled={isSubmitting}
-                  />
-                  {customerPriceList && (
-                    <button
-                      type="button"
-                      title={customerPriceList.name}
-                      onClick={() => window.open(customerPriceList.url, '_blank', 'noopener,noreferrer')}
-                      className="mt-1 inline-flex max-w-full items-center gap-1 text-[11px] font-extrabold text-primary hover:underline"
-                    >
-                      <FileText size={12} className="shrink-0" />
-                      <span className="truncate">Bảng giá</span>
-                      <ExternalLink size={11} className="shrink-0" />
-                    </button>
-                  )}
-                </CompactField>
-                <CompactField label="Điện thoại KH" className="col-span-6 sm:col-span-4 xl:col-span-2">
-                  <CompactInput value={form.dienThoaiKh} onChange={(e) => setField('dienThoaiKh', e.target.value)} />
-                </CompactField>
-                <CompactField label="Người gửi" className="col-span-6 sm:col-span-4 xl:col-span-2">
-                  <CompactInput value={form.nguoiGui} onChange={(e) => setField('nguoiGui', e.target.value)} />
-                </CompactField>
-                <CompactField label="Địa chỉ gửi" className="col-span-12 xl:col-span-6">
-                  <CompactInput value={form.diaChiGui} onChange={(e) => setField('diaChiGui', e.target.value)} />
-                </CompactField>
+              <div className="grid gap-2 xl:grid-cols-2">
+                <section className="rounded-lg border border-blue-200/80 bg-blue-50/30 p-2.5">
+                  <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-primary">Thông tin người gửi <span className="normal-case font-semibold text-slate-400">(không bắt buộc)</span></p>
+                  <div className="grid grid-cols-12 items-end gap-x-2 gap-y-1.5">
+                    <CompactField label="Mã KH" className="col-span-12 sm:col-span-4">
+                      <CustomerMaKhCombobox value={form.maKh} onValueChange={(code) => setField('maKh', code)} onCustomerSelect={onCustomerSelect} disabled={isSubmitting} />
+                      {customerPriceList && (
+                        <button type="button" title={customerPriceList.name} onClick={() => window.open(customerPriceList.url, '_blank', 'noopener,noreferrer')} className="mt-1 inline-flex max-w-full items-center gap-1 text-[10px] font-extrabold text-primary hover:underline">
+                          <FileText size={11} className="shrink-0" /><span className="truncate">Bảng giá</span><ExternalLink size={10} className="shrink-0" />
+                        </button>
+                      )}
+                    </CompactField>
+                    <CompactField label="Điện thoại" className="col-span-6 sm:col-span-4">
+                      <CompactInput value={form.dienThoaiKh} onChange={(e) => setField('dienThoaiKh', e.target.value)} />
+                    </CompactField>
+                    <CompactField label="Người gửi" className="col-span-6 sm:col-span-4">
+                      <CompactInput value={form.nguoiGui} onChange={(e) => setField('nguoiGui', e.target.value)} />
+                    </CompactField>
+                    <CompactField label="Địa chỉ gửi" className="col-span-12">
+                      <CompactInput value={form.diaChiGui} onChange={(e) => setField('diaChiGui', e.target.value)} />
+                    </CompactField>
+                  </div>
+                </section>
 
-                <CompactField label="Tên công ty nhận" className="col-span-12 sm:col-span-6 xl:col-span-4">
-                  <CompactInput
-                    value={form.tenCongTyNhan}
-                    onChange={(e) => setField('tenCongTyNhan', e.target.value)}
-                    placeholder="Gõ tên công ty nhận"
-                  />
-                </CompactField>
-                <CompactField label="Người nhận" className="col-span-6 sm:col-span-3 xl:col-span-2">
-                  <CompactInput value={form.nguoiNhan} onChange={(e) => setField('nguoiNhan', e.target.value)} />
-                </CompactField>
-                <CompactField label="ĐT người nhận" className="col-span-6 sm:col-span-3 xl:col-span-2">
-                  <ReceiverPhoneCombobox
-                    value={form.dienThoaiNhan}
-                    disabled={isSubmitting}
-                    onValueChange={(value) => setField('dienThoaiNhan', value)}
-                    onSelect={(contact) => setField('diaChiNhan', contact.receiver_address)}
-                  />
-                </CompactField>
-                <CompactField label="Địa chỉ nhận" className="col-span-12 xl:col-span-4">
-                  <CompactInput value={form.diaChiNhan} onChange={(e) => setField('diaChiNhan', e.target.value)} />
-                </CompactField>
-                <CompactField label="Tỉnh/Thành nhận" className="col-span-12 sm:col-span-4 xl:col-span-4">
-                  <CompactSelect value={form.huyen} onChange={(e) => setField('huyen', e.target.value)}>
-                    <option value="">Chọn Tỉnh/Thành</option>
-                    {VIETNAM_PROVINCES_63.map((province) => (
-                      <option key={province} value={province}>{province}</option>
-                    ))}
-                  </CompactSelect>
-                </CompactField>
-                <CompactField label="Quận/Huyện nhận" className="col-span-6 sm:col-span-4 xl:col-span-4">
-                  <CompactInput value={form.quanHuyen} onChange={(e) => setField('quanHuyen', e.target.value)} />
-                </CompactField>
-                <CompactField label="Phường/Xã nhận" className="col-span-6 sm:col-span-4 xl:col-span-4">
-                  <CompactInput value={form.phuongXa} onChange={(e) => setField('phuongXa', e.target.value)} />
-                </CompactField>
+                <section className="rounded-lg border border-violet-200/80 bg-violet-50/25 p-2.5">
+                  <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-violet-700">Thông tin người nhận <span className="normal-case font-semibold text-slate-400">(không bắt buộc)</span></p>
+                  <div className="grid grid-cols-12 items-end gap-x-2 gap-y-1.5">
+                    <CompactField label="Tên công ty nhận" className="col-span-12">
+                      <CompactInput value={form.tenCongTyNhan} onChange={(e) => setField('tenCongTyNhan', e.target.value)} />
+                    </CompactField>
+                    <CompactField label="Địa chỉ nhận" className="col-span-12">
+                      <CompactInput value={form.diaChiNhan} onChange={(e) => setField('diaChiNhan', e.target.value)} />
+                    </CompactField>
+                    <CompactField label="Tỉnh/Thành" className="col-span-12 sm:col-span-4">
+                      <CompactSelect value={form.huyen} onChange={(e) => setField('huyen', e.target.value)}>
+                        <option value="">Chọn Tỉnh/Thành</option>
+                        {VIETNAM_PROVINCES_63.map((province) => <option key={province} value={province}>{province}</option>)}
+                      </CompactSelect>
+                    </CompactField>
+                    <CompactField label="Quận/Huyện" className="col-span-6 sm:col-span-4">
+                      <CompactInput value={form.quanHuyen} onChange={(e) => setField('quanHuyen', e.target.value)} />
+                    </CompactField>
+                    <CompactField label="Phường/Xã" className="col-span-6 sm:col-span-4">
+                      <CompactInput value={form.phuongXa} onChange={(e) => setField('phuongXa', e.target.value)} />
+                    </CompactField>
+                    <CompactField label="SĐT" className="col-span-5">
+                      <ReceiverPhoneCombobox value={form.dienThoaiNhan} disabled={isSubmitting} onValueChange={(value) => setField('dienThoaiNhan', value)} onSelect={(contact) => setField('diaChiNhan', contact.receiver_address)} />
+                    </CompactField>
+                    <CompactField label="Tên liên hệ" className="col-span-7">
+                      <CompactInput value={form.nguoiNhan} onChange={(e) => setField('nguoiNhan', e.target.value)} />
+                    </CompactField>
+                  </div>
+                </section>
               </div>
 
               <GroupTitle>Hàng hóa</GroupTitle>
@@ -225,9 +212,9 @@ export default function NewOrderWorkbench({
                 <CompactField label="Số bill" className="col-span-8 sm:col-span-4 xl:col-span-2">
                   <CompactInput
                     value={form.soBill}
-                    onChange={(e) => setField('soBill', e.target.value.toUpperCase())}
-                    placeholder="ECOHAN1"
-                    className="font-bold text-primary"
+                    readOnly
+                    title="Mã bill được hệ thống cấp tự động"
+                    className="cursor-not-allowed bg-slate-100 font-bold text-primary"
                   />
                 </CompactField>
                 <CompactField label="Dịch vụ" className="col-span-12 sm:col-span-4 xl:col-span-2">
@@ -252,7 +239,7 @@ export default function NewOrderWorkbench({
                   <CompactInput type="date" value={form.ngayDi} onChange={(e) => setField('ngayDi', e.target.value)} title="Được phép chọn ngày quá khứ; ngày lập phiếu vẫn được lưu riêng trong hệ thống" />
                 </CompactField>
 
-                <CompactField label="Tính cước theo" className="col-span-6 sm:col-span-3 xl:col-span-3">
+                <CompactField label="Tính cước theo" className="col-span-6 sm:col-span-3 xl:col-span-2">
                   <CompactSelect value={form.donGiaDonVi} onChange={(e) => setField('donGiaDonVi', e.target.value)}>
                     {DON_GIA_DON_VI_OPTIONS.map((o) => (
                       <option key={o} value={o}>
@@ -263,7 +250,7 @@ export default function NewOrderWorkbench({
                 </CompactField>
                 <CompactField
                   label="Trọng lượng thực"
-                  className="col-span-6 sm:col-span-3 xl:col-span-3"
+                  className="col-span-6 sm:col-span-3 xl:col-span-2"
                 >
                   <CompactInput
                     value={form.klKg}
@@ -274,7 +261,7 @@ export default function NewOrderWorkbench({
                 </CompactField>
                 <CompactField
                   label="CBM"
-                  className="col-span-6 sm:col-span-3 xl:col-span-3"
+                  className="col-span-6 sm:col-span-3 xl:col-span-2"
                 >
                   <CompactInput
                     value={form.m3}
@@ -285,7 +272,7 @@ export default function NewOrderWorkbench({
                 </CompactField>
                 <CompactField
                   label="Trọng lượng quy đổi"
-                  className="col-span-6 sm:col-span-3 xl:col-span-3"
+                  className="col-span-6 sm:col-span-3 xl:col-span-2"
                 >
                   <CompactInput
                     value={form.klQuyDoi}
@@ -294,16 +281,29 @@ export default function NewOrderWorkbench({
                     inputMode="decimal"
                   />
                 </CompactField>
-                <div className="col-span-12 rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-2.5">
+                <CompactField label="Nội dung" className="col-span-12 sm:col-span-6 xl:col-span-6">
+                  <CompactTextarea value={form.noiDung} onChange={(e) => setField('noiDung', e.target.value)} />
+                </CompactField>
+                <CompactField label="Ghi chú" className="col-span-12 sm:col-span-6 xl:col-span-6">
+                  <CompactTextarea value={form.ghiChu} onChange={(e) => setField('ghiChu', e.target.value)} />
+                </CompactField>
+                <WaybillImagePicker
+                  className="col-span-12 xl:col-span-6"
+                  value={form.billImages}
+                  onChange={(urls) => setField('billImages', urls)}
+                  onUploadingChange={setIsImageUploading}
+                  disabled={!canManage || isBusy}
+                />
+                <div className="col-span-12 self-stretch rounded-lg border border-emerald-200 bg-emerald-50/40 px-3 py-2.5 xl:col-span-6">
                   <div className="mb-2 flex items-center gap-2 text-[12px] font-extrabold uppercase tracking-wide text-emerald-800">
                     <PackageCheck size={16} />
                     Tính chất hàng hóa đặc biệt
                   </div>
-                  <div className="grid grid-cols-1 gap-x-5 gap-y-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
                     {WAYBILL_SPECIAL_GOODS_OPTIONS.map((option) => {
                       const checked = form.specialGoods.includes(option.value);
                       return (
-                        <label key={option.value} className="flex min-h-7 cursor-pointer items-center gap-2 text-[13px] font-semibold text-slate-700">
+                        <label key={option.value} className="flex min-h-6 cursor-pointer items-center gap-2 text-[12px] font-semibold text-slate-700">
                           <input
                             type="checkbox"
                             checked={checked}
@@ -319,7 +319,7 @@ export default function NewOrderWorkbench({
                         </label>
                       );
                     })}
-                    <label className="flex min-h-7 cursor-pointer items-center gap-2 text-[13px] font-semibold text-slate-700">
+                    <label className="flex min-h-6 cursor-pointer items-center gap-2 text-[12px] font-semibold text-slate-700">
                       <input
                         type="checkbox"
                         name="vatInvoice"
@@ -331,18 +331,6 @@ export default function NewOrderWorkbench({
                     </label>
                   </div>
                 </div>
-                <CompactField label="Nội dung" className="col-span-12 sm:col-span-6 xl:col-span-6">
-                  <CompactInput value={form.noiDung} onChange={(e) => setField('noiDung', e.target.value)} />
-                </CompactField>
-                <CompactField label="Ghi chú" className="col-span-12 sm:col-span-6 xl:col-span-6">
-                  <CompactInput value={form.ghiChu} onChange={(e) => setField('ghiChu', e.target.value)} />
-                </CompactField>
-                <WaybillImagePicker
-                  value={form.billImages}
-                  onChange={(urls) => setField('billImages', urls)}
-                  onUploadingChange={setIsImageUploading}
-                  disabled={!canManage || isBusy}
-                />
               </div>
 
               <GroupTitle>Thanh toán</GroupTitle>

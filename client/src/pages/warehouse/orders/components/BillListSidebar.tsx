@@ -101,7 +101,7 @@ export default function BillListSidebar({
   const columnCount = 8;
 
   return (
-    <aside className="flex min-h-[360px] w-full shrink-0 flex-col border-t border-slate-300 bg-slate-50/90 lg:min-h-0 lg:w-[700px] lg:border-l lg:border-t-0">
+    <aside className="flex min-h-[360px] w-full shrink-0 flex-col border-t border-slate-300 bg-slate-50/90 lg:min-h-0 lg:w-[46%] lg:min-w-[640px] lg:border-l lg:border-t-0 xl:min-w-[700px] 2xl:w-1/2">
       <div className="border-b border-slate-300 bg-gradient-to-b from-slate-100 to-slate-200 px-2 py-1.5">
         <div className="text-center text-[12px] font-black text-slate-800">Danh sách theo ngày</div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

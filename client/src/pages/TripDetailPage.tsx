@@ -13,7 +13,7 @@ import UpdateTripCostsDialog from './trips/dialogs/UpdateTripCostsDialog';
 import TripManifestDetailDialog from './trips/dialogs/TripManifestDetailDialog';
 import TripTruckDetailDialog from './trips/dialogs/TripTruckDetailDialog';
 import EditTripScheduleDialog, { type TripScheduleFormState } from './trips/dialogs/EditTripScheduleDialog';
-import { toLocalDateTimeInput } from './trips/tripScheduleUtils';
+import { buildTripScheduleRouteStops, toLocalDateTimeInput } from './trips/tripScheduleUtils';
 import AddWaybillsToManifestDialog from './warehouse/manifests/dialogs/AddWaybillsToManifestDialog';
 import { buildInventoryTripLinesQuery, filterManifestAddableInventoryRows, isIncompleteSplitRow } from './warehouse/inventory/inventoryTripLines';
 import type { WaybillInventoryItem } from './warehouse/inventory/types';
@@ -121,7 +121,7 @@ export default function TripDetailPage() {
   const [detailManifest, setDetailManifest] = useState<ManifestDetail | null>(null);
   const [detailTruck, setDetailTruck] = useState<TruckSummary | null>(null);
   const [scheduleTrip, setScheduleTrip] = useState<Trip | null>(null);
-  const [scheduleForm, setScheduleForm] = useState<TripScheduleFormState>({ departure_time: '', arrival_time: '' });
+  const [scheduleForm, setScheduleForm] = useState<TripScheduleFormState>({ departure_time: '', route_stops: [] });
   const [isAddWaybillsOpen, setIsAddWaybillsOpen] = useState(false);
   const [isWaybillLoading, setIsWaybillLoading] = useState(false);
   const [waybillChoices, setWaybillChoices] = useState<WaybillInventoryItem[]>([]);
@@ -195,21 +195,25 @@ export default function TripDetailPage() {
   function openScheduleEditor() {
     if (!trip || !canEditTrip) return;
     setActionError('');
+    const departureTime = toLocalDateTimeInput(trip.departure_time);
     setScheduleForm({
-      departure_time: toLocalDateTimeInput(trip.departure_time),
-      arrival_time: toLocalDateTimeInput(trip.expected_arrival_time || trip.arrival_time),
+      departure_time: departureTime,
+      route_stops: buildTripScheduleRouteStops(trip, departureTime),
     });
     setScheduleTrip(trip);
   }
   async function submitSchedule() {
-    if (!scheduleTrip || !scheduleForm.departure_time) return;
+    if (!scheduleTrip || !scheduleForm.departure_time || !scheduleForm.route_stops.length) return;
     setIsSubmitting(true); setActionError('');
     try {
       await apiRequest<Trip>(`/trips/${scheduleTrip.id}`, {
         method: 'PATCH',
         body: {
           departure_time: new Date(scheduleForm.departure_time).toISOString(),
-          arrival_time: scheduleForm.arrival_time ? new Date(scheduleForm.arrival_time).toISOString() : null,
+          route_stops: scheduleForm.route_stops.map((stop) => ({
+            hub_id: stop.hub_id,
+            expected_arrival_at: new Date(stop.expected_arrival_at).toISOString(),
+          })),
         },
       });
       setScheduleTrip(null);
@@ -404,7 +408,7 @@ export default function TripDetailPage() {
       <UpdateTripCostsDialog trip={costDialogOpen ? trip : null} onClose={() => setCostDialogOpen(false)} onSaved={() => { void loadTrip(); }} />
       <TripManifestDetailDialog manifest={detailManifest} onClose={() => setDetailManifest(null)} />
       <TripTruckDetailDialog truck={detailTruck} onClose={() => setDetailTruck(null)} />
-      <EditTripScheduleDialog trip={scheduleTrip} formState={scheduleForm} isSubmitting={isSubmitting} error={actionError} onChange={(key, value) => setScheduleForm(prev => ({ ...prev, [key]: value }))} onClose={() => setScheduleTrip(null)} onSubmit={submitSchedule} />
+      <EditTripScheduleDialog trip={scheduleTrip} formState={scheduleForm} isSubmitting={isSubmitting} error={actionError} onDepartureChange={(value) => setScheduleForm(prev => ({ ...prev, departure_time: value }))} onRouteStopChange={(hubId, value) => setScheduleForm(prev => ({ ...prev, route_stops: prev.route_stops.map(stop => stop.hub_id === hubId ? { ...stop, expected_arrival_at: value } : stop) }))} onClose={() => setScheduleTrip(null)} onSubmit={submitSchedule} />
       <AddWaybillsToManifestDialog isOpen={isAddWaybillsOpen} isClosing={false} isLoading={isWaybillLoading} isSubmitting={isSubmitting} error={addWaybillsError} originHubLabel={manifest?.origin_hub?.code || manifest?.origin_hub?.name || '—'} manifest={manifest as LoadPlanningManifest | null} waybills={waybillChoices} total={waybillTotal} formState={addWaybillsForm} onChange={patch => setAddWaybillsForm(prev => ({ ...prev, ...patch }))} onClose={() => setIsAddWaybillsOpen(false)} onSubmit={submitAddWaybills} />
       <ConfirmDialog dialog={confirmDialog} isSubmitting={isSubmitting} onClose={() => setConfirmDialog(null)} />
     </div>

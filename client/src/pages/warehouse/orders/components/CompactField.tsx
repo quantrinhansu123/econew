@@ -12,6 +12,10 @@ export function CompactSelect(props: React.SelectHTMLAttributes<HTMLSelectElemen
   return <select {...props} className={clsx(inputClass, props.className)} />;
 }
 
+export function CompactTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...props} className={clsx(inputClass, 'h-16 resize-none py-2', props.className)} />;
+}
+
 export function CompactField({
   label,
   children,

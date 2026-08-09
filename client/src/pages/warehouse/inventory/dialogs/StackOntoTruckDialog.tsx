@@ -19,6 +19,7 @@ import {
   buildInitialSharedFields,
   buildStackFormRows,
   buildStackOntoTruckPayload,
+  computeExpectedArrivalDate,
   resolveDestinationHubLabel,
   updateExpectedArrivalForHub,
   type StackOntoTruckFormRow,
@@ -406,9 +407,12 @@ export default function StackOntoTruckDialog({
                       const departure = event.target.value;
                       setShared((prev) => ({ ...prev, departure_time: departure }));
                       const date = departure ? new Date(departure) : new Date();
-                      const expected = new Date(date.getTime() + 3 * 86400000);
-                      const localExpected = new Date(expected.getTime() - expected.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-                      setRows((current) => current.map((row) => ({ ...row, expected_arrival_label: new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(expected), expected_arrival_at: localExpected })));
+                      setRows((current) => current.map((row) => {
+                        const matchingWaybill = waybills.find((item) => String(item.id) === row.waybill_id);
+                        const expected = computeExpectedArrivalDate(date, matchingWaybill?.dest_hub);
+                        const localExpected = new Date(expected.getTime() - expected.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+                        return { ...row, expected_arrival_label: new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(expected), expected_arrival_at: localExpected };
+                      }));
                     }} className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-[14px] font-bold outline-none focus:border-primary" />
                   </div>
                 </div>
