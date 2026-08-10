@@ -67,6 +67,7 @@ export default function NhiemVuGiaoHangPage() {
   const [originHubId, setOriginHubId] = useState('');
   const [paymentType, setPaymentType] = useState('');
   const [preparationFilter, setPreparationFilter] = useState('');
+  const [tripFilter, setTripFilter] = useState('');
   const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [waybills, setWaybills] = useState<LastMileWaybill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,9 +98,31 @@ export default function NhiemVuGiaoHangPage() {
     });
   };
 
-  const displayedWaybills = useMemo(() => preparationFilter
-    ? waybills.filter((waybill) => String(waybill.delivery_preparation_status || 'PENDING_CONFIRMATION') === preparationFilter)
-    : waybills, [preparationFilter, waybills]);
+  const tripFilterOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const waybill of waybills) {
+      if (!waybill.trip_id) continue;
+      const id = String(waybill.trip_id);
+      const details = [waybill.license_plate, waybill.trip_nha_xe]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+      if (!details.length && waybill.trip_label) details.push(waybill.trip_label);
+      options.set(id, [`Chuyến #${id}`, ...details].join(' · '));
+    }
+    return [...options.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => {
+        const leftId = Number(left.value);
+        const rightId = Number(right.value);
+        return Number.isFinite(leftId) && Number.isFinite(rightId)
+          ? rightId - leftId
+          : right.value.localeCompare(left.value, 'vi');
+      });
+  }, [waybills]);
+  const displayedWaybills = useMemo(() => waybills.filter((waybill) => {
+    if (preparationFilter && String(waybill.delivery_preparation_status || 'PENDING_CONFIRMATION') !== preparationFilter) return false;
+    return !tripFilter || String(waybill.trip_id || '') === tripFilter;
+  }), [preparationFilter, tripFilter, waybills]);
   const dispatchManifestCount = useMemo(() => new Set(displayedWaybills
     .filter((waybill) => normalizeStatus(waybill) === 'OUT_FOR_DELIVERY' && waybill.delivery_assignment_type)
     .map((waybill) => `${waybill.route_code || ''}|${String(waybill.last_mile_license_plate || waybill.last_mile_truck?.bks || waybill.last_mile_truck?.license_plate || waybill.last_mile_vendor_id || waybill.last_mile_driver_id || '').trim().toUpperCase()}`)).size, [displayedWaybills]);
@@ -280,15 +303,44 @@ export default function NhiemVuGiaoHangPage() {
       ) : !displayedWaybills.length ? (
         <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-white p-8 text-center">
           <PackageOpen className="text-muted-foreground" size={32} />
-          <p className="mt-3 text-[14px] font-extrabold text-foreground">Chưa có nhiệm vụ giao hàng</p>
-          <p className="mt-1 max-w-sm text-[13px] text-muted-foreground">
-            Không có đơn ở trạng thái Tới hub đích hoặc Chặng cuối. Kiểm tra bàn giao tài xế tại bưu cục đích.
+          <p className="mt-3 text-[14px] font-extrabold text-foreground">
+            {tripFilter ? 'Không có đơn thuộc chuyến đã chọn' : 'Chưa có nhiệm vụ giao hàng'}
           </p>
+          <p className="mt-1 max-w-sm text-[13px] text-muted-foreground">
+            {tripFilter
+              ? 'Bỏ bộ lọc chuyến xe hoặc thay đổi các điều kiện lọc phía trên để xem lại danh sách.'
+              : 'Không có đơn ở trạng thái Tới hub đích hoặc Chặng cuối. Kiểm tra bàn giao tài xế tại bưu cục đích.'}
+          </p>
+          {tripFilter && (
+            <button type="button" onClick={() => setTripFilter('')} className="mt-3 h-9 rounded-lg border border-border bg-white px-3 text-[12px] font-extrabold text-foreground hover:bg-muted">
+              Bỏ lọc chuyến xe
+            </button>
+          )}
         </div>
       ) : (
         <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-white shadow-sm">
           <div style={deliveryGridStyle} className="delivery-task-grid sticky top-0 z-10 hidden gap-3 border-b border-border bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-muted-foreground xl:grid">
-            {visibleColumns.map((column) => <span key={column.id} className={column.id === 'actions' ? 'text-right' : ''}>{column.label}</span>)}
+            {visibleColumns.map((column) => (
+              <div key={column.id} className={column.id === 'actions' ? 'text-right' : ''}>
+                <span>{column.label}</span>
+                {column.id === 'trip' && (
+                  <label className="relative mt-1.5 block">
+                    <Truck size={12} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <span className="sr-only">Lọc theo chuyến xe</span>
+                    <select
+                      value={tripFilter}
+                      onChange={(event) => setTripFilter(event.target.value)}
+                      className="h-8 w-full appearance-none rounded-md border border-slate-200 bg-white pl-7 pr-6 text-[11px] font-bold normal-case tracking-normal text-slate-700 outline-none hover:border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/15"
+                    >
+                      <option value="">Tất cả chuyến / xe</option>
+                      {tripFilterOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+            ))}
           </div>
           {displayedWaybills.map((waybill) => {
             const status = normalizeStatus(waybill);
