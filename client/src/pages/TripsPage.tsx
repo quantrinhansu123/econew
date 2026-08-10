@@ -8,10 +8,11 @@ import { ApiError, apiRequest } from '../lib/api';
 import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
 import type { HubSummary, ListResponse, Trip, TripAction } from './trips/types';
 
-const tripKanbanStatuses = ['IN_TRANSIT', 'ARRIVED', 'COMPLETED'] as const;
+const tripKanbanStatuses = ['PLANNED', 'IN_TRANSIT', 'ARRIVED', 'COMPLETED'] as const;
 type TripKanbanStatus = (typeof tripKanbanStatuses)[number];
 
 const tripKanbanColumns: Array<{ id: TripKanbanStatus; title: string; tone: string }> = [
+  { id: 'PLANNED', title: 'Chờ khởi hành', tone: 'border-amber-200 bg-amber-50 text-amber-800' },
   { id: 'IN_TRANSIT', title: 'Đang chạy', tone: 'border-blue-200 bg-blue-50 text-blue-700' },
   { id: 'ARRIVED', title: 'Xe đã đến', tone: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
   { id: 'COMPLETED', title: 'Hoàn tất chuyến', tone: 'border-slate-200 bg-slate-100 text-slate-700' },
@@ -129,6 +130,7 @@ export default function TripsPage() {
   }, [trips]);
 
   const totals = useMemo(() => ({
+    planned: tripsByStatus.PLANNED.length,
     departed: tripsByStatus.IN_TRANSIT.length,
     arrived: tripsByStatus.ARRIVED.length,
     completed: tripsByStatus.COMPLETED.length,
@@ -180,6 +182,7 @@ export default function TripsPage() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><Truck size={17} /></div>
           <p className="min-w-0 flex-1 text-[12px] font-bold text-muted-foreground">
             <span className="text-foreground">{trips.length.toLocaleString('vi-VN')} chuyến</span>
+            <span className="mx-2">·</span>{totals.planned.toLocaleString('vi-VN')} chờ
             <span className="mx-2">·</span>{totals.departed.toLocaleString('vi-VN')} đang chạy
             <span className="mx-2">·</span>{totals.arrived.toLocaleString('vi-VN')} đã đến
             <span className="mx-2">·</span>{totals.completed.toLocaleString('vi-VN')} hoàn tất
@@ -245,7 +248,7 @@ function TripKanbanBoard({
 }) {
   return (
     <div className="min-h-0 flex-1 overflow-auto p-2 custom-scrollbar">
-      <div className="grid h-full min-h-[420px] min-w-[840px] grid-cols-3 gap-2">
+      <div className="grid h-full min-h-[420px] min-w-[1060px] grid-cols-4 gap-2">
         {tripKanbanColumns.map((column) => (
           <KanbanColumn key={column.id} title={column.title} count={tripsByStatus[column.id].length} tone={column.tone}>
             <div className="flex flex-col gap-1.5">
