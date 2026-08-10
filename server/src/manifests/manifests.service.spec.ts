@@ -156,6 +156,19 @@ describe('ManifestsService', () => {
     });
   });
 
+  it('findOne hiển thị vị trí liên tục khi dữ liệu cũ bị khuyết số', async () => {
+    manifestsRepo.findOne.mockResolvedValue(draftManifest({
+      manifest_waybills: [
+        { manifest_id: '10', waybill_id: '101', loading_position: 14, waybill: waybill({ id: '101' }) },
+        { manifest_id: '10', waybill_id: '102', loading_position: 16, waybill: waybill({ id: '102' }) },
+      ],
+    }));
+
+    const result = await service.findOne('10', manager);
+
+    expect(result.manifest_waybills.map((link: any) => link.loading_position)).toEqual([1, 2]);
+  });
+
   it('addWaybills thành công', async () => {
     const manifest = draftManifest();
     manifestsRepo.findOne.mockImplementation(async (options: any) => options?.where?.manifest_code ? null : manifest);
@@ -340,6 +353,27 @@ describe('ManifestsService', () => {
       current_state: WaybillState.IN_WAREHOUSE,
       status: WaybillState.IN_WAREHOUSE,
     }));
+  });
+
+  it('remove waybill dồn lại vị trí trên manifest và split của chuyến', async () => {
+    manifestsRepo.findOne.mockResolvedValue(draftManifest({ status: ManifestStatus.ASSIGNED_TO_TRIP, trip_id: '5' }));
+    tripsRepo.findOne.mockResolvedValue({ id: '5', start_hub_id: '1', status: TripStatus.IN_TRANSIT });
+    waybillsRepo.findOne.mockResolvedValue(waybill({ manifest_id: '10', current_state: WaybillState.IN_TRANSIT }));
+    const remainingLinks = [
+      { manifest_id: '10', waybill_id: '101', loading_position: 1 },
+      { manifest_id: '10', waybill_id: '102', loading_position: 3 },
+    ];
+    const remainingSplit = { id: 's102', waybill_id: '102', trip_id: '5', loading_position: 3 };
+    linksRepo.find.mockResolvedValue(remainingLinks);
+    splitsRepo.find
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([remainingSplit])
+      .mockResolvedValueOnce([]);
+
+    await service.removeWaybill('10', '100', dispatcher);
+
+    expect(linksRepo.save).toHaveBeenCalledWith([expect.objectContaining({ waybill_id: '102', loading_position: 2 })]);
+    expect(splitsRepo.save).toHaveBeenCalledWith([expect.objectContaining({ waybill_id: '102', loading_position: 2 })]);
   });
 
   it('close manifest không có vận đơn phải bị chặn', async () => {

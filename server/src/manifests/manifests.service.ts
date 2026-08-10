@@ -309,6 +309,7 @@ export class ManifestsService {
       await this.waybillSplitsRepository.delete({ waybill_id: waybillId, trip_id: String(trip.id) });
     }
     await this.manifestWaybillsRepository.delete({ manifest_id: id, waybill_id: waybillId });
+    await this.compactPersistedLoadingPositions(id, trip?.id);
     if (waybill.manifest_id === id) {
       waybill.manifest_id = null;
     }
@@ -564,7 +565,43 @@ export class ManifestsService {
 
     if (manifest.manifest_waybills?.length) {
       manifest.manifest_waybills.sort(compareLinks);
+      manifest.manifest_waybills.forEach((link: ManifestWaybillEntity & Record<string, any>, index: number) => {
+        const loadingPosition = index + 1;
+        link.loading_position = loadingPosition;
+        if (link.waybill) (link.waybill as WaybillRecord).loading_position = loadingPosition;
+      });
     }
+  }
+
+  private async compactPersistedLoadingPositions(manifestId: string, tripId?: string | number | null): Promise<void> {
+    const links = await this.manifestWaybillsRepository.find({
+      where: { manifest_id: manifestId },
+      order: { loading_position: 'ASC', waybill_id: 'ASC' },
+    });
+    const changedLinks: ManifestWaybillEntity[] = [];
+    const positionByWaybill = new Map<string, number>();
+
+    links.forEach((link, index) => {
+      const loadingPosition = index + 1;
+      positionByWaybill.set(String(link.waybill_id), loadingPosition);
+      if (Number(link.loading_position) === loadingPosition) return;
+      link.loading_position = loadingPosition;
+      changedLinks.push(link);
+    });
+    if (changedLinks.length) await this.manifestWaybillsRepository.save(changedLinks);
+
+    const waybillIds = [...positionByWaybill.keys()];
+    if (!tripId || !waybillIds.length) return;
+    const splits = await this.waybillSplitsRepository.find({
+      where: { trip_id: String(tripId), waybill_id: In(waybillIds) },
+    });
+    const changedSplits = splits.filter((split) => {
+      const loadingPosition = positionByWaybill.get(String(split.waybill_id));
+      if (loadingPosition == null || Number(split.loading_position) === loadingPosition) return false;
+      split.loading_position = loadingPosition;
+      return true;
+    });
+    if (changedSplits.length) await this.waybillSplitsRepository.save(changedSplits);
   }
 
   private async enrichTransportSummaries(manifests: ManifestRecord[]): Promise<void> {
