@@ -130,6 +130,13 @@ export function filterActiveOutboundFromHub(manifests: LoadPlanningManifest[], o
   );
 }
 
+export function splitActiveManifestsByMainHubOrigin(manifests: LoadPlanningManifest[]): Record<HubViewCode, LoadPlanningManifest[]> {
+  return {
+    HAN: filterActiveOutboundFromHub(manifests, 'HAN'),
+    HCM: filterActiveOutboundFromHub(manifests, 'HCM'),
+  };
+}
+
 export function filterExpectedInboundToHub(manifests: LoadPlanningManifest[], destination: HubViewCode): LoadPlanningManifest[] {
   return sortActiveManifests(
     manifests.filter((manifest) => isInboundToHub(manifest, destination) && isDepartedNotArrivedManifest(manifest)),

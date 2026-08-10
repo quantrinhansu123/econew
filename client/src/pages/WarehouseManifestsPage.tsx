@@ -15,13 +15,11 @@ import AssignManifestTripDialog from './warehouse/manifests/dialogs/AssignManife
 import ManifestDetailDialog from './warehouse/manifests/dialogs/ManifestDetailDialog';
 import {
   departedColumnTitle,
-  expectedArrivalColumnTitle,
-  filterActiveOutboundFromHub,
-  filterExpectedInboundToHub,
   getTripStatus,
   manifestOriginLane,
   manifestTrip as resolveManifestTrip,
   resolveUserHubView,
+  splitActiveManifestsByMainHubOrigin,
 } from './warehouse/manifests/manifestHubUtils';
 import type { AddWaybillsFormState, AssignTripFormState, BadgeConfig, FilterOption, HubSummary, LoadPlanningFilters, LoadPlanningManifest, ManifestFormState, ManifestListResponse, ManifestWaybill, TripListResponse, TripSummary } from './warehouse/manifests/types';
 import {
@@ -216,15 +214,14 @@ export default function WarehouseManifestsPage() {
 
   const userHubView = useMemo(() => resolveUserHubView(user, hubs), [user, hubs]);
   const keyword = filters.keyword.trim().toLowerCase();
-  const activeOutboundManifests = useMemo(
-    () => filterActiveOutboundFromHub(manifests, userHubView).filter((manifest) => matchesManifestKeyword(manifest, keyword)),
-    [manifests, keyword, userHubView],
-  );
-  const expectedInboundManifests = useMemo(
-    () => filterExpectedInboundToHub(manifests, userHubView).filter((manifest) => matchesManifestKeyword(manifest, keyword)),
-    [manifests, keyword, userHubView],
-  );
-  const activeManifestCount = activeOutboundManifests.length + expectedInboundManifests.length;
+  const activeManifestsByOrigin = useMemo(() => {
+    const split = splitActiveManifestsByMainHubOrigin(manifests);
+    return {
+      HAN: split.HAN.filter((manifest) => matchesManifestKeyword(manifest, keyword)),
+      HCM: split.HCM.filter((manifest) => matchesManifestKeyword(manifest, keyword)),
+    };
+  }, [manifests, keyword]);
+  const activeManifestCount = activeManifestsByOrigin.HAN.length + activeManifestsByOrigin.HCM.length;
 
   const hubOptions = useMemo(() => hubs.map(hub => ({ value: String(hub.id), label: hub.code ? `${hub.code} · ${hub.name || 'Bưu cục'}` : hub.name || `Hub #${hub.id}` })), [hubs]);
   const tripOptions = useMemo(() => trips.map(trip => ({ value: String(trip.id), label: tripLabel(trip) })), [trips]);
@@ -470,9 +467,8 @@ export default function WarehouseManifestsPage() {
             <StateBlock icon={<AlertTriangle size={22} />} title={error} />
           ) : (
             <ManifestTransitBoard
-              hubView={userHubView}
-              activeOutbound={activeOutboundManifests}
-              expectedInbound={expectedInboundManifests}
+              hanOutbound={activeManifestsByOrigin.HAN}
+              hcmOutbound={activeManifestsByOrigin.HCM}
               onDetail={openDetail}
               onPrint={openPrint}
             />
@@ -493,15 +489,13 @@ export default function WarehouseManifestsPage() {
 }
 
 function ManifestTransitBoard({
-  hubView,
-  activeOutbound,
-  expectedInbound,
+  hanOutbound,
+  hcmOutbound,
   onDetail,
   onPrint,
 }: {
-  hubView: 'HAN' | 'HCM';
-  activeOutbound: LoadPlanningManifest[];
-  expectedInbound: LoadPlanningManifest[];
+  hanOutbound: LoadPlanningManifest[];
+  hcmOutbound: LoadPlanningManifest[];
   onDetail: (manifest: LoadPlanningManifest) => void;
   onPrint: (manifest: LoadPlanningManifest) => void;
 }) {
@@ -512,18 +506,18 @@ function ManifestTransitBoard({
       </p>
       <div className="flex min-h-0 w-full flex-1 flex-col gap-3 lg:flex-row lg:gap-4">
         <ManifestTransitTable
-          title={departedColumnTitle(hubView)}
+          title={departedColumnTitle('HAN')}
           tone="border-blue-200 bg-blue-50 text-blue-800"
-          emptyText={`Chưa có xe đi từ ${hubView === 'HAN' ? 'Hà Nội' : 'TP.HCM'}.`}
-          manifests={activeOutbound}
+          emptyText="Chưa có xe đi từ Hà Nội."
+          manifests={hanOutbound}
           onDetail={onDetail}
           onPrint={onPrint}
         />
         <ManifestTransitTable
-          title={expectedArrivalColumnTitle(hubView)}
+          title={departedColumnTitle('HCM')}
           tone="border-orange-200 bg-orange-50 text-orange-800"
-          emptyText={`Chưa có xe dự kiến tới ${hubView === 'HAN' ? 'Hà Nội' : 'HCM'}.`}
-          manifests={expectedInbound}
+          emptyText="Chưa có xe đi từ TP.HCM."
+          manifests={hcmOutbound}
           onDetail={onDetail}
           onPrint={onPrint}
         />

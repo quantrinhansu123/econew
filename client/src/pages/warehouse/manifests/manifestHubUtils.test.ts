@@ -4,6 +4,7 @@ import {
   filterActiveOutboundFromHub,
   filterExpectedInboundToHub,
   resolveManifestBoardGroup,
+  splitActiveManifestsByMainHubOrigin,
 } from './manifestHubUtils';
 
 const manifest = (tripStatus: string): LoadPlanningManifest => ({
@@ -36,5 +37,20 @@ describe('manifest HUB lanes', () => {
     expect(resolveManifestBoardGroup(arrived, 'HCM')).toBe('arrived');
     expect(filterActiveOutboundFromHub([running, arrived, completed], 'HAN')).toEqual([running]);
     expect(filterExpectedInboundToHub([running, arrived, completed], 'HCM')).toEqual([running]);
+  });
+
+  it('splits running manifests by departure hub regardless of destination hub', () => {
+    const fromHan = manifest('IN_TRANSIT');
+    const fromHcm = {
+      ...manifest('IN_TRANSIT'),
+      id: 'manifest-from-hcm',
+      origin_hub: { id: 2, code: 'HCM', name: 'Hồ Chí Minh' },
+      dest_hub: { id: 3, code: 'NINHTHUAN', name: 'Ninh Thuận' },
+    };
+
+    expect(splitActiveManifestsByMainHubOrigin([fromHan, fromHcm])).toEqual({
+      HAN: [fromHan],
+      HCM: [fromHcm],
+    });
   });
 });
