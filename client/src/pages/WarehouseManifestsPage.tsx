@@ -445,7 +445,7 @@ export default function WarehouseManifestsPage() {
             <div className="hidden flex-1 md:block" />
             <button
               type="button"
-              onClick={() => navigate('/warehouse/incoming')}
+              onClick={() => navigate('/trips/list')}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-primary/30 bg-blue-50 px-3 text-[13px] font-extrabold text-primary hover:bg-blue-100"
             >
               <Truck size={16} />

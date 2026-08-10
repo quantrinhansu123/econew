@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, CheckCircle2, Eye, Loader2, PackageCheck, Pencil, Printer, Receipt, RefreshCw, Truck, XCircle } from 'lucide-react';
+import { AlertTriangle, Building2, CheckCircle2, Eye, Loader2, PackageCheck, Pencil, Printer, Receipt, RefreshCw, Truck, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
+import { FilterSelect } from '../components/ui/FilterSelect';
 import { ApiError, apiRequest } from '../lib/api';
 import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
-import type { ListResponse, Trip, TripAction } from './trips/types';
+import type { HubSummary, ListResponse, Trip, TripAction } from './trips/types';
 
-const tripKanbanStatuses = ['PLANNED', 'IN_TRANSIT', 'ARRIVED', 'COMPLETED'] as const;
+const tripKanbanStatuses = ['IN_TRANSIT', 'ARRIVED', 'COMPLETED'] as const;
 type TripKanbanStatus = (typeof tripKanbanStatuses)[number];
 
 const tripKanbanColumns: Array<{ id: TripKanbanStatus; title: string; tone: string }> = [
-  { id: 'PLANNED', title: 'Chờ khởi hành', tone: 'border-amber-200 bg-amber-50 text-amber-800' },
   { id: 'IN_TRANSIT', title: 'Đang chạy', tone: 'border-blue-200 bg-blue-50 text-blue-700' },
   { id: 'ARRIVED', title: 'Xe đã đến', tone: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
   { id: 'COMPLETED', title: 'Hoàn tất chuyến', tone: 'border-slate-200 bg-slate-100 text-slate-700' },
@@ -21,11 +21,13 @@ const normalizeList = <T,>(response: ListResponse<T> | T[]) => (
   Array.isArray(response) ? response : response.data || response.items || response.trips || []
 );
 
-async function loadAllTripsByStatus(status: TripKanbanStatus): Promise<Trip[]> {
+async function loadAllTripsByStatus(status: TripKanbanStatus, startHubId: string): Promise<Trip[]> {
   const limit = 100;
-  const requestPage = (page: number) => apiRequest<ListResponse<Trip> | Trip[]>(
-    `/trips?${new URLSearchParams({ page: String(page), limit: String(limit), status }).toString()}`,
-  );
+  const requestPage = (page: number) => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit), status });
+    if (startHubId) params.set('start_hub_id', startHubId);
+    return apiRequest<ListResponse<Trip> | Trip[]>(`/trips?${params.toString()}`);
+  };
   const firstResponse = await requestPage(1);
   const firstItems = normalizeList(firstResponse);
   if (Array.isArray(firstResponse)) return firstItems;
@@ -72,6 +74,8 @@ const primaryActionLabel = (status?: string | null) => {
 export default function TripsPage() {
   const navigate = useNavigate();
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [hubs, setHubs] = useState<HubSummary[]>([]);
+  const [startHubId, setStartHubId] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionTrip, setActionTrip] = useState<Trip | null>(null);
@@ -79,11 +83,11 @@ export default function TripsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
 
-  async function loadTrips() {
+  const loadTrips = useCallback(async () => {
     setIsLoading(true);
     setError('');
     try {
-      const responses = await Promise.all(tripKanbanStatuses.map(loadAllTripsByStatus));
+      const responses = await Promise.all(tripKanbanStatuses.map((status) => loadAllTripsByStatus(status, startHubId)));
       const merged = new Map<string, Trip>();
       responses.flat().forEach((trip) => {
         merged.set(String(trip.id), trip);
@@ -96,10 +100,23 @@ export default function TripsPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [startHubId]);
 
   useEffect(() => {
-    void loadTrips();
+    const timer = window.setTimeout(() => { void loadTrips(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadTrips]);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest<ListResponse<HubSummary> | HubSummary[]>('/hubs/active')
+      .then((response) => {
+        if (active) setHubs(normalizeList(response));
+      })
+      .catch(() => {
+        if (active) setHubs([]);
+      });
+    return () => { active = false; };
   }, []);
 
   const tripsByStatus = useMemo(() => {
@@ -112,11 +129,18 @@ export default function TripsPage() {
   }, [trips]);
 
   const totals = useMemo(() => ({
-    planned: tripsByStatus.PLANNED.length,
     departed: tripsByStatus.IN_TRANSIT.length,
     arrived: tripsByStatus.ARRIVED.length,
     completed: tripsByStatus.COMPLETED.length,
   }), [tripsByStatus]);
+
+  const hubOptions = useMemo(() => [
+    { value: '', label: 'Tất cả bưu cục đi' },
+    ...hubs.map((hub) => ({
+      value: String(hub.id),
+      label: `${hub.code || hub.id} — ${hub.name || 'Bưu cục'}`,
+    })),
+  ], [hubs]);
 
   function openPrimaryAction(trip: Trip) {
     const nextAction = getPrimaryTripAction(trip.status);
@@ -156,11 +180,18 @@ export default function TripsPage() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><Truck size={17} /></div>
           <p className="min-w-0 flex-1 text-[12px] font-bold text-muted-foreground">
             <span className="text-foreground">{trips.length.toLocaleString('vi-VN')} chuyến</span>
-            <span className="mx-2">·</span>{totals.planned.toLocaleString('vi-VN')} chờ
             <span className="mx-2">·</span>{totals.departed.toLocaleString('vi-VN')} đang chạy
             <span className="mx-2">·</span>{totals.arrived.toLocaleString('vi-VN')} đã đến
             <span className="mx-2">·</span>{totals.completed.toLocaleString('vi-VN')} hoàn tất
           </p>
+          <FilterSelect
+            icon={Building2}
+            placeholder="Bưu cục đi"
+            options={hubOptions}
+            value={startHubId}
+            onValueChange={setStartHubId}
+            className="w-full sm:w-[220px]"
+          />
           <button type="button" onClick={() => void loadTrips()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-muted-foreground hover:bg-muted">
             {isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Làm mới
           </button>
@@ -214,7 +245,7 @@ function TripKanbanBoard({
 }) {
   return (
     <div className="min-h-0 flex-1 overflow-auto p-2 custom-scrollbar">
-      <div className="grid h-full min-h-[420px] min-w-[1060px] grid-cols-4 gap-2">
+      <div className="grid h-full min-h-[420px] min-w-[840px] grid-cols-3 gap-2">
         {tripKanbanColumns.map((column) => (
           <KanbanColumn key={column.id} title={column.title} count={tripsByStatus[column.id].length} tone={column.tone}>
             <div className="flex flex-col gap-1.5">
