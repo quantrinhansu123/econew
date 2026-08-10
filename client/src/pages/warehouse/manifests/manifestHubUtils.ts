@@ -126,13 +126,13 @@ function sortActiveManifests(manifests: LoadPlanningManifest[]): LoadPlanningMan
 
 export function filterActiveOutboundFromHub(manifests: LoadPlanningManifest[], origin: HubViewCode): LoadPlanningManifest[] {
   return sortActiveManifests(
-    manifests.filter((manifest) => isOutboundFromHub(manifest, origin) && isTransitBoardManifest(manifest)),
+    manifests.filter((manifest) => isOutboundFromHub(manifest, origin) && isDepartedNotArrivedManifest(manifest)),
   );
 }
 
 export function filterExpectedInboundToHub(manifests: LoadPlanningManifest[], destination: HubViewCode): LoadPlanningManifest[] {
   return sortActiveManifests(
-    manifests.filter((manifest) => isInboundToHub(manifest, destination) && isTransitBoardManifest(manifest)),
+    manifests.filter((manifest) => isInboundToHub(manifest, destination) && isDepartedNotArrivedManifest(manifest)),
   );
 }
 

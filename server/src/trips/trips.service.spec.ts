@@ -65,6 +65,7 @@ describe('TripsService', () => {
     };
     waybillsService = {
       backfillInTransitTripsForHub: jest.fn().mockResolvedValue(0),
+      reconcileTransportStatesForTrips: jest.fn().mockResolvedValue(0),
     };
     const module = await Test.createTestingModule({
       providers: [
@@ -364,6 +365,7 @@ describe('TripsService', () => {
       manifestWaybills.find.mockResolvedValue([]);
       const result = await service.startTrip('1', dispatcher);
       expect(result.status).toBe(TripStatus.IN_TRANSIT);
+      expect(waybillsService.reconcileTransportStatesForTrips).toHaveBeenCalledWith(['1']);
     });
 
     it('chuyển manifest → IN_TRANSIT', async () => {
@@ -397,10 +399,11 @@ describe('TripsService', () => {
 
   describe('arriveTrip', () => {
     it('chuyển trip IN_TRANSIT → ARRIVED', async () => {
-      mockFindOne({ status: TripStatus.IN_TRANSIT, manifest_id: '10' });
+      mockFindOne({ id: '1', status: TripStatus.IN_TRANSIT, manifest_id: '10' });
       manifestWaybills.find.mockResolvedValue([]);
       const result = await service.arriveTrip('1', {}, dispatcher);
       expect(result.status).toBe(TripStatus.ARRIVED);
+      expect(waybillsService.reconcileTransportStatesForTrips).toHaveBeenCalledWith(['1']);
     });
 
     it('chuyển toàn bộ waybill IN_TRANSIT → AT_DEST_HUB', async () => {

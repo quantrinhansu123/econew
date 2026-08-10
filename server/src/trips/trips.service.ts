@@ -141,6 +141,11 @@ export class TripsService {
     this.applyHubScope(qb, currentUser);
 
     const [data, total] = await qb.getManyAndCount();
+    await this.waybillsService.reconcileTransportStatesForTrips(
+      data
+        .filter((trip) => [TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED].includes(trip.status))
+        .map((trip) => trip.id),
+    );
     await this.enrichRouteLabels(data);
     return { data, total, page, limit };
   }
@@ -157,6 +162,9 @@ export class TripsService {
     this.applyHubScope(qb, currentUser);
     const trip = await qb.getOne();
     if (!trip) throw new NotFoundException('Trip not found');
+    if ([TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED].includes(trip.status)) {
+      await this.waybillsService.reconcileTransportStatesForTrips([trip.id]);
+    }
     await this.enrichRouteLabels([trip]);
     return trip;
   }
@@ -278,6 +286,7 @@ export class TripsService {
       } as any,
       { load_status: WaybillSplitLoadStatus.IN_TRANSIT },
     );
+    await this.waybillsService.reconcileTransportStatesForTrips([trip.id]);
     return this.tripsRepository.save(trip);
   }
 
@@ -298,6 +307,7 @@ export class TripsService {
       } as any,
       { load_status: WaybillSplitLoadStatus.ARRIVED },
     );
+    await this.waybillsService.reconcileTransportStatesForTrips([trip.id]);
     return this.tripsRepository.save(trip);
   }
 
@@ -1024,6 +1034,7 @@ export class TripsService {
         } as any,
         { load_status: WaybillSplitLoadStatus.ARRIVED },
       );
+      await this.waybillsService.reconcileTransportStatesForTrips([trip.id]);
       await this.tripsRepository.save(trip);
     }
   }

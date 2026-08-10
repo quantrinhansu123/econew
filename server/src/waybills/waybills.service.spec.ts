@@ -98,6 +98,7 @@ describe('WaybillsService', () => {
     waybillsRepository = {
       create: jest.fn((value) => value),
       save: jest.fn(async (value) => value),
+      find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn(),
       count: jest.fn().mockResolvedValue(0),
       createQueryBuilder: jest.fn(createQueryBuilder),
@@ -1324,6 +1325,58 @@ describe('WaybillsService', () => {
   it('softDelete blocks MANIFEST_CLOSED waybill', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.MANIFEST_CLOSED }));
     await expect(service.softDelete('1', director)).rejects.toThrow(BadRequestException);
+  });
+
+  it('reconcileTransportStatesForTrips repairs a fully arrived waybill stuck in warehouse', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.IN_WAREHOUSE,
+      status: WaybillStatus.IN_WAREHOUSE,
+      package_count: 171,
+      dest_hub_id: '2',
+    });
+    const arrivedSplit = {
+      id: '116',
+      waybill_id: '1',
+      trip_id: '39',
+      package_count: 171,
+      load_status: WaybillSplitLoadStatus.ARRIVED,
+    };
+    splitsRepository.find
+      .mockResolvedValueOnce([arrivedSplit])
+      .mockResolvedValueOnce([arrivedSplit]);
+    waybillsRepository.find.mockResolvedValue([waybill]);
+
+    await expect(service.reconcileTransportStatesForTrips(['39'])).resolves.toBe(1);
+
+    expect(waybillsRepository.save).toHaveBeenCalledWith([
+      expect.objectContaining({
+        current_state: WaybillStatus.AT_DEST_HUB,
+        current_hub_id: '2',
+        last_audit_action: 'TRIP_SPLIT_STATE_RECONCILE',
+      }),
+    ]);
+  });
+
+  it('reconcileTransportStatesForTrips keeps a partially allocated order in warehouse', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.IN_WAREHOUSE,
+      status: WaybillStatus.IN_WAREHOUSE,
+      package_count: 187,
+    });
+    const arrivedSplit = {
+      id: 's41',
+      waybill_id: '1',
+      trip_id: '41',
+      package_count: 127,
+      load_status: WaybillSplitLoadStatus.ARRIVED,
+    };
+    splitsRepository.find
+      .mockResolvedValueOnce([arrivedSplit])
+      .mockResolvedValueOnce([arrivedSplit]);
+    waybillsRepository.find.mockResolvedValue([waybill]);
+
+    await expect(service.reconcileTransportStatesForTrips(['41'])).resolves.toBe(0);
+    expect(waybillsRepository.save).not.toHaveBeenCalled();
   });
 
   it('getDeliveryTasks đưa phần kiện của chuyến đã đến vào danh sách giao', async () => {

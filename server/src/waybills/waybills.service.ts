@@ -328,6 +328,9 @@ export class WaybillsService {
         order: { loading_position: 'ASC', id: 'ASC' },
       })
       : [];
+    await this.reconcileTransportStatesForTrips(
+      splits.map((split) => split.trip_id).filter((tripId): tripId is string => Boolean(tripId)),
+    );
     const activeSplitsByWaybill = splits.reduce<Map<string, WaybillSplitEntity[]>>((map, split) => {
       if (![TripStatus.IN_TRANSIT, TripStatus.ARRIVED].includes(split.trip?.status as TripStatus)) return map;
       if ([WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED].includes(split.load_status)) return map;
@@ -378,6 +381,81 @@ export class WaybillsService {
         total_pages: Math.max(1, Math.ceil(total / limit)),
       },
     };
+  }
+
+  async reconcileTransportStatesForTrips(tripIds: Array<string | number>): Promise<number> {
+    const normalizedTripIds = [...new Set(tripIds.map((id) => String(id)).filter(Boolean))];
+    if (!normalizedTripIds.length) return 0;
+
+    const tripSplits = (await this.splitsRepository.find({
+      select: { waybill_id: true, trip_id: true },
+      where: { trip_id: In(normalizedTripIds) } as any,
+    })) ?? [];
+    const waybillIds = [...new Set(tripSplits.map((split) => String(split.waybill_id)).filter(Boolean))];
+    if (!waybillIds.length) return 0;
+
+    const [waybills, allSplits] = await Promise.all([
+      this.waybillsRepository.find({ where: { id: In(waybillIds), deleted_at: IsNull() } as any }),
+      this.splitsRepository.find({ where: { waybill_id: In(waybillIds) } as any }),
+    ]);
+    const splitsByWaybill = allSplits.reduce<Map<string, WaybillSplitEntity[]>>((map, split) => {
+      const waybillId = String(split.waybill_id);
+      const rows = map.get(waybillId) ?? [];
+      rows.push(split);
+      map.set(waybillId, rows);
+      return map;
+    }, new Map());
+    const arrivedOrLater = new Set<WaybillSplitLoadStatus>([
+      WaybillSplitLoadStatus.ARRIVED,
+      WaybillSplitLoadStatus.OUT_FOR_DELIVERY,
+      WaybillSplitLoadStatus.DELIVERED,
+      WaybillSplitLoadStatus.RETURNED,
+    ]);
+    const inTransitOrLater = new Set<WaybillSplitLoadStatus>([
+      WaybillSplitLoadStatus.DEPARTED,
+      WaybillSplitLoadStatus.IN_TRANSIT,
+      ...arrivedOrLater,
+    ]);
+    const stateRank = new Map<WaybillStatus, number>([
+      [WaybillStatus.RECEIVED, 1],
+      [WaybillStatus.IN_WAREHOUSE, 2],
+      [WaybillStatus.MANIFEST_CLOSED, 3],
+      [WaybillStatus.LOADED, 4],
+      [WaybillStatus.IN_TRANSIT, 5],
+      [WaybillStatus.AT_DEST_HUB, 6],
+      [WaybillStatus.OUT_FOR_DELIVERY, 7],
+      [WaybillStatus.DELIVERED, 8],
+      [WaybillStatus.RETURNED, 8],
+      [WaybillStatus.CANCELLED, 8],
+    ]);
+    const changed: WaybillEntity[] = [];
+
+    for (const waybill of waybills) {
+      const splits = splitsByWaybill.get(String(waybill.id)) ?? [];
+      const allocatedPackages = splits.reduce((sum, split) => sum + Number(split.package_count ?? 0), 0);
+      if (!splits.length || allocatedPackages < this.resolveTotalPackages(waybill as WaybillRecord)) continue;
+
+      const splitStatuses = splits.map((split) => split.load_status ?? WaybillSplitLoadStatus.WAITING_LOAD);
+      const targetStatus = splitStatuses.every((status) => arrivedOrLater.has(status))
+        ? WaybillStatus.AT_DEST_HUB
+        : splitStatuses.every((status) => inTransitOrLater.has(status))
+          ? WaybillStatus.IN_TRANSIT
+          : null;
+      if (!targetStatus) continue;
+
+      const currentStatus = this.getStatus(waybill as WaybillRecord);
+      if ((stateRank.get(currentStatus) ?? 0) >= (stateRank.get(targetStatus) ?? 0)) continue;
+
+      this.setStatus(waybill as WaybillRecord, targetStatus);
+      if (targetStatus === WaybillStatus.IN_TRANSIT) waybill.loaded_at = waybill.loaded_at ?? new Date();
+      if (targetStatus === WaybillStatus.AT_DEST_HUB) waybill.current_hub_id = waybill.dest_hub_id;
+      waybill.last_audit_action = 'TRIP_SPLIT_STATE_RECONCILE';
+      waybill.last_audit_at = new Date();
+      changed.push(waybill);
+    }
+
+    if (changed.length) await this.waybillsRepository.save(changed);
+    return changed.length;
   }
 
   async updateDeliveryPreparation(id: string, dto: UpdateDeliveryPreparationDto, currentUser: UserEntity) {

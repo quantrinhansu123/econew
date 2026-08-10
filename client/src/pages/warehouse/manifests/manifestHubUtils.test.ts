@@ -28,12 +28,13 @@ describe('manifest HUB lanes', () => {
     expect(filterExpectedInboundToHub([planned], 'HCM')).toEqual([]);
   });
 
-  it('keeps arrived and completed trips in the departure and destination lanes', () => {
+  it('keeps only running trips in the departure and destination lanes', () => {
+    const running = manifest('IN_TRANSIT');
     const arrived = manifest('ARRIVED');
     const completed = manifest('COMPLETED');
 
     expect(resolveManifestBoardGroup(arrived, 'HCM')).toBe('arrived');
-    expect(filterActiveOutboundFromHub([arrived, completed], 'HAN')).toEqual([arrived, completed]);
-    expect(filterExpectedInboundToHub([arrived, completed], 'HCM')).toEqual([arrived, completed]);
+    expect(filterActiveOutboundFromHub([running, arrived, completed], 'HAN')).toEqual([running]);
+    expect(filterExpectedInboundToHub([running, arrived, completed], 'HCM')).toEqual([running]);
   });
 });

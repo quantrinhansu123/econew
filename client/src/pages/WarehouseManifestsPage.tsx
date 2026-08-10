@@ -243,7 +243,7 @@ export default function WarehouseManifestsPage() {
     try {
       const [hubResponse, tripResponse] = await Promise.all([
         apiRequest<HubSummary[]>('/hubs/active'),
-        apiRequest<TripListResponse | TripSummary[]>(`/trips?${new URLSearchParams({ page: '1', limit: '100', status: 'PLANNED' }).toString()}`),
+        apiRequest<TripListResponse | TripSummary[]>(`/trips?${new URLSearchParams({ page: '1', limit: '100', status: 'IN_TRANSIT' }).toString()}`),
       ]);
       setHubs(Array.isArray(hubResponse) ? hubResponse : []);
       setTrips(normalizeTripList(tripResponse));
@@ -253,7 +253,7 @@ export default function WarehouseManifestsPage() {
   async function fetchManifests() {
     setIsLoading(true); setError('');
     try {
-      const params = new URLSearchParams({ page: String(filters.page), limit: String(filters.limit) });
+      const params = new URLSearchParams({ page: String(filters.page), limit: String(filters.limit), status: 'IN_TRANSIT' });
       if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
       if (filters.status.length) params.set('status', filters.status.join(','));
       if (filters.origin_hub_id.length) params.set('origin_hub_id', filters.origin_hub_id.join(','));
@@ -508,7 +508,7 @@ function ManifestTransitBoard({
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 p-3">
       <p className="shrink-0 text-[12px] font-medium text-muted-foreground">
-        Chỉ hiển thị chuyến đã khởi hành: đang chạy, đã đến hoặc đã hoàn tất. Chuyến chưa khởi hành không xuất hiện tại đây.
+        Chỉ hiển thị xe đang chạy. Chuyến chưa khởi hành, đã đến hoặc đã hoàn tất không xuất hiện tại bảng kê đi.
       </p>
       <div className="flex min-h-0 w-full flex-1 flex-col gap-3 lg:flex-row lg:gap-4">
         <ManifestTransitTable
