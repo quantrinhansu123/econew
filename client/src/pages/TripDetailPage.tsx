@@ -296,7 +296,7 @@ export default function TripDetailPage() {
         priorities: [],
         receivedFrom: '',
         receivedTo: '',
-      }, { onlyIncompleteSplit: true });
+      }, { onlyIncompleteSplit: true, listScope: 'all_inventory' });
       const response = await apiRequest<{
         items?: WaybillInventoryItem[];
         data?: WaybillInventoryItem[];

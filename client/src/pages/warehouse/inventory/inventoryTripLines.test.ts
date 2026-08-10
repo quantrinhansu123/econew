@@ -34,6 +34,17 @@ describe('all-orders inventory query', () => {
     expect(params.has('hub_id')).toBe(false);
   });
 
+  it('requests the unrestricted inventory scope for adding bills to a trip', () => {
+    const params = new URLSearchParams(buildInventoryTripLinesQuery(filters, {
+      onlyIncompleteSplit: true,
+      listScope: 'all_inventory',
+    }));
+
+    expect(params.get('list_scope')).toBe('all_inventory');
+    expect(params.get('only_incomplete_split')).toBe('1');
+    expect(params.has('hub_id')).toBe(false);
+  });
+
   it('filters the all-orders list by sent date instead of import date', () => {
     const params = new URLSearchParams(buildInventoryTripLinesQuery(
       { ...filters, receivedFrom: '2026-07-31', receivedTo: '2026-07-31' },

@@ -901,6 +901,8 @@ export class WaybillsService {
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 20);
     const onlyIncompleteSplit = this.isTruthyQueryFlag(query.only_incomplete_split);
+    const isGlobalInventoryScope = query.list_scope === 'all_inventory';
+    const isGlobalListScope = query.list_scope === 'all_orders' || isGlobalInventoryScope;
     const defaultStatuses = query.list_scope === 'all_orders'
       ? ALL_ORDER_LIST_STATUSES.join(',')
       : onlyIncompleteSplit
@@ -920,7 +922,7 @@ export class WaybillsService {
       .leftJoinAndSelect('waybill.dest_hub', 'dest_hub')
       .leftJoinAndSelect('waybill.order', 'order');
     this.applyFilters(qb, inventoryQuery);
-    if (query.list_scope !== 'all_orders') {
+    if (!isGlobalListScope) {
       this.applyHubScope(qb, currentUser);
     }
 
@@ -2893,7 +2895,7 @@ export class WaybillsService {
     if (query.current_hub_id?.trim() || query.hub_id?.trim()) {
       return query.current_hub_id ?? query.hub_id;
     }
-    if (query.list_scope === 'all_orders') {
+    if (query.list_scope === 'all_orders' || query.list_scope === 'all_inventory') {
       return undefined;
     }
     if (query.ma_kh?.trim() || query.vendor_id?.trim()) {

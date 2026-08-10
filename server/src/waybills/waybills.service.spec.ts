@@ -1175,6 +1175,21 @@ describe('WaybillsService', () => {
     );
   });
 
+  it('all-inventory shows addable stock from every hub without including final statuses', async () => {
+    const qb = createQueryBuilder();
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.getInventoryTripLines({ list_scope: 'all_inventory', only_incomplete_split: '1' }, warehouse);
+
+    expect(qb.andWhere).not.toHaveBeenCalledWith(
+      'COALESCE(waybill.current_hub_id, waybill.origin_hub_id) IN (:...hubIds)',
+      { hubIds: ['1'] },
+    );
+    const statusCall = qb.andWhere.mock.calls.find((call: any[]) => call[0] === 'waybill.current_state IN (:...statuses)');
+    expect(statusCall?.[1]?.statuses).toEqual(expect.arrayContaining([WaybillStatus.IN_WAREHOUSE, WaybillStatus.IN_TRANSIT]));
+    expect(statusCall?.[1]?.statuses).not.toEqual(expect.arrayContaining([WaybillStatus.DELIVERED, WaybillStatus.CANCELLED]));
+  });
+
   it('all-orders includes cancelled bills and keeps pagination order stable by creation time', async () => {
     const qb = createQueryBuilder();
     waybillsRepository.createQueryBuilder.mockReturnValue(qb);

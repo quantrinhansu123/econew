@@ -353,6 +353,7 @@ export default function WarehouseManifestsPage() {
         },
         {
           onlyIncompleteSplit: true,
+          listScope: 'all_inventory',
         },
       );
       const response = await apiRequest<{

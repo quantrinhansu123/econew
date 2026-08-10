@@ -48,7 +48,7 @@ export function buildInventoryTripLinesQuery(
   >,
   options?: {
     onlyIncompleteSplit?: boolean;
-    listScope?: 'all_orders';
+    listScope?: 'all_orders' | 'all_inventory';
     destHubId?: string | number | null;
   },
 ) {
@@ -65,8 +65,8 @@ export function buildInventoryTripLinesQuery(
   if (options?.onlyIncompleteSplit) {
     params.set('only_incomplete_split', '1');
   }
-  if (options?.listScope === 'all_orders') {
-    params.set('list_scope', 'all_orders');
+  if (options?.listScope) {
+    params.set('list_scope', options.listScope);
   }
   const destHubIds = options?.destHubId != null
     ? [String(options.destHubId).trim()].filter(Boolean)
