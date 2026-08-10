@@ -31,6 +31,19 @@ describe('all-orders column filters', () => {
     expect(getAllOrdersColumnValue(rows[0], 'received_at')).toBe('31/07/2026');
   });
 
+  it('indexes every split trip in the Chuyến / xe column', () => {
+    const waybill: WaybillInventoryItem = {
+      id: 4,
+      trip_history: [
+        { trip_id: '41', package_count: 127, license_plate: '15H-29078', departure_time: '2026-08-06', status: 'COMPLETED' },
+        { trip_id: '46', package_count: 60, license_plate: '29E-078.04', departure_time: '2026-08-08', status: 'IN_TRANSIT' },
+      ],
+    };
+
+    expect(getAllOrdersColumnValue(waybill, 'trip_label')).toContain('127 kiện · Chuyến #41');
+    expect(getAllOrdersColumnValue(waybill, 'trip_label')).toContain('60 kiện · Chuyến #46');
+  });
+
   it('searches actual values across one bill without returning unrelated bills', () => {
     expect(applyAllOrdersGlobalSearch(rows, 'xe đạp').map((row) => row.id)).toEqual([1]);
     expect(applyAllOrdersGlobalSearch(rows, 'xe dap').map((row) => row.id)).toEqual([1]);

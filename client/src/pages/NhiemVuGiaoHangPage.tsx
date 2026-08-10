@@ -235,9 +235,9 @@ export default function NhiemVuGiaoHangPage() {
     <div className="flex h-full min-h-0 flex-col gap-3">
       <style>{'@media (min-width: 1280px) { .delivery-task-grid { grid-template-columns: var(--delivery-grid); } }'}</style>
       <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
-        <h1 className="text-lg font-extrabold text-foreground">Hàng tại HUB · Nhiệm vụ giao hàng</h1>
+        <h1 className="text-lg font-extrabold text-foreground">Nhiệm vụ giao hàng · Gọi hẹn và điều phối</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Toàn bộ hàng đã nhập HUB đến — xác nhận người nhận, lưu kho, phân tuyến và điều phối giao chặng cuối.
+          Tách riêng xe đang chạy để gọi hẹn trước; khi hàng tới HUB tiếp tục phân tuyến và điều phối giao chặng cuối.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <div className="relative min-w-[260px] flex-1">
@@ -252,8 +252,10 @@ export default function NhiemVuGiaoHangPage() {
           </div>
           <FilterSelect icon={<Truck size={15} />} value={statusFilter} onChange={setStatusFilter} label="Trạng thái">
             <option value="AT_DEST_HUB,OUT_FOR_DELIVERY">Tất cả đơn cần giao</option>
+            <option value="IN_TRANSIT">Xe đang chạy · gọi hẹn trước</option>
             <option value="AT_DEST_HUB">Chờ phân giao</option>
             <option value="OUT_FOR_DELIVERY">Đang giao</option>
+            <option value="IN_TRANSIT,AT_DEST_HUB,OUT_FOR_DELIVERY">Tất cả các bước</option>
           </FilterSelect>
           <FilterSelect icon={<Building2 size={15} />} value={destHubId} onChange={setDestHubId} label="HUB đến">
             <option value="">Tất cả HUB đến</option>
@@ -269,6 +271,10 @@ export default function NhiemVuGiaoHangPage() {
           </FilterSelect>
           <FilterSelect icon={<PackageOpen size={15} />} value={preparationFilter} onChange={setPreparationFilter} label="Xử lý giao">
             <option value="">Tất cả xử lý</option><option value="PENDING_CONFIRMATION">Chờ gọi xác nhận</option><option value="READY">Sẵn sàng giao</option><option value="SCHEDULED">Lưu kho hẹn ngày</option><option value="NEEDS_ACTION">Cần xử lý</option><option value="HOLD">Lưu kho chờ xử lý</option>
+          </FilterSelect>
+          <FilterSelect icon={<Truck size={15} />} value={tripFilter} onChange={setTripFilter} label="Chuyến xe">
+            <option value="">Tất cả chuyến / xe</option>
+            {tripFilterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </FilterSelect>
           <div className="relative">
             <button type="button" onClick={() => setColumnMenuOpen((open) => !open)} className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[12px] font-extrabold text-foreground hover:bg-muted"><Columns3 size={15}/>Cột</button>
@@ -309,7 +315,9 @@ export default function NhiemVuGiaoHangPage() {
           <p className="mt-1 max-w-sm text-[13px] text-muted-foreground">
             {tripFilter
               ? 'Bỏ bộ lọc chuyến xe hoặc thay đổi các điều kiện lọc phía trên để xem lại danh sách.'
-              : 'Không có đơn ở trạng thái Tới hub đích hoặc Chặng cuối. Kiểm tra bàn giao tài xế tại bưu cục đích.'}
+              : statusFilter === 'IN_TRANSIT'
+                ? 'Không có chuyến xe đang chạy phù hợp. Thử đổi HUB đi, HUB đến hoặc tải lại danh sách.'
+                : 'Không có đơn ở trạng thái Tới hub đích hoặc Chặng cuối. Kiểm tra bàn giao tài xế tại bưu cục đích.'}
           </p>
           {tripFilter && (
             <button type="button" onClick={() => setTripFilter('')} className="mt-3 h-9 rounded-lg border border-border bg-white px-3 text-[12px] font-extrabold text-foreground hover:bg-muted">
@@ -323,22 +331,6 @@ export default function NhiemVuGiaoHangPage() {
             {visibleColumns.map((column) => (
               <div key={column.id} className={column.id === 'actions' ? 'text-right' : ''}>
                 <span>{column.label}</span>
-                {column.id === 'trip' && (
-                  <label className="relative mt-1.5 block">
-                    <Truck size={12} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <span className="sr-only">Lọc theo chuyến xe</span>
-                    <select
-                      value={tripFilter}
-                      onChange={(event) => setTripFilter(event.target.value)}
-                      className="h-8 w-full appearance-none rounded-md border border-slate-200 bg-white pl-7 pr-6 text-[11px] font-bold normal-case tracking-normal text-slate-700 outline-none hover:border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/15"
-                    >
-                      <option value="">Tất cả chuyến / xe</option>
-                      {tripFilterOptions.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                )}
               </div>
             ))}
           </div>
@@ -346,12 +338,12 @@ export default function NhiemVuGiaoHangPage() {
             const status = normalizeStatus(waybill);
             const preparation = waybill.delivery_preparation_status || 'PENDING_CONFIRMATION';
             const canStart = canDispatchDelivery(roleMask) && status === 'AT_DEST_HUB' && preparation === 'READY';
-            const canPrepare = canPrepareDelivery(roleMask) && status === 'AT_DEST_HUB';
+            const canPrepare = canPrepareDelivery(roleMask) && ['IN_TRANSIT', 'AT_DEST_HUB'].includes(status);
             const canDeliver = canCompleteDelivery(roleMask) && status === 'OUT_FOR_DELIVERY';
             const preparationText = preparation === 'READY'
               ? 'Sẵn sàng giao'
               : preparation === 'SCHEDULED'
-                ? `Hẹn ${waybill.delivery_scheduled_at ? new Date(waybill.delivery_scheduled_at).toLocaleString('vi-VN') : ''}`
+                ? `${status === 'IN_TRANSIT' ? 'Đã gọi · hẹn' : 'Hẹn'} ${waybill.delivery_scheduled_at ? new Date(waybill.delivery_scheduled_at).toLocaleString('vi-VN') : ''}`
                 : preparation === 'NEEDS_ACTION'
                   ? 'Cần xử lý trong ngày'
                   : preparation === 'HOLD'
@@ -373,10 +365,12 @@ export default function NhiemVuGiaoHangPage() {
                         'inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-black',
                         status === 'OUT_FOR_DELIVERY'
                           ? 'border-orange-200 bg-orange-50 text-orange-800'
-                          : 'border-violet-200 bg-violet-50 text-violet-800',
+                          : status === 'IN_TRANSIT'
+                            ? 'border-blue-200 bg-blue-50 text-blue-800'
+                            : 'border-violet-200 bg-violet-50 text-violet-800',
                       )}
                     >
-                      {status === 'OUT_FOR_DELIVERY' ? 'Đang giao' : 'Tới hub đích'}
+                      {status === 'OUT_FOR_DELIVERY' ? 'Đang giao' : status === 'IN_TRANSIT' ? 'Xe đang chạy' : 'Tới hub đích'}
                     </span>
                     {waybill.trip_package_count != null && waybill.order_total_packages != null && (
                       <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
@@ -410,6 +404,7 @@ export default function NhiemVuGiaoHangPage() {
                   <p className="mt-1 truncate font-bold text-muted-foreground" title={waybill.trip_label || undefined}>
                     {waybill.trip_label || (waybill.trip_id ? `${waybill.license_plate ? `Xe ${waybill.license_plate}` : 'Chưa có xe'}` : 'Nhập trực tiếp tại HUB')}
                   </p>
+                  {waybill.trip?.departure_time && <p className="mt-1 font-bold text-blue-700">Khởi hành {new Date(waybill.trip.departure_time).toLocaleString('vi-VN')}</p>}
                 </div>
                 )}
                 {visibleColumnIds.includes('packages') && <div className="text-[11px] font-extrabold"><span className="mr-1 text-muted-foreground xl:hidden">Số kiện:</span>{waybill.trip_package_count ?? waybill.package_count ?? '—'}</div>}
@@ -418,7 +413,7 @@ export default function NhiemVuGiaoHangPage() {
                 {visibleColumnIds.includes('payment') && <div className="text-[11px] font-bold text-muted-foreground"><span className="mr-1 xl:hidden">Thanh toán:</span>{waybill.payment_type || '—'}</div>}
                 {visibleColumnIds.includes('status') && (
                 <div className="min-w-0 text-[11px]">
-                  {status === 'AT_DEST_HUB' && <p className={clsx('truncate font-extrabold', preparation === 'NEEDS_ACTION' ? 'text-red-700' : preparation === 'READY' ? 'text-emerald-700' : 'text-amber-700')} title={preparationText}>
+                  {['IN_TRANSIT', 'AT_DEST_HUB'].includes(status) && <p className={clsx('truncate font-extrabold', preparation === 'NEEDS_ACTION' ? 'text-red-700' : preparation === 'READY' ? 'text-emerald-700' : status === 'IN_TRANSIT' ? 'text-blue-700' : 'text-amber-700')} title={preparationText}>
                     {preparationText}
                   </p>}
                   {status === 'OUT_FOR_DELIVERY' && (
@@ -436,7 +431,9 @@ export default function NhiemVuGiaoHangPage() {
                 <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">
                   {canPrepare && (
                     <button type="button" onClick={() => { setActionError(''); setPreparationWaybill(waybill); }} className="inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-[11px] font-extrabold text-foreground hover:bg-muted">
-                      {preparation === 'PENDING_CONFIRMATION' ? 'Xác nhận / xử lý' : 'Sửa xử lý'}
+                      {status === 'IN_TRANSIT'
+                        ? preparation === 'PENDING_CONFIRMATION' ? 'Gọi hẹn trước' : 'Sửa gọi hẹn'
+                        : preparation === 'PENDING_CONFIRMATION' ? 'Xác nhận / xử lý' : 'Sửa xử lý'}
                     </button>
                   )}
                   {canStart && (

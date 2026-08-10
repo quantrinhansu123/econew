@@ -11,6 +11,7 @@ const filters: InventoryFilters = {
   billingUnits: [],
   customerPaymentStatuses: [],
   hubIds: [],
+  destHubIds: [],
   paymentTypes: [],
   priorities: [],
   receivedFrom: '',
@@ -43,6 +44,17 @@ describe('all-orders inventory query', () => {
     expect(params.get('sent_to')).toBe('2026-07-31');
     expect(params.has('received_from')).toBe(false);
     expect(params.has('received_to')).toBe(false);
+  });
+
+  it('serializes destination HUB filters independently from the current HUB', () => {
+    const params = new URLSearchParams(buildInventoryTripLinesQuery({
+      ...filters,
+      hubIds: ['1'],
+      destHubIds: ['2', '3'],
+    }));
+
+    expect(params.get('hub_id')).toBe('1');
+    expect(params.get('dest_hub_id')).toBe('2,3');
   });
 
   it('sorts by creation time and uses descending id as a stable tie breaker', () => {

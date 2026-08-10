@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import { AlertTriangle, Building2, Loader2, Plus, Printer, Save, Trash2, X } from 'lucide-react';
 import { VendorCreatableSelect } from '../../../../components/ui/VendorCreatableSelect';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, apiRequest } from '../../../../lib/api';
 import TruckSearchSelect from '../../components/TruckSearchSelect';
 import type { Truck as TruckRecord, TruckListResponse } from '../../../trucks/types';
@@ -47,6 +47,8 @@ interface Props {
   isClosing: boolean;
   waybills: WaybillInventoryItem[];
   onClose: () => void;
+  onAddMore?: () => void;
+  onRemoveWaybill?: (waybillId: string) => void;
   onSaved?: (result?: StackOntoTruckResult) => void;
 }
 
@@ -96,6 +98,8 @@ export default function StackOntoTruckDialog({
   isClosing,
   waybills,
   onClose,
+  onAddMore,
+  onRemoveWaybill,
   onSaved,
 }: Props) {
   const [rows, setRows] = useState<StackOntoTruckFormRow[]>([]);
@@ -112,6 +116,7 @@ export default function StackOntoTruckDialog({
   const [printColumnIds, setPrintColumnIds] = useState<DispatchPrintColumnId[]>(() =>
     loadVisibleDispatchColumnIds(canViewPricing),
   );
+  const wasOpenRef = useRef(false);
 
   const selectedTruckLabel = useMemo(() => {
     const truck = truckOptions.find((item) => item.id === shared.truck_id);
@@ -191,9 +196,12 @@ export default function StackOntoTruckDialog({
 
   useEffect(() => {
     if (!isOpen) {
+      wasOpenRef.current = false;
       setIsPrintOpen(false);
       return;
     }
+    if (wasOpenRef.current) return;
+    wasOpenRef.current = true;
     setRows(buildStackFormRows(waybills));
     setShared(buildInitialSharedFields(waybills));
     void Promise.all([loadTrucks(), loadVendors()]);
@@ -254,7 +262,10 @@ export default function StackOntoTruckDialog({
     }
   };
 
-  const removeRow = (waybillId: string) => setRows((prev) => prev.filter((row) => row.waybill_id !== waybillId));
+  const removeRow = (waybillId: string) => {
+    setRows((prev) => prev.filter((row) => row.waybill_id !== waybillId));
+    onRemoveWaybill?.(waybillId);
+  };
 
   async function handleSubmit() {
     setError('');
@@ -484,6 +495,17 @@ export default function StackOntoTruckDialog({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-border px-6 py-4">
+          {onAddMore && (
+            <button
+              type="button"
+              onClick={onAddMore}
+              title="Quay lại danh sách để tìm và chọn thêm đơn"
+              className="mr-auto inline-flex h-11 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-5 text-[14px] font-bold text-emerald-800 hover:bg-emerald-100"
+            >
+              <Plus size={16} />
+              Thêm đơn
+            </button>
+          )}
           <button type="button" onClick={onClose} className="h-11 rounded-lg border border-border px-5 text-[14px] font-bold text-muted-foreground hover:bg-muted">
             Hủy
           </button>

@@ -283,6 +283,10 @@ export class WaybillsService {
     await this.activateScheduledDeliveryTasks(currentUser);
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 100);
+    const requestedStatuses = this.parseList(query.status);
+    const deliveryTripStatuses = !requestedStatuses.length || requestedStatuses.includes(WaybillStatus.IN_TRANSIT)
+      ? [TripStatus.IN_TRANSIT, TripStatus.ARRIVED]
+      : [TripStatus.ARRIVED];
     const qb = this.waybillsRepository.createQueryBuilder('waybill')
       .where('waybill.deleted_at IS NULL')
       .leftJoinAndSelect('waybill.origin_hub', 'origin_hub')
@@ -298,9 +302,9 @@ export class WaybillsService {
           deliveryStates: [WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY],
         })
         .orWhere(
-          '(delivery_trip.status = :arrivedStatus AND delivery_split.load_status NOT IN (:...finishedSplitStatuses))',
+          '(delivery_trip.status IN (:...deliveryTripStatuses) AND delivery_split.load_status NOT IN (:...finishedSplitStatuses))',
           {
-            arrivedStatus: TripStatus.ARRIVED,
+            deliveryTripStatuses,
             finishedSplitStatuses: [WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED],
           },
         )))
@@ -325,7 +329,7 @@ export class WaybillsService {
       })
       : [];
     const activeSplitsByWaybill = splits.reduce<Map<string, WaybillSplitEntity[]>>((map, split) => {
-      if (split.trip?.status !== TripStatus.ARRIVED) return map;
+      if (![TripStatus.IN_TRANSIT, TripStatus.ARRIVED].includes(split.trip?.status as TripStatus)) return map;
       if ([WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED].includes(split.load_status)) return map;
       const rows = map.get(String(split.waybill_id)) ?? [];
       rows.push(split);
@@ -333,16 +337,17 @@ export class WaybillsService {
       return map;
     }, new Map());
 
-    const requestedStatuses = this.parseList(query.status);
     const taskItems = waybills.flatMap((waybill) => {
       const sanitized = this.sanitize(waybill as WaybillRecord, currentUser);
       const activeSplits = activeSplitsByWaybill.get(String(waybill.id)) ?? [];
       if (activeSplits.length) {
         return activeSplits.map((split) => {
-          const currentState = split.load_status === WaybillSplitLoadStatus.OUT_FOR_DELIVERY
+          const currentState = split.trip?.status === TripStatus.IN_TRANSIT
+            ? WaybillStatus.IN_TRANSIT
+            : split.load_status === WaybillSplitLoadStatus.OUT_FOR_DELIVERY
             || this.getStatus(waybill as WaybillRecord) === WaybillStatus.OUT_FOR_DELIVERY
-            ? WaybillStatus.OUT_FOR_DELIVERY
-            : WaybillStatus.AT_DEST_HUB;
+              ? WaybillStatus.OUT_FOR_DELIVERY
+              : WaybillStatus.AT_DEST_HUB;
           return {
             ...this.mapInventoryTripLine(sanitized, split),
             task_id: `split:${split.id}`,
@@ -377,8 +382,19 @@ export class WaybillsService {
 
   async updateDeliveryPreparation(id: string, dto: UpdateDeliveryPreparationDto, currentUser: UserEntity) {
     const waybill = await this.findEditable(id, currentUser);
-    if (this.getStatus(waybill) !== WaybillStatus.AT_DEST_HUB) {
-      throw new BadRequestException('Chỉ xử lý chuẩn bị giao khi đơn đã nhập HUB đến');
+    const waybillStatus = this.getStatus(waybill);
+    if (waybillStatus !== WaybillStatus.AT_DEST_HUB) {
+      const activeDeliverySplits = await this.splitsRepository.find({
+        where: { waybill_id: String(waybill.id) },
+        relations: ['trip'],
+      });
+      const hasCallableTrip = activeDeliverySplits.some((split) => (
+        [TripStatus.IN_TRANSIT, TripStatus.ARRIVED].includes(split.trip?.status as TripStatus)
+        && ![WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED].includes(split.load_status)
+      ));
+      if (!hasCallableTrip) {
+        throw new BadRequestException('Chỉ xử lý gọi hẹn khi xe đang chạy hoặc đơn đã nhập HUB đến');
+      }
     }
     const before = this.buildAuditSnapshot(waybill);
     const now = new Date();
@@ -420,9 +436,16 @@ export class WaybillsService {
     const cutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const qb = this.waybillsRepository.createQueryBuilder('waybill')
       .where('waybill.deleted_at IS NULL')
-      .andWhere('waybill.current_state = :state', { state: WaybillStatus.AT_DEST_HUB })
+      .leftJoin('waybill_splits', 'scheduled_split', 'scheduled_split.waybill_id = waybill.id')
+      .leftJoin('trips', 'scheduled_trip', 'scheduled_trip.id = scheduled_split.trip_id')
+      .andWhere(new Brackets((builder) => builder
+        .where('waybill.current_state = :state', { state: WaybillStatus.AT_DEST_HUB })
+        .orWhere('scheduled_trip.status IN (:...callableTripStatuses)', {
+          callableTripStatuses: [TripStatus.IN_TRANSIT, TripStatus.ARRIVED],
+        })))
       .andWhere('waybill.delivery_preparation_status = :scheduled', { scheduled: 'SCHEDULED' })
-      .andWhere('waybill.delivery_scheduled_at <= :cutoff', { cutoff });
+      .andWhere('waybill.delivery_scheduled_at <= :cutoff', { cutoff })
+      .distinct(true);
     this.applyHubScope(qb, currentUser);
     const due = await qb.getMany();
     for (const waybill of due) {
@@ -838,7 +861,7 @@ export class WaybillsService {
 
     this.applyIncompleteSplitFilter(qb, query.only_incomplete_split);
 
-    const needsSplits = Boolean(vendorId) || onlyIncompleteSplit || query.list_scope !== 'all_orders';
+    const includeTripHistory = query.list_scope === 'all_orders';
     const includeFreightTotal = isManager(currentUser.role_mask);
 
     const loadSummary = async () => {
@@ -884,7 +907,7 @@ export class WaybillsService {
     const { totalWaybills, totalFreight } = summary;
 
     const waybillIds = waybills.map((waybill) => waybill.id);
-    const splits = needsSplits && waybillIds.length
+    const splits = waybillIds.length
       ? onlyIncompleteSplit && !vendorId
         ? await this.splitsRepository.find({
           select: {
@@ -913,6 +936,42 @@ export class WaybillsService {
       const sanitized = this.sanitize(waybill as WaybillRecord, currentUser);
       const waybillSplits = splitsByWaybill.get(waybill.id) ?? [];
       const belongsToLastMileVendor = Boolean(vendorId) && String(waybill.last_mile_vendor_id || '') === vendorId;
+
+      if (includeTripHistory) {
+        const line = this.mapInventoryTripLine(sanitized, null);
+        const tripHistory = waybillSplits
+          .map((split) => {
+            const truck = split.truck ?? split.trip?.truck ?? null;
+            return {
+              split_id: split.id,
+              trip_id: split.trip_id,
+              package_count: Number(split.package_count ?? 0),
+              license_plate: truck?.bks ?? truck?.license_plate ?? null,
+              carrier_label: split.carrier_label ?? truck?.nha_xe ?? null,
+              departure_time: split.trip?.departure_time ?? null,
+              expected_arrival_time: split.trip?.expected_arrival_time ?? split.expected_arrival_at ?? null,
+              arrival_time: split.trip?.arrival_time ?? null,
+              status: split.trip?.status ?? null,
+              loading_position: split.loading_position ?? null,
+            };
+          })
+          .sort((left, right) => {
+            const leftTime = left.departure_time ? new Date(left.departure_time).getTime() : 0;
+            const rightTime = right.departure_time ? new Date(right.departure_time).getTime() : 0;
+            if (leftTime !== rightTime) return leftTime - rightTime;
+            return String(left.trip_id ?? '').localeCompare(String(right.trip_id ?? ''), 'en', { numeric: true });
+          });
+        const allocatedPackages = tripHistory.reduce((sum, trip) => sum + trip.package_count, 0);
+        const remainingPackages = Math.max(0, this.resolveTotalPackages(waybill as WaybillRecord) - allocatedPackages);
+        return [{
+          ...line,
+          remaining_packages: remainingPackages,
+          trip_label: tripHistory.length
+            ? `${tripHistory.length} chuyến · ${allocatedPackages} kiện đã phân xe`
+            : 'Chưa phân xe',
+          trip_history: tripHistory,
+        }];
+      }
 
       if (onlyIncompleteSplit) {
         const totalPackages = this.resolveTotalPackages(waybill as WaybillRecord);

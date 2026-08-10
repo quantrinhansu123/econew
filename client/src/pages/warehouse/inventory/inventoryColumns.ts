@@ -1,4 +1,4 @@
-import type { WaybillInventoryItem } from './types';
+import type { InventoryTripHistoryItem, WaybillInventoryItem } from './types';
 import { resolveOrderStatusGroup, orderStatusGroupConfig } from './orderStatusUtils';
 import { resolveVietnamDistrict, resolveVietnamWard } from '../../../lib/vietnamAddressParts';
 import { resolveWaybillDisplayNote } from '../../../lib/waybillSpecialGoods';
@@ -32,6 +32,37 @@ export function formatInventoryDate(value?: string | null, options?: { short?: b
     ...(options?.short ? {} : { year: 'numeric' }),
     timeZone: VN_TIMEZONE,
   }).format(date);
+}
+
+const TRIP_STATUS_LABELS: Record<string, string> = {
+  PLANNED: 'Đã lên kế hoạch',
+  IN_TRANSIT: 'Đang chạy',
+  ARRIVED: 'Đã đến HUB',
+  COMPLETED: 'Hoàn tất',
+  CANCELLED: 'Đã hủy',
+};
+
+export function resolveTripStatusLabel(status?: string | null): string {
+  const normalized = String(status || '').trim().toUpperCase();
+  return TRIP_STATUS_LABELS[normalized] || normalized || 'Chưa khởi hành';
+}
+
+export function formatInventoryTripHistoryLine(trip: InventoryTripHistoryItem): string {
+  const parts = [
+    `${Number(trip.package_count || 0).toLocaleString('vi-VN')} kiện`,
+    trip.trip_id ? `Chuyến #${trip.trip_id}` : 'Chưa có chuyến',
+    trip.license_plate ? `BKS ${trip.license_plate}` : null,
+    trip.departure_time ? formatInventoryDate(trip.departure_time, { short: true }) : null,
+    resolveTripStatusLabel(trip.status),
+  ];
+  return parts.filter(Boolean).join(' · ');
+}
+
+export function resolveInventoryTripHistoryText(waybill: WaybillInventoryItem): string {
+  if (waybill.trip_history?.length) {
+    return waybill.trip_history.map(formatInventoryTripHistoryLine).join('\n');
+  }
+  return waybill.trip_label || 'Chưa phân xe';
 }
 
 /** Ngày hoàn thành dự kiến = ngày bốc + 3 ngày (theo mẫu bảng kê). */
@@ -314,7 +345,7 @@ export const ALL_ORDERS_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>
   receiver_address: 250,
   bill_images: 90,
   order_status: 115,
-  trip_label: 220,
+  trip_label: 340,
   billing_unit: 110,
   billing_qty_detail: 150,
   order_code: 120,

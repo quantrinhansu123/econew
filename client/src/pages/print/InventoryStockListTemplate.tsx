@@ -23,7 +23,7 @@ export default function InventoryStockListTemplate({ data }: Props) {
 
   return (
     <div className="inventory-stock-sheet">
-      <h1 className="inventory-stock-title">Danh sách tồn kho ECO</h1>
+      <h1 className="inventory-stock-title">{data.title || 'Danh sách tồn kho ECO'}</h1>
       <p className="inventory-stock-meta">
         In lúc: {data.printedAt}
         {data.filterSummary ? ` · ${data.filterSummary}` : ''}

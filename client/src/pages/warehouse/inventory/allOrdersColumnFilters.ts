@@ -8,6 +8,7 @@ import {
   resolveMaKh,
   resolveNoiDen,
   resolveOrderStatusBadge,
+  resolveInventoryTripHistoryText,
   resolvePackageCountSl,
   resolvePaymentMethod,
   resolveReceiverAddress,
@@ -130,7 +131,7 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
     case 'loaded_at':
       return waybill.loaded_at ? formatInventoryDate(String(waybill.loaded_at)) : EMPTY_VALUE;
     case 'trip_label':
-      return waybill.trip_label?.trim() || EMPTY_VALUE;
+      return resolveInventoryTripHistoryText(waybill) || EMPTY_VALUE;
     case 'user_note':
       return resolveUserNote(waybill) || EMPTY_VALUE;
     case 'route':

@@ -20,6 +20,19 @@ export interface UserSummary {
   role_mask?: number | null;
 }
 
+export interface InventoryTripHistoryItem {
+  split_id?: string | number | null;
+  trip_id?: string | number | null;
+  package_count: number;
+  license_plate?: string | null;
+  carrier_label?: string | null;
+  departure_time?: string | null;
+  expected_arrival_time?: string | null;
+  arrival_time?: string | null;
+  status?: string | null;
+  loading_position?: number | string | null;
+}
+
 export interface WaybillInventoryItem {
   id: string | number;
   order_id?: string | number | null;
@@ -100,6 +113,7 @@ export interface WaybillInventoryItem {
   license_plate?: string | null;
   trip_nha_xe?: string | null;
   trip_status?: string | null;
+  trip_history?: InventoryTripHistoryItem[];
   loading_position?: number | string | null;
   split_note?: string | null;
   allocated_freight?: number | null;
@@ -128,6 +142,7 @@ export interface InventoryFilters {
   billingUnits: string[];
   customerPaymentStatuses: string[];
   hubIds: string[];
+  destHubIds: string[];
   paymentTypes: string[];
   priorities: string[];
   receivedFrom: string;

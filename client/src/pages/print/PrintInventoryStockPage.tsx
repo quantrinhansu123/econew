@@ -1,23 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Printer } from 'lucide-react';
 import InventoryStockListTemplate from './InventoryStockListTemplate';
-import { loadInventoryPrintPayload } from './inventoryPrintUtils';
+import { loadInventoryPrintPayloads } from './inventoryPrintUtils';
 import './inventory-stock-list.css';
 
 export default function PrintInventoryStockPage() {
   const navigate = useNavigate();
-  const [data, setData] = useState(() => loadInventoryPrintPayload());
+  const sheets = useMemo(() => loadInventoryPrintPayloads(), []);
 
   useEffect(() => {
     document.title = 'Danh sách tồn kho ECO';
-    const payload = loadInventoryPrintPayload();
-    if (payload?.rows?.length) setData(payload);
   }, []);
 
-  const hasRows = useMemo(() => Boolean(data?.rows?.length), [data]);
+  const hasRows = useMemo(() => sheets.some((payload) => payload.rows.length), [sheets]);
 
-  if (!data || !hasRows) {
+  if (!hasRows) {
     return (
       <div className="inventory-stock-wrap flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md rounded-xl border border-red-200 bg-red-50 p-6 text-center">
@@ -56,10 +54,14 @@ export default function PrintInventoryStockPage() {
           className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-bold text-white"
         >
           <Printer size={16} />
-          In danh sách tồn (A4)
+          In {sheets.length > 1 ? `${sheets.length} bản tồn` : 'danh sách tồn'} (A4)
         </button>
       </div>
-      <InventoryStockListTemplate data={data} />
+      {sheets.map((sheet, index) => (
+        <div key={`${sheet.title || 'inventory'}-${index}`} className="inventory-print-sheet-group">
+          <InventoryStockListTemplate data={sheet} />
+        </div>
+      ))}
     </div>
   );
 }

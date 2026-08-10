@@ -3,6 +3,7 @@ import {
   ALL_ORDERS_DEFAULT_COLUMN_IDS,
   INVENTORY_DEFAULT_COLUMN_IDS,
   getDefaultVisibleColumnIds,
+  formatInventoryTripHistoryLine,
   normalizeAllOrdersVisibleColumnIds,
   normalizeInventoryVisibleColumnIds,
   resolvePrintColumnIds,
@@ -143,6 +144,16 @@ describe('all orders visible columns', () => {
 });
 
 describe('inventory display values', () => {
+  it('formats each trip allocation with packages, trip, plate, date, and trip status', () => {
+    expect(formatInventoryTripHistoryLine({
+      trip_id: '41',
+      package_count: 127,
+      license_plate: '15H-29078',
+      departure_time: '2026-08-06T08:00:00.000Z',
+      status: 'IN_TRANSIT',
+    })).toBe('127 kiện · Chuyến #41 · BKS 15H-29078 · 06/08 · Đang chạy');
+  });
+
   it('prefers the waybill destination over the destination hub', () => {
     const waybill: WaybillInventoryItem = {
       id: 1,

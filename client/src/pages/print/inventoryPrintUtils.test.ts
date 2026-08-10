@@ -3,6 +3,7 @@ import type { WaybillInventoryItem } from '../warehouse/inventory/types';
 import { buildInventoryExcelRows } from '../warehouse/inventory/inventoryExcelUtils';
 import {
   mapWaybillsToPrintRows,
+  mapWaybillsToPrintSheets,
   reconcilePrintPayload,
   type InventoryPrintPayload,
 } from './inventoryPrintUtils';
@@ -125,5 +126,33 @@ describe('inventory stock-list print columns', () => {
       'package_count',
       'waybill_code',
     ]);
+  });
+
+  it('splits HCM and provincial destination HUBs into separate print sheets with HCM first', () => {
+    const sheets = mapWaybillsToPrintSheets([
+      { id: 1, waybill_code: 'ECOHAN1', dest_hub: { id: 2, code: 'KHANHHOA', name: 'Chành Vũ Mập' }, package_count: 7 },
+      { id: 2, waybill_code: 'ECOHAN2', dest_hub: { id: 1, code: 'HCM', name: 'Bưu cục Hồ Chí Minh' }, package_count: 127 },
+      { id: 3, waybill_code: 'ECOHAN3', dest_hub: { id: 3, code: 'DAN', name: 'Chành Trường Long' }, package_count: 60 },
+    ], false, ['dest_hub', 'package_count', 'waybill_code'], 'HUB hiện tại: HAN');
+
+    expect(sheets).toHaveLength(2);
+    expect(sheets[0].title).toContain('HCM');
+    expect(sheets[0].rows.map((row) => row.waybill_code)).toEqual(['ECOHAN2']);
+    expect(sheets[0].totals.package_count).toBe('127');
+    expect(sheets[1].title).toContain('bưu cục khác');
+    expect(sheets[1].rows.map((row) => row.waybill_code)).toEqual(['ECOHAN3', 'ECOHAN1']);
+    expect(sheets[1].totals.package_count).toBe('67');
+  });
+
+  it('keeps one total print sheet when the current warehouse is HCM', () => {
+    const sheets = mapWaybillsToPrintSheets([
+      { id: 1, dest_hub: { id: 2, code: 'HAN', name: 'Bưu cục Hà Nội' }, package_count: 40 },
+      { id: 2, dest_hub: { id: 3, code: 'KHANHHOA', name: 'Chành Vũ Mập' }, package_count: 7 },
+    ], false, ['dest_hub', 'package_count'], 'HUB hiện tại: HCM', undefined, { currentHubIsHcm: true });
+
+    expect(sheets).toHaveLength(1);
+    expect(sheets[0].title).toContain('Bưu cục HCM');
+    expect(sheets[0].rows).toHaveLength(2);
+    expect(sheets[0].totals.package_count).toBe('47');
   });
 });

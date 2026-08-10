@@ -1188,6 +1188,39 @@ describe('WaybillsService', () => {
     expect(qb.addOrderBy).toHaveBeenCalledWith('waybill.id', 'DESC');
   });
 
+  it('all-orders keeps one bill row and exposes every split trip with its package count and status', async () => {
+    const qb = createQueryBuilder();
+    qb.getMany.mockResolvedValue([makeWaybill({ package_count: 187 })]);
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+    splitsRepository.find.mockResolvedValue([
+      {
+        id: 's41', waybill_id: '1', trip_id: '41', package_count: 127,
+        trip: {
+          id: '41', status: TripStatus.COMPLETED, departure_time: new Date('2026-08-06T01:00:00Z'),
+          truck: { bks: '15H-29078' },
+        },
+      },
+      {
+        id: 's46', waybill_id: '1', trip_id: '46', package_count: 60,
+        trip: {
+          id: '46', status: TripStatus.IN_TRANSIT, departure_time: new Date('2026-08-08T01:00:00Z'),
+          truck: { bks: '29E-078.04' },
+        },
+      },
+    ]);
+
+    const result = await service.getInventoryTripLines({ list_scope: 'all_orders' }, manager);
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      remaining_packages: 0,
+      trip_history: [
+        expect.objectContaining({ trip_id: '41', package_count: 127, license_plate: '15H-29078', status: TripStatus.COMPLETED }),
+        expect.objectContaining({ trip_id: '46', package_count: 60, license_plate: '29E-078.04', status: TripStatus.IN_TRANSIT }),
+      ],
+    });
+  });
+
   it('receive transitions RECEIVED to IN_WAREHOUSE', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
     const result = await service.receive('1', { delivery_photo_url: 'https://example.com/receive.jpg' }, warehouse);
@@ -1333,6 +1366,50 @@ describe('WaybillsService', () => {
         the_tich_m3: 3.8,
       }),
     ]);
+  });
+
+  it('getDeliveryTasks đưa xe đang chạy vào bước gọi hẹn trước và vẫn giữ trạng thái chuyến riêng', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.IN_WAREHOUSE,
+      status: WaybillStatus.IN_WAREHOUSE,
+      package_count: 187,
+    });
+    const qb = createQueryBuilder();
+    qb.getMany.mockResolvedValue([waybill]);
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+    splitsRepository.find.mockResolvedValue([{
+      id: 's46', waybill_id: '1', trip_id: '46', package_count: 60,
+      load_status: WaybillSplitLoadStatus.IN_TRANSIT,
+      trip: { id: '46', status: TripStatus.IN_TRANSIT, departure_time: new Date('2026-08-08T01:00:00Z'), truck_id: null },
+    }]);
+
+    const result = await service.getDeliveryTasks({ status: WaybillStatus.IN_TRANSIT, page: 1, limit: 100 }, manager);
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        task_id: 'split:s46',
+        trip_id: '46',
+        current_state: WaybillStatus.IN_TRANSIT,
+        trip_status: TripStatus.IN_TRANSIT,
+        trip_package_count: 60,
+      }),
+    ]);
+  });
+
+  it('updateDeliveryPreparation allows calling the receiver while the split trip is in transit', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      current_state: WaybillStatus.IN_WAREHOUSE,
+      status: WaybillStatus.IN_WAREHOUSE,
+    }));
+    splitsRepository.find.mockResolvedValue([{
+      id: 's46', waybill_id: '1', load_status: WaybillSplitLoadStatus.IN_TRANSIT,
+      trip: { id: '46', status: TripStatus.IN_TRANSIT },
+    }]);
+
+    const result = await service.updateDeliveryPreparation('1', { status: 'READY' }, manager);
+
+    expect(result).toMatchObject({ delivery_preparation_status: 'READY' });
+    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ delivery_preparation_status: 'READY' }));
   });
 
   it('giao phần kiện không đổi toàn bộ vận đơn khỏi danh sách tồn', async () => {

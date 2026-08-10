@@ -348,6 +348,7 @@ export default function WarehouseManifestsPage() {
           billingUnits: [],
           customerPaymentStatuses: [],
           hubIds: [],
+          destHubIds: [],
           paymentTypes: [],
           priorities: [],
           receivedFrom: '',

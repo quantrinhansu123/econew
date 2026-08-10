@@ -23,6 +23,7 @@ import {
   resolveReceiverWard,
   resolvePrintColumnIds,
   resolveOrderStatusBadge,
+  resolveInventoryTripHistoryText,
   resolveSurcharge,
   resolveUserNote,
   resolveVolumeM3,
@@ -40,6 +41,7 @@ export interface InventoryPrintColumn {
 }
 
 export interface InventoryPrintPayload {
+  title?: string;
   printedAt: string;
   filterSummary: string;
   showPricing: boolean;
@@ -90,7 +92,7 @@ export function inventoryPrintCellValue(
     case 'service_type':
       return resolveServiceType(waybill);
     case 'trip_label':
-      return waybill.trip_label || waybill.license_plate || '';
+      return resolveInventoryTripHistoryText(waybill) || waybill.license_plate || '';
     case 'loaded_at':
       return formatInventoryDate(resolveLoadedAt(waybill));
     case 'received_at':
@@ -184,6 +186,7 @@ export function buildInventoryQueryForPrint(filters: InventoryFilters) {
   if (filters.statuses.length) params.set('status', filters.statuses.join(','));
   if (filters.customerPaymentStatuses.length) params.set('customer_payment_status', filters.customerPaymentStatuses.join(','));
   if (filters.hubIds.length) params.set('hub_id', filters.hubIds.join(','));
+  if (filters.destHubIds.length) params.set('dest_hub_id', filters.destHubIds.join(','));
   if (filters.paymentTypes.length) params.set('payment_type', filters.paymentTypes.join(','));
   if (filters.priorities.length) params.set('priority', filters.priorities.join(','));
   if (filters.receivedFrom) params.set('received_from', filters.receivedFrom);
@@ -198,6 +201,7 @@ export function summarizeFilters(filters: InventoryFilters) {
   if (filters.statuses.length) parts.push(`TT: ${filters.statuses.join(', ')}`);
   if (filters.customerPaymentStatuses.length) parts.push(`TT thanh toán: ${filters.customerPaymentStatuses.join(', ')}`);
   if (filters.hubIds.length) parts.push(`Hub: ${filters.hubIds.length} bưu cục`);
+  if (filters.destHubIds.length) parts.push(`HUB đến: ${filters.destHubIds.length} bưu cục`);
   if (filters.receivedFrom || filters.receivedTo) {
     parts.push(`Ngày nhận: ${filters.receivedFrom || '…'} → ${filters.receivedTo || '…'}`);
   }
@@ -244,8 +248,64 @@ export function mapWaybillsToPrintRows(
   };
 }
 
-export function saveInventoryPrintPayload(payload: InventoryPrintPayload) {
-  const json = JSON.stringify(payload);
+const normalizeHubText = (value?: string | null) => String(value || '')
+  .trim()
+  .toLocaleLowerCase('vi-VN')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '');
+
+export function isHcmDestination(waybill: WaybillInventoryItem): boolean {
+  const code = String(waybill.dest_hub?.code || '').trim().toUpperCase();
+  if (code) return code === 'HCM';
+  const fallback = normalizeHubText(waybill.dest_hub?.name || waybill.noi_den || waybill.customer_destination_province);
+  return fallback === 'hcm' || fallback.includes('ho chi minh');
+}
+
+export function mapWaybillsToPrintSheets(
+  waybills: WaybillInventoryItem[],
+  showPricing: boolean,
+  visibleColumnIds: InventoryColumnId[],
+  filterSummary: string,
+  columnLabels?: Partial<Record<InventoryColumnId, string>>,
+  options?: { currentHubIsHcm?: boolean },
+): InventoryPrintPayload[] {
+  if (options?.currentHubIsHcm) {
+    const payload = mapWaybillsToPrintRows(waybills, showPricing, visibleColumnIds, columnLabels);
+    return [{
+      ...payload,
+      title: 'Danh sách tồn kho · Bưu cục HCM',
+      filterSummary: `${filterSummary} · Tổng danh sách: ${waybills.length} đơn`,
+    }];
+  }
+  const hcmRows = waybills.filter(isHcmDestination);
+  const otherRows = waybills
+    .filter((waybill) => !isHcmDestination(waybill))
+    .sort((left, right) => {
+      const leftHub = formatHub(left.dest_hub) || resolveNoiDen(left);
+      const rightHub = formatHub(right.dest_hub) || resolveNoiDen(right);
+      return leftHub.localeCompare(rightHub, 'vi', { numeric: true, sensitivity: 'base' });
+    });
+  const groups = [
+    { title: 'Danh sách tồn kho · HUB đến HCM', label: 'Bản HCM', rows: hcmRows },
+    { title: 'Danh sách tồn kho · Các bưu cục khác', label: 'Bản bưu cục khác', rows: otherRows },
+  ].filter((group) => group.rows.length > 0);
+
+  return groups.map((group) => {
+    const payload = mapWaybillsToPrintRows(group.rows, showPricing, visibleColumnIds, columnLabels);
+    return {
+      ...payload,
+      title: group.title,
+      filterSummary: `${filterSummary} · ${group.label}: ${group.rows.length} đơn`,
+    };
+  });
+}
+
+export function saveInventoryPrintPayload(payload: InventoryPrintPayload | InventoryPrintPayload[]) {
+  const bundle: StoredInventoryPrintBundle = {
+    version: 2,
+    sheets: Array.isArray(payload) ? payload : [payload],
+  };
+  const json = JSON.stringify(bundle);
   localStorage.setItem(INVENTORY_PRINT_STORAGE_KEY, json);
   try {
     sessionStorage.setItem(INVENTORY_PRINT_STORAGE_KEY, json);
@@ -255,15 +315,22 @@ export function saveInventoryPrintPayload(payload: InventoryPrintPayload) {
 }
 
 export function loadInventoryPrintPayload(): InventoryPrintPayload | null {
+  return loadInventoryPrintPayloads()[0] ?? null;
+}
+
+export function loadInventoryPrintPayloads(): InventoryPrintPayload[] {
   const raw =
     localStorage.getItem(INVENTORY_PRINT_STORAGE_KEY) ||
     sessionStorage.getItem(INVENTORY_PRINT_STORAGE_KEY);
-  if (!raw) return null;
+  if (!raw) return [];
   try {
-    const payload = JSON.parse(raw) as InventoryPrintPayload;
-    return reconcilePrintPayload(payload);
+    const parsed = JSON.parse(raw) as StoredInventoryPrintBundle | InventoryPrintPayload;
+    const sheets: InventoryPrintPayload[] = 'sheets' in parsed && Array.isArray(parsed.sheets)
+      ? parsed.sheets
+      : [parsed as InventoryPrintPayload];
+    return sheets.map(reconcilePrintPayload).filter((payload) => payload.rows.length > 0);
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -293,4 +360,9 @@ export function reconcilePrintPayload(payload: InventoryPrintPayload): Inventory
       volumetric_weight_kg: payload.totals.volumetric_weight_kg ?? '0',
     },
   };
+}
+
+interface StoredInventoryPrintBundle {
+  version: 2;
+  sheets: InventoryPrintPayload[];
 }

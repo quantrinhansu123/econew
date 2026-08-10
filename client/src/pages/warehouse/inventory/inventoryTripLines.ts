@@ -34,6 +34,7 @@ export function buildInventoryTripLinesQuery(
     | 'limit'
     | 'keyword'
     | 'hubIds'
+    | 'destHubIds'
     | 'statuses'
     | 'orderStatusGroups'
     | 'noiDenKeyword'
@@ -67,8 +68,10 @@ export function buildInventoryTripLinesQuery(
   if (options?.listScope === 'all_orders') {
     params.set('list_scope', 'all_orders');
   }
-  const destHubId = String(options?.destHubId ?? '').trim();
-  if (destHubId) params.set('dest_hub_id', destHubId);
+  const destHubIds = options?.destHubId != null
+    ? [String(options.destHubId).trim()].filter(Boolean)
+    : filters.destHubIds;
+  if (destHubIds.length) params.set('dest_hub_id', destHubIds.join(','));
   if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
   if (filters.ma_kh?.trim()) params.set('ma_kh', filters.ma_kh.trim());
   const statusFromGroups = expandOrderStatusGroups(filters.orderStatusGroups);

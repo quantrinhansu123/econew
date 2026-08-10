@@ -291,6 +291,7 @@ export default function TripDetailPage() {
         billingUnits: [],
         customerPaymentStatuses: [],
         hubIds: [],
+        destHubIds: [],
         paymentTypes: [],
         priorities: [],
         receivedFrom: '',
