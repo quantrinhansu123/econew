@@ -297,15 +297,15 @@ function TripCard({ trip, onOpen, onEdit, onPrint, onExpenses, onPrimaryAction, 
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="truncate text-[13px] font-extrabold text-primary">Chuyến #{trip.id}</h3>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-              <p className="truncate text-[11px] font-bold text-emerald-700">{manifestCode(trip)}</p>
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[13px] font-black tracking-wide text-blue-950">
-                <span className="text-[9px] uppercase text-blue-600">BKS</span>
-                {truckPlate(trip)}
-              </span>
-            </div>
           </div>
           <TripStatusBadge status={trip.status} />
+        </div>
+        <div className="mt-1 flex w-full min-w-0 items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-[11px] font-bold text-emerald-700">{manifestCode(trip)}</p>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[13px] font-black tracking-wide text-blue-950">
+            <span className="text-[9px] uppercase text-blue-600">BKS</span>
+            {truckPlate(trip)}
+          </span>
         </div>
         <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-1 rounded-md bg-slate-50 px-2 py-1.5 text-[10px]">
           <CompactCell label="Tài xế" value={driverName(trip)} />
