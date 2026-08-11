@@ -73,6 +73,7 @@ export interface WaybillInventoryItem {
   cod_amount?: number | string | null;
   cost_amount?: number | string | null;
   freight_amount?: number | string | null;
+  customer_payment_due_amount?: number | string | null;
   volumetric_weight?: number | string | null;
   length?: number | string | null;
   width?: number | string | null;

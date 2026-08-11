@@ -85,7 +85,7 @@ export function resolvePaidForBill(item: WaybillInventoryItem, maps: PaidByWaybi
 }
 
 export function getBillFreight(item: WaybillInventoryItem) {
-  return Number(item.freight_amount ?? item.cost_amount ?? 0) || 0;
+  return Number(item.customer_payment_due_amount ?? item.freight_amount ?? item.cost_amount ?? 0) || 0;
 }
 
 export function filterBills(items: WaybillInventoryItem[], filters: BillFilters) {

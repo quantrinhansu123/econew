@@ -12,8 +12,14 @@ export class CreateWaybillCashVoucherDto {
   @ApiProperty()
   @Type(() => Number)
   @IsNumber()
-  @Min(0)
+  @Min(1)
   amount: number;
+
+  @ApiPropertyOptional({ description: 'Mã bill đang hiển thị tại thời điểm lập phiếu, dùng để chống ghi nhầm đơn' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  waybill_code?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

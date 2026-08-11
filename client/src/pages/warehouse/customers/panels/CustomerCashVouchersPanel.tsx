@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { clsx } from 'clsx';
-import { Banknote, Loader2, Plus, Printer, Receipt } from 'lucide-react';
+import { Loader2, Plus, Printer, Receipt } from 'lucide-react';
+import { ProofImageButton } from '../../../../components/ImagePreviewModal';
 import { DayPicker } from '../../../../components/ui/DayPicker';
+import { formatMoney } from '../../../../lib/formatMoney';
 import type { WaybillCashVoucher } from '../../inventory/dialogs/WaybillCashVoucherDialog';
 import { computeVoucherMeta, filterCashVouchers } from '../utils/customerFinanceUtils';
 
@@ -29,8 +31,7 @@ interface Props {
   onPrintStatement: () => void;
 }
 
-const formatMoney = (value?: number | string | null) =>
-  value == null || value === '' ? '0 đ' : `${Number(value).toLocaleString('vi-VN')} đ`;
+const displayMoney = (value?: number | string | null) => formatMoney(value ?? 0, { empty: '0 đ' });
 
 const formatDateTime = (value?: string | null) =>
   value ? new Date(value).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—';
@@ -74,7 +75,7 @@ export default function CustomerCashVouchersPanel({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-[12px] font-extrabold uppercase tracking-wide text-primary">Thanh toán khách hàng</p>
-          <p className="text-[13px] font-medium text-muted-foreground">Theo dõi và lập phiếu thu/chi theo từng bill.</p>
+          <p className="text-[13px] font-medium text-muted-foreground">Theo dõi số tiền đã thanh toán theo đúng từng bill.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -91,15 +92,15 @@ export default function CustomerCashVouchersPanel({
             className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-[13px] font-extrabold text-white shadow-sm hover:bg-emerald-700"
           >
             <Plus size={16} />
-            Thu
+            Thanh toán
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <SummaryCard label="Tổng thu" value={formatMoney(meta.total_thu)} tone="emerald" />
-        <SummaryCard label="Tổng chi" value={formatMoney(meta.total_chi)} tone="red" />
-        <SummaryCard label="Chênh lệch" value={formatMoney(meta.net)} tone="blue" />
+        <SummaryCard label="Tổng thanh toán" value={displayMoney(meta.total_thu)} tone="emerald" />
+        <SummaryCard label="Điều chỉnh giảm" value={displayMoney(meta.total_chi)} tone="red" />
+        <SummaryCard label="Thực thanh toán" value={displayMoney(meta.net)} tone="blue" />
       </div>
 
       <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
@@ -124,15 +125,15 @@ export default function CustomerCashVouchersPanel({
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-[11px] font-bold text-muted-foreground">Loại phiếu</span>
+            <span className="mb-1 block text-[11px] font-bold text-muted-foreground">Loại giao dịch</span>
             <select
               value={filters.voucherType}
               onChange={(event) => onFiltersChange({ voucherType: event.target.value as CashVoucherFilters['voucherType'] })}
               className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold"
             >
               <option value="">Tất cả</option>
-              <option value="Thu">Phiếu thu</option>
-              <option value="Chi">Phiếu chi</option>
+              <option value="Thu">Thanh toán</option>
+              <option value="Chi">Điều chỉnh giảm</option>
             </select>
           </label>
         </div>
@@ -156,7 +157,7 @@ export default function CustomerCashVouchersPanel({
       ) : grouped.length === 0 ? (
         <div className="py-10 text-center">
           <Receipt size={28} className="mx-auto mb-2 text-muted-foreground" />
-          <p className="text-[13px] font-medium text-muted-foreground">Chưa có phiếu thu/chi cho mã KH này.</p>
+          <p className="text-[13px] font-medium text-muted-foreground">Chưa có thanh toán cho mã KH này.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -173,8 +174,8 @@ export default function CustomerCashVouchersPanel({
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-slate-50 px-4 py-3">
                   <p className="text-[13px] font-extrabold capitalize text-foreground">{group.label}</p>
                   <div className="flex flex-wrap gap-2 text-[11px] font-bold">
-                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">Thu {formatMoney(dayThu)}</span>
-                    <span className="rounded-full bg-red-50 px-2.5 py-1 text-red-700">Chi {formatMoney(dayChi)}</span>
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">Thanh toán {displayMoney(dayThu)}</span>
+                    <span className="rounded-full bg-red-50 px-2.5 py-1 text-red-700">Điều chỉnh {displayMoney(dayChi)}</span>
                   </div>
                 </div>
                 <div className="divide-y divide-border/70">
@@ -191,9 +192,9 @@ export default function CustomerCashVouchersPanel({
                                   isThu ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700',
                                 )}
                               >
-                                Phiếu {String(voucher.voucher_type || '').toLowerCase()}
+                                {isThu ? 'Thanh toán' : 'Điều chỉnh giảm'}
                               </span>
-                              <span className="text-[15px] font-extrabold text-foreground">{formatMoney(voucher.amount)}</span>
+                              <span className="text-[15px] font-extrabold text-foreground">{displayMoney(voucher.amount)}</span>
                             </div>
                             <p className="mt-1 text-[12px] font-bold text-primary">Bill: {voucher.waybill_code || '—'}</p>
                           </div>
@@ -209,15 +210,12 @@ export default function CustomerCashVouchersPanel({
                           </p>
                         )}
                         {voucher.image_url && (
-                          <a
-                            href={voucher.image_url}
-                            target="_blank"
-                            rel="noreferrer"
+                          <ProofImageButton
+                            imageUrl={voucher.image_url}
+                            label="Xem ảnh đính kèm"
+                            title={`Chứng từ ${voucher.waybill_code || 'thanh toán'}`}
                             className="mt-2 inline-flex items-center gap-1 text-[12px] font-bold text-primary hover:underline"
-                          >
-                            <Banknote size={12} />
-                            Xem ảnh đính kèm
-                          </a>
+                          />
                         )}
                       </div>
                     );

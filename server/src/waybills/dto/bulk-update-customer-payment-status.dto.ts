@@ -1,14 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import { ArrayNotEmpty, IsArray, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { CustomerPaymentStatus } from '../../common/enums';
 
 export class BulkUpdateCustomerPaymentStatusDto {
-  @ApiProperty({ type: [Number] })
+  @ApiProperty({ type: [String] })
   @IsArray()
   @ArrayNotEmpty()
-  @Type(() => Number)
-  waybill_ids: number[];
+  @Transform(({ value }) => Array.isArray(value) ? value.map((id) => String(id)) : value)
+  @IsString({ each: true })
+  waybill_ids: string[];
 
   @ApiPropertyOptional({ enum: CustomerPaymentStatus, nullable: true })
   @IsOptional()

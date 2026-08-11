@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Building2, Edit, ExternalLink, Loader2, Package, Printer, Receipt, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
-import { apiRequest } from '../../../../lib/api';
+import { ApiError, apiRequest } from '../../../../lib/api';
+import { formatAmountInput, formatAmountInputFromNumber, formatMoney, parseAmountInput } from '../../../../lib/formatMoney';
 import { specialGoodsLabels } from '../../../../lib/waybillSpecialGoods';
 import type { AuthUserProfile } from '../../../login/types';
 import { CUSTOMER_DETAIL_TABS, type CustomerDetailTabId } from '../customerDetailTabs';
@@ -110,17 +111,7 @@ function getStoredUser(): AuthUserProfile | null {
 }
 
 const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString('vi-VN') : '—');
-const formatMoney = (value?: number | string | null) =>
-  value == null || value === '' ? '—' : `${Number(value).toLocaleString('vi-VN')} đ`;
-
-const printMoney = (value?: number | string | null) => `${Number(value || 0).toLocaleString('vi-VN')} đ`;
-
-const parseAmountInput = (value: string) => Number(String(value).replace(/\D/g, '') || 0);
-
-const formatAmountInput = (value: string) => {
-  const digits = String(value).replace(/\D/g, '');
-  return digits ? Number(digits).toLocaleString('vi-VN') : '';
-};
+const printMoney = (value?: number | string | null) => formatMoney(value ?? 0, { empty: '0 đ' });
 
 const normalizeInventoryList = (response: InventoryListResponse | WaybillInventoryItem[]) =>
   Array.isArray(response) ? response : response.data || response.items || response.waybills || [];
@@ -165,6 +156,30 @@ async function loadAllCustomerBills(customerCode: string) {
   return { items, total: Math.max(total, items.length) };
 }
 
+interface CashVoucherListResponse {
+  items?: WaybillCashVoucher[];
+  meta?: { total?: number };
+}
+
+async function loadAllCustomerCashVouchers(customerCode: string) {
+  const requestPage = (page: number) => apiRequest<CashVoucherListResponse>(
+    `/waybills/cash-vouchers?ma_kh=${encodeURIComponent(customerCode)}&limit=${CUSTOMER_BILL_PAGE_SIZE}&page=${page}`,
+  );
+  const firstResponse = await requestPage(1);
+  const allItems = [...(firstResponse.items ?? [])];
+  const total = Number(firstResponse.meta?.total ?? allItems.length);
+  const totalPages = Math.max(1, Math.ceil(total / CUSTOMER_BILL_PAGE_SIZE));
+  for (let page = 2; page <= totalPages; page += 4) {
+    const pageNumbers = Array.from(
+      { length: Math.min(4, totalPages - page + 1) },
+      (_, index) => page + index,
+    );
+    const responses = await Promise.all(pageNumbers.map(requestPage));
+    responses.forEach((response) => allItems.push(...(response.items ?? [])));
+  }
+  return allItems;
+}
+
 export default function CustomerDetailDialog({ customer, loading, initialTab = 'chi-tiet', onClose, onEdit }: Props) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<CustomerDetailTabId>('chi-tiet');
@@ -191,8 +206,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   const [cashVouchersLoading, setCashVouchersLoading] = useState(false);
   const [cashVouchersError, setCashVouchersError] = useState('');
   const [isCollectOpen, setIsCollectOpen] = useState(false);
-  const [collectWaybillId, setCollectWaybillId] = useState('');
-  const [collectAmount, setCollectAmount] = useState('');
+  const [collectWaybillIds, setCollectWaybillIds] = useState<string[]>([]);
+  const [collectAmounts, setCollectAmounts] = useState<Record<string, string>>({});
   const [collectNote, setCollectNote] = useState('');
   const [collectSubmitting, setCollectSubmitting] = useState(false);
   const [collectError, setCollectError] = useState('');
@@ -227,8 +242,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
         setBillFilters({ fromDate: '', toDate: '', billCode: '', paymentType: '' });
         setCashVouchersError('');
         setIsCollectOpen(false);
-        setCollectWaybillId('');
-        setCollectAmount('');
+        setCollectWaybillIds([]);
+        setCollectAmounts({});
         setCollectNote('');
         setCollectError('');
         setIsStatementOpen(false);
@@ -243,6 +258,17 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
     const totalPaid = inventoryItems.reduce((sum, item) => sum + resolvePaidForBill(item, paidMaps), 0);
     return { paidMaps, voucherMeta, totalFreight, totalPaid, totalDebt: totalFreight - totalPaid };
   }, [cashVouchers, inventoryItems]);
+  const collectableBills = useMemo(() => inventoryItems.map((item) => {
+    const freight = getBillFreight(item);
+    const paid = resolvePaidForBill(item, statementData.paidMaps);
+    return { item, remaining: Math.max(0, freight - paid) };
+  }).filter(({ remaining }) => remaining > 0), [inventoryItems, statementData.paidMaps]);
+  const selectedCollectBills = useMemo(() => collectableBills.filter(({ item }) => (
+    collectWaybillIds.includes(String(item.id))
+  )), [collectWaybillIds, collectableBills]);
+  const collectTotal = selectedCollectBills.reduce((sum, { item }) => (
+    sum + parseAmountInput(collectAmounts[String(item.id)] || '')
+  ), 0);
 
   useEffect(() => {
     const needsInventory = activeTab === 'don-hang' || activeTab === 'bill' || activeTab === 'thanh-toan';
@@ -276,12 +302,6 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       cancelled = true;
     };
   }, [activeTab, customer?.code]);
-
-  useEffect(() => {
-    const firstWaybillId = inventoryItems[0]?.id;
-    if (!isCollectOpen || !firstWaybillId) return;
-    queueMicrotask(() => setCollectWaybillId((current) => current || String(firstWaybillId)));
-  }, [inventoryItems, isCollectOpen]);
 
   const deliveryTenCty = customer?.code?.trim() || customer?.name?.trim() || '';
 
@@ -330,17 +350,15 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       setCashVouchersLoading(true);
       setCashVouchersError('');
 
-      apiRequest<{ items?: WaybillCashVoucher[]; meta?: { total?: number } }>(
-        `/waybills/cash-vouchers?ma_kh=${encodeURIComponent(maKh)}&limit=200`,
-      )
-        .then((response) => {
+      loadAllCustomerCashVouchers(maKh)
+        .then((items) => {
           if (cancelled) return;
-          setCashVouchers(response.items ?? []);
+          setCashVouchers(items);
         })
         .catch(() => {
           if (cancelled) return;
           setCashVouchers([]);
-          setCashVouchersError('Không tải được danh sách thu chi.');
+          setCashVouchersError('Không tải được lịch sử thanh toán.');
         })
         .finally(() => {
           if (!cancelled) setCashVouchersLoading(false);
@@ -361,46 +379,87 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   };
 
   const loadCashVouchers = async (maKh: string) => {
-    const response = await apiRequest<{ items?: WaybillCashVoucher[]; meta?: { total?: number } }>(
-      `/waybills/cash-vouchers?ma_kh=${encodeURIComponent(maKh)}&limit=200`,
-    );
-    setCashVouchers(response.items ?? []);
+    setCashVouchers(await loadAllCustomerCashVouchers(maKh));
   };
 
   const openCollectDialog = () => {
-    setCollectWaybillId(inventoryItems[0]?.id ? String(inventoryItems[0].id) : '');
-    setCollectAmount('');
+    setCollectWaybillIds([]);
+    setCollectAmounts({});
     setCollectNote('');
     setCollectError('');
     setIsCollectOpen(true);
   };
 
+  const selectAllCollectBills = () => {
+    setCollectWaybillIds(collectableBills.map(({ item }) => String(item.id)));
+    setCollectAmounts((current) => collectableBills.reduce<Record<string, string>>((amounts, { item, remaining }) => {
+      const id = String(item.id);
+      amounts[id] = current[id] || formatAmountInputFromNumber(remaining);
+      return amounts;
+    }, {}));
+    setCollectError('');
+  };
+
+  const toggleCollectBill = (id: string, remaining: number) => {
+    const isSelected = collectWaybillIds.includes(id);
+    setCollectWaybillIds((current) => (
+      isSelected ? current.filter((value) => value !== id) : [...current, id]
+    ));
+    if (!isSelected) {
+      setCollectAmounts((current) => ({
+        ...current,
+        [id]: current[id] || formatAmountInputFromNumber(remaining),
+      }));
+    }
+    setCollectError('');
+  };
+
   const submitCollectVoucher = async () => {
     const maKh = customer?.code?.trim();
-    const amount = parseAmountInput(collectAmount);
-    if (!collectWaybillId) {
-      setCollectError('Chọn bill cần thu tiền.');
+    if (!selectedCollectBills.length) {
+      setCollectError('Chọn ít nhất một bill cần thanh toán.');
       return;
     }
-    if (amount <= 0) {
-      setCollectError('Nhập số tiền thu lớn hơn 0.');
+    const paymentItems = selectedCollectBills.map(({ item, remaining }) => ({
+      item,
+      remaining,
+      amount: parseAmountInput(collectAmounts[String(item.id)] || ''),
+    }));
+    const invalidPayment = paymentItems.find(({ amount, remaining }) => amount <= 0 || amount > remaining);
+    if (invalidPayment) {
+      const billCode = invalidPayment.item.waybill_code || invalidPayment.item.code || String(invalidPayment.item.id);
+      setCollectError(
+        invalidPayment.amount <= 0
+          ? `Nhập số tiền thanh toán cho bill ${billCode}.`
+          : `Số tiền của bill ${billCode} không được vượt quá ${formatMoney(invalidPayment.remaining)}.`,
+      );
       return;
     }
     setCollectSubmitting(true);
     setCollectError('');
     try {
-      await apiRequest(`/waybills/${collectWaybillId}/cash-vouchers`, {
+      await apiRequest('/waybills/cash-vouchers/bulk-payment', {
         method: 'POST',
         body: {
-          voucher_type: 'Thu',
-          amount,
-          note: collectNote.trim() || `Thu tiền khách hàng ${maKh || customer?.name || ''}`.trim(),
+          items: paymentItems.map(({ item, amount }) => ({
+            waybill_id: String(item.id),
+            waybill_code: item.waybill_code || item.code || String(item.id),
+            amount,
+          })),
+          note: collectNote.trim() || `Thanh toán khách hàng ${maKh || customer?.name || ''}`.trim(),
         },
       });
-      if (maKh) await loadCashVouchers(maKh);
+      if (maKh) {
+        const [{ items, total }] = await Promise.all([
+          loadAllCustomerBills(maKh),
+          loadCashVouchers(maKh),
+        ]);
+        setInventoryItems(items);
+        setInventoryTotal(total);
+      }
       setIsCollectOpen(false);
-    } catch {
-      setCollectError('Không lưu được phiếu thu.');
+    } catch (err) {
+      setCollectError(err instanceof ApiError ? err.message : 'Không lưu được thanh toán.');
     } finally {
       setCollectSubmitting(false);
     }
@@ -715,7 +774,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
             ) : (
               <Panel>
                 <p className="text-[13px] font-medium text-muted-foreground">
-                  Danh sách phiếu thu/chi chỉ hiển thị với quyền Kế toán hoặc Quản lý.
+                  Lịch sử thanh toán chỉ hiển thị với quyền Kế toán hoặc Quản lý.
                 </p>
               </Panel>
             )}
@@ -777,10 +836,10 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
               <PrintMetric label="Công nợ còn lại" value={printMoney(statementData.totalDebt)} />
             </div>
             <div className="mt-2 grid grid-cols-4 gap-2">
-              <PrintMetric label="Tổng thu" value={printMoney(statementData.voucherMeta.total_thu)} />
-              <PrintMetric label="Tổng chi" value={printMoney(statementData.voucherMeta.total_chi)} />
-              <PrintMetric label="Chênh lệch" value={printMoney(statementData.voucherMeta.net)} />
-              <PrintMetric label="Số phiếu" value={Number(statementData.voucherMeta.total || 0).toLocaleString('vi-VN')} />
+              <PrintMetric label="Tổng thanh toán" value={printMoney(statementData.voucherMeta.total_thu)} />
+              <PrintMetric label="Điều chỉnh giảm" value={printMoney(statementData.voucherMeta.total_chi)} />
+              <PrintMetric label="Thực thanh toán" value={printMoney(statementData.voucherMeta.net)} />
+              <PrintMetric label="Số giao dịch" value={Number(statementData.voucherMeta.total || 0).toLocaleString('vi-VN')} />
             </div>
 
             <h2 className="mt-6 text-[14px] font-extrabold uppercase text-primary">Danh sách đơn</h2>
@@ -819,7 +878,9 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                     <td className="border border-slate-300 px-2 py-2">{index + 1}</td>
                     <td className="border border-slate-300 px-2 py-2">{formatDate(voucher.created_at)}</td>
                     <td className="border border-slate-300 px-2 py-2 font-bold">{voucher.waybill_code || voucher.waybill_id || '—'}</td>
-                    <td className="border border-slate-300 px-2 py-2">{voucher.voucher_type || '—'}</td>
+                    <td className="border border-slate-300 px-2 py-2">
+                      {String(voucher.voucher_type).toLowerCase() === 'thu' ? 'Thanh toán' : 'Điều chỉnh giảm'}
+                    </td>
                     <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(voucher.amount)}</td>
                     <td className="border border-slate-300 px-2 py-2">{voucher.note || '—'}</td>
                     <td className="border border-slate-300 px-2 py-2">{voucher.created_by_name || '—'}</td>
@@ -901,10 +962,10 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
 
         {isCollectOpen && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-2xl border border-border bg-white p-4 shadow-2xl">
+            <div className="custom-scrollbar max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-white p-4 shadow-2xl">
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[12px] font-extrabold uppercase tracking-wide text-emerald-600">Lập phiếu thu</p>
+                  <p className="text-[12px] font-extrabold uppercase tracking-wide text-emerald-600">Thanh toán khách hàng</p>
                   <h3 className="text-lg font-extrabold text-foreground">{customer.name}</h3>
                   <p className="text-[12px] font-bold text-primary">{customer.code}</p>
                 </div>
@@ -913,32 +974,94 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                 </button>
               </div>
 
-              <label className="mb-3 block">
-                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Bill cần thu</span>
-                <select
-                  value={collectWaybillId}
-                  onChange={(event) => setCollectWaybillId(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold"
-                >
-                  <option value="">Chọn bill</option>
-                  {inventoryItems.map((item) => (
-                    <option key={String(item.id)} value={String(item.id)}>
-                      {item.waybill_code || item.code || `#${item.id}`} · {formatMoney(item.cost_amount || item.freight_amount || item.cod_amount)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="mb-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Chọn bill thanh toán</span>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={selectAllCollectBills}
+                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-extrabold text-emerald-700"
+                    >
+                      Chọn tất cả
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCollectWaybillIds([]);
+                        setCollectError('');
+                      }}
+                      className="rounded-lg border border-border bg-white px-2 py-1 text-[11px] font-extrabold text-muted-foreground"
+                    >
+                      Bỏ chọn
+                    </button>
+                  </div>
+                </div>
+                <div className="custom-scrollbar max-h-52 space-y-2 overflow-y-auto rounded-xl border border-border bg-muted/10 p-2">
+                  {collectableBills.length ? collectableBills.map(({ item, remaining }) => {
+                    const id = String(item.id);
+                    const checked = collectWaybillIds.includes(id);
+                    const billDate = formatDate(item.sent_date || item.received_at || item.created_at);
+                    return (
+                      <div
+                        key={id}
+                        className={clsx(
+                          'rounded-lg border px-3 py-2.5 transition-colors',
+                          checked ? 'border-emerald-300 bg-emerald-50' : 'border-border bg-white hover:bg-muted/30',
+                        )}
+                      >
+                        <label className="flex cursor-pointer items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleCollectBill(id, remaining)}
+                            className="mt-0.5 h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-300"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[13px] font-extrabold text-foreground">
+                              {item.waybill_code || item.code || `#${item.id}`}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] font-medium text-muted-foreground">
+                              Ngày bill: {billDate} · Còn lại: {formatMoney(remaining)}
+                            </span>
+                          </span>
+                        </label>
+                        {checked && (
+                          <label className="mt-2 block border-t border-emerald-200 pt-2">
+                            <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-emerald-800">
+                              Số tiền thanh toán
+                            </span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={collectAmounts[id] || ''}
+                              onChange={(event) => {
+                                setCollectAmounts((current) => ({
+                                  ...current,
+                                  [id]: formatAmountInput(event.target.value),
+                                }));
+                                setCollectError('');
+                              }}
+                              placeholder="0"
+                              className="h-10 w-full rounded-lg border border-emerald-200 bg-white px-3 text-[14px] font-extrabold outline-none focus:ring-2 focus:ring-emerald-200"
+                            />
+                          </label>
+                        )}
+                      </div>
+                    );
+                  }) : (
+                    <p className="px-3 py-6 text-center text-[12px] font-bold text-muted-foreground">Không còn bill cần thanh toán.</p>
+                  )}
+                </div>
+              </div>
 
-              <label className="mb-3 block">
-                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Số tiền thu</span>
-                <input
-                  value={collectAmount}
-                  onChange={(event) => setCollectAmount(formatAmountInput(event.target.value))}
-                  inputMode="numeric"
-                  placeholder="0"
-                  className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[15px] font-extrabold outline-none focus:ring-2 focus:ring-primary/15"
-                />
-              </label>
+              <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[12px] font-bold text-emerald-800">{selectedCollectBills.length} bill đã chọn</span>
+                  <span className="text-[16px] font-black text-emerald-800">{formatMoney(collectTotal)}</span>
+                </div>
+                <p className="mt-1 text-[11px] font-medium text-emerald-700">Mỗi bill được ghi đúng số tiền thanh toán đã nhập cho bill đó.</p>
+              </div>
 
               <label className="mb-3 block">
                 <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Ghi chú</span>
@@ -946,7 +1069,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                   value={collectNote}
                   onChange={(event) => setCollectNote(event.target.value)}
                   rows={3}
-                  placeholder="Nội dung phiếu thu..."
+                  placeholder="Nội dung thanh toán..."
                   className="w-full rounded-xl border border-border bg-white px-3 py-2 text-[13px] font-medium outline-none focus:ring-2 focus:ring-primary/15"
                 />
               </label>
@@ -956,12 +1079,12 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
 
               <button
                 type="button"
-                disabled={collectSubmitting || inventoryLoading}
+                disabled={collectSubmitting || inventoryLoading || selectedCollectBills.length === 0 || collectTotal <= 0}
                 onClick={() => void submitCollectVoucher()}
                 className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 text-[13px] font-extrabold text-white hover:bg-emerald-700 disabled:opacity-60"
               >
                 {collectSubmitting ? <Loader2 className="animate-spin" size={16} /> : <Receipt size={16} />}
-                Lưu phiếu thu
+                Thanh toán {selectedCollectBills.length} bill · {formatMoney(collectTotal)}
               </button>
             </div>
           </div>

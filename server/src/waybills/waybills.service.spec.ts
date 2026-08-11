@@ -10,8 +10,9 @@ import { WaybillPriority, WaybillStatus } from './dto/waybill.enums';
 import { WaybillSplitLoadStatus } from './dto/waybill-split-load-status.enum';
 import { WaybillSplitEntity } from './waybill-split.entity';
 import { WaybillEntity } from './waybill.entity';
+import { WaybillCashVoucherEntity } from './waybill-cash-voucher.entity';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
-import { PaymentType, TripStatus } from '../common/enums';
+import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
 
 const manager = { id: 'u1', role_mask: Roles.MANAGER, hub_id: '1' } as any;
 const warehouse = { id: 'u2', role_mask: Roles.WAREHOUSE, hub_id: '1' } as any;
@@ -154,10 +155,10 @@ describe('WaybillsService', () => {
       create: jest.fn((value) => value),
     };
     cashVouchersRepository = {
-      find: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn(),
-      save: jest.fn(),
-      create: jest.fn(),
+      save: jest.fn(async (value) => value),
+      create: jest.fn((value) => value),
       createQueryBuilder: jest.fn(createQueryBuilder),
     };
     transactionOrderRepository = {
@@ -169,6 +170,7 @@ describe('WaybillsService', () => {
       [ManifestEntity, manifestsRepository],
       [ManifestWaybillEntity, manifestWaybillsRepository],
       [WaybillSplitEntity, splitsRepository],
+      [WaybillCashVoucherEntity, cashVouchersRepository],
       [TripEntity, tripsRepository],
       [OrderEntity, transactionOrderRepository],
     ]);
@@ -1578,6 +1580,104 @@ describe('WaybillsService', () => {
     });
   });
 
+  it('cash voucher creation rejects a stale row when id and bill code do not match', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      id: '76',
+      waybill_code: 'ECOHAN109076',
+      freight_amount: '8400000',
+    }));
+
+    await expect(service.createCashVoucher('76', {
+      waybill_code: 'ECOHAN109092',
+      voucher_type: 'Thu',
+      amount: 8_400_000,
+    }, manager)).rejects.toThrow(ConflictException);
+
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+    expect(cashVouchersRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('cash voucher creation binds the payment to one bill and marks that bill paid when fully collected', async () => {
+    const waybill = makeWaybill({
+      id: '76',
+      waybill_code: 'ECOHAN109076',
+      freight_amount: '8400000',
+      customer_payment_status: null,
+    });
+    const voucherQb = createQueryBuilder();
+    voucherQb.getRawOne.mockResolvedValue({ net_paid: '0' });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+    cashVouchersRepository.createQueryBuilder.mockReturnValue(voucherQb);
+    cashVouchersRepository.save.mockImplementation(async (value: any) => ({ id: 'voucher-1', ...value }));
+
+    const result = await service.createCashVoucher('76', {
+      waybill_code: 'ECOHAN109076',
+      voucher_type: 'Thu',
+      amount: 8_400_000,
+      note: 'CK TK cty ECO ngày 11/8',
+    }, manager);
+
+    expect(cashVouchersRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      waybill_id: '76',
+      waybill_code: 'ECOHAN109076',
+      amount: '8400000',
+    }));
+    expect(voucherQb.where).toHaveBeenCalledWith('voucher.waybill_id = :waybillId', { waybillId: '76' });
+    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: '76',
+      customer_payment_status: CustomerPaymentStatus.PAID,
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      id: 'voucher-1',
+      waybill_id: '76',
+      waybill_code: 'ECOHAN109076',
+      customer_payment_status: CustomerPaymentStatus.PAID,
+    }));
+  });
+
+  it('bulk payment creates one exact payment per selected bill and marks each bill paid', async () => {
+    const firstWaybill = makeWaybill({
+      id: '76',
+      waybill_code: 'ECOHAN109076',
+      freight_amount: '8400000',
+      customer_payment_status: null,
+    });
+    const secondWaybill = makeWaybill({
+      id: '92',
+      waybill_code: 'ECOHAN109092',
+      freight_amount: '11592000',
+      customer_payment_status: null,
+    });
+    waybillsRepository.find.mockResolvedValue([firstWaybill, secondWaybill]);
+    cashVouchersRepository.find.mockResolvedValue([]);
+
+    const result = await service.createBulkCashPayment({
+      items: [
+        { waybill_id: '76', waybill_code: 'ECOHAN109076', amount: 8_400_000 },
+        { waybill_id: '92', waybill_code: 'ECOHAN109092', amount: 11_592_000 },
+      ],
+      note: 'Thanh toán khách hàng FUHUA',
+    }, manager);
+
+    expect(cashVouchersRepository.create).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      waybill_id: '76',
+      waybill_code: 'ECOHAN109076',
+      amount: '8400000',
+      voucher_type: 'Thu',
+    }));
+    expect(cashVouchersRepository.create).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      waybill_id: '92',
+      waybill_code: 'ECOHAN109092',
+      amount: '11592000',
+      voucher_type: 'Thu',
+    }));
+    expect(waybillsRepository.save).toHaveBeenCalledWith([
+      expect.objectContaining({ id: '76', customer_payment_status: CustomerPaymentStatus.PAID }),
+      expect.objectContaining({ id: '92', customer_payment_status: CustomerPaymentStatus.PAID }),
+    ]);
+    expect(result.updated_waybill_ids).toEqual(['76', '92']);
+  });
+
   it('cho phép phân giao chặng cuối không chọn tuyến và biển kiểm soát', async () => {
     const waybill = makeWaybill({
       current_state: WaybillStatus.AT_DEST_HUB,
@@ -1720,6 +1820,7 @@ describe('WaybillsService', () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ cod_amount: 10, cost_amount: 15, freight_amount: 20, cc_amount: 30 }));
     const result = await service.findOne('1', accountant);
     expect(result.cod_amount).toBe(10);
+    expect(result.customer_payment_due_amount).toBe(20);
     expect(result).not.toHaveProperty('cost_amount');
     expect(result).not.toHaveProperty('freight_amount');
     expect(result).not.toHaveProperty('cc_amount');

@@ -251,10 +251,17 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [isLedgerCustomerLoading, setIsLedgerCustomerLoading] = useState(false);
   const inventoryRequestIdRef = useRef(0);
   const selectedWaybillCacheRef = useRef<Map<string, WaybillInventoryItem>>(new Map());
+  const cashVoucherCloseTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (cashVoucherCloseTimerRef.current != null) window.clearTimeout(cashVoucherCloseTimerRef.current);
+  }, []);
 
   const user = useMemo(getStoredUser, []);
   const canViewPricing = hasManagerAccess(user?.role_mask ?? 0);
-  const canViewPage = isAllOrders ? canEditWaybill(user?.role_mask ?? 0) : canViewPricing;
+  const canViewPage = isAllOrders
+    ? canEditWaybill(user?.role_mask ?? 0) || ((user?.role_mask ?? 0) & ACCOUNTANT) !== 0
+    : canViewPricing;
   const canUpdate = canMutateInventory(user?.role_mask ?? 0);
   const canUpdateCustomerPayment = ((user?.role_mask ?? 0) & (ACCOUNTANT | MANAGER | DIRECTOR)) !== 0;
   const selectionEnabled = (!isAllOrders && canUpdate) || (isAllOrders && canUpdateCustomerPayment);
@@ -409,7 +416,9 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   useEffect(() => {
     if (isAllOrders) return;
     const maKh = searchParams.get('ma_kh')?.trim() || '';
-    setFilters((prev) => (prev.ma_kh === maKh ? prev : { ...prev, ma_kh: maKh, page: 1 }));
+    queueMicrotask(() => {
+      setFilters((prev) => (prev.ma_kh === maKh ? prev : { ...prev, ma_kh: maKh, page: 1 }));
+    });
   }, [searchParams, isAllOrders]);
   useEffect(() => { if (canViewPage) void loadInventory(); }, [inventoryLoadKey, canViewPage]);
 
@@ -479,7 +488,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       await apiRequest('/waybills/inventory/customer-payment-status', {
         method: 'PATCH',
         body: {
-          waybill_ids: selectedWaybillIds.map(Number),
+          waybill_ids: selectedWaybillIds,
           status: customerPaymentStatus || null,
           note: customerPaymentNote.trim() || undefined,
         },
@@ -526,15 +535,22 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const closeBoard = () => { setIsBoardClosing(true); window.setTimeout(() => { setIsBoardOpen(false); setIsBoardClosing(false); }, 180); };
 
   const openCashVoucher = (waybill: WaybillInventoryItem) => {
+    if (cashVoucherCloseTimerRef.current != null) {
+      window.clearTimeout(cashVoucherCloseTimerRef.current);
+      cashVoucherCloseTimerRef.current = null;
+    }
+    setIsCashVoucherClosing(false);
     setCashVoucherWaybill(waybill);
     setIsCashVoucherOpen(true);
   };
   const closeCashVoucher = () => {
+    if (cashVoucherCloseTimerRef.current != null) window.clearTimeout(cashVoucherCloseTimerRef.current);
     setIsCashVoucherClosing(true);
-    window.setTimeout(() => {
+    cashVoucherCloseTimerRef.current = window.setTimeout(() => {
       setIsCashVoucherOpen(false);
       setIsCashVoucherClosing(false);
       setCashVoucherWaybill(null);
+      cashVoucherCloseTimerRef.current = null;
     }, 180);
   };
 
@@ -1013,10 +1029,12 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         onClose={() => setLedgerCustomer(null)}
       />
       <WaybillCashVoucherDialog
+        key={cashVoucherWaybill ? String(cashVoucherWaybill.id) : 'cash-voucher'}
         isOpen={isCashVoucherOpen}
         isClosing={isCashVoucherClosing}
         waybill={cashVoucherWaybill}
         onClose={closeCashVoucher}
+        onSaved={() => loadInventory()}
       />
       <StackOntoTruckDialog
         isOpen={isStackOpen}
@@ -1491,7 +1509,7 @@ function AllOrdersActions({
       </button>
       <button
         type="button"
-        title={canPay ? 'Thanh toán / phiếu thu chi' : 'Cần quyền Kế toán hoặc Quản lý'}
+        title={canPay ? 'Thanh toán bill' : 'Cần quyền Kế toán hoặc Quản lý'}
         disabled={!canPay}
         onClick={(event) => {
           event.stopPropagation();

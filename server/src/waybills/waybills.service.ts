@@ -17,6 +17,7 @@ import { AssignWaybillRouteDto } from './dto/assign-waybill-route.dto';
 import { CancelWaybillDto } from './dto/cancel-waybill.dto';
 import { CreateWaybillDto } from './dto/create-waybill.dto';
 import { CreateWaybillCashVoucherDto } from './dto/create-waybill-cash-voucher.dto';
+import { CreateBulkWaybillPaymentDto } from './dto/create-bulk-waybill-payment.dto';
 import { QueryWaybillCashVouchersDto } from './dto/query-waybill-cash-vouchers.dto';
 import { QueryReceiverContactsDto } from './dto/query-receiver-contacts.dto';
 import { QueryWaybillsDto } from './dto/query-waybills.dto';
@@ -1154,18 +1155,152 @@ export class WaybillsService {
   }
 
   async createCashVoucher(waybillId: string, dto: CreateWaybillCashVoucherDto, currentUser: UserEntity) {
-    const waybill = await this.findOne(waybillId, currentUser);
-    const record = this.cashVouchersRepository.create({
-      waybill_id: waybill.id,
-      waybill_code: waybill.waybill_code,
-      voucher_type: dto.voucher_type,
-      amount: String(dto.amount),
-      note: dto.note?.trim() || null,
-      image_url: dto.image_url?.trim() || null,
-      created_by_id: currentUser.id,
-      created_by_name: currentUser.full_name?.trim() || currentUser.username,
+    const waybill = await this.waybillsRepository.findOne({
+      where: { id: waybillId, deleted_at: IsNull() } as any,
+    }) as WaybillRecord | null;
+    if (!waybill) throw new NotFoundException('Waybill not found');
+    this.assertWaybillAccess(waybill, currentUser);
+    const expectedWaybillCode = dto.waybill_code?.trim();
+    if (
+      expectedWaybillCode
+      && expectedWaybillCode.toLocaleUpperCase('vi-VN') !== waybill.waybill_code.trim().toLocaleUpperCase('vi-VN')
+    ) {
+      throw new ConflictException(
+        `Bill đã chọn không khớp: yêu cầu ${expectedWaybillCode}, dữ liệu hiện tại là ${waybill.waybill_code}`,
+      );
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const cashVouchersRepository = manager.getRepository(WaybillCashVoucherEntity);
+      const waybillsRepository = manager.getRepository(WaybillEntity);
+      const paymentSummary = await cashVouchersRepository.createQueryBuilder('voucher')
+        .select(
+          `COALESCE(SUM(CASE WHEN LOWER(voucher.voucher_type) = 'thu' THEN voucher.amount ELSE -voucher.amount END), 0)`,
+          'net_paid',
+        )
+        .where('voucher.waybill_id = :waybillId', { waybillId: String(waybill.id) })
+        .getRawOne<{ net_paid: string }>();
+      const paidBefore = Number(paymentSummary?.net_paid) || 0;
+      const totalDue = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
+      const remainingBefore = Math.max(0, totalDue - paidBefore);
+      if (dto.voucher_type === 'Thu' && (totalDue <= 0 || dto.amount > remainingBefore)) {
+        throw new BadRequestException(
+          totalDue <= 0
+            ? `Bill ${waybill.waybill_code} chưa có số tiền cần thanh toán`
+            : `Số tiền vượt quá số còn lại của bill ${waybill.waybill_code}`,
+        );
+      }
+
+      const record = cashVouchersRepository.create({
+        waybill_id: String(waybill.id),
+        waybill_code: waybill.waybill_code,
+        voucher_type: dto.voucher_type,
+        amount: String(dto.amount),
+        note: dto.note?.trim() || null,
+        image_url: dto.image_url?.trim() || null,
+        created_by_id: currentUser.id,
+        created_by_name: currentUser.full_name?.trim() || currentUser.username,
+      });
+      const saved = await cashVouchersRepository.save(record);
+      const netPaid = paidBefore + (dto.voucher_type === 'Thu' ? dto.amount : -dto.amount);
+      const nextPaymentStatus = totalDue > 0 && netPaid >= totalDue
+        ? CustomerPaymentStatus.PAID
+        : waybill.customer_payment_status === CustomerPaymentStatus.PAID
+          ? null
+          : waybill.customer_payment_status ?? null;
+
+      if (nextPaymentStatus !== (waybill.customer_payment_status ?? null)) {
+        waybill.customer_payment_status = nextPaymentStatus;
+        await waybillsRepository.save(waybill);
+      }
+
+      return {
+        ...saved,
+        customer_payment_status: nextPaymentStatus,
+      };
     });
-    return this.cashVouchersRepository.save(record);
+  }
+
+  async createBulkCashPayment(dto: CreateBulkWaybillPaymentDto, currentUser: UserEntity) {
+    const waybillIds = dto.items.map((item) => String(item.waybill_id));
+    if (new Set(waybillIds).size !== waybillIds.length) {
+      throw new BadRequestException('Mỗi bill chỉ được chọn một lần trong một lượt thanh toán');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const cashVouchersRepository = manager.getRepository(WaybillCashVoucherEntity);
+      const waybillsRepository = manager.getRepository(WaybillEntity);
+      const waybills = await waybillsRepository.find({
+        where: { id: In(waybillIds), deleted_at: IsNull() } as any,
+      }) as WaybillRecord[];
+      if (waybills.length !== waybillIds.length) throw new NotFoundException('Một hoặc nhiều bill không tồn tại');
+
+      const waybillById = new Map(waybills.map((waybill) => [String(waybill.id), waybill]));
+      const existingVouchers = await cashVouchersRepository.find({
+        where: { waybill_id: In(waybillIds) },
+      });
+      const paidByWaybillId = existingVouchers.reduce<Map<string, number>>((totals, voucher) => {
+        const waybillId = String(voucher.waybill_id);
+        const amount = Number(voucher.amount) || 0;
+        const delta = String(voucher.voucher_type).toLowerCase() === 'thu' ? amount : -amount;
+        totals.set(waybillId, (totals.get(waybillId) ?? 0) + delta);
+        return totals;
+      }, new Map());
+
+      const records = dto.items.map((item) => {
+        const waybill = waybillById.get(String(item.waybill_id));
+        if (!waybill) throw new NotFoundException(`Bill ${item.waybill_code} không tồn tại`);
+        this.assertWaybillAccess(waybill, currentUser);
+        if (item.waybill_code.trim().toLocaleUpperCase('vi-VN') !== waybill.waybill_code.trim().toLocaleUpperCase('vi-VN')) {
+          throw new ConflictException(
+            `Bill đã chọn không khớp: yêu cầu ${item.waybill_code}, dữ liệu hiện tại là ${waybill.waybill_code}`,
+          );
+        }
+
+        const totalDue = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
+        const paidBefore = paidByWaybillId.get(String(waybill.id)) ?? 0;
+        const remainingBefore = Math.max(0, totalDue - paidBefore);
+        if (totalDue <= 0 || item.amount > remainingBefore) {
+          throw new BadRequestException(
+            totalDue <= 0
+              ? `Bill ${waybill.waybill_code} chưa có số tiền cần thanh toán`
+              : `Số tiền vượt quá số còn lại của bill ${waybill.waybill_code}`,
+          );
+        }
+        paidByWaybillId.set(String(waybill.id), paidBefore + item.amount);
+
+        return cashVouchersRepository.create({
+          waybill_id: String(waybill.id),
+          waybill_code: waybill.waybill_code,
+          voucher_type: 'Thu',
+          amount: String(item.amount),
+          note: dto.note?.trim() || null,
+          image_url: null,
+          created_by_id: currentUser.id,
+          created_by_name: currentUser.full_name?.trim() || currentUser.username,
+        });
+      });
+
+      const saved = await cashVouchersRepository.save(records);
+      const changedWaybills = waybills.filter((waybill) => {
+        const totalDue = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
+        const netPaid = paidByWaybillId.get(String(waybill.id)) ?? 0;
+        const nextStatus = totalDue > 0 && netPaid >= totalDue
+          ? CustomerPaymentStatus.PAID
+          : waybill.customer_payment_status === CustomerPaymentStatus.PAID
+            ? null
+            : waybill.customer_payment_status ?? null;
+        if (nextStatus === (waybill.customer_payment_status ?? null)) return false;
+        waybill.customer_payment_status = nextStatus;
+        return true;
+      });
+      if (changedWaybills.length) await waybillsRepository.save(changedWaybills);
+
+      return {
+        items: saved,
+        updated_waybill_ids: waybillIds,
+      };
+    });
   }
 
   async searchCashVouchers(query: QueryWaybillCashVouchersDto, currentUser: UserEntity) {
@@ -3263,6 +3398,9 @@ export class WaybillsService {
 
   private sanitize(waybill: WaybillRecord, currentUser: UserEntity): WaybillRecord {
     const result: Record<string, any> = { ...waybill, status: this.getStatus(waybill) };
+    if (isManager(currentUser.role_mask) || hasRole(currentUser.role_mask, Roles.ACCOUNTANT)) {
+      result.customer_payment_due_amount = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
+    }
     if (waybill.last_mile_driver) {
       result.last_mile_driver = {
         id: waybill.last_mile_driver.id,

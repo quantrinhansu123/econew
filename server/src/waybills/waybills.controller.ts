@@ -11,6 +11,7 @@ import { AssignWaybillRouteDto } from './dto/assign-waybill-route.dto';
 import { CancelWaybillDto } from './dto/cancel-waybill.dto';
 import { CreateWaybillDto } from './dto/create-waybill.dto';
 import { CreateWaybillCashVoucherDto } from './dto/create-waybill-cash-voucher.dto';
+import { CreateBulkWaybillPaymentDto } from './dto/create-bulk-waybill-payment.dto';
 import { QueryWaybillCashVouchersDto } from './dto/query-waybill-cash-vouchers.dto';
 import { QueryReceiverContactsDto } from './dto/query-receiver-contacts.dto';
 import { QueryWaybillsDto } from './dto/query-waybills.dto';
@@ -145,9 +146,19 @@ export class WaybillsController {
 
   @Get('cash-vouchers')
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'List cash vouchers by customer code (ma_kh)' })
+  @ApiOperation({ summary: 'List customer payment history by customer code (ma_kh)' })
   searchCashVouchers(@Query() query: QueryWaybillCashVouchersDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.searchCashVouchers(query, currentUser);
+  }
+
+  @Post('cash-vouchers/bulk-payment')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Record one customer payment across selected waybills' })
+  createBulkCashPayment(
+    @Body() dto: CreateBulkWaybillPaymentDto,
+    @CurrentUser() currentUser: UserEntity,
+  ) {
+    return this.waybillsService.createBulkCashPayment(dto, currentUser);
   }
 
   @Patch('splits/:splitId/load-status')
@@ -177,14 +188,14 @@ export class WaybillsController {
 
   @Get(':id/cash-vouchers')
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'List cash vouchers (phiếu thu/chi) for a waybill' })
+  @ApiOperation({ summary: 'List payment history for a waybill' })
   listCashVouchersForWaybill(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.listCashVouchersForWaybill(id, currentUser);
   }
 
   @Post(':id/cash-vouchers')
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Create cash voucher (phiếu thu/chi) for a waybill' })
+  @ApiOperation({ summary: 'Record a payment for a waybill' })
   createCashVoucher(
     @Param('id') id: string,
     @Body() dto: CreateWaybillCashVoucherDto,
