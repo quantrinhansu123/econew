@@ -202,22 +202,26 @@ export class VendorsService {
     const limit = clampPaginationLimit(query.limit, 50);
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .innerJoinAndSelect('trip.truck', 'truck')
-      .innerJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('trip.vendor', 'trip_vendor')
+      .leftJoinAndSelect('truck.vendor', 'truck_vendor')
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .leftJoinAndSelect('trip.start_hub', 'start_hub')
       .leftJoinAndSelect('trip.end_hub', 'end_hub')
       .where('trip.status IN (:...statuses)', { statuses: DEPARTED_TRIP_STATUSES })
+      .andWhere('COALESCE(trip.vendor_id, truck.vendor_id) IS NOT NULL')
       .andWhere('(COALESCE(trip.trip_cost, 0) > 0 OR COALESCE(trip.other_costs, 0) > 0)');
 
-    if (query.vendor_id) qb.andWhere('truck.vendor_id = :vendorId', { vendorId: String(query.vendor_id) });
+    if (query.vendor_id) qb.andWhere('COALESCE(trip.vendor_id, truck.vendor_id) = :vendorId', { vendorId: String(query.vendor_id) });
     if (query.from) qb.andWhere('trip.departure_time >= :from', { from: query.from });
     if (query.to) qb.andWhere('trip.departure_time <= :to', { to: query.to });
     if (query.payment_status) qb.andWhere('trip.vendor_payment_status = :paymentStatus', { paymentStatus: query.payment_status });
     if (query.keyword?.trim()) {
       const keyword = `%${query.keyword.trim()}%`;
       qb.andWhere(new Brackets((inner) => inner
-        .where('vendor.name ILIKE :keyword', { keyword })
-        .orWhere('vendor.code ILIKE :keyword', { keyword })
+        .where('trip_vendor.name ILIKE :keyword', { keyword })
+        .orWhere('trip_vendor.code ILIKE :keyword', { keyword })
+        .orWhere('truck_vendor.name ILIKE :keyword', { keyword })
+        .orWhere('truck_vendor.code ILIKE :keyword', { keyword })
         .orWhere('trip.driver_name ILIKE :keyword', { keyword })
         .orWhere('trip.driver_phone ILIKE :keyword', { keyword })
         .orWhere('truck.bks ILIKE :keyword', { keyword })
@@ -250,7 +254,7 @@ export class VendorsService {
   async bulkUpdateTripVendorPayment(dto: BulkUpdateTripVendorPaymentDto, currentUser: UserEntity) {
     this.assertRole(currentUser, [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR]);
     const tripIds = [...new Set(dto.trip_ids.map((id) => String(id)))];
-    const trips = await this.tripsRepository.find({ where: { id: In(tripIds) }, relations: ['truck'] });
+    const trips = await this.tripsRepository.find({ where: { id: In(tripIds) }, relations: ['truck', 'vendor'] });
     if (trips.length !== tripIds.length) throw new NotFoundException('One or more trips not found');
 
     if (dto.payment_status === VendorTripPaymentStatus.PAID) {
@@ -460,8 +464,10 @@ export class VendorsService {
   private async queryVendorTrips(vendorId: string, from?: Date, to?: Date): Promise<TripEntity[]> {
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .innerJoinAndSelect('trip.truck', 'truck')
+      .leftJoinAndSelect('trip.vendor', 'trip_vendor')
+      .leftJoinAndSelect('truck.vendor', 'truck_vendor')
       .leftJoinAndSelect('trip.manifest', 'manifest')
-      .where('truck.vendor_id = :vendorId', { vendorId })
+      .where('COALESCE(trip.vendor_id, truck.vendor_id) = :vendorId', { vendorId })
       .andWhere('(COALESCE(trip.trip_cost, 0) > 0 OR COALESCE(trip.other_costs, 0) > 0)');
 
     if (from) qb.andWhere('trip.departure_time >= :from', { from });
@@ -480,10 +486,10 @@ export class VendorsService {
   private async validateTripsForVendor(vendorId: string, tripIds: string[]): Promise<TripEntity[]> {
     const trips = await this.tripsRepository.find({
       where: { id: In(tripIds) },
-      relations: ['truck'],
+      relations: ['truck', 'vendor'],
     });
     if (trips.length !== tripIds.length) throw new NotFoundException('One or more trips not found');
-    const invalid = trips.filter((t) => t.truck?.vendor_id !== vendorId);
+    const invalid = trips.filter((t) => (t.vendor_id ?? t.vendor?.id ?? t.truck?.vendor_id) !== vendorId);
     if (invalid.length) throw new BadRequestException('All trip_ids must belong to this vendor');
     return trips;
   }
@@ -512,7 +518,11 @@ export class VendorsService {
       id: trip.id,
       departure_time: trip.departure_time,
       status: trip.status,
-      vendor: trip.truck?.vendor ? { id: trip.truck.vendor.id, code: trip.truck.vendor.code, name: trip.truck.vendor.name } : null,
+      vendor: trip.vendor
+        ? { id: trip.vendor.id, code: trip.vendor.code, name: trip.vendor.name }
+        : trip.truck?.vendor
+          ? { id: trip.truck.vendor.id, code: trip.truck.vendor.code, name: trip.truck.vendor.name }
+          : null,
       driver_name: trip.driver_name || trip.truck?.ten_lai_xe || null,
       driver_phone: trip.driver_phone || null,
       license_plate: trip.truck?.bks || trip.truck?.license_plate || null,

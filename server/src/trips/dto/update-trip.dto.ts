@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { ArrayMinSize, ArrayUnique, IsArray, IsDate, IsInt, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { ArrayMinSize, ArrayUnique, IsArray, IsDate, IsInt, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 
 export class UpdateTripRouteStopDto {
   @ApiPropertyOptional()
@@ -20,6 +20,19 @@ export class UpdateTripDto {
   @Type(() => Number)
   @IsInt()
   truck_id?: number;
+
+  @ApiPropertyOptional({ description: 'Nhà cung cấp thực hiện chuyến' })
+  @IsOptional()
+  @Transform(({ value }) => value == null ? value : String(value))
+  @IsString()
+  vendor_id?: string;
+
+  @ApiPropertyOptional({ description: 'Cước xe phải trả NCC', minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  trip_cost?: number;
 
   @ApiPropertyOptional({ type: String, format: 'date-time' })
   @IsOptional()

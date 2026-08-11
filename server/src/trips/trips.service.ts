@@ -72,6 +72,7 @@ export class TripsService {
       status: TripStatus.PLANNED,
       trip_cost: tripCostAmount > 0 ? String(tripCostAmount) : null,
       other_costs: tripCostAmount > 0 ? String(tripCostAmount) : null,
+      vendor_id: truck?.vendor_id ?? null,
     });
 
     const savedTrip = await this.tripsRepository.save(trip);
@@ -119,6 +120,7 @@ export class TripsService {
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('trip.vendor', 'trip_vendor')
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .leftJoinAndSelect('trip.start_hub', 'start_hub')
       .leftJoinAndSelect('trip.end_hub', 'end_hub')
@@ -155,6 +157,7 @@ export class TripsService {
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('trip.vendor', 'trip_vendor')
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .leftJoinAndSelect('trip.start_hub', 'start_hub')
       .leftJoinAndSelect('trip.end_hub', 'end_hub')
@@ -174,23 +177,53 @@ export class TripsService {
     if (String(trip.status) === 'CANCELLED') {
       throw new BadRequestException('Không thể sửa chuyến đã hủy');
     }
+    const previousVendorId = this.resolveTripVendorId(trip);
     if (dto.truck_id !== undefined) {
       if (trip.status !== TripStatus.PLANNED) {
         throw new BadRequestException('Chỉ được đổi xe khi chuyến chưa khởi hành');
       }
-      const truck = await this.validateTruck(dto.truck_id);
-      if (trip.truck_id && trip.truck_id !== String(dto.truck_id)) {
+      const nextTruckId = String(dto.truck_id);
+      const truckChanged = trip.truck_id !== nextTruckId;
+      const truck = !truckChanged
+        ? trip.truck
+        : await this.validateTruck(dto.truck_id);
+      if (trip.truck_id && truckChanged) {
         const oldTruck = await this.trucksRepository.findOne({ where: { id: trip.truck_id } });
         if (oldTruck) {
           oldTruck.status = TruckStatus.AVAILABLE;
           await this.trucksRepository.save(oldTruck);
         }
       }
-      trip.truck_id = dto.truck_id == null ? null : String(dto.truck_id);
-      if (truck) {
+      trip.truck_id = nextTruckId;
+      if (truck && truckChanged) {
         truck.status = TruckStatus.ASSIGNED;
         await this.trucksRepository.save(truck);
       }
+      if (truck && dto.vendor_id === undefined) {
+        trip.vendor_id = truck.vendor_id ?? null;
+        trip.vendor = truck.vendor ?? null;
+      }
+    }
+    if (dto.vendor_id !== undefined) {
+      const vendor = await this.vendorsService.findOne(dto.vendor_id);
+      const paidAmount = this.toNumber(trip.vendor_paid_amount);
+      if (paidAmount > 0 && previousVendorId && previousVendorId !== String(vendor.id)) {
+        throw new BadRequestException('Không thể đổi NCC khi chuyến đã phát sinh thanh toán');
+      }
+      trip.vendor_id = String(vendor.id);
+      trip.vendor = vendor;
+    }
+    if (dto.trip_cost !== undefined) {
+      this.assertNonNegative(dto.trip_cost);
+      const paidAmount = this.toNumber(trip.vendor_paid_amount);
+      if (paidAmount > dto.trip_cost) {
+        throw new BadRequestException('Cước xe không được thấp hơn số tiền đã thanh toán');
+      }
+      const previousTripCost = this.toNumber(trip.trip_cost);
+      if (previousTripCost > 0 && this.toNumber(trip.other_costs) === previousTripCost) {
+        trip.other_costs = null;
+      }
+      trip.trip_cost = String(dto.trip_cost);
     }
     const departureTime = dto.departure_time !== undefined ? this.normalizeDate(dto.departure_time, 'departure_time') : trip.departure_time;
     const arrivalTime = dto.arrival_time !== undefined ? this.normalizeOptionalDate(dto.arrival_time, 'arrival_time') : trip.arrival_time;
@@ -236,7 +269,15 @@ export class TripsService {
         trip.arrival_time = finalExpectedArrival;
       }
     }
-    return this.tripsRepository.save(trip);
+    const savedTrip = await this.tripsRepository.save(trip);
+    if (dto.vendor_id !== undefined || dto.trip_cost !== undefined || dto.truck_id !== undefined) {
+      const affectedVendorIds = [...new Set([
+        previousVendorId,
+        this.resolveTripVendorId(savedTrip),
+      ].filter((vendorId): vendorId is string => Boolean(vendorId)))];
+      await Promise.all(affectedVendorIds.map((vendorId) => this.vendorsService.refreshPayableBalance(vendorId)));
+    }
+    return savedTrip;
   }
 
   async assignManifest(id: string, dto: AssignManifestDto, currentUser: UserEntity): Promise<TripEntity> {
@@ -431,6 +472,7 @@ export class TripsService {
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('trip.vendor', 'trip_vendor')
       .leftJoinAndSelect('truck.driver', 'driver')
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .leftJoinAndSelect('manifest.origin_hub', 'manifest_origin_hub')
@@ -468,6 +510,7 @@ export class TripsService {
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('trip.vendor', 'trip_vendor')
       .leftJoinAndSelect('truck.driver', 'driver')
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .leftJoinAndSelect('manifest.origin_hub', 'manifest_origin_hub')
@@ -502,6 +545,7 @@ export class TripsService {
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('trip.vendor', 'trip_vendor')
       .leftJoinAndSelect('truck.driver', 'driver')
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .leftJoinAndSelect('manifest.origin_hub', 'manifest_origin_hub')
@@ -539,7 +583,7 @@ export class TripsService {
           description: trip.vendor_payment_note?.trim() || `Ghi nhận thanh toán chuyến · ${trip.vendor_payment_status}`,
           proof_image_url: trip.vendor_payment_proof_url,
           created_by_name: null,
-          vendor_name: trip.truck?.vendor?.name?.trim() || trip.truck?.nha_xe?.trim() || null,
+          vendor_name: trip.vendor?.name?.trim() || trip.truck?.vendor?.name?.trim() || trip.truck?.nha_xe?.trim() || null,
         }]
         : []),
       ...payments.map((payment) => ({
@@ -579,11 +623,12 @@ export class TripsService {
       driver_phone: trip.driver_phone?.trim()
         || trip.truck?.driver?.phone?.trim()
         || null,
-      vendor_name: trip.truck?.vendor?.name?.trim()
+      vendor_name: trip.vendor?.name?.trim()
+        || trip.truck?.vendor?.name?.trim()
         || trip.truck?.nha_xe?.trim()
         || null,
-      vendor_id: trip.truck?.vendor?.id ?? trip.truck?.vendor_id ?? null,
-      vendor_code: trip.truck?.vendor?.code?.trim() || null,
+      vendor_id: trip.vendor?.id ?? trip.vendor_id ?? trip.truck?.vendor?.id ?? trip.truck?.vendor_id ?? null,
+      vendor_code: trip.vendor?.code?.trim() || trip.truck?.vendor?.code?.trim() || null,
       vehicle_type: trip.truck?.loai_xe?.trim() || null,
       waybill_count: waybills.length,
       planned_total_weight: weight,
@@ -609,6 +654,8 @@ export class TripsService {
     const highlightWaybillId = query.waybill_id?.trim() ? String(query.waybill_id).trim() : null;
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
+      .leftJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('trip.vendor', 'trip_vendor')
       .leftJoinAndSelect('trip.manifest', 'manifest')
       .leftJoinAndSelect('trip.start_hub', 'start_hub')
       .leftJoinAndSelect('trip.end_hub', 'end_hub')
@@ -674,7 +721,7 @@ export class TripsService {
         manifest_id: trip.manifest_id,
         status: trip.status,
         license_plate: trip.truck?.license_plate ?? trip.truck?.bks ?? null,
-        nha_xe: trip.truck?.nha_xe ?? trip.truck?.vendor?.name ?? null,
+        nha_xe: trip.vendor?.name ?? trip.truck?.nha_xe ?? trip.truck?.vendor?.name ?? null,
         driver_name: trip.driver_name ?? trip.truck?.ten_lai_xe ?? null,
         driver_phone: trip.driver_phone,
         expected_arrival_time: trip.expected_arrival_time ?? trip.arrival_time,
@@ -938,11 +985,12 @@ export class TripsService {
       driver_phone: trip.driver_phone?.trim()
         || trip.truck?.driver?.phone?.trim()
         || null,
-      vendor_name: trip.truck?.vendor?.name?.trim()
+      vendor_name: trip.vendor?.name?.trim()
+        || trip.truck?.vendor?.name?.trim()
         || trip.truck?.nha_xe?.trim()
         || null,
-      vendor_id: trip.truck?.vendor?.id ?? trip.truck?.vendor_id ?? null,
-      vendor_code: trip.truck?.vendor?.code?.trim() || null,
+      vendor_id: trip.vendor?.id ?? trip.vendor_id ?? trip.truck?.vendor?.id ?? trip.truck?.vendor_id ?? null,
+      vendor_code: trip.vendor?.code?.trim() || trip.truck?.vendor?.code?.trim() || null,
       vehicle_type: trip.truck?.loai_xe?.trim() || null,
     };
   }
@@ -1045,6 +1093,14 @@ export class TripsService {
 
   private toNumber(value: Money): number {
     return Number(value ?? 0);
+  }
+
+  private resolveTripVendorId(trip: TripEntity): string | null {
+    return trip.vendor_id
+      ?? trip.vendor?.id
+      ?? trip.truck?.vendor_id
+      ?? trip.truck?.vendor?.id
+      ?? null;
   }
 
   private resolveTripCost(dto: CreateTripDto): number {

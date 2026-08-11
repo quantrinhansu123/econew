@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeft, Banknote, Building2, CalendarClock, Info, Loa
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
+import { formatAmountInput, parseAmountInput } from '../lib/formatMoney';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
 import type { AuthUserProfile } from './login/types';
@@ -246,7 +247,7 @@ export default function TripNewPage() {
     if (form.arrival_time && form.departure_time && new Date(form.arrival_time) <= new Date(form.departure_time)) {
       nextErrors.arrival_time = 'Giờ đến phải sau giờ khởi hành.';
     }
-    if (form.trip_cost && Number(form.trip_cost) < 0) nextErrors.trip_cost = 'Chi phí không được âm.';
+    if (form.trip_cost && parseAmountInput(form.trip_cost) < 0) nextErrors.trip_cost = 'Chi phí không được âm.';
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
@@ -258,6 +259,7 @@ export default function TripNewPage() {
     end_hub_id: toApiId(form.end_hub_id),
     departure_time: toApiDateTime(form.departure_time),
     ...(form.arrival_time ? { arrival_time: toApiDateTime(form.arrival_time) } : {}),
+    ...(form.trip_cost ? { trip_cost: parseAmountInput(form.trip_cost) } : {}),
   });
 
   const createTrip = async () => {
@@ -469,12 +471,11 @@ export default function TripNewPage() {
             <FormInput
               label="Chi phí chuyến xe (VNĐ)"
               icon={Banknote}
-              type="number"
-              min="0"
-              step="1000"
-              placeholder="VD: 28000000"
+              type="text"
+              inputMode="numeric"
+              placeholder="VD: 28.000.000"
               value={form.trip_cost}
-              onChange={(event) => setField('trip_cost', event.target.value)}
+              onChange={(event) => setField('trip_cost', formatAmountInput(event.target.value))}
               error={errors.trip_cost}
               className="md:col-span-2"
             />

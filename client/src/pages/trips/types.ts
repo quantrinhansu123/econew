@@ -47,6 +47,9 @@ export interface Trip {
   fuel_actual?: number | null;
   fuel_cost?: number | string | null;
   other_costs?: number | string | null;
+  trip_cost?: number | string | null;
+  vendor_id?: string | number | null;
+  vendor?: VendorSummary | null;
   truck?: TruckSummary | null;
   manifest?: ManifestSummary | null;
   start_hub?: HubSummary | null;
@@ -148,6 +151,7 @@ export type TripCreatePayload = {
   end_hub_id: number | string;
   departure_time: string;
   arrival_time?: string;
+  trip_cost?: number;
   other_costs?: number;
 };
 

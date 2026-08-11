@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Eye, Filter, Fuel, Loader2, Package, Pencil, Plus, Printer, RotateCcw, Save, Search, Tag, Trash2, Truck as TruckIcon, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Banknote, Building2, Eye, Filter, Fuel, Loader2, Package, Pencil, Plus, Printer, RotateCcw, Save, Search, Tag, Trash2, Truck as TruckIcon, X } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../lib/api';
+import { formatMoney } from '../lib/formatMoney';
 import { FilterPanel } from '../components/ui/FilterPanel';
 import { FilterSelect } from '../components/ui/FilterSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
@@ -12,6 +13,7 @@ import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
 import TripManifestDetailDialog from './trips/dialogs/TripManifestDetailDialog';
 import TripTruckDetailDialog from './trips/dialogs/TripTruckDetailDialog';
 import EditTripScheduleDialog, { type TripScheduleFormState } from './trips/dialogs/EditTripScheduleDialog';
+import EditTripTransportDialog from './trips/dialogs/EditTripTransportDialog';
 import { buildTripScheduleRouteStops, toLocalDateTimeInput } from './trips/tripScheduleUtils';
 import AddWaybillsToManifestDialog from './warehouse/manifests/dialogs/AddWaybillsToManifestDialog';
 import { buildInventoryTripLinesQuery, filterManifestAddableInventoryRows, isIncompleteSplitRow } from './warehouse/inventory/inventoryTripLines';
@@ -119,6 +121,7 @@ export default function TripDetailPage() {
   const [detailManifest, setDetailManifest] = useState<ManifestDetail | null>(null);
   const [detailTruck, setDetailTruck] = useState<TruckSummary | null>(null);
   const [scheduleTrip, setScheduleTrip] = useState<Trip | null>(null);
+  const [transportTrip, setTransportTrip] = useState<Trip | null>(null);
   const [scheduleForm, setScheduleForm] = useState<TripScheduleFormState>({ departure_time: '', route_stops: [] });
   const [isAddWaybillsOpen, setIsAddWaybillsOpen] = useState(false);
   const [isWaybillLoading, setIsWaybillLoading] = useState(false);
@@ -392,7 +395,7 @@ export default function TripDetailPage() {
             <FilterSelect multiple icon={Tag} placeholder="Loại thanh toán" options={paymentOptions} value={filters.payment_type} onValueChange={value => updateFilter('payment_type', value)} />
           </div>
           {actionError && !scheduleTrip && <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-bold text-red-700"><AlertTriangle size={14} />{actionError}</div>}
-          {trip && <TripInfo trip={trip} manifest={manifest} truck={truck} hubs={hubs} canOperateTrip={canOperateTrip} canEditTrip={canEditTrip} isFinal={isFinal} isEditingManifest={manifestEditActive} isSubmitting={isSubmitting} openAction={openAction} openManifest={() => manifest && setDetailManifest(manifest)} openTruck={() => truck && setDetailTruck(truck)} openScheduleEditor={openScheduleEditor} openAddWaybills={openAddWaybills} openManifestEditor={openManifestEditor} closeManifestEditor={closeManifestEditor} saveManifestPositions={saveManifestPositions} printManifest={printManifest} />}
+          {trip && <TripInfo trip={trip} manifest={manifest} truck={truck} hubs={hubs} canOperateTrip={canOperateTrip} canEditTrip={canEditTrip} isFinal={isFinal} isEditingManifest={manifestEditActive} isSubmitting={isSubmitting} openAction={openAction} openManifest={() => manifest && setDetailManifest(manifest)} openTruck={() => truck && setDetailTruck(truck)} openTransportEditor={() => setTransportTrip(trip)} openScheduleEditor={openScheduleEditor} openAddWaybills={openAddWaybills} openManifestEditor={openManifestEditor} closeManifestEditor={closeManifestEditor} saveManifestPositions={saveManifestPositions} printManifest={printManifest} />}
         </div>
 
         {isLoading ? <StateBlock icon={<Loader2 className="animate-spin" size={28} />} title="Đang tải chi tiết chuyến xe" description="Hệ thống đang lấy dữ liệu thật từ API." /> : error ? <StateBlock icon={<AlertTriangle size={28} />} title="Không tải được dữ liệu" description={error} /> : !trip ? <StateBlock icon={<TruckIcon size={28} />} title="Không tìm thấy chuyến xe" description="Kiểm tra lại mã chuyến hoặc quyền truy cập." /> : !waybills.length ? <StateBlock icon={<Package size={28} />} title="Chưa có vận đơn phù hợp" description="Bảng kê chưa có vận đơn hoặc bộ lọc không có kết quả." /> : (
@@ -409,17 +412,20 @@ export default function TripDetailPage() {
       <TripManifestDetailDialog manifest={detailManifest} onClose={() => setDetailManifest(null)} />
       <TripTruckDetailDialog truck={detailTruck} onClose={() => setDetailTruck(null)} />
       <EditTripScheduleDialog trip={scheduleTrip} formState={scheduleForm} isSubmitting={isSubmitting} error={actionError} onDepartureChange={(value) => setScheduleForm(prev => ({ ...prev, departure_time: value }))} onRouteStopChange={(hubId, value) => setScheduleForm(prev => ({ ...prev, route_stops: prev.route_stops.map(stop => stop.hub_id === hubId ? { ...stop, expected_arrival_at: value } : stop) }))} onClose={() => setScheduleTrip(null)} onSubmit={submitSchedule} />
+      {transportTrip && <EditTripTransportDialog trip={transportTrip} currentTruck={truck} onClose={() => setTransportTrip(null)} onSaved={() => { setTransportTrip(null); void loadTrip(); }} />}
       <AddWaybillsToManifestDialog isOpen={isAddWaybillsOpen} isClosing={false} isLoading={isWaybillLoading} isSubmitting={isSubmitting} error={addWaybillsError} originHubLabel={manifest?.origin_hub?.code || manifest?.origin_hub?.name || '—'} manifest={manifest as LoadPlanningManifest | null} waybills={waybillChoices} total={waybillTotal} formState={addWaybillsForm} onChange={patch => setAddWaybillsForm(prev => ({ ...prev, ...patch }))} onClose={() => setIsAddWaybillsOpen(false)} onSubmit={submitAddWaybills} />
       <ConfirmDialog dialog={confirmDialog} isSubmitting={isSubmitting} onClose={() => setConfirmDialog(null)} />
     </div>
   );
 }
 
-function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, isFinal, isEditingManifest, isSubmitting, openAction, openManifest, openTruck, openScheduleEditor, openAddWaybills, openManifestEditor, closeManifestEditor, saveManifestPositions, printManifest }: { trip: Trip; manifest: ManifestDetail | null; truck: TruckSummary | null; hubs: HubSummary[]; canOperateTrip: boolean; canEditTrip: boolean; isFinal: boolean; isEditingManifest: boolean; isSubmitting: boolean; openAction: (action: TripAction) => void; openManifest: () => void; openTruck: () => void; openScheduleEditor: () => void; openAddWaybills: () => void; openManifestEditor: () => void; closeManifestEditor: () => void; saveManifestPositions: () => void; printManifest: () => void }) {
+function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, isFinal, isEditingManifest, isSubmitting, openAction, openManifest, openTruck, openTransportEditor, openScheduleEditor, openAddWaybills, openManifestEditor, closeManifestEditor, saveManifestPositions, printManifest }: { trip: Trip; manifest: ManifestDetail | null; truck: TruckSummary | null; hubs: HubSummary[]; canOperateTrip: boolean; canEditTrip: boolean; isFinal: boolean; isEditingManifest: boolean; isSubmitting: boolean; openAction: (action: TripAction) => void; openManifest: () => void; openTruck: () => void; openTransportEditor: () => void; openScheduleEditor: () => void; openAddWaybills: () => void; openManifestEditor: () => void; closeManifestEditor: () => void; saveManifestPositions: () => void; printManifest: () => void }) {
   const navigate = useNavigate();
   return (
     <div className="grid gap-2 rounded-xl border border-border bg-muted/5 p-3 text-[12px] md:grid-cols-4">
       <Info label="Biển kiểm soát" value={<button type="button" onClick={openTruck} className="font-bold text-primary hover:underline"><TruckBadge trip={trip} truck={truck} /></button>} />
+      <Info label="Nhà cung cấp (NCC)" value={<span className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[13px] font-extrabold text-violet-800"><Building2 size={13} />{trip.vendor?.name || trip.vendor?.code || truck?.vendor?.name || truck?.nha_xe || '—'}</span>} />
+      <Info label="Cước xe" value={<span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[13px] font-extrabold tabular-nums text-emerald-800"><Banknote size={13} />{formatMoney(trip.trip_cost, { empty: '0 đ' })}</span>} />
       <Info label="Lái xe / SĐT" value={[trip.driver_name || truck?.ten_lai_xe, trip.driver_phone].filter(Boolean).join(' · ') || '—'} />
       <Info label="Bảng kê" value={<button type="button" onClick={openManifest} className="font-bold text-primary hover:underline"><ManifestBadge trip={trip} manifest={manifest} /></button>} />
       <Info label="Giờ dự kiến đến" value={formatDate(trip.expected_arrival_time || trip.arrival_time)} />
@@ -429,6 +435,7 @@ function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, is
       <Info label="Chốt cân/khối" value={`${formatNumber(trip.actual_total_weight, ' kg')} / ${formatNumber(trip.actual_total_volume, ' m³')}`} />
       <Info label="Trạng thái" value={<TripStatusBadge status={trip.status} />} />
       <div className="flex flex-wrap items-center gap-1 md:col-span-4">
+        {canEditTrip && String(trip.status || '') !== 'CANCELLED' && <button type="button" onClick={openTransportEditor} className="h-8 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-bold text-violet-800"><Pencil size={13} className="mr-1 inline" />Sửa BKS / NCC / cước</button>}
         {canEditTrip && <button type="button" onClick={openScheduleEditor} className="h-8 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[11px] font-bold text-primary"><Pencil size={13} className="mr-1 inline" />Sửa ngày chuyến</button>}
         {canEditTrip && trip.manifest_id && String(trip.status || '') !== 'CANCELLED' && <button type="button" onClick={openAddWaybills} className="h-8 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-bold text-emerald-700"><Plus size={13} className="mr-1 inline" />Thêm đơn tồn</button>}
         {getAvailableTripActions(trip.status).filter(action => action !== 'arrive' || canConfirmEarlyArrival(trip)).map(action => (
@@ -455,6 +462,6 @@ function TripStatusBadge({ status }: { status?: string | null }) { return <span 
 function WaybillStatusBadge({ status }: { status?: string | null }) { return <span className={clsx('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-extrabold', waybillStatusConfig[String(status || '')] || 'border-border bg-muted text-muted-foreground')}>{status || '—'}</span>; }
 function PaymentBadge({ value }: { value?: string | null }) { return <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-extrabold text-amber-700">{value || '—'}</span>; }
 function HubBadge({ hubs, id, hub }: { hubs: HubSummary[]; id?: string | number | null; hub?: HubSummary | null }) { const found = hub || hubs.find(item => normalizeId(item.id) === normalizeId(id)); return <span className="inline-flex rounded-lg border border-blue-100 bg-blue-50 px-2 py-1 text-[12px] font-bold text-blue-700">{found?.code || found?.name || `Hub #${normalizeId(id) || '—'}`}</span>; }
-function TruckBadge({ trip, truck }: { trip: Trip; truck?: TruckSummary | null }) { return <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[12px] font-bold text-slate-700"><TruckIcon size={13} />{truck?.license_plate || trip.truck?.license_plate || `Truck #${normalizeId(trip.truck_id) || '—'}`}</span>; }
+function TruckBadge({ trip, truck }: { trip: Trip; truck?: TruckSummary | null }) { return <span className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-[14px] font-black tracking-wide text-primary"><TruckIcon size={14} />{truck?.bks || truck?.license_plate || trip.truck?.bks || trip.truck?.license_plate || `Xe #${normalizeId(trip.truck_id) || '—'}`}</span>; }
 function ManifestBadge({ trip, manifest }: { trip: Trip; manifest?: ManifestDetail | null }) { return <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[12px] font-bold text-emerald-700"><Package size={13} />{manifest?.manifest_code || trip.manifest?.manifest_code || `Manifest #${normalizeId(trip.manifest_id) || '—'}`}</span>; }
 function StateBlock({ icon, title, description }: { icon: ReactNode; title: string; description: string }) { return <div className="flex-1 min-h-[360px] flex flex-col items-center justify-center text-center text-muted-foreground"><div className="mb-3 text-primary">{icon}</div><h3 className="text-[14px] font-bold text-foreground">{title}</h3><p className="mt-1 text-[13px] max-w-md">{description}</p></div>; }

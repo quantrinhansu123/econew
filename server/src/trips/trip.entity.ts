@@ -4,6 +4,7 @@ import { ExpenseEntity } from '../expenses/expense.entity';
 import { HubEntity } from '../hubs/hub.entity';
 import { ManifestEntity } from '../manifests/manifest.entity';
 import { TruckEntity } from '../trucks/truck.entity';
+import { VendorEntity } from '../vendors/vendor.entity';
 
 @Entity('trips')
 export class TripEntity {
@@ -51,6 +52,9 @@ export class TripEntity {
   @Column({ type: 'decimal', nullable: true })
   trip_cost: string | null;
 
+  @Column({ type: 'bigint', nullable: true })
+  vendor_id: string | null;
+
   @Column({ type: 'timestamp', nullable: true })
   expected_arrival_time: Date | null;
 
@@ -84,6 +88,10 @@ export class TripEntity {
   @ManyToOne(() => TruckEntity, (truck) => truck.trips, { nullable: true })
   @JoinColumn({ name: 'truck_id' })
   truck: TruckEntity | null;
+
+  @ManyToOne(() => VendorEntity, { nullable: true })
+  @JoinColumn({ name: 'vendor_id' })
+  vendor: VendorEntity | null;
 
   @ManyToOne(() => ManifestEntity, (manifest) => manifest.trips, { nullable: true })
   @JoinColumn({ name: 'manifest_id' })

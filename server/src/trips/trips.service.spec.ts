@@ -62,6 +62,8 @@ describe('TripsService', () => {
     vendorsService = {
       addPayableDebt: jest.fn(),
       findPaymentsByTripIds: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn(),
+      refreshPayableBalance: jest.fn(),
     };
     waybillsService = {
       backfillInTransitTripsForHub: jest.fn().mockResolvedValue(0),
@@ -319,6 +321,45 @@ describe('TripsService', () => {
       mockFindOne({ id: '1', status: TripStatus.IN_TRANSIT, truck_id: '5' });
       await expect(service.update('1', { truck_id: 7 }, manager)).rejects.toBeInstanceOf(BadRequestException);
       expect(trucks.findOne).not.toHaveBeenCalled();
+    });
+
+    it('cập nhật NCC và cước xe riêng trên chuyến rồi làm mới công nợ hai NCC', async () => {
+      const trip = {
+        id: '1',
+        status: TripStatus.PLANNED,
+        truck_id: '5',
+        vendor_id: '10',
+        vendor: { id: '10' },
+        trip_cost: '1000000',
+        other_costs: '1000000',
+        vendor_paid_amount: '0',
+        departure_time: new Date('2026-08-12T01:00:00Z'),
+        arrival_time: new Date('2026-08-13T01:00:00Z'),
+      };
+      mockFindOne(trip);
+      vendorsService.findOne.mockResolvedValue({ id: '11', name: 'NCC mới' });
+
+      const result = await service.update('1', { vendor_id: '11', trip_cost: 2500000 }, manager);
+
+      expect(result).toMatchObject({ vendor_id: '11', trip_cost: '2500000', other_costs: null });
+      expect(vendorsService.refreshPayableBalance).toHaveBeenCalledTimes(2);
+      expect(vendorsService.refreshPayableBalance).toHaveBeenCalledWith('10');
+      expect(vendorsService.refreshPayableBalance).toHaveBeenCalledWith('11');
+    });
+
+    it('không cho đổi NCC khi chuyến đã phát sinh thanh toán', async () => {
+      mockFindOne({
+        id: '1',
+        status: TripStatus.PLANNED,
+        vendor_id: '10',
+        vendor_paid_amount: '500000',
+        departure_time: new Date('2026-08-12T01:00:00Z'),
+        arrival_time: new Date('2026-08-13T01:00:00Z'),
+      });
+      vendorsService.findOne.mockResolvedValue({ id: '11', name: 'NCC mới' });
+
+      await expect(service.update('1', { vendor_id: '11' }, manager)).rejects.toThrow('Không thể đổi NCC');
+      expect(trips.save).not.toHaveBeenCalled();
     });
 
     it('lưu ngày dự kiến riêng cho tất cả HUB và lấy HUB cuối làm dự kiến đến của chuyến', async () => {

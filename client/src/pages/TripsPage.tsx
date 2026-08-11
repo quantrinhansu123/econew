@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { FilterSelect } from '../components/ui/FilterSelect';
 import { ApiError, apiRequest } from '../lib/api';
+import { formatMoney } from '../lib/formatMoney';
 import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
 import type { HubSummary, ListResponse, Trip, TripAction } from './trips/types';
 
@@ -54,6 +55,7 @@ const tripStatusLabel = (status?: string | null) => {
 };
 
 const truckPlate = (trip: Trip) => trip.truck?.bks?.trim() || trip.truck?.license_plate?.trim() || (trip.truck_id ? `Xe #${trip.truck_id}` : 'Chưa có xe');
+const vendorName = (trip: Trip) => trip.vendor?.name?.trim() || trip.vendor?.code?.trim() || trip.truck?.vendor?.name?.trim() || trip.truck?.nha_xe?.trim() || 'Chưa có NCC';
 const driverName = (trip: Trip) => trip.driver_name || trip.truck?.ten_lai_xe || 'Chưa có tài xế';
 const manifestCode = (trip: Trip) => trip.manifest?.manifest_code || (trip.manifest_id ? `BK #${trip.manifest_id}` : '—');
 const routeLabel = (trip: Trip) => trip.route_label || `${trip.start_hub?.code || trip.start_hub_id || '—'} → ${trip.end_hub?.code || trip.end_hub_id || '—'}`;
@@ -300,8 +302,10 @@ function TripCard({ trip, onOpen, onEdit, onPrint, onExpenses, onPrimaryAction, 
           <TripStatusBadge status={trip.status} />
         </div>
         <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-1 rounded-md bg-slate-50 px-2 py-1.5 text-[10px]">
-          <CompactCell label="BSX" value={truckPlate(trip)} />
+          <ProminentCell label="BKS" value={truckPlate(trip)} tone="blue" />
+          <ProminentCell label="NCC" value={vendorName(trip)} tone="violet" />
           <CompactCell label="Tài xế" value={driverName(trip)} />
+          <CompactCell label="Cước xe" value={formatMoney(trip.trip_cost)} />
           <CompactCell label="Tuyến" value={routeLabel(trip)} className="col-span-2" />
           <CompactCell label="Khởi hành" value={formatDate(trip.departure_time)} />
           <CompactCell label="Dự kiến đến" value={formatDate(trip.expected_arrival_time || trip.arrival_time)} />
@@ -325,6 +329,15 @@ function TripCard({ trip, onOpen, onEdit, onPrint, onExpenses, onPrimaryAction, 
         {trip.status === 'PLANNED' && <ActionButton title="Hủy chuyến và trả đơn về tồn kho" icon={<XCircle size={14} />} onClick={onCancelAction} danger />}
       </div>
     </article>
+  );
+}
+
+function ProminentCell({ label, value, tone }: { label: string; value: ReactNode; tone: 'blue' | 'violet' }) {
+  return (
+    <div className={clsx('min-w-0 rounded-md border px-2 py-1', tone === 'blue' ? 'border-blue-200 bg-blue-50' : 'border-violet-200 bg-violet-50')}>
+      <p className={clsx('text-[10px] font-black uppercase tracking-wide', tone === 'blue' ? 'text-blue-600' : 'text-violet-600')}>{label}</p>
+      <p className={clsx('truncate text-[13px] font-black tracking-wide', tone === 'blue' ? 'text-blue-950' : 'text-violet-950')}>{value}</p>
+    </div>
   );
 }
 
