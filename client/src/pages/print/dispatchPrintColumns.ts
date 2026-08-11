@@ -20,6 +20,7 @@ export type DispatchPrintColumnId =
   | 'laiXeThuHo'
   | 'bcThuHo'
   | 'maBill'
+  | 'maVach'
   | 'ghiChu'
   | 'ghiChu1'
   | 'ghiChu2'
@@ -57,6 +58,7 @@ export const DISPATCH_PRINT_COLUMN_DEFS: DispatchPrintColumnDef[] = [
   { id: 'keHoach', label: 'Kế hoạch', header: 'kế hoạch', cssClass: 'col-plan', defaultVisible: true },
   { id: 'tangHaThuKhach', label: 'COD', header: 'COD', cssClass: 'col-surcharge', align: 'right', defaultVisible: true, totalKey: 'tangHaThuKhach' },
   { id: 'maBill', label: 'Mã Bill', header: 'Mã Bill', cssClass: 'col-bill', align: 'center', defaultVisible: true },
+  { id: 'maVach', label: 'Mã vạch bill', header: 'Mã vạch bill', cssClass: 'col-barcode', align: 'center', defaultVisible: false },
   { id: 'ghiChu', label: 'Ghi chú bill', header: 'Ghi chú', cssClass: 'col-note', defaultVisible: true },
   { id: 'kg', label: 'kg', header: 'kg', cssClass: 'col-weight', align: 'right', defaultVisible: true, totalKey: 'kg' },
   { id: 'm3', label: 'm3', header: 'm3', cssClass: 'col-volume', align: 'right', defaultVisible: true, totalKey: 'm3' },

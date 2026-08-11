@@ -8,6 +8,7 @@ import {
   resolveVisibleDispatchColumnIds,
 } from './dispatchPrintColumns';
 import type { LoadPlanningPrintPayload } from './loadPlanningPrintUtils';
+import { buildDispatchBarcodeUrl } from './dispatchBarcode';
 
 interface Props {
   data: LoadPlanningPrintPayload;
@@ -99,6 +100,14 @@ function renderDispatchCell(id: DispatchPrintColumnId, row: DispatchPrintRow): R
           <span className="dispatch-cell-inner">{row.maBill}</span>
         </td>
       );
+    case 'maVach': {
+      const barcodeUrl = buildDispatchBarcodeUrl(row.maBill);
+      return (
+        <td className={`${def.cssClass} col-center`}>
+          {barcodeUrl ? <img src={barcodeUrl} alt={`Mã vạch ${row.maBill}`} className="dispatch-barcode-image" /> : null}
+        </td>
+      );
+    }
     case 'ghiChu':
       return (
         <td className={def.cssClass}>

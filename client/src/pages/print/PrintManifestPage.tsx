@@ -30,6 +30,21 @@ function canViewPricing() {
   }
 }
 
+async function printManifestWhenReady() {
+  const images = Array.from(document.querySelectorAll<HTMLImageElement>('.manifest-dispatch-sheet img'));
+  const waitForImage = (image: HTMLImageElement) => image.complete
+    ? Promise.resolve()
+    : new Promise<void>((resolve) => {
+      image.addEventListener('load', () => resolve(), { once: true });
+      image.addEventListener('error', () => resolve(), { once: true });
+    });
+  await Promise.race([
+    Promise.all(images.map(waitForImage)),
+    new Promise<void>((resolve) => window.setTimeout(resolve, 3_000)),
+  ]);
+  window.print();
+}
+
 export default function PrintManifestPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -115,7 +130,7 @@ export default function PrintManifestPage() {
           />
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => void printManifestWhenReady()}
             className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-bold text-white"
           >
             <Printer size={16} />

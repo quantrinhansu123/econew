@@ -15,6 +15,7 @@ import {
 } from './manifestDispatchDefaults';
 import { dispatchSheetHeaderClass, DISPATCH_SHEET_PRINT_WIDTHS, getDispatchSheetColumnMeta } from './manifestDispatchSheetColumns';
 import type { LoadPlanningManifest, ManifestDispatchFields } from './types';
+import { buildDispatchBarcodeUrl } from '../../print/dispatchBarcode';
 
 type EditableRows = Record<string, ManifestDispatchFields>;
 
@@ -164,6 +165,16 @@ export default function ManifestDispatchSheetTable({
           {value ? Number(value).toLocaleString('vi-VN') : ''}
         </div>
       );
+    }
+
+    if (columnId === 'maVach') {
+      const billCode = getDispatchCellValue(rows, link, waybillId, 'ma_bill') || String(link.waybill?.waybill_code || '');
+      const barcodeUrl = buildDispatchBarcodeUrl(billCode);
+      return barcodeUrl ? (
+        <div className="dispatch-barcode-cell min-h-[50px] px-1 py-1.5">
+          <img src={barcodeUrl} alt={`Mã vạch ${billCode}`} className="dispatch-barcode-image" />
+        </div>
+      ) : null;
     }
 
     if (!fieldKey) return null;

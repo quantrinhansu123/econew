@@ -228,6 +228,10 @@ export class WaybillEntity {
   @JoinColumn({ name: 'dest_hub_id' })
   dest_hub: HubEntity;
 
+  @ManyToOne(() => HubEntity, { nullable: true })
+  @JoinColumn({ name: 'current_hub_id' })
+  current_hub: HubEntity | null;
+
   @ManyToOne(() => OrderEntity, (order) => order.waybills, { nullable: true })
   @JoinColumn({ name: 'order_id' })
   order: OrderEntity | null;

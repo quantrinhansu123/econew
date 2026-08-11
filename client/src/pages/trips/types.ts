@@ -13,6 +13,8 @@ export interface WaybillSummary {
   waybill_code?: string | null;
   sender_info?: string | null;
   receiver_info?: string | null;
+  noi_dung?: string | null;
+  order_total_packages?: number | string | null;
   weight?: number | string | null;
   length?: number | string | null;
   width?: number | string | null;

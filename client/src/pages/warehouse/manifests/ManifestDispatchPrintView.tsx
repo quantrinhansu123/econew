@@ -53,13 +53,13 @@ export default function ManifestDispatchPrintView({ manifest, links, rows, visib
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">HUB đi</span>
             <span className="manifest-dispatch-print-meta-value">{originHub}</span>
-            <span className="text-[10px] font-semibold">SĐT: {originHubPhone}</span>
+            <span className="manifest-dispatch-print-meta-detail">SĐT: {originHubPhone}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">HUB đến</span>
             <span className="manifest-dispatch-print-meta-value">{destinationHub}</span>
-            <span className="text-[10px] font-semibold">SĐT: {destinationHubPhone}</span>
-            <span className="text-[10px] font-semibold">Dự kiến đến: {hubExpectedArrivalLabel}</span>
+            <span className="manifest-dispatch-print-meta-detail">SĐT: {destinationHubPhone}</span>
+            <span className="manifest-dispatch-print-meta-detail">Dự kiến đến: {hubExpectedArrivalLabel}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">Biển số xe</span>
@@ -68,8 +68,8 @@ export default function ManifestDispatchPrintView({ manifest, links, rows, visib
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">NCC / Tài xế</span>
             <span className="manifest-dispatch-print-meta-value">{carrier}</span>
-            <span className="text-[10px] font-semibold">SĐT: {driverPhone}</span>
-            <span className="text-[10px] font-semibold">Khởi hành: {departureDate}</span>
+            <span className="manifest-dispatch-print-meta-detail">SĐT: {driverPhone}</span>
+            <span className="manifest-dispatch-print-meta-detail">Khởi hành: {departureDate}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">Mã bảng kê</span>

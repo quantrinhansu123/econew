@@ -273,7 +273,7 @@ export class WaybillsService {
   async findAll(query: QueryWaybillsDto, currentUser: UserEntity) {
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 20);
-    const qb = this.waybillsRepository.createQueryBuilder('waybill').where('waybill.deleted_at IS NULL').leftJoinAndSelect('waybill.origin_hub', 'origin_hub').leftJoinAndSelect('waybill.dest_hub', 'dest_hub').leftJoinAndSelect('waybill.order', 'order').leftJoinAndSelect('waybill.last_mile_driver', 'last_mile_driver');
+    const qb = this.waybillsRepository.createQueryBuilder('waybill').where('waybill.deleted_at IS NULL').leftJoinAndSelect('waybill.origin_hub', 'origin_hub').leftJoinAndSelect('waybill.dest_hub', 'dest_hub').leftJoinAndSelect('waybill.current_hub', 'current_hub').leftJoinAndSelect('waybill.order', 'order').leftJoinAndSelect('waybill.last_mile_driver', 'last_mile_driver');
     this.applyFilters(qb, query);
     this.applyHubScope(qb, currentUser);
     const [items, total] = await qb.orderBy('waybill.created_at', 'DESC').skip((page - 1) * limit).take(limit).getManyAndCount();
@@ -565,7 +565,7 @@ export class WaybillsService {
   async findOne(id: string, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.waybillsRepository.findOne({
       where: { id, deleted_at: IsNull() } as any,
-      relations: ['origin_hub', 'dest_hub', 'last_mile_driver'],
+      relations: ['origin_hub', 'dest_hub', 'current_hub', 'last_mile_driver'],
     }) as WaybillRecord | null;
     if (!waybill) throw new NotFoundException('Waybill not found');
     this.assertWaybillAccess(waybill, currentUser);
@@ -841,7 +841,7 @@ export class WaybillsService {
   async updateCodReconciliation(id: string, dto: UpdateCodReconciliationDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.waybillsRepository.findOne({
       where: { id, deleted_at: IsNull() } as any,
-      relations: ['origin_hub', 'dest_hub'],
+      relations: ['origin_hub', 'dest_hub', 'current_hub'],
     }) as WaybillRecord | null;
     if (!waybill) throw new NotFoundException('Waybill not found');
     if (waybill.payment_type !== PaymentType.COD) {
@@ -924,6 +924,7 @@ export class WaybillsService {
       .where('waybill.deleted_at IS NULL')
       .leftJoinAndSelect('waybill.origin_hub', 'origin_hub')
       .leftJoinAndSelect('waybill.dest_hub', 'dest_hub')
+      .leftJoinAndSelect('waybill.current_hub', 'current_hub')
       .leftJoinAndSelect('waybill.order', 'order')
       .leftJoinAndSelect('waybill.last_mile_driver', 'last_mile_driver');
     this.applyFilters(qb, inventoryQuery);

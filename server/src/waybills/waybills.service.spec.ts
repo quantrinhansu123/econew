@@ -1125,6 +1125,7 @@ describe('WaybillsService', () => {
     });
     expect(result.meta).toMatchObject({ total_waybills: 1, total_freight: 120000 });
     expect(result.items[0]).toMatchObject({ remaining_packages: 2, trip_package_count: 2 });
+    expect(qb.leftJoinAndSelect).toHaveBeenCalledWith('waybill.current_hub', 'current_hub');
     expect(qb.andWhere).toHaveBeenCalledWith(
       'waybill.current_state IN (:...statuses)',
       { statuses: expect.arrayContaining([WaybillStatus.IN_TRANSIT]) },

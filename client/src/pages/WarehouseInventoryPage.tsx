@@ -931,6 +931,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                     <InventoryRow
                       key={`${waybill.id}-${waybill.split_id ?? 'base'}`}
                       waybill={waybill}
+                      hubs={hubs}
                       columns={visibleColumns}
                       rowIndex={rowIndex + 1}
                       isAllOrders={isAllOrders}
@@ -981,7 +982,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                   onCustomerLedger={openCustomerLedger}
                 />
               ) : (
-                <div className="grid gap-3 p-3 md:hidden">{displayedWaybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onSplit={openSplit} onCashVoucher={openCashVoucher} onCustomerLedger={openCustomerLedger} />)}</div>
+                <div className="grid gap-3 p-3 md:hidden">{displayedWaybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} hubs={hubs} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onSplit={openSplit} onCashVoucher={openCashVoucher} onCustomerLedger={openCustomerLedger} />)}</div>
               )}
             </>
           )}
@@ -1111,6 +1112,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
 
 function InventoryRow({
   waybill,
+  hubs,
   columns,
   rowIndex,
   isAllOrders,
@@ -1130,6 +1132,7 @@ function InventoryRow({
   onCashVoucher,
   onCustomerLedger,
 }: InventoryItemProps & {
+  hubs: HubSummary[];
   columns: InventoryColumnView[];
   rowIndex?: number;
   isAllOrders?: boolean;
@@ -1381,7 +1384,7 @@ function InventoryRow({
       case 'receiver_info':
         return <td className={`${cellClass} font-medium`}>{waybill.receiver_info || '—'}</td>;
       case 'current_hub':
-        return <td className={`${cellClass} text-muted-foreground`}>{formatHub(waybill.current_hub || waybill.origin_hub, waybill.current_hub_id || waybill.origin_hub_id)}</td>;
+        return <td className={`${cellClass} text-muted-foreground`}>{formatHub(waybill.current_hub || hubs.find((hub) => String(hub.id) === String(waybill.current_hub_id)) || waybill.origin_hub, waybill.current_hub_id || waybill.origin_hub_id)}</td>;
       case 'dest_hub':
         return <td className={`${cellClass} text-muted-foreground`}>{formatHub(waybill.dest_hub, waybill.dest_hub_id)}</td>;
       case 'payment_type':
@@ -1654,7 +1657,7 @@ function AllOrdersCompactTable({
   );
 }
 
-function InventoryCard({ waybill, isAllOrders, canUpdate, canEdit, openActionMenuId, onToggleActionMenu, onCloseActionMenu, onDetail, onEdit, onSplit, onCashVoucher }: InventoryItemProps & { isAllOrders: boolean }) {
+function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openActionMenuId, onToggleActionMenu, onCloseActionMenu, onDetail, onEdit, onSplit, onCashVoucher }: InventoryItemProps & { hubs: HubSummary[]; isAllOrders: boolean }) {
   return (
     <article className="rounded-2xl border border-border bg-white p-4 shadow-sm">
       <div className="flex items-start gap-3">
@@ -1678,7 +1681,7 @@ function InventoryCard({ waybill, isAllOrders, canUpdate, canEdit, openActionMen
 
       <div className="mt-4 rounded-xl bg-muted/20 p-3">
         <p className="text-[12px] font-medium text-muted-foreground">Luồng kho</p>
-        <p className="mt-2 text-[13px] font-bold text-foreground">{formatHub(waybill.current_hub || waybill.origin_hub, waybill.current_hub_id || waybill.origin_hub_id)}</p>
+        <p className="mt-2 text-[13px] font-bold text-foreground">{formatHub(waybill.current_hub || hubs.find((hub) => String(hub.id) === String(waybill.current_hub_id)) || waybill.origin_hub, waybill.current_hub_id || waybill.origin_hub_id)}</p>
         <p className="mt-1 text-[12px] font-medium text-muted-foreground">Đến: {formatHub(waybill.dest_hub, waybill.dest_hub_id)}</p>
       </div>
 
