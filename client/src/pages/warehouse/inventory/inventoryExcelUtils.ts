@@ -413,6 +413,8 @@ function inventoryExcelCellValue(
       return resolveCustomerName(waybill);
     case 'waybill_code':
       return displayCode(waybill);
+    case 'barcode':
+      return displayCode(waybill);
     case 'service_type':
       return resolveServiceType(waybill);
     case 'noi_den':

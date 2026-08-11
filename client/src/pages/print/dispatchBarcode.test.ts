@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDispatchBarcodeUrl } from './dispatchBarcode';
+import { buildDispatchBarcodeUrl, buildManifestScanPath, buildManifestScanUrl, buildQrCodeUrl } from './dispatchBarcode';
 import {
   getDefaultVisibleDispatchColumnIds,
   getSelectableDispatchColumns,
@@ -19,5 +19,13 @@ describe('dispatch bill barcode column', () => {
     expect(url).toContain('bcid=code128');
     expect(url).toContain('text=ECO%20HAN%2F109178');
     expect(buildDispatchBarcodeUrl('  ')).toBe('');
+  });
+
+  it('builds a unique manifest QR that opens the exact manifest detail route', () => {
+    expect(buildManifestScanPath(109)).toBe('/warehouse/manifests/109');
+    expect(buildManifestScanUrl(109, 'http://localhost:6060/')).toBe('http://localhost:6060/warehouse/manifests/109');
+    expect(buildQrCodeUrl(buildManifestScanUrl(109, 'http://localhost:6060'))).toContain(
+      encodeURIComponent('http://localhost:6060/warehouse/manifests/109'),
+    );
   });
 });

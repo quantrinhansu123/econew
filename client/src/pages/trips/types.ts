@@ -35,6 +35,7 @@ export interface ManifestDetail extends ManifestSummary {
 export interface Trip {
   id: string | number;
   truck_id?: string | number | null;
+  manual_license_plate?: string | null;
   manifest_id?: string | number | null;
   start_hub_id?: string | number | null;
   end_hub_id?: string | number | null;

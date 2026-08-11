@@ -174,56 +174,76 @@ export class TripsService {
 
   async update(id: string, dto: UpdateTripDto, currentUser: UserEntity): Promise<TripEntity> {
     const trip = await this.findOne(id, currentUser);
-    if (String(trip.status) === 'CANCELLED') {
-      throw new BadRequestException('Không thể sửa chuyến đã hủy');
+    const isCancelledTrip = String(trip.status) === 'CANCELLED';
+    if (isCancelledTrip && (dto.departure_time !== undefined || dto.arrival_time !== undefined || dto.route_stops !== undefined)) {
+      throw new BadRequestException('Chuyến đã hủy chỉ được sửa BKS, NCC và cước xe');
     }
     const previousVendorId = this.resolveTripVendorId(trip);
     if (dto.truck_id !== undefined) {
-      if (trip.status !== TripStatus.PLANNED) {
-        throw new BadRequestException('Chỉ được đổi xe khi chuyến chưa khởi hành');
-      }
-      const nextTruckId = String(dto.truck_id);
+      const nextTruckId = dto.truck_id == null ? null : String(dto.truck_id);
       const truckChanged = trip.truck_id !== nextTruckId;
-      const truck = !truckChanged
+      const truck = nextTruckId == null
+        ? null
+        : !truckChanged
         ? trip.truck
-        : await this.validateTruck(dto.truck_id);
-      if (trip.truck_id && truckChanged) {
+        : await this.validateTruckForTripUpdate(dto.truck_id as number, trip.status);
+      const isHistoricalCorrection = !ACTIVE_TRIP_STATUSES.includes(trip.status);
+      if (trip.truck_id && truckChanged && !isHistoricalCorrection) {
         const oldTruck = await this.trucksRepository.findOne({ where: { id: trip.truck_id } });
         if (oldTruck) {
-          oldTruck.status = TruckStatus.AVAILABLE;
-          await this.trucksRepository.save(oldTruck);
+          const otherActiveTrips = await this.tripsRepository.count({
+            where: {
+              truck_id: trip.truck_id,
+              status: In(ACTIVE_TRIP_STATUSES),
+              id: Not(trip.id),
+            } as any,
+          });
+          if (otherActiveTrips === 0) {
+            oldTruck.status = TruckStatus.AVAILABLE;
+            await this.trucksRepository.save(oldTruck);
+          }
         }
       }
       trip.truck_id = nextTruckId;
+      trip.truck = truck;
       if (truck && truckChanged) {
-        truck.status = TruckStatus.ASSIGNED;
-        await this.trucksRepository.save(truck);
+        trip.driver_name = truck.ten_lai_xe ?? truck.driver?.full_name ?? null;
+        trip.driver_phone = truck.driver?.phone ?? null;
+        if (!isHistoricalCorrection) {
+          truck.status = trip.status === TripStatus.PLANNED ? TruckStatus.ASSIGNED : TruckStatus.IN_TRIP;
+          await this.trucksRepository.save(truck);
+        }
       }
       if (truck && dto.vendor_id === undefined) {
         trip.vendor_id = truck.vendor_id ?? null;
         trip.vendor = truck.vendor ?? null;
       }
     }
+    if (dto.manual_license_plate !== undefined) {
+      trip.manual_license_plate = dto.manual_license_plate?.trim().toUpperCase() || null;
+    }
     if (dto.vendor_id !== undefined) {
-      const vendor = await this.vendorsService.findOne(dto.vendor_id);
       const paidAmount = this.toNumber(trip.vendor_paid_amount);
-      if (paidAmount > 0 && previousVendorId && previousVendorId !== String(vendor.id)) {
+      const nextVendorId = dto.vendor_id == null || dto.vendor_id === '' ? null : String(dto.vendor_id);
+      if (paidAmount > 0 && previousVendorId !== nextVendorId) {
         throw new BadRequestException('Không thể đổi NCC khi chuyến đã phát sinh thanh toán');
       }
-      trip.vendor_id = String(vendor.id);
+      const vendor = nextVendorId ? await this.vendorsService.findOne(nextVendorId) : null;
+      trip.vendor_id = vendor ? String(vendor.id) : null;
       trip.vendor = vendor;
     }
     if (dto.trip_cost !== undefined) {
-      this.assertNonNegative(dto.trip_cost);
       const paidAmount = this.toNumber(trip.vendor_paid_amount);
-      if (paidAmount > dto.trip_cost) {
+      const nextTripCost = dto.trip_cost == null ? null : dto.trip_cost;
+      if (nextTripCost != null) this.assertNonNegative(nextTripCost);
+      if (paidAmount > (nextTripCost ?? 0)) {
         throw new BadRequestException('Cước xe không được thấp hơn số tiền đã thanh toán');
       }
       const previousTripCost = this.toNumber(trip.trip_cost);
       if (previousTripCost > 0 && this.toNumber(trip.other_costs) === previousTripCost) {
         trip.other_costs = null;
       }
-      trip.trip_cost = String(dto.trip_cost);
+      trip.trip_cost = nextTripCost == null ? null : String(nextTripCost);
     }
     const departureTime = dto.departure_time !== undefined ? this.normalizeDate(dto.departure_time, 'departure_time') : trip.departure_time;
     const arrivalTime = dto.arrival_time !== undefined ? this.normalizeOptionalDate(dto.arrival_time, 'arrival_time') : trip.arrival_time;
@@ -615,7 +635,7 @@ export class TripsService {
       dest_hub: trip.manifest?.dest_hub
         ? { id: trip.manifest.dest_hub.id, code: trip.manifest.dest_hub.code, name: trip.manifest.dest_hub.name }
         : null,
-      license_plate: trip.truck?.license_plate ?? trip.truck?.bks ?? null,
+      license_plate: trip.manual_license_plate ?? trip.truck?.license_plate ?? trip.truck?.bks ?? null,
       driver_name: trip.driver_name?.trim()
         || trip.truck?.ten_lai_xe?.trim()
         || trip.truck?.driver?.full_name?.trim()
@@ -720,7 +740,7 @@ export class TripsService {
         trip_id: trip.id,
         manifest_id: trip.manifest_id,
         status: trip.status,
-        license_plate: trip.truck?.license_plate ?? trip.truck?.bks ?? null,
+        license_plate: trip.manual_license_plate ?? trip.truck?.license_plate ?? trip.truck?.bks ?? null,
         nha_xe: trip.vendor?.name ?? trip.truck?.nha_xe ?? trip.truck?.vendor?.name ?? null,
         driver_name: trip.driver_name ?? trip.truck?.ten_lai_xe ?? null,
         driver_phone: trip.driver_phone,
@@ -893,6 +913,18 @@ export class TripsService {
     return truck;
   }
 
+  private async validateTruckForTripUpdate(truckId: number, tripStatus: TripStatus): Promise<TruckEntity> {
+    const truck = await this.trucksRepository.findOne({
+      where: { id: String(truckId) },
+      relations: ['vendor', 'driver'],
+    });
+    if (!truck) throw new NotFoundException('Truck not found');
+    if (ACTIVE_TRIP_STATUSES.includes(tripStatus) && truck.status !== TruckStatus.AVAILABLE) {
+      throw new BadRequestException('Truck must be AVAILABLE');
+    }
+    return truck;
+  }
+
   private normalizeOptionalId(value: unknown, fieldName: string): string | null {
     if (value === undefined || value === null || value === '') return null;
     const text = String(value);
@@ -977,7 +1009,7 @@ export class TripsService {
       total_collect,
       total_revenue,
       expense_total,
-      license_plate: trip.truck?.license_plate ?? trip.truck?.bks ?? null,
+      license_plate: trip.manual_license_plate ?? trip.truck?.license_plate ?? trip.truck?.bks ?? null,
       driver_name: trip.driver_name?.trim()
         || trip.truck?.ten_lai_xe?.trim()
         || trip.truck?.driver?.full_name?.trim()

@@ -1,5 +1,6 @@
 import type { InventoryPrintPayload } from './inventoryPrintUtils';
 import { getInventoryPrintColumnWidth } from '../warehouse/inventory/inventoryColumns';
+import { buildDispatchBarcodeUrl } from './dispatchBarcode';
 
 interface Props {
   data: InventoryPrintPayload;
@@ -55,7 +56,9 @@ export default function InventoryStockListTemplate({ data }: Props) {
                   key={col.id}
                   className={`col-inv-${col.id} ${numericCols.has(col.id) ? 'col-right' : ''}`}
                 >
-                  {row[col.id] ?? ''}
+                  {col.id === 'barcode' && row[col.id]
+                    ? <img src={buildDispatchBarcodeUrl(row[col.id])} alt={`Mã vạch ${row[col.id]}`} className="dispatch-barcode-image" />
+                    : row[col.id] ?? ''}
                 </td>
               ))}
             </tr>

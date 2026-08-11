@@ -24,6 +24,7 @@ import {
   Users,
   Warehouse,
   Receipt,
+  ScanBarcode,
   Wallet,
 } from 'lucide-react';
 import type { ModuleCardProps } from '../components/ui/ModuleCard';
@@ -86,8 +87,10 @@ export const moduleGroups: ModuleGroup[] = [
     id: 'delivery',
     path: '/delivery',
     section: 'Quản lý giao hàng',
-    requiredRoleMask: WAREHOUSE_ROLES | DELIVERY_ROLES,
-    items: [],
+    requiredRoleMask: WAREHOUSE_ROLES | DELIVERY_ROLES | MANAGER_ROLES,
+    items: [
+      { icon: ScanBarcode, title: 'Báo phát', description: 'Chụp phiếu có chữ ký, nhận diện mã và cập nhật giao thành công.', colorScheme: 'green', path: '/delivery/proof', requiredRoleMask: WAREHOUSE_ROLES | DELIVERY_ROLES | MANAGER_ROLES },
+    ],
   },
   {
     id: 'trips',
@@ -107,7 +110,7 @@ export const moduleGroups: ModuleGroup[] = [
     path: '/search',
     section: 'Tìm kiếm chuyên sâu',
     items: [
-      { icon: Search, title: 'Tìm kiếm tổng hợp', description: 'Tra cứu vận đơn, chuyến xe và dữ liệu liên quan.', colorScheme: 'blue', path: '/search/general' },
+      { icon: Search, title: 'Tìm kiếm tổng hợp', description: 'Nhập hoặc quét mã để mở đúng vận đơn, bảng kê và dữ liệu liên quan.', colorScheme: 'blue', path: '/search/general' },
       { icon: PackageSearch, title: 'Kết quả tìm kiếm — vận đơn', description: 'Xem kết quả tìm kiếm theo vận đơn.', colorScheme: 'green', path: '/search/waybills' },
       { icon: FileSearch, title: 'Kết quả tìm kiếm — chuyến xe', description: 'Xem kết quả tìm kiếm theo chuyến xe.', colorScheme: 'teal', path: '/search/trips' },
     ],

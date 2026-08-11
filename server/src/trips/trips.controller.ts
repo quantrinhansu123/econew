@@ -81,7 +81,7 @@ export class TripsController {
 
   @Patch(':id')
   @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Update trip schedule; truck changes are limited to planned trips' })
+  @ApiOperation({ summary: 'Update trip schedule or transport information in every trip status' })
   update(@Param('id') id: string, @Body() dto: UpdateTripDto, @CurrentUser() currentUser: UserEntity) {
     return this.tripsService.update(id, dto, currentUser);
   }

@@ -56,12 +56,14 @@ describe('inventory visible columns', () => {
     expect(defaults).not.toContain('order_code');
     expect(defaults).not.toContain('priority');
     expect(defaults).not.toContain('bill_images');
+    expect(defaults).not.toContain('barcode');
 
-    const selected = normalizeInventoryVisibleColumnIds(['priority', 'order_code', 'bill_images'], true);
+    const selected = normalizeInventoryVisibleColumnIds(['priority', 'order_code', 'bill_images', 'barcode'], true);
     expect(selected).toContain('order_code');
     expect(selected).toContain('priority');
     expect(selected).toContain('bill_images');
-    expect(selected).toEqual(['priority', 'order_code', 'bill_images', 'actions']);
+    expect(selected).toContain('barcode');
+    expect(selected).toEqual(['priority', 'order_code', 'bill_images', 'barcode', 'actions']);
   });
 
   it('keeps receiver, ward, and district columns optional', () => {

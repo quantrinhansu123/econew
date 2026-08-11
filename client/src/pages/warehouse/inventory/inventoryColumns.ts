@@ -104,6 +104,7 @@ export const INVENTORY_PRINT_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, nu
   order_code: 7,
   customer_name: 8,
   waybill_code: 8,
+  barcode: 12,
   bill_info: 9,
   cong_sg: 8,
   service_type: 4,
@@ -156,6 +157,7 @@ export type InventoryColumnId =
   | 'stack_position'
   | 'order_code'
   | 'waybill_code'
+  | 'barcode'
   | 'customer_name'
   | 'bill_info'
   | 'service_type'
@@ -212,6 +214,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'order_code', label: 'Mã đơn hàng', defaultVisible: false },
   { id: 'customer_name', label: 'Tên khách', defaultVisible: true },
   { id: 'waybill_code', label: 'Mã bill', defaultVisible: true },
+  { id: 'barcode', label: 'Mã vạch', defaultVisible: false },
   { id: 'bill_info', label: 'Bill / Nội dung hàng', defaultVisible: false },
   { id: 'service_type', label: 'Dịch vụ', defaultVisible: false },
   { id: 'trip_label', label: 'Phân xe', defaultVisible: false },
@@ -342,6 +345,7 @@ export const ALL_ORDERS_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>
   customer_name: 135,
   ma_kh: 100,
   waybill_code: 120,
+  barcode: 180,
   cong_sg: 160,
   package_count: 90,
   service_type: 120,
@@ -425,6 +429,7 @@ const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   customer_name: 'Tên khách',
   ma_kh: 'Mã KH',
   waybill_code: 'Bill',
+  barcode: 'Mã vạch',
   cong_sg: 'Nội dung',
   trip_label: 'Chuyến / xe',
   delivery_staff: 'NV phát',

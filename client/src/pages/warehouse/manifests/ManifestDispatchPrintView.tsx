@@ -3,6 +3,7 @@ import type { DispatchPrintColumnId } from '../../print/dispatchPrintColumns';
 import type { DispatchLink } from './manifestDispatchDefaults';
 import { manifestPrintCode, manifestPrintTrip } from './manifestDispatchPrintUtils';
 import type { LoadPlanningManifest, ManifestDispatchFields } from './types';
+import { buildManifestScanUrl, buildQrCodeUrl } from '../../print/dispatchBarcode';
 
 interface Props {
   manifest: LoadPlanningManifest;
@@ -27,9 +28,11 @@ const hubLabel = (
 
 export default function ManifestDispatchPrintView({ manifest, links, rows, visibleColumnIds, destinationHub: destinationHubOverride, destinationHubId }: Props) {
   const trip = manifestPrintTrip(manifest);
-  const licensePlate = trip?.truck?.bks?.trim() || trip?.truck?.license_plate?.trim() || trip?.carrier_label?.trim() || '—';
-  const carrier = trip?.carrier_label?.trim() || trip?.driver_name || trip?.truck?.ten_lai_xe || '—';
+  const licensePlate = trip?.manual_license_plate?.trim() || trip?.truck?.bks?.trim() || trip?.truck?.license_plate?.trim() || '—';
+  const carrier = trip?.vendor?.name || trip?.vendor?.code || trip?.truck?.vendor?.name || trip?.truck?.nha_xe || trip?.carrier_label?.trim() || trip?.driver_name || '—';
   const manifestCode = manifestPrintCode(manifest);
+  const manifestScanUrl = buildManifestScanUrl(manifest.id);
+  const manifestQrUrl = buildQrCodeUrl(manifestScanUrl);
   const originHub = hubLabel(manifest.origin_hub, manifest.origin_hub_id);
   const destinationHub = hubLabel(destinationHubOverride ?? manifest.dest_hub, destinationHubId ?? manifest.dest_hub_id);
   const originHubPhone = manifest.origin_hub?.phone || manifest.origin_hub?.manager_phone || '—';
@@ -78,6 +81,11 @@ export default function ManifestDispatchPrintView({ manifest, links, rows, visib
           <div className="manifest-dispatch-print-meta-item">
             <span className="manifest-dispatch-print-meta-label">Số dòng hàng</span>
             <span className="manifest-dispatch-print-meta-value">{links.length.toLocaleString('vi-VN')}</span>
+          </div>
+          <div className="manifest-dispatch-print-meta-item manifest-dispatch-print-qr-item">
+            <span className="manifest-dispatch-print-meta-label">Quét mở bảng kê</span>
+            <img src={manifestQrUrl} alt={`Mã quét bảng kê ${manifestCode}`} className="manifest-dispatch-print-qr" />
+            <span className="manifest-dispatch-print-meta-detail">{manifestCode}</span>
           </div>
         </div>
       </header>

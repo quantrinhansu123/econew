@@ -84,6 +84,8 @@ export function inventoryPrintCellValue(
       return waybill.order_code || '';
     case 'waybill_code':
       return waybill.waybill_code || waybill.code || String(waybill.id);
+    case 'barcode':
+      return waybill.waybill_code || waybill.code || String(waybill.id);
     case 'customer_name':
       return resolveCustomerName(waybill);
     case 'bill_info':

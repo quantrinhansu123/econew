@@ -1832,6 +1832,66 @@ describe('WaybillsService', () => {
     await expect(service.getByCode('ECO1', warehouse)).resolves.toMatchObject({ waybill_code: 'ECO1' });
   });
 
+  it('resolveProofOfDelivery distinguishes a ready waybill from an already delivered one', async () => {
+    waybillsRepository.findOne
+      .mockResolvedValueOnce(makeWaybill({ current_state: WaybillStatus.RETURNED, status: WaybillStatus.RETURNED }))
+      .mockResolvedValueOnce(makeWaybill({ current_state: WaybillStatus.DELIVERED, status: WaybillStatus.DELIVERED }));
+
+    await expect(service.resolveProofOfDelivery(' eco1 ', warehouse)).resolves.toMatchObject({
+      outcome: 'READY',
+      waybill: { id: '1', waybill_code: 'ECO1', current_state: WaybillStatus.RETURNED },
+    });
+    await expect(service.resolveProofOfDelivery('ECO1', warehouse)).resolves.toMatchObject({
+      outcome: 'ALREADY_DELIVERED',
+      waybill: { id: '1', current_state: WaybillStatus.DELIVERED },
+    });
+  });
+
+  it('confirmProofOfDelivery attaches the matching signed image and delivers an old waybill directly', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.CANCELLED,
+      status: WaybillStatus.CANCELLED,
+      delivery_photo_url: '/uploads/waybill-images/old.jpg',
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+
+    const result = await service.confirmProofOfDelivery({
+      waybill_code: 'ECO1',
+      photo_url: '/uploads/waybill-images/signed.jpg',
+    }, warehouse);
+
+    expect(result).toMatchObject({ outcome: 'SUCCESS' });
+    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      current_state: WaybillStatus.DELIVERED,
+      status: WaybillStatus.DELIVERED,
+      delivery_photo_url: '/uploads/waybill-images/old.jpg|/uploads/waybill-images/signed.jpg',
+      delivered_at: expect.any(Date),
+      delivery_time: expect.any(Date),
+      last_audit_action: 'PROOF_OF_DELIVERY',
+    }));
+    expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'PROOF_OF_DELIVERY',
+      waybill_id: '1',
+    }));
+  });
+
+  it('confirmProofOfDelivery never attaches a new image when the waybill is already delivered', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.DELIVERED,
+      status: WaybillStatus.DELIVERED,
+      delivery_photo_url: '/uploads/waybill-images/original-proof.jpg',
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+
+    await expect(service.confirmProofOfDelivery({
+      waybill_code: 'ECO1',
+      photo_url: '/uploads/waybill-images/wrong.jpg',
+    }, warehouse)).resolves.toMatchObject({ outcome: 'ALREADY_DELIVERED' });
+
+    expect((waybill as any).delivery_photo_url).toBe('/uploads/waybill-images/original-proof.jpg');
+    expect(waybillsRepository.save).not.toHaveBeenCalled();
+  });
+
   it('getByCode finds a legacy hyphenated record from the contiguous printed code', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ waybill_code: 'ECO-HAN-108962' }));
 

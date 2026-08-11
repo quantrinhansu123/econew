@@ -43,6 +43,7 @@ import { OrdersService } from '../orders/orders.service';
 import { OrderEntity } from '../orders/order.entity';
 import { VendorsService } from '../vendors/vendors.service';
 import { normalizeWaybillPhotos } from '../common/waybill-photos';
+import { ProofOfDeliveryDto } from './dto/proof-of-delivery.dto';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
 import { VendorEntity } from '../vendors/vendor.entity';
 
@@ -874,7 +875,58 @@ export class WaybillsService {
   }
 
   async getByCode(code: string, currentUser: UserEntity): Promise<WaybillRecord> {
+    const waybill = await this.findWaybillByScannedCode(code, currentUser);
+    return this.sanitize(waybill, currentUser);
+  }
+
+  async resolveProofOfDelivery(code: string, currentUser: UserEntity) {
+    const waybill = await this.findWaybillByScannedCode(code, currentUser);
+    const alreadyDelivered = this.getStatus(waybill) === WaybillStatus.DELIVERED;
+    return {
+      outcome: alreadyDelivered ? 'ALREADY_DELIVERED' : 'READY',
+      waybill: {
+        id: String(waybill.id),
+        waybill_code: waybill.waybill_code,
+        current_state: this.getStatus(waybill),
+        delivery_photo_url: waybill.delivery_photo_url ?? null,
+      },
+    };
+  }
+
+  async confirmProofOfDelivery(dto: ProofOfDeliveryDto, currentUser: UserEntity) {
+    const waybill = await this.findWaybillByScannedCode(dto.waybill_code, currentUser);
+    if (this.getStatus(waybill) === WaybillStatus.DELIVERED) {
+      return {
+        outcome: 'ALREADY_DELIVERED',
+        waybill: this.sanitize(waybill, currentUser),
+      };
+    }
+
+    const auditBefore = this.buildAuditSnapshot(waybill);
+    waybill.delivery_photo_url = normalizeWaybillPhotos(
+      [waybill.delivery_photo_url, dto.photo_url.trim()].filter(Boolean).join('|'),
+    );
+    this.setStatus(waybill, WaybillStatus.DELIVERED);
+    Object.assign(waybill, {
+      delivered_at: new Date(),
+      delivery_time: new Date(),
+      updated_by: currentUser.id,
+    });
+    const saved = await this.saveWithAudit(waybill, currentUser, 'PROOF_OF_DELIVERY');
+    await this.recordWaybillChange(
+      String(waybill.id),
+      'PROOF_OF_DELIVERY',
+      currentUser,
+      auditBefore,
+      waybill,
+    );
+    await this.markTripAllocationDelivered(String(waybill.id));
+    return { outcome: 'SUCCESS', waybill: saved };
+  }
+
+  private async findWaybillByScannedCode(code: string, currentUser: UserEntity): Promise<WaybillRecord> {
     const rawCode = code.trim();
+    if (!rawCode) throw new BadRequestException('Waybill code is required');
     const compactCode = rawCode.toUpperCase().replace(/[-\s]+/g, '');
     const candidates = [...new Set([
       rawCode,
@@ -890,7 +942,7 @@ export class WaybillsService {
     }) as WaybillRecord | null;
     if (!waybill) throw new NotFoundException('Waybill not found');
     this.assertWaybillAccess(waybill, currentUser);
-    return this.sanitize(waybill, currentUser);
+    return waybill;
   }
 
   getInventory(query: QueryWaybillsDto, currentUser: UserEntity) {

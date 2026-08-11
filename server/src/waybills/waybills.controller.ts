@@ -28,6 +28,7 @@ import { WaybillsService } from './waybills.service';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
 import { UpdateDeliveryPreparationDto } from './dto/update-delivery-preparation.dto';
 import { UpdateCodReconciliationDto } from './dto/update-cod-reconciliation.dto';
+import { ProofOfDeliveryDto } from './dto/proof-of-delivery.dto';
 
 @ApiTags('Waybills')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -142,6 +143,20 @@ export class WaybillsController {
   @ApiOperation({ summary: 'Find a waybill by code' })
   getByCode(@Param('code') code: string, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.getByCode(code, currentUser);
+  }
+
+  @Get('proof-of-delivery/resolve')
+  @RequireRoles(Roles.WAREHOUSE, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Resolve an exact waybill before attaching signed proof of delivery' })
+  resolveProofOfDelivery(@Query('code') code: string, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.resolveProofOfDelivery(code, currentUser);
+  }
+
+  @Post('proof-of-delivery')
+  @RequireRoles(Roles.WAREHOUSE, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Attach signed proof and immediately mark a waybill delivered' })
+  confirmProofOfDelivery(@Body() dto: ProofOfDeliveryDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.confirmProofOfDelivery(dto, currentUser);
   }
 
   @Get('cash-vouchers')
