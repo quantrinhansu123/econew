@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BarChart3, Building2, Calculator, PackagePlus, Search, Settings, Truck, Users, Warehouse } from 'lucide-react';
+import { BarChart3, Building2, Calculator, PackagePlus, ScanBarcode, Search, Settings, Truck, Users, Warehouse } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ActionCard } from '../components/ui/ActionCard';
 import { getGreetingPeriod, getLoginDisplayName, getStoredAuthUser } from '../lib/authUser';
@@ -8,8 +8,9 @@ import type { AuthUserProfile } from './login/types';
 const MANAGER_ROLES = 32 | 64;
 
 const WAREHOUSE_ORDER_ROLES = 1 | 2 | 32 | 64;
+const DELIVERY_ROLES = 1 | 2 | 4 | 8 | 32 | 64;
 
-const dashboardModules = [
+export const dashboardModules = [
   {
     icon: Warehouse,
     title: 'Quản lý kho & bưu cục',
@@ -24,6 +25,14 @@ const dashboardModules = [
     href: '/orders',
     colorScheme: 'green' as const,
     requiredRoleMask: WAREHOUSE_ORDER_ROLES,
+  },
+  {
+    icon: ScanBarcode,
+    title: 'Quản lý giao hàng',
+    description: 'Báo phát bằng ảnh, nhận diện mã vận đơn và lưu bằng chứng giao hàng.',
+    href: '/delivery',
+    colorScheme: 'green' as const,
+    requiredRoleMask: DELIVERY_ROLES,
   },
   {
     icon: Truck,
@@ -149,4 +158,3 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-
