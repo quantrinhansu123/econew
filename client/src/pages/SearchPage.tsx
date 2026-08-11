@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Eye, Filter, Loader2, MapPin, PackageSearch, Search, Tag, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Eye, Filter, Loader2, MapPin, PackageSearch, ScanLine, Search, Tag, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
@@ -8,6 +8,8 @@ import { FilterPanel, type FilterPanelGroup } from '../components/ui/FilterPanel
 import { FilterSelect } from '../components/ui/FilterSelect';
 import SearchTripDetailDialog from './search/dialogs/SearchTripDetailDialog';
 import SearchWaybillDetailDialog from './search/dialogs/SearchWaybillDetailDialog';
+import WaybillBarcodeScannerDialog from './search/dialogs/WaybillBarcodeScannerDialog';
+import { findExactManifestMatch, parseScannedLookupValue } from './search/scanLookupUtils';
 import type { FilterOption, HubSummary, ListResponse, SearchFilters, SearchResultItem, SearchResultType, TripDetail, WaybillDetail } from './search/types';
 
 const SEARCH_DEBOUNCE_MS = 350;
@@ -46,7 +48,12 @@ const dateRangeOptions: FilterOption[] = [
   { value: '30d', label: '30 ngày gần nhất' },
 ];
 
-const suggestionChips = ['Mã bill', 'Mã khách', 'Nội dung hàng', 'Người nhận', 'SĐT người nhận'];
+const suggestionChips = ['Mã bill', 'Mã bảng kê', 'Mã khách', 'Nội dung hàng', 'Người nhận', 'SĐT người nhận'];
+
+interface ManifestLookupRow {
+  id: string | number;
+  manifest_code?: string | null;
+}
 
 const normalizeList = <T,>(response: ListResponse<T> | T[]) => Array.isArray(response) ? response : response.data || response.items || response.results || [];
 const normalizeTotal = <T,>(response: ListResponse<T> | T[], fallback: number) => Array.isArray(response) ? fallback : response.total ?? response.meta?.total ?? fallback;
@@ -171,6 +178,9 @@ export default function SearchPage() {
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [lookupError, setLookupError] = useState('');
+  const [isCodeResolving, setIsCodeResolving] = useState(false);
+  const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [waybillDetail, setWaybillDetail] = useState<WaybillDetail | null>(null);
   const [tripDetail, setTripDetail] = useState<TripDetail | null>(null);
@@ -251,6 +261,54 @@ export default function SearchPage() {
     }
   };
 
+  const openScannedCode = async (scannedValue?: string) => {
+    const parsed = parseScannedLookupValue(scannedValue ?? filters.keyword);
+    if (!parsed || (parsed.kind === 'CODE' && parsed.value.length < 2)) {
+      setLookupError('Nhập hoặc quét mã vận đơn/bảng kê hợp lệ.');
+      return;
+    }
+
+    setIsCodeResolving(true);
+    setLookupError('');
+    if (parsed.kind === 'CODE' && scannedValue !== undefined) {
+      setFilters((current) => ({ ...current, keyword: parsed.value, page: 1 }));
+    }
+    try {
+      if (parsed.kind === 'MANIFEST_ID') {
+        const manifest = await apiRequest<ManifestLookupRow>(`/manifests/${encodeURIComponent(parsed.value)}`);
+        navigate(`/warehouse/manifests/${manifest.id}`);
+        return;
+      }
+
+      try {
+        const waybill = await apiRequest<WaybillDetail>(`/waybills/code/${encodeURIComponent(parsed.value)}`);
+        setWaybillDetail(waybill);
+        setTripDetail(null);
+        return;
+      } catch (waybillError) {
+        if (!(waybillError instanceof ApiError) || waybillError.status !== 404) throw waybillError;
+      }
+
+      const params = new URLSearchParams({ keyword: parsed.value, page: '1', limit: '100' });
+      const response = await apiRequest<ListResponse<ManifestLookupRow> | ManifestLookupRow[]>(`/manifests?${params.toString()}`);
+      const exactManifest = findExactManifestMatch(normalizeList(response), parsed.value);
+      if (!exactManifest) {
+        setLookupError(`Không tìm thấy vận đơn hoặc bảng kê có mã “${parsed.value}”.`);
+        return;
+      }
+      navigate(`/warehouse/manifests/${exactManifest.id}`);
+    } catch (lookupRequestError) {
+      setLookupError(getErrorMessage(lookupRequestError));
+    } finally {
+      setIsCodeResolving(false);
+    }
+  };
+
+  const handleBarcodeDetected = (value: string) => {
+    setIsBarcodeScannerOpen(false);
+    void openScannedCode(value);
+  };
+
   const filterPanelGroups: FilterPanelGroup[] = [
     { id: 'type', title: 'Loại kết quả', icon: Tag, options: typeOptions, value: filters.type === 'ALL' ? [] : [filters.type], onChange: value => updateFilters({ type: (value[0] as SearchResultType) || 'ALL' }) },
     { id: 'status', title: 'Trạng thái', icon: PackageSearch, options: statusOptions, value: filters.statuses, onChange: value => updateFilters({ statuses: value }) },
@@ -263,14 +321,17 @@ export default function SearchPage() {
   return (
     <div className="h-full min-h-0 flex flex-col gap-2">
       {error && <div className="flex items-center gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-[13px] font-semibold text-red-600"><AlertTriangle size={16} />{error}</div>}
+      {lookupError && <div className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] font-semibold text-amber-700"><AlertTriangle size={16} />{lookupError}</div>}
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
         <div className="p-3 border-b border-border shrink-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => navigate(-1)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-3 text-[13px] font-bold text-foreground hover:bg-muted"><ArrowLeft size={16} />Quay lại</button>
             <div className="relative min-w-[220px] flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input value={filters.keyword} onChange={event => updateFilters({ keyword: event.target.value })} placeholder="Tìm mã bill, mã KH, nội dung hàng, người nhận, SĐT..." className="h-10 w-full rounded-xl border border-border bg-card pl-9 pr-3 text-[13px] outline-none focus:ring-2 focus:ring-primary/10" />
+              <input autoComplete="off" value={filters.keyword} onChange={event => { setLookupError(''); updateFilters({ keyword: event.target.value }); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void openScannedCode(); } }} placeholder="Tìm hoặc quét mã vận đơn, mã bảng kê..." className="h-10 w-full rounded-xl border border-border bg-card pl-9 pr-3 text-[13px] outline-none focus:ring-2 focus:ring-primary/10" />
             </div>
+            <button type="button" onClick={() => void openScannedCode()} disabled={isCodeResolving} className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-extrabold text-white hover:bg-primary/90 disabled:opacity-60">{isCodeResolving ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}Mở mã</button>
+            <button type="button" onClick={() => { setLookupError(''); setIsBarcodeScannerOpen(true); }} className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-[13px] font-extrabold text-emerald-700 hover:bg-emerald-100"><ScanLine size={16} />Quét mã</button>
             <button type="button" onClick={() => setIsFilterPanelOpen(true)} className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card text-foreground hover:bg-muted"><Filter size={17} /></button>
             {activeFilterCount > 0 && <button type="button" onClick={clearFilters} className="order-last basis-full md:order-none md:basis-auto inline-flex h-10 items-center justify-center gap-1 rounded-xl border border-red-100 bg-red-50 px-3 text-[13px] font-bold text-red-500 hover:bg-red-100"><X size={15} />Xóa {activeFilterCount} bộ lọc</button>}
             <div className="hidden md:block flex-1" />
@@ -314,8 +375,8 @@ export default function SearchPage() {
       <FilterPanel open={isFilterPanelOpen} activeCount={activeFilterCount} groups={filterPanelGroups} onClose={() => setIsFilterPanelOpen(false)} onApply={() => setIsFilterPanelOpen(false)} onClear={clearFilters} />
       <SearchWaybillDetailDialog item={waybillDetail} isLoading={isDetailLoading} error={detailError} onClose={() => { setWaybillDetail(null); setDetailError(''); }} />
       <SearchTripDetailDialog item={tripDetail} isLoading={isDetailLoading} error={detailError} onClose={() => { setTripDetail(null); setDetailError(''); }} />
+      {isBarcodeScannerOpen && <WaybillBarcodeScannerDialog open onClose={() => setIsBarcodeScannerOpen(false)} onDetected={handleBarcodeDetected} title="Quét vận đơn hoặc bảng kê" description="Tự nhận barcode vận đơn và QR/mã bảng kê" />}
     </div>
   );
 }
-
 

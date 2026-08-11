@@ -483,6 +483,17 @@
   font-family: 'Times New Roman', Times, serif;
 }
 
+.manifest-dispatch-print-qr-item {
+  align-items: center;
+  text-align: center;
+}
+
+.manifest-dispatch-print-qr {
+  width: 18mm;
+  height: 18mm;
+  object-fit: contain;
+}
+
 .manifest-dispatch-print-footer {
   margin: 8px 2px 0;
   font-size: 7.5pt;

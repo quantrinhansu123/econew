@@ -25,6 +25,11 @@ export class QueryTrucksDto {
   @IsString()
   driver_id?: string;
 
+  @ApiPropertyOptional({ description: 'Lọc xe thuộc đúng nhà cung cấp (NCC)' })
+  @IsOptional()
+  @IsString()
+  vendor_id?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)

@@ -138,6 +138,7 @@ export class TrucksService {
     if (statuses.length) qb.andWhere('truck.status IN (:...statuses)', { statuses });
     if (query.loai_xe?.trim()) qb.andWhere('truck.loai_xe = :loaiXe', { loaiXe: query.loai_xe.trim() });
     if (query.driver_id) qb.andWhere('truck.driver_id = :driverId', { driverId: query.driver_id });
+    if (query.vendor_id) qb.andWhere('truck.vendor_id = :vendorId', { vendorId: query.vendor_id });
   }
 
   private parseList(value?: string): string[] {

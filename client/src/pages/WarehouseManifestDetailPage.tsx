@@ -42,7 +42,7 @@ const display = (value?: string | number | null, fallback = '—') => (value == 
 const manifestCode = (manifest?: LoadPlanningManifest | null) => manifest?.manifest_code || manifest?.code || (manifest ? `MF-${manifest.id}` : '—');
 const hubLabel = (hub?: { code?: string | null; name?: string | null } | null, id?: string | number | null) => hub?.code || hub?.name || (id ? `Hub #${id}` : '—');
 const manifestTrip = (manifest: LoadPlanningManifest) => manifest.trip ?? manifest.trips?.[0] ?? null;
-const resolveTruckPlate = (trip?: LoadPlanningManifest['trip']) => trip?.truck?.bks?.trim() || trip?.truck?.license_plate?.trim() || trip?.carrier_label?.trim() || null;
+const resolveTruckPlate = (trip?: LoadPlanningManifest['trip']) => trip?.manual_license_plate?.trim() || trip?.truck?.bks?.trim() || trip?.truck?.license_plate?.trim() || null;
 const tripLabel = (manifest: LoadPlanningManifest) => {
   const trip = manifestTrip(manifest);
   if (trip?.trip_code || trip?.code) return trip.trip_code || trip.code || '—';

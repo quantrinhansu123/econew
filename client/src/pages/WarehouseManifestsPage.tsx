@@ -18,8 +18,10 @@ import {
   getTripStatus,
   manifestOriginLane,
   manifestTrip as resolveManifestTrip,
+  normalizeManifestTransportStatus,
   resolveUserHubView,
-  splitActiveManifestsByMainHubOrigin,
+  splitTransportManifestsByMainHubOrigin,
+  summarizeManifestTransportStatuses,
 } from './warehouse/manifests/manifestHubUtils';
 import type { AddWaybillsFormState, AssignTripFormState, BadgeConfig, FilterOption, HubSummary, LoadPlanningFilters, LoadPlanningManifest, ManifestFormState, ManifestListResponse, ManifestWaybill, TripListResponse, TripSummary } from './warehouse/manifests/types';
 import {
@@ -54,7 +56,9 @@ const statusConfig: Record<string, BadgeConfig> = {
   CANCELLED: { label: 'Đã hủy', className: 'bg-red-50 text-red-600' },
 };
 const statusOptions: FilterOption[] = [
-  { value: 'DRAFT', label: 'Nháp' }, { value: 'OPEN', label: 'Đang gom' }, { value: 'CLOSED', label: 'Đã đóng' }, { value: 'ASSIGNED', label: 'Đã gán chuyến' }, { value: 'IN_TRANSIT', label: 'Đang chạy' },
+  { value: 'IN_TRANSIT', label: 'Đang chạy' },
+  { value: 'ARRIVED', label: 'Xe đã đến' },
+  { value: 'COMPLETED', label: 'Hoàn tất chuyến' },
 ];
 const defaultFilters: LoadPlanningFilters = { keyword: '', status: [], origin_hub_id: [], dest_hub_id: [], trip_id: [], date_from: '', date_to: '', page: 1, limit: 100 };
 
@@ -106,16 +110,18 @@ const resolveManifestOriginHubLabel = (manifest: LoadPlanningManifest, hubList: 
   return hub ? hubLabel(hub, hubId) : hubId ? `Hub #${hubId}` : '—';
 };
 const manifestTrip = (manifest: LoadPlanningManifest) => resolveManifestTrip(manifest);
-const resolveTruckPlate = (trip?: TripSummary | null) => trip?.truck?.bks?.trim() || trip?.truck?.license_plate?.trim() || trip?.carrier_label?.trim() || null;
+const resolveTruckPlate = (trip?: TripSummary | null) => trip?.manual_license_plate?.trim() || trip?.truck?.bks?.trim() || trip?.truck?.license_plate?.trim() || null;
 const tripLabel = (trip?: TripSummary | null, manifestTripId?: string | number | null) => {
   if (trip?.trip_code || trip?.code) return trip.trip_code || trip.code || '—';
   const tripId = manifestTripId ?? trip?.id;
   if (tripId && !String(tripId).startsWith('split-')) return `Chuyến #${tripId}`;
   return resolveTruckPlate(trip) || 'Chưa gán chuyến';
 };
-const truckLabel = (manifest: LoadPlanningManifest) => resolveTruckPlate(manifestTrip(manifest)) || 'Chưa có xe';
+const truckLabel = (manifest: LoadPlanningManifest) => resolveTruckPlate(manifestTrip(manifest)) || 'Chưa có BKS';
 const driverLabel = (manifest: LoadPlanningManifest) => { const trip = manifestTrip(manifest); return trip?.driver_name || trip?.driver?.name || trip?.driver?.full_name || trip?.truck?.ten_lai_xe || trip?.truck?.driver?.name || trip?.truck?.driver?.full_name || 'Chưa gán'; };
+const vendorLabel = (manifest: LoadPlanningManifest) => { const trip = manifestTrip(manifest); return trip?.vendor?.name || trip?.vendor?.code || trip?.truck?.vendor?.name || trip?.truck?.vendor?.code || trip?.truck?.nha_xe || 'Chưa có NCC'; };
 const getWaybillCount = (manifest: LoadPlanningManifest) => Number(manifest.waybill_count ?? manifest.total_waybills ?? manifest.waybills?.length ?? 0);
+const getPackageCount = (manifest: LoadPlanningManifest) => Number(manifest.total_packages ?? 0);
 const getManifestWeight = (manifest: LoadPlanningManifest) => Number(manifest.total_weight ?? manifest.weight_total ?? 0);
 const formatTime = (value?: string | null) => value ? new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }).format(new Date(value)) : null;
 const formatManifestSubline = (manifest: LoadPlanningManifest) => {
@@ -136,9 +142,10 @@ const formatManifestSubline = (manifest: LoadPlanningManifest) => {
   };
   const parts = [
     tripStatusText[tripStatus] || null,
-    truckLabel(manifest),
-    driverLabel(manifest),
+    `BKS ${truckLabel(manifest)}`,
+    `NCC ${vendorLabel(manifest)}`,
     `${getWaybillCount(manifest).toLocaleString('vi-VN')} đơn`,
+    `${getPackageCount(manifest).toLocaleString('vi-VN')} kiện`,
     `${formatNumber(getManifestWeight(manifest))} kg`,
     (tripStatus === 'IN_TRANSIT' || tripStatus === 'DEPARTED') && trip?.departure_time
       ? `Khởi hành ${formatTime(trip.departure_time)}`
@@ -147,12 +154,19 @@ const formatManifestSubline = (manifest: LoadPlanningManifest) => {
   ].filter(Boolean);
   return parts.join(' · ');
 };
+const manifestTransportStatusBadge = (manifest: LoadPlanningManifest) => {
+  const status = normalizeManifestTransportStatus(getTripStatus(manifest));
+  if (status === 'IN_TRANSIT') return statusConfig.IN_TRANSIT;
+  if (status === 'ARRIVED') return statusConfig.ARRIVED;
+  return statusConfig.COMPLETED;
+};
 const matchesManifestKeyword = (manifest: LoadPlanningManifest, keyword: string) => {
   if (!keyword) return true;
   const haystack = [
     manifestCode(manifest),
     manifest.seal_code,
     truckLabel(manifest),
+    vendorLabel(manifest),
     driverLabel(manifest),
     tripLabel(manifestTrip(manifest)),
     hubLabel(manifest.origin_hub, manifest.origin_hub_id),
@@ -214,14 +228,19 @@ export default function WarehouseManifestsPage() {
 
   const userHubView = useMemo(() => resolveUserHubView(user, hubs), [user, hubs]);
   const keyword = filters.keyword.trim().toLowerCase();
-  const activeManifestsByOrigin = useMemo(() => {
-    const split = splitActiveManifestsByMainHubOrigin(manifests);
+  const transportManifestsByOrigin = useMemo(() => {
+    const split = splitTransportManifestsByMainHubOrigin(manifests);
     return {
       HAN: split.HAN.filter((manifest) => matchesManifestKeyword(manifest, keyword)),
       HCM: split.HCM.filter((manifest) => matchesManifestKeyword(manifest, keyword)),
     };
   }, [manifests, keyword]);
-  const activeManifestCount = activeManifestsByOrigin.HAN.length + activeManifestsByOrigin.HCM.length;
+  const transportManifests = useMemo(() => [
+    ...transportManifestsByOrigin.HAN,
+    ...transportManifestsByOrigin.HCM,
+  ], [transportManifestsByOrigin]);
+  const transportStatusTotals = useMemo(() => summarizeManifestTransportStatuses(transportManifests), [transportManifests]);
+  const transportManifestCount = transportManifests.length;
 
   const hubOptions = useMemo(() => hubs.map(hub => ({ value: String(hub.id), label: hub.code ? `${hub.code} · ${hub.name || 'Bưu cục'}` : hub.name || `Hub #${hub.id}` })), [hubs]);
   const tripOptions = useMemo(() => trips.map(trip => ({ value: String(trip.id), label: tripLabel(trip) })), [trips]);
@@ -240,7 +259,7 @@ export default function WarehouseManifestsPage() {
     try {
       const [hubResponse, tripResponse] = await Promise.all([
         apiRequest<HubSummary[]>('/hubs/active'),
-        apiRequest<TripListResponse | TripSummary[]>(`/trips?${new URLSearchParams({ page: '1', limit: '100', status: 'IN_TRANSIT' }).toString()}`),
+        apiRequest<TripListResponse | TripSummary[]>(`/trips?${new URLSearchParams({ page: '1', limit: '100' }).toString()}`),
       ]);
       setHubs(Array.isArray(hubResponse) ? hubResponse : []);
       setTrips(normalizeTripList(tripResponse));
@@ -250,9 +269,12 @@ export default function WarehouseManifestsPage() {
   async function fetchManifests() {
     setIsLoading(true); setError('');
     try {
-      const params = new URLSearchParams({ page: String(filters.page), limit: String(filters.limit), status: 'IN_TRANSIT' });
+      const params = new URLSearchParams({
+        page: String(filters.page),
+        limit: String(filters.limit),
+        trip_status: filters.status.length ? filters.status.join(',') : 'IN_TRANSIT,ARRIVED,COMPLETED',
+      });
       if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
-      if (filters.status.length) params.set('status', filters.status.join(','));
       if (filters.origin_hub_id.length) params.set('origin_hub_id', filters.origin_hub_id.join(','));
       if (filters.dest_hub_id.length) params.set('dest_hub_id', filters.dest_hub_id.join(','));
       if (filters.trip_id.length) params.set('trip_id', filters.trip_id.join(','));
@@ -452,7 +474,7 @@ export default function WarehouseManifestsPage() {
             <button disabled={!canManageManifest} onClick={openAdd} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-3 text-[13px] font-extrabold text-white hover:bg-primary/90"><Plus size={16} /><span className="hidden sm:inline">Thêm</span></button>
           </div>
           <div className="hidden md:flex flex-wrap items-center gap-2">
-            <FilterSelect multiple icon={PackageCheck} placeholder="Trạng thái bảng kê" options={statusOptions} value={filters.status} onValueChange={value => updateFilters({ status: value, page: 1 })} />
+            <FilterSelect multiple icon={PackageCheck} placeholder="Trạng thái chuyến" options={statusOptions} value={filters.status} onValueChange={value => updateFilters({ status: value, page: 1 })} />
             <FilterSelect multiple icon={Building2} placeholder="Bưu cục đi" options={hubOptions} value={filters.origin_hub_id} onValueChange={value => updateFilters({ origin_hub_id: value, page: 1 })} />
             <FilterSelect multiple icon={Building2} placeholder="Bưu cục đến" options={hubOptions} value={filters.dest_hub_id} onValueChange={value => updateFilters({ dest_hub_id: value, page: 1 })} />
             <FilterSelect multiple icon={Truck} placeholder="Chuyến xe" options={tripOptions} value={filters.trip_id} onValueChange={value => updateFilters({ trip_id: value, page: 1 })} />
@@ -468,15 +490,16 @@ export default function WarehouseManifestsPage() {
             <StateBlock icon={<AlertTriangle size={22} />} title={error} />
           ) : (
             <ManifestTransitBoard
-              hanOutbound={activeManifestsByOrigin.HAN}
-              hcmOutbound={activeManifestsByOrigin.HCM}
+              hanOutbound={transportManifestsByOrigin.HAN}
+              hcmOutbound={transportManifestsByOrigin.HCM}
+              statusTotals={transportStatusTotals}
               onDetail={openDetail}
               onPrint={openPrint}
             />
           )}
         </div>
 
-        <div className="shrink-0 border-t border-border bg-card px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[12px] font-bold text-muted-foreground">{`${activeManifestCount} chuyến đã khởi hành đang hiển thị`}</p><div className="flex items-center gap-2"><SearchableSelect value={String(filters.limit)} onValueChange={value => updateFilters({ limit: Number(value), page: 1 })} options={[{ value: '20', label: '20' }, { value: '50', label: '50' }, { value: '100', label: '100' }]} className="h-9 w-[88px] rounded-lg bg-white px-3 text-[13px] text-muted-foreground" searchPlaceholder="Tìm số dòng..." /><span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button><span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span><span className="text-[13px] font-bold text-foreground">/ {totalPages}</span></div></div></div>
+        <div className="shrink-0 border-t border-border bg-card px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[12px] font-bold text-muted-foreground">{`${transportManifestCount.toLocaleString('vi-VN')} chuyến đang hiển thị`}</p><div className="flex items-center gap-2"><SearchableSelect value={String(filters.limit)} onValueChange={value => updateFilters({ limit: Number(value), page: 1 })} options={[{ value: '20', label: '20' }, { value: '50', label: '50' }, { value: '100', label: '100' }]} className="h-9 w-[88px] rounded-lg bg-white px-3 text-[13px] text-muted-foreground" searchPlaceholder="Tìm số dòng..." /><span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button><span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span><span className="text-[13px] font-bold text-foreground">/ {totalPages}</span></div></div></div>
       </div>
       <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} tripOptions={tripOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />
       <ManifestDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} isSubmitting={isSubmitting} manifest={detailManifest} statusConfig={statusConfig} canManage={canManageManifest} canManageExpenses={canManageExpenses} canDeleteExpenses={canDeleteExpenses} showHubDeliveryStatus={userHubView === 'HCM'} onClose={closeDetail} onRemoveWaybill={confirmRemoveWaybill} onUpdateDispatchFields={updateDetailDispatchFields} onUpdateExpectedArrival={updateExpectedArrival} />
@@ -492,19 +515,23 @@ export default function WarehouseManifestsPage() {
 function ManifestTransitBoard({
   hanOutbound,
   hcmOutbound,
+  statusTotals,
   onDetail,
   onPrint,
 }: {
   hanOutbound: LoadPlanningManifest[];
   hcmOutbound: LoadPlanningManifest[];
+  statusTotals: { IN_TRANSIT: number; ARRIVED: number; COMPLETED: number };
   onDetail: (manifest: LoadPlanningManifest) => void;
   onPrint: (manifest: LoadPlanningManifest) => void;
 }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 p-3">
-      <p className="shrink-0 text-[12px] font-medium text-muted-foreground">
-        Chỉ hiển thị xe đang chạy. Chuyến chưa khởi hành, đã đến hoặc đã hoàn tất không xuất hiện tại bảng kê đi.
-      </p>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 text-[12px] font-bold">
+        <span className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-700">{statusTotals.IN_TRANSIT.toLocaleString('vi-VN')} đang chạy</span>
+        <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-700">{statusTotals.ARRIVED.toLocaleString('vi-VN')} xe đã đến</span>
+        <span className="rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-slate-700">{statusTotals.COMPLETED.toLocaleString('vi-VN')} hoàn tất chuyến</span>
+      </div>
       <div className="flex min-h-0 w-full flex-1 flex-col gap-3 lg:flex-row lg:gap-4">
         <ManifestTransitTable
           title={departedColumnTitle('HAN')}
@@ -560,9 +587,14 @@ function ManifestTransitTable({
                 <tr key={manifest.id} className="border-b border-border/70 last:border-b-0 hover:bg-muted/20">
                   <td className="px-3 py-2 align-middle">
                     <button type="button" onClick={() => onDetail(manifest)} className="w-full text-left">
-                      <p className="truncate text-[13px] font-extrabold text-foreground">
-                        {manifestCode(manifest)} · {hubLabel(manifest.origin_hub, manifest.origin_hub_id)} → {hubLabel(manifest.dest_hub, manifest.dest_hub_id)}
-                      </p>
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <p className="min-w-0 truncate text-[13px] font-extrabold text-foreground">
+                          {manifestCode(manifest)} · {hubLabel(manifest.origin_hub, manifest.origin_hub_id)} → {hubLabel(manifest.dest_hub, manifest.dest_hub_id)}
+                        </p>
+                        <span className={clsx('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold', manifestTransportStatusBadge(manifest).className)}>
+                          {manifestTransportStatusBadge(manifest).label}
+                        </span>
+                      </div>
                       <p className="mt-0.5 truncate text-[11px] font-medium text-muted-foreground">
                         {formatManifestSubline(manifest)}
                       </p>
@@ -592,7 +624,7 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
 
 function FilterBottomSheet({ isOpen, draftFilters, setDraftFilters, openGroups, setOpenGroups, groupSearch, setGroupSearch, hubOptions, tripOptions, onClose, onApply }: { isOpen: boolean; draftFilters: LoadPlanningFilters; setDraftFilters: Dispatch<SetStateAction<LoadPlanningFilters>>; openGroups: string[]; setOpenGroups: Dispatch<SetStateAction<string[]>>; groupSearch: Record<string, string>; setGroupSearch: Dispatch<SetStateAction<Record<string, string>>>; hubOptions: FilterOption[]; tripOptions: FilterOption[]; onClose: () => void; onApply: () => void }) {
   if (!isOpen) return null;
-  const groups = [{ id: 'status', title: 'Trạng thái bảng kê', key: 'status' as const, options: statusOptions }, { id: 'origin', title: 'Bưu cục đi', key: 'origin_hub_id' as const, options: hubOptions }, { id: 'dest', title: 'Bưu cục đến', key: 'dest_hub_id' as const, options: hubOptions }, { id: 'trip', title: 'Chuyến xe', key: 'trip_id' as const, options: tripOptions }];
+  const groups = [{ id: 'status', title: 'Trạng thái chuyến', key: 'status' as const, options: statusOptions }, { id: 'origin', title: 'Bưu cục đi', key: 'origin_hub_id' as const, options: hubOptions }, { id: 'dest', title: 'Bưu cục đến', key: 'dest_hub_id' as const, options: hubOptions }, { id: 'trip', title: 'Chuyến xe', key: 'trip_id' as const, options: tripOptions }];
   const toggleGroup = (id: string) => setOpenGroups(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
   const setArray = (key: 'status' | 'origin_hub_id' | 'dest_hub_id' | 'trip_id', value: string[]) => setDraftFilters(prev => ({ ...prev, [key]: value }));
   return <div className="fixed inset-0 z-50 flex items-end justify-center md:hidden"><div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} /><div className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-border bg-background shadow-2xl"><div className="flex items-center justify-between border-b border-border px-5 py-4"><div><p className="text-[11px] font-bold uppercase tracking-wider text-primary">Bộ lọc</p><h2 className="text-lg font-extrabold text-foreground">Đóng xếp hàng</h2></div><button onClick={onClose} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-white text-muted-foreground"><X size={18} /></button></div><div className="flex-1 overflow-auto p-4 custom-scrollbar">{groups.map(group => <FilterGroup key={group.id} id={group.id} title={group.title} isOpen={openGroups.includes(group.id)} search={groupSearch[group.id] || ''} options={group.options} value={draftFilters[group.key]} onToggle={() => toggleGroup(group.id)} onSearch={value => setGroupSearch(prev => ({ ...prev, [group.id]: value }))} onChange={value => setArray(group.key, value)} />)}<div className="mt-3 rounded-2xl border border-border bg-white p-4"><p className="mb-3 text-[13px] font-extrabold text-foreground">Khoảng thời gian</p><div className="grid gap-3"><input type="date" value={draftFilters.date_from} onChange={event => setDraftFilters(prev => ({ ...prev, date_from: event.target.value }))} className="h-11 rounded-xl border border-border px-3 text-[13px] font-bold outline-none" /><input type="date" value={draftFilters.date_to} onChange={event => setDraftFilters(prev => ({ ...prev, date_to: event.target.value }))} className="h-11 rounded-xl border border-border px-3 text-[13px] font-bold outline-none" /></div></div></div><div className="border-t border-border bg-white p-4"><button onClick={onApply} className="h-11 w-full rounded-xl bg-primary text-[13px] font-extrabold text-white">Áp dụng</button></div></div></div>;

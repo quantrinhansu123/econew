@@ -107,14 +107,77 @@ describe('ManifestsService', () => {
     const qb = mockQb();
     manifestsRepo.createQueryBuilder.mockReturnValue(qb);
     qb.getManyAndCount.mockResolvedValue([[draftManifest()], 1]);
-    await service.findAll({ keyword: 'MF', status: ManifestStatus.DRAFT, origin_hub_id: '1', dest_hub_id: '2', trip_id: '9', from_date: '2026-05-01', to_date: '2026-05-26', page: 1, limit: 10 }, manager);
+    await service.findAll({ keyword: 'MF', status: ManifestStatus.DRAFT, trip_status: `${TripStatus.IN_TRANSIT},${TripStatus.ARRIVED}`, origin_hub_id: '1', dest_hub_id: '2', trip_id: '9', from_date: '2026-05-01', to_date: '2026-05-26', page: 1, limit: 10 }, manager);
     const whereSql = qb.andWhere.mock.calls.map((call: any[]) => String(call[0])).join(' ');
     expect(whereSql).toContain('manifest.status');
+    expect(whereSql).toContain('trip.status');
     expect(whereSql).toContain('manifest.origin_hub_id');
     expect(whereSql).toContain('manifest.dest_hub_id');
     expect(whereSql).toContain('trip.id');
     expect(whereSql).toContain('manifest.created_at >=');
     expect(whereSql).toContain('manifest.created_at <=');
+  });
+
+  it('findAll calculates order, package and weight totals from manifest waybills', async () => {
+    const qb = mockQb();
+    const manifest = draftManifest({ trips: [{ id: '5', status: TripStatus.IN_TRANSIT }] });
+    manifestsRepo.createQueryBuilder.mockReturnValue(qb);
+    qb.getManyAndCount.mockResolvedValue([[manifest], 1]);
+    linksRepo.find.mockResolvedValue([
+      { manifest_id: '10', waybill_id: '100', dispatch_fields: { so_luong: '2', kg: '12.5' }, waybill: waybill({ id: '100', package_count: 4, weight: 25 }) },
+      { manifest_id: '10', waybill_id: '101', dispatch_fields: null, waybill: waybill({ id: '101', package_count: 3, weight: 15 }) },
+    ]);
+
+    const result = await service.findAll({}, manager);
+
+    expect(result.items[0]).toMatchObject({
+      waybill_count: 2,
+      total_waybills: 2,
+      total_packages: 5,
+      total_weight: 27.5,
+    });
+  });
+
+  it('findAll falls back to waybill weight when legacy dispatch weight is zero', async () => {
+    const qb = mockQb();
+    const manifest = draftManifest({ trips: [{ id: '5', status: TripStatus.COMPLETED }] });
+    manifestsRepo.createQueryBuilder.mockReturnValue(qb);
+    qb.getManyAndCount.mockResolvedValue([[manifest], 1]);
+    linksRepo.find.mockResolvedValue([{
+      manifest_id: '10',
+      waybill_id: '100',
+      dispatch_fields: { so_luong: '2', kg: '0' },
+      waybill: waybill({ id: '100', package_count: 4, weight: 30 }),
+    }]);
+
+    const result = await service.findAll({}, manager);
+
+    expect(result.items[0]).toMatchObject({
+      waybill_count: 1,
+      total_packages: 2,
+      total_weight: 15,
+    });
+  });
+
+  it('findAll recovers legacy cargo from trip splits without duplicating split waybills', async () => {
+    const qb = mockQb();
+    const manifest = draftManifest({ trips: [{ id: '5', status: TripStatus.ARRIVED }] });
+    const splitWaybill = waybill({ id: '100', package_count: 4, weight: 30 });
+    manifestsRepo.createQueryBuilder.mockReturnValue(qb);
+    qb.getManyAndCount.mockResolvedValue([[manifest], 1]);
+    linksRepo.find.mockResolvedValue([]);
+    splitsRepo.find.mockResolvedValue([
+      { trip_id: '5', waybill_id: '100', package_count: 2, waybill: splitWaybill },
+      { trip_id: '5', waybill_id: '100', package_count: 1, waybill: splitWaybill },
+    ]);
+
+    const result = await service.findAll({}, manager);
+
+    expect(result.items[0]).toMatchObject({
+      waybill_count: 1,
+      total_packages: 3,
+      total_weight: 22.5,
+    });
   });
 
   it('user hub chỉ thấy manifest thuộc hub mình', async () => {
@@ -439,6 +502,7 @@ function mockQb() {
   const qb: any = {
     where: jest.fn().mockReturnThis(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
+    distinct: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),

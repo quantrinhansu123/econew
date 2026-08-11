@@ -39,6 +39,16 @@ describe('inventory stock-list print columns', () => {
     expect(payload.rows[0]).not.toHaveProperty('priority');
   });
 
+  it('prints and exports the barcode column with the exact bill code', () => {
+    const waybill: WaybillInventoryItem = { id: 1, waybill_code: 'ECOHAN109157' };
+    const payload = mapWaybillsToPrintRows([waybill], false, ['barcode']);
+    const excelRows = buildInventoryExcelRows([waybill], ['barcode'], false, '', 'split-pending');
+
+    expect(payload.columns).toEqual([{ id: 'barcode', label: 'Mã vạch' }]);
+    expect(payload.rows[0].barcode).toBe('ECOHAN109157');
+    expect(excelRows[4][0]).toBe('ECOHAN109157');
+  });
+
   it('never adds hidden columns while reconciling a stored print payload', () => {
     const payload: InventoryPrintPayload = {
       printedAt: '26/07/2026 18:00:00',

@@ -317,16 +317,37 @@ describe('TripsService', () => {
       },
     );
 
-    it('không cho đổi xe sau khi chuyến đã khởi hành', async () => {
+    it('cho đổi xe khi chuyến đang chạy và đồng bộ trạng thái xe cũ/mới', async () => {
       mockFindOne({ id: '1', status: TripStatus.IN_TRANSIT, truck_id: '5' });
-      await expect(service.update('1', { truck_id: 7 }, manager)).rejects.toBeInstanceOf(BadRequestException);
-      expect(trucks.findOne).not.toHaveBeenCalled();
+      const newTruck = { id: '7', status: TruckStatus.AVAILABLE, ten_lai_xe: 'Tài xế mới', driver: { phone: '0909000000' } };
+      const oldTruck = { id: '5', status: TruckStatus.IN_TRIP };
+      trucks.findOne.mockResolvedValueOnce(newTruck).mockResolvedValueOnce(oldTruck);
+      trips.count.mockResolvedValue(0);
+
+      const result = await service.update('1', { truck_id: 7 }, manager);
+
+      expect(result).toMatchObject({ truck_id: '7', driver_name: 'Tài xế mới', driver_phone: '0909000000' });
+      expect(trucks.save).toHaveBeenCalledWith(expect.objectContaining({ id: '5', status: TruckStatus.AVAILABLE }));
+      expect(trucks.save).toHaveBeenCalledWith(expect.objectContaining({ id: '7', status: TruckStatus.IN_TRIP }));
     });
 
-    it('cập nhật NCC và cước xe riêng trên chuyến rồi làm mới công nợ hai NCC', async () => {
+    it('cho sửa BKS chuyến đã hoàn tất mà không làm thay đổi trạng thái xe hiện tại', async () => {
+      mockFindOne({ id: '1', status: TripStatus.COMPLETED, truck_id: '5' });
+      const historicalTruck = { id: '7', status: TruckStatus.IN_TRIP, ten_lai_xe: 'Tài xế lịch sử', driver: null };
+      trucks.findOne.mockResolvedValue(historicalTruck);
+
+      const result = await service.update('1', { truck_id: 7 }, manager);
+
+      expect(result).toMatchObject({ truck_id: '7', driver_name: 'Tài xế lịch sử' });
+      expect(trucks.save).not.toHaveBeenCalled();
+    });
+
+    it.each([TripStatus.PLANNED, TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED, TripStatus.CANCELLED])(
+      'cập nhật NCC và cước xe ở trạng thái %s rồi làm mới công nợ hai NCC',
+      async (status) => {
       const trip = {
         id: '1',
-        status: TripStatus.PLANNED,
+        status,
         truck_id: '5',
         vendor_id: '10',
         vendor: { id: '10' },
@@ -345,6 +366,53 @@ describe('TripsService', () => {
       expect(vendorsService.refreshPayableBalance).toHaveBeenCalledTimes(2);
       expect(vendorsService.refreshPayableBalance).toHaveBeenCalledWith('10');
       expect(vendorsService.refreshPayableBalance).toHaveBeenCalledWith('11');
+      },
+    );
+
+    it.each([TripStatus.ARRIVED, TripStatus.COMPLETED, TripStatus.CANCELLED])(
+      'cho sửa xe lịch sử ở trạng thái %s mà không thay đổi trạng thái hoạt động của xe',
+      async (status) => {
+        mockFindOne({ id: '1', status, truck_id: '5', vendor_paid_amount: '0' });
+        const historicalTruck = { id: '7', status: TruckStatus.IN_TRIP, ten_lai_xe: 'Tài xế lịch sử', driver: null };
+        trucks.findOne.mockResolvedValue(historicalTruck);
+
+        const result = await service.update('1', { truck_id: 7 }, manager);
+
+        expect(result).toMatchObject({ truck_id: '7', driver_name: 'Tài xế lịch sử' });
+        expect(trucks.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('cho lưu BKS thủ công hoặc bỏ trống mà không tác động xe trong danh mục', async () => {
+      mockFindOne({
+        id: '1',
+        status: TripStatus.COMPLETED,
+        truck_id: '5',
+        manual_license_plate: null,
+        vendor_paid_amount: '0',
+      });
+
+      const result = await service.update('1', { truck_id: null, manual_license_plate: '51h-123.45' }, manager);
+
+      expect(result).toMatchObject({ truck_id: null, manual_license_plate: '51H-123.45' });
+      expect(trucks.findOne).not.toHaveBeenCalled();
+      expect(trucks.save).not.toHaveBeenCalled();
+    });
+
+    it('cho để trống NCC và cước xe khi chưa phát sinh thanh toán', async () => {
+      mockFindOne({
+        id: '1',
+        status: TripStatus.CANCELLED,
+        vendor_id: '10',
+        vendor: { id: '10' },
+        trip_cost: '1000000',
+        other_costs: null,
+        vendor_paid_amount: '0',
+      });
+
+      const result = await service.update('1', { vendor_id: null, trip_cost: null }, manager);
+
+      expect(result).toMatchObject({ vendor_id: null, vendor: null, trip_cost: null });
     });
 
     it('không cho đổi NCC khi chuyến đã phát sinh thanh toán', async () => {
@@ -389,12 +457,12 @@ describe('TripsService', () => {
       expect(result.arrival_time).toEqual(new Date('2026-08-08T09:48:00Z'));
     });
 
-    it('không cho sửa chuyến đã hủy', async () => {
+    it('không cho sửa lịch chạy của chuyến đã hủy', async () => {
       mockFindOne({ id: '1', status: 'CANCELLED', departure_time: new Date() });
 
       await expect(
         service.update('1', { departure_time: new Date('2025-08-07T01:00:00Z') }, manager),
-      ).rejects.toThrow('Không thể sửa chuyến đã hủy');
+      ).rejects.toThrow('Chuyến đã hủy chỉ được sửa BKS, NCC và cước xe');
       expect(trips.save).not.toHaveBeenCalled();
     });
   });

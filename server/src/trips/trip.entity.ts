@@ -22,6 +22,9 @@ export class TripEntity {
   @Column({ type: 'bigint', nullable: true })
   truck_id: string | null;
 
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  manual_license_plate: string | null;
+
   @Column({ type: 'bigint', nullable: true })
   manifest_id: string | null;
 

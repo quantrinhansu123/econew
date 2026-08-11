@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Hash, Layers, Loader2, MoreHorizontal, Package, Pencil, Printer, ReceiptText, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -72,6 +72,7 @@ import { buildInventoryTripLinesQuery, isIncompleteSplitRow, sortAllOrdersByCrea
 import { ORDER_STATUS_GROUP_OPTIONS } from './warehouse/inventory/orderStatusUtils';
 import type { BadgeConfig, FilterOption, HubSummary, InventoryFilters, InventoryListResponse, WaybillInventoryDetail, WaybillInventoryItem } from './warehouse/inventory/types';
 import { parseWaybillImages } from '../lib/waybillImages';
+import { buildDispatchBarcodeUrl } from './print/dispatchBarcode';
 import CustomerDetailDialog from './warehouse/customers/dialogs/CustomerDetailDialog';
 import type { CustomerRecord } from './warehouse/customers/customerFormTypes';
 import type { CustomerListItem, CustomerListResponse } from './warehouse/customers/types';
@@ -1240,6 +1241,15 @@ function InventoryRow({
             ) : null}
           </td>
         );
+      case 'barcode': {
+        const code = displayCode(waybill);
+        const barcodeUrl = buildDispatchBarcodeUrl(code);
+        return (
+          <td className={`${cellClass} min-w-[180px] text-center`}>
+            {barcodeUrl ? <img src={barcodeUrl} alt={`Mã vạch ${code}`} className="mx-auto h-9 w-40 object-fill" /> : '—'}
+          </td>
+        );
+      }
       case 'delivery_staff':
         return (
           <td className={clsx(cellClass, 'font-semibold')} title={resolveDeliveryStaff(waybill)}>
@@ -1463,7 +1473,7 @@ function InventoryRow({
           />
         </td>
       )}
-      {columns.map((col) => renderCell(col.id))}
+      {columns.map((col) => <Fragment key={col.id}>{renderCell(col.id)}</Fragment>)}
     </tr>
   );
 }

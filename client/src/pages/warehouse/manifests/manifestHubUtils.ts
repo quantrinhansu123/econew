@@ -8,6 +8,7 @@ export const ACTIVE_TRIP_STATUSES = ['PLANNED', 'ASSIGNED', 'ASSIGNED_TO_TRIP', 
 export const IN_TRANSIT_TRIP_STATUSES = ACTIVE_TRIP_STATUSES;
 export const ARRIVED_TRIP_STATUSES = ['ARRIVED', 'COMPLETED', 'AT_DEST_HUB', 'DELIVERED', 'DONE', 'FINISHED'];
 export const TRANSIT_BOARD_TRIP_STATUSES = ['IN_TRANSIT', 'DEPARTED', ...ARRIVED_TRIP_STATUSES];
+export type ManifestTransportStatus = 'IN_TRANSIT' | 'ARRIVED' | 'COMPLETED';
 
 export function isArrivedTripStatus(status?: string | null): boolean {
   const normalized = String(status || '').trim().toUpperCase();
@@ -124,6 +125,50 @@ function sortActiveManifests(manifests: LoadPlanningManifest[]): LoadPlanningMan
     });
 }
 
+export function normalizeManifestTransportStatus(status?: string | null): ManifestTransportStatus | null {
+  const normalized = String(status || '').trim().toUpperCase();
+  if (normalized === 'IN_TRANSIT' || normalized === 'DEPARTED') return 'IN_TRANSIT';
+  if (normalized === 'ARRIVED' || normalized === 'AT_DEST_HUB') return 'ARRIVED';
+  if (['COMPLETED', 'DELIVERED', 'DONE', 'FINISHED'].includes(normalized)) return 'COMPLETED';
+  return null;
+}
+
+export function isManifestTransportHistory(manifest: LoadPlanningManifest): boolean {
+  return normalizeManifestTransportStatus(getTripStatus(manifest)) != null;
+}
+
+function sortTransportManifests(manifests: LoadPlanningManifest[]): LoadPlanningManifest[] {
+  const statusOrder: Record<ManifestTransportStatus, number> = { IN_TRANSIT: 1, ARRIVED: 2, COMPLETED: 3 };
+  return [...manifests].sort((left, right) => {
+    const leftStatus = normalizeManifestTransportStatus(getTripStatus(left));
+    const rightStatus = normalizeManifestTransportStatus(getTripStatus(right));
+    const statusDiff = (leftStatus ? statusOrder[leftStatus] : 99) - (rightStatus ? statusOrder[rightStatus] : 99);
+    if (statusDiff !== 0) return statusDiff;
+    const leftTime = manifestTrip(left)?.departure_time || left.created_at || '';
+    const rightTime = manifestTrip(right)?.departure_time || right.created_at || '';
+    return String(rightTime).localeCompare(String(leftTime));
+  });
+}
+
+export function splitTransportManifestsByMainHubOrigin(
+  manifests: LoadPlanningManifest[],
+): Record<HubViewCode, LoadPlanningManifest[]> {
+  const unique = [...new Map(manifests.map((manifest) => [String(manifest.id), manifest])).values()];
+  return {
+    HAN: sortTransportManifests(unique.filter((manifest) => isOutboundFromHub(manifest, 'HAN') && isManifestTransportHistory(manifest))),
+    HCM: sortTransportManifests(unique.filter((manifest) => isOutboundFromHub(manifest, 'HCM') && isManifestTransportHistory(manifest))),
+  };
+}
+
+export function summarizeManifestTransportStatuses(manifests: LoadPlanningManifest[]) {
+  const unique = [...new Map(manifests.map((manifest) => [String(manifest.id), manifest])).values()];
+  return unique.reduce((summary, manifest) => {
+    const status = normalizeManifestTransportStatus(getTripStatus(manifest));
+    if (status) summary[status] += 1;
+    return summary;
+  }, { IN_TRANSIT: 0, ARRIVED: 0, COMPLETED: 0 } as Record<ManifestTransportStatus, number>);
+}
+
 export function filterActiveOutboundFromHub(manifests: LoadPlanningManifest[], origin: HubViewCode): LoadPlanningManifest[] {
   return sortActiveManifests(
     manifests.filter((manifest) => isOutboundFromHub(manifest, origin) && isDepartedNotArrivedManifest(manifest)),
@@ -148,11 +193,11 @@ export function filterDepartedFromOrigin(manifests: LoadPlanningManifest[], orig
 }
 
 export function manifestOriginLane(manifest: LoadPlanningManifest): HubViewCode | null {
-  return normalizeHubCode(manifest.origin_hub);
+  return normalizeHubCode(manifestTrip(manifest)?.start_hub) ?? normalizeHubCode(manifest.origin_hub);
 }
 
 export function manifestDestLane(manifest: LoadPlanningManifest): HubViewCode | null {
-  return normalizeHubCode(manifest.dest_hub);
+  return normalizeHubCode(manifestTrip(manifest)?.end_hub) ?? normalizeHubCode(manifest.dest_hub);
 }
 
 export function isOutboundFromHub(manifest: LoadPlanningManifest, hub: HubViewCode): boolean {

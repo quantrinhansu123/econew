@@ -78,11 +78,22 @@ export class ManifestsService {
     await this.processScheduledArrivals();
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 20);
-    const qb = this.manifestsRepository.createQueryBuilder('manifest').leftJoinAndSelect('manifest.origin_hub', 'origin_hub').leftJoinAndSelect('manifest.dest_hub', 'dest_hub').leftJoinAndSelect('manifest.trips', 'trip').leftJoinAndSelect('trip.truck', 'truck').leftJoinAndSelect('truck.driver', 'driver');
+    const qb = this.manifestsRepository.createQueryBuilder('manifest')
+      .leftJoinAndSelect('manifest.origin_hub', 'origin_hub')
+      .leftJoinAndSelect('manifest.dest_hub', 'dest_hub')
+      .leftJoinAndSelect('manifest.trips', 'trip')
+      .leftJoinAndSelect('trip.start_hub', 'trip_start_hub')
+      .leftJoinAndSelect('trip.end_hub', 'trip_end_hub')
+      .leftJoinAndSelect('trip.truck', 'truck')
+      .leftJoinAndSelect('truck.driver', 'driver')
+      .leftJoinAndSelect('truck.vendor', 'truck_vendor')
+      .leftJoinAndSelect('trip.vendor', 'trip_vendor')
+      .distinct(true);
     this.applyFilters(qb, query);
     this.applyHubScope(qb, currentUser);
     const [items, total] = await qb.orderBy('manifest.created_at', 'DESC').skip((page - 1) * limit).take(limit).getManyAndCount();
     await this.enrichTransportSummaries(items as ManifestRecord[]);
+    await this.enrichCargoSummaries(items as ManifestRecord[]);
     return { items, meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
   }
 
@@ -90,6 +101,7 @@ export class ManifestsService {
     const manifest = await this.loadManifest(id);
     this.assertManifestAccess(manifest, currentUser);
     await this.enrichTransportSummaries([manifest]);
+    await this.enrichCargoSummaries([manifest]);
     return manifest;
   }
 
@@ -660,6 +672,98 @@ export class ManifestsService {
     }
   }
 
+  private async enrichCargoSummaries(manifests: ManifestRecord[]): Promise<void> {
+    const manifestIds = manifests.map((manifest) => String(manifest.id)).filter(Boolean);
+    if (!manifestIds.length) return;
+
+    const manifestIdByTripId = new Map<string, string>();
+    manifests.forEach((manifest) => {
+      const trips = [manifest.trip, ...(manifest.trips ?? [])].filter(Boolean) as TripRecord[];
+      trips.forEach((trip) => manifestIdByTripId.set(String(trip.id), String(manifest.id)));
+    });
+    const tripIds = [...manifestIdByTripId.keys()];
+    const [links, tripSplits] = await Promise.all([
+      this.manifestWaybillsRepository.find({
+        where: { manifest_id: In(manifestIds) },
+        relations: ['waybill'],
+      }),
+      tripIds.length
+        ? this.waybillSplitsRepository.find({
+          where: { trip_id: In(tripIds) } as any,
+          relations: ['waybill'],
+        })
+        : Promise.resolve([] as WaybillSplitEntity[]),
+    ]);
+    const linksByManifest = links.reduce((map, link) => {
+      const manifestId = String(link.manifest_id);
+      const current = map.get(manifestId) ?? [];
+      current.push(link as ManifestWaybillEntity & { waybill?: WaybillRecord | null });
+      map.set(manifestId, current);
+      return map;
+    }, new Map<string, Array<ManifestWaybillEntity & { waybill?: WaybillRecord | null }>>());
+    const splitsByManifest = tripSplits.reduce((map, split) => {
+      const manifestId = manifestIdByTripId.get(String(split.trip_id));
+      if (!manifestId) return map;
+      const current = map.get(manifestId) ?? [];
+      current.push(split);
+      map.set(manifestId, current);
+      return map;
+    }, new Map<string, WaybillSplitEntity[]>());
+
+    manifests.forEach((manifest) => {
+      const manifestLinks = linksByManifest.get(String(manifest.id)) ?? [];
+      const waybillIds = new Set<string>();
+      let totalPackages = 0;
+      let totalWeight = 0;
+
+      const addCargo = (waybill: WaybillRecord, requestedPackages?: number, requestedWeight?: number) => {
+        const waybillId = String(waybill.id);
+        if (waybillIds.has(waybillId)) return;
+        waybillIds.add(waybillId);
+        const fullPackages = Math.max(1, Number(waybill.package_count ?? 1));
+        const packageCount = requestedPackages != null && requestedPackages > 0
+          ? requestedPackages
+          : fullPackages;
+        totalPackages += packageCount;
+        totalWeight += requestedWeight != null && requestedWeight > 0
+          ? requestedWeight
+          : Number(waybill.weight ?? 0) * Math.min(1, packageCount / fullPackages);
+      };
+
+      manifestLinks.forEach((link) => {
+        const waybill = link.waybill;
+        if (!waybill) return;
+        const dispatchedPackages = Number(link.dispatch_fields?.so_luong);
+        const packageCount = Number.isFinite(dispatchedPackages) && dispatchedPackages > 0
+          ? dispatchedPackages
+          : Math.max(1, Number(waybill.package_count ?? 1));
+
+        const dispatchedWeight = Number(link.dispatch_fields?.kg);
+        if (Number.isFinite(dispatchedWeight) && dispatchedWeight > 0) {
+          addCargo(waybill, packageCount, dispatchedWeight);
+          return;
+        }
+        addCargo(waybill, packageCount);
+      });
+
+      const splitCargoByWaybill = (splitsByManifest.get(String(manifest.id)) ?? []).reduce((map, split) => {
+        const waybill = split.waybill as WaybillRecord | null | undefined;
+        if (!waybill) return map;
+        const waybillId = String(waybill.id);
+        const current = map.get(waybillId) ?? { waybill, packages: 0 };
+        current.packages += Number(split.package_count ?? 0);
+        map.set(waybillId, current);
+        return map;
+      }, new Map<string, { waybill: WaybillRecord; packages: number }>());
+      splitCargoByWaybill.forEach(({ waybill, packages }) => addCargo(waybill, packages));
+
+      manifest.waybill_count = waybillIds.size;
+      manifest.total_waybills = waybillIds.size;
+      manifest.total_packages = totalPackages;
+      manifest.total_weight = Math.round(totalWeight * 100) / 100;
+    });
+  }
+
   private mapTripSummary(trip: TripRecord) {
     const truck = trip.truck as Record<string, any> | null | undefined;
     return {
@@ -676,10 +780,12 @@ export class ManifestsService {
       qb.andWhere(new Brackets((builder) => builder.where('manifest.manifest_code ILIKE :keyword', { keyword }).orWhere('manifest.seal_code ILIKE :keyword', { keyword })));
     }
     const statuses = this.parseQueryList(query.status);
+    const tripStatuses = this.parseQueryList(query.trip_status);
     const originHubIds = this.parseQueryList(query.origin_hub_id);
     const destHubIds = this.parseQueryList(query.dest_hub_id);
     const tripIds = this.parseQueryList(query.trip_id);
     if (statuses.length) qb.andWhere('manifest.status IN (:...statuses)', { statuses });
+    if (tripStatuses.length) qb.andWhere('trip.status IN (:...tripStatuses)', { tripStatuses });
     if (originHubIds.length) qb.andWhere('manifest.origin_hub_id IN (:...originHubIds)', { originHubIds });
     if (destHubIds.length) qb.andWhere('manifest.dest_hub_id IN (:...destHubIds)', { destHubIds });
     if (tripIds.length) qb.andWhere('trip.id IN (:...tripIds)', { tripIds });

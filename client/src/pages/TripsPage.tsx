@@ -54,7 +54,7 @@ const tripStatusLabel = (status?: string | null) => {
   return status || '—';
 };
 
-const truckPlate = (trip: Trip) => trip.truck?.bks?.trim() || trip.truck?.license_plate?.trim() || (trip.truck_id ? `Xe #${trip.truck_id}` : 'Chưa có xe');
+const truckPlate = (trip: Trip) => trip.manual_license_plate?.trim() || trip.truck?.bks?.trim() || trip.truck?.license_plate?.trim() || (trip.truck_id ? `Xe #${trip.truck_id}` : 'Chưa có BKS');
 const vendorName = (trip: Trip) => trip.vendor?.name?.trim() || trip.vendor?.code?.trim() || trip.truck?.vendor?.name?.trim() || trip.truck?.nha_xe?.trim() || 'Chưa có NCC';
 const driverName = (trip: Trip) => trip.driver_name || trip.truck?.ten_lai_xe || 'Chưa có tài xế';
 const manifestCode = (trip: Trip) => trip.manifest?.manifest_code || (trip.manifest_id ? `BK #${trip.manifest_id}` : '—');

@@ -16,6 +16,12 @@ export class QueryManifestsDto {
   @IsString()
   status?: string;
 
+  @ApiPropertyOptional({ description: 'Single trip status or comma-separated trip statuses' })
+  @IsOptional()
+  @Transform(({ value }) => Array.isArray(value) ? value.join(',') : value)
+  @IsString()
+  trip_status?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -66,5 +72,4 @@ export class QueryManifestsDto {
   @Max(100)
   limit?: number = 20;
 }
-
 

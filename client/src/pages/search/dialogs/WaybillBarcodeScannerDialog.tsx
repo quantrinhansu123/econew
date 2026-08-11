@@ -19,10 +19,14 @@ export default function WaybillBarcodeScannerDialog({
   open,
   onClose,
   onDetected,
+  title = 'Quét mã vận đơn',
+  description = 'Hỗ trợ barcode và QR trên bill',
 }: {
   open: boolean;
   onClose: () => void;
   onDetected: (value: string) => void;
+  title?: string;
+  description?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
@@ -145,8 +149,8 @@ export default function WaybillBarcodeScannerDialog({
               <ScanLine size={20} />
             </span>
             <div className="min-w-0">
-              <h2 className="text-[16px] font-black text-foreground">Quét mã vận đơn</h2>
-              <p className="truncate text-[11px] font-semibold text-muted-foreground">Hỗ trợ barcode và QR trên bill</p>
+              <h2 className="text-[16px] font-black text-foreground">{title}</h2>
+              <p className="truncate text-[11px] font-semibold text-muted-foreground">{description}</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted" aria-label="Đóng quét mã">

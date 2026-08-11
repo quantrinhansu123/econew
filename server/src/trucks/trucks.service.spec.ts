@@ -75,15 +75,16 @@ describe('TrucksService canonical schema', () => {
     await expect(service.create({ license_plate: '29H-12345', payload: 2500, driver_id: '7' }, manager)).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('findAll chỉ filter theo license_plate/status/driver_id', async () => {
+  it('findAll lọc trực tiếp theo NCC để danh sách chọn BKS không bị mất do phân trang', async () => {
     const qb = mockQb();
     trucksRepo.createQueryBuilder.mockReturnValue(qb);
     qb.getManyAndCount.mockResolvedValue([[truck()], 1]);
-    await service.findAll({ keyword: '29H', status: TruckStatus.AVAILABLE, driver_id: '7', page: 1, limit: 10 }, manager);
+    await service.findAll({ keyword: '29H', status: TruckStatus.AVAILABLE, driver_id: '7', vendor_id: 'vendor-1', page: 1, limit: 10 }, manager);
     const whereSql = qb.andWhere.mock.calls.map((call: any[]) => String(call[0])).join(' ');
-    expect(qb.andWhere).toHaveBeenCalledTimes(3);
+    expect(qb.andWhere).toHaveBeenCalledTimes(4);
     expect(whereSql).toContain('truck.status');
     expect(whereSql).toContain('truck.driver_id');
+    expect(qb.andWhere).toHaveBeenCalledWith('truck.vendor_id = :vendorId', { vendorId: 'vendor-1' });
     expect(whereSql).not.toContain('truck_type');
     expect(whereSql).not.toContain('hub_id');
   });

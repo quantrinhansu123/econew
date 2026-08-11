@@ -37,7 +37,7 @@ const formatExpectedArrival = (value?: string | null) => {
 
 const manifestTrip = (manifest: LoadPlanningManifest) => manifest.trip ?? manifest.trips?.[0] ?? null;
 const resolveTruckPlate = (trip?: LoadPlanningManifest['trip']) =>
-  trip?.truck?.bks?.trim() || trip?.truck?.license_plate?.trim() || trip?.carrier_label?.trim() || null;
+  trip?.manual_license_plate?.trim() || trip?.truck?.bks?.trim() || trip?.truck?.license_plate?.trim() || null;
 const truckLabel = (manifest: LoadPlanningManifest) => resolveTruckPlate(manifestTrip(manifest)) || 'Chưa có xe';
 const driverLabel = (manifest: LoadPlanningManifest) =>
   manifestTrip(manifest)?.driver_name
