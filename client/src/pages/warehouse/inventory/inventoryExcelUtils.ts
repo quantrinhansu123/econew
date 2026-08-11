@@ -19,6 +19,7 @@ import {
   resolveBillingQtyDetail,
   resolveCongSg,
   resolveCustomerName,
+  resolveDeliveryStaff,
   resolveFreight,
   resolveLoadedAt,
   resolveMaKh,
@@ -103,6 +104,7 @@ const EXCEL_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>> = {
   cong_sg: 25,
   service_type: 16,
   trip_label: 20,
+  delivery_staff: 22,
   loaded_at: 14,
   received_at: 14,
   noi_den: 14,
@@ -423,6 +425,8 @@ function inventoryExcelCellValue(
       return resolveReceiverPhone(waybill).replace(/^—$/, '');
     case 'order_status':
       return resolveOrderStatusBadge(waybill).label;
+    case 'delivery_staff':
+      return resolveDeliveryStaff(waybill).replace(/^—$/, '');
     case 'package_count':
       return variant === 'all-orders'
         ? finiteNumber(resolvePackageCountSl(waybill))

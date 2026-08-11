@@ -28,6 +28,18 @@ describe('buildWaybillPrintData receiver fields', () => {
     expect(data.maBcNhan).toBe('HCM');
   });
 
+  it('prints the assigned last-mile employee code and falls back to the entered driver name', () => {
+    expect(buildWaybillPrintData(waybill({
+      last_mile_driver: { id: '7', username: 'NVPHAT01', name: 'Nguyễn Văn Phát' },
+      last_mile_driver_name: 'Tên nhập tay',
+    })).maNhanVienPhat).toBe('NVPHAT01');
+
+    expect(buildWaybillPrintData(waybill({
+      last_mile_driver: null,
+      last_mile_driver_name: 'Tài xế đối tác',
+    })).maNhanVienPhat).toBe('Tài xế đối tác');
+  });
+
   it('adds readable spacing to phone numbers on the printed bill', () => {
     expect(formatPhoneForPrint('0908809863')).toBe('0908 809 863');
     expect(formatPhoneForPrint('0908 809 863')).toBe('0908 809 863');

@@ -47,6 +47,7 @@ import {
   resolveUnitPrice,
   resolveTransitFee,
   resolveTripStatusLabel,
+  resolveDeliveryStaff,
   resolvePaymentMethod,
   resolveLoadedAt,
   resolveMaKh,
@@ -1216,6 +1217,12 @@ function InventoryRow({
             {waybill.loading_position ? (
               <span className="ml-1 text-[11px] text-muted-foreground">· VT {waybill.loading_position}</span>
             ) : null}
+          </td>
+        );
+      case 'delivery_staff':
+        return (
+          <td className={clsx(cellClass, 'font-semibold')} title={resolveDeliveryStaff(waybill)}>
+            {resolveDeliveryStaff(waybill)}
           </td>
         );
       case 'loaded_at':

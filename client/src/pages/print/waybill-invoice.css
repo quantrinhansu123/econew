@@ -832,6 +832,15 @@
   font-weight: 400;
 }
 
+.eco-footer-staff-code {
+  display: block;
+  padding: 1mm 1mm 0;
+  overflow: hidden;
+  font-size: var(--fs-row);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
 .eco-footer-staff label {
   position: absolute;
   left: 1.5mm;

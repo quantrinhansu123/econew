@@ -40,6 +40,7 @@ export interface WaybillPrintData {
   tongPhaiThuPhat: string;
   dichVu: string;
   dvGtgt: string;
+  maNhanVienPhat: string;
   codStamp: boolean;
   showPricing: boolean;
 }
@@ -239,6 +240,12 @@ export function buildWaybillPrintData(
     tongPhaiThuPhat: formatNum(totalToCollect, 0) || '0',
     dichVu: (dichVu || loaiBp || 'ĐƯỜNG BỘ').toUpperCase(),
     dvGtgt: parseNoteField(note, 'dich_vu_gia_tang') || 'Tiêu chuẩn',
+    maNhanVienPhat:
+      waybill.last_mile_driver?.username?.trim()
+      || waybill.last_mile_driver_name?.trim()
+      || waybill.last_mile_driver?.name?.trim()
+      || waybill.last_mile_driver?.full_name?.trim()
+      || '',
     codStamp: paymentType === 'COD' || cod > 0,
     showPricing: pricingVisible,
   };

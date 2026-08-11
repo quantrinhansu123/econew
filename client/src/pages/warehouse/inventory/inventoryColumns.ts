@@ -124,6 +124,7 @@ export const INVENTORY_PRINT_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, nu
   customer_payment_note: 6,
   user_note: 8,
   route: 5,
+  delivery_staff: 6,
   ma_kh: 5,
   receiver_address: 17,
   bill_images: 8,
@@ -175,6 +176,7 @@ export type InventoryColumnId =
   | 'customer_payment_note'
   | 'user_note'
   | 'route'
+  | 'delivery_staff'
   | 'ma_kh'
   | 'receiver_address'
   | 'bill_images'
@@ -229,6 +231,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'customer_payment_note', label: 'Ghi chú TT', defaultVisible: false },
   { id: 'user_note', label: 'Ghi chú', defaultVisible: true },
   { id: 'route', label: 'Tuyến', defaultVisible: false },
+  { id: 'delivery_staff', label: 'NV phát', defaultVisible: false },
   { id: 'ma_kh', label: 'Mã KH', defaultVisible: false },
   { id: 'receiver_address', label: 'Địa chỉ nhận', defaultVisible: false },
   { id: 'bill_images', label: 'Hình ảnh', defaultVisible: false },
@@ -296,6 +299,7 @@ export const ALL_ORDERS_SENDER_COLUMN_IDS: InventoryColumnId[] = [
   'bill_images',
   'order_status',
   'trip_label',
+  'delivery_staff',
   'billing_unit',
   'billing_qty_detail',
   'order_code',
@@ -346,6 +350,7 @@ export const ALL_ORDERS_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>
   bill_images: 90,
   order_status: 115,
   trip_label: 340,
+  delivery_staff: 150,
   billing_unit: 110,
   billing_qty_detail: 150,
   order_code: 120,
@@ -395,6 +400,7 @@ export const ALL_ORDERS_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
   'bill_images',
   'order_status',
   'trip_label',
+  'delivery_staff',
   'billing_unit',
   'billing_qty_detail',
   'unit_price',
@@ -421,6 +427,7 @@ const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   waybill_code: 'Bill',
   cong_sg: 'Nội dung',
   trip_label: 'Chuyến / xe',
+  delivery_staff: 'NV phát',
   service_type: 'Dịch vụ',
   noi_den: 'Nơi đến',
   receiver_address: 'Địa chỉ nhận',
@@ -484,7 +491,8 @@ export function getAllOrdersDefaultVisibleColumnIds(): InventoryColumnId[] {
   return [...ALL_ORDERS_DEFAULT_COLUMN_IDS];
 }
 
-export const ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v1';
+export const ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v2';
+const LEGACY_ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v1';
 
 export function normalizeAllOrdersVisibleColumnIds(ids: InventoryColumnId[]): InventoryColumnId[] {
   const selected = new Set(ids.filter((id) => ALL_ORDERS_SELECTABLE_COLUMN_IDS.includes(id)));
@@ -499,7 +507,20 @@ export function normalizeAllOrdersVisibleColumnIds(ids: InventoryColumnId[]): In
 export function loadAllOrdersVisibleColumnIds(): InventoryColumnId[] {
   if (typeof window === 'undefined') return getAllOrdersDefaultVisibleColumnIds();
   const raw = localStorage.getItem(ALL_ORDERS_COLUMN_STORAGE_KEY);
-  if (!raw) return getAllOrdersDefaultVisibleColumnIds();
+  if (!raw) {
+    const legacyRaw = localStorage.getItem(LEGACY_ALL_ORDERS_COLUMN_STORAGE_KEY);
+    if (!legacyRaw) return getAllOrdersDefaultVisibleColumnIds();
+    try {
+      const migrated = normalizeAllOrdersVisibleColumnIds([
+        ...(JSON.parse(legacyRaw) as InventoryColumnId[]),
+        'delivery_staff',
+      ]);
+      localStorage.setItem(ALL_ORDERS_COLUMN_STORAGE_KEY, JSON.stringify(migrated));
+      return migrated;
+    } catch {
+      return getAllOrdersDefaultVisibleColumnIds();
+    }
+  }
   try {
     return normalizeAllOrdersVisibleColumnIds(JSON.parse(raw) as InventoryColumnId[]);
   } catch {
@@ -715,6 +736,23 @@ export function resolveOrderStatusBadge(waybill: WaybillInventoryItem) {
 export function resolveRoute(waybill: WaybillInventoryItem): string {
   const route = waybill.route_code?.trim() || waybill.delivery_route?.trim();
   return route || '—';
+}
+
+export function resolveDeliveryStaff(waybill: WaybillInventoryItem): string {
+  const employeeCode = waybill.last_mile_driver?.username?.trim() || '';
+  const employeeName = (
+    waybill.last_mile_driver?.name
+    || waybill.last_mile_driver?.full_name
+    || waybill.last_mile_driver_name
+    || ''
+  ).trim();
+  if (employeeCode && employeeName && employeeCode.toLocaleLowerCase('vi-VN') !== employeeName.toLocaleLowerCase('vi-VN')) {
+    return `${employeeCode} · ${employeeName}`;
+  }
+  if (employeeCode || employeeName) return employeeCode || employeeName;
+
+  const partner = waybill.last_mile_vendor;
+  return partner?.code?.trim() || partner?.name?.trim() || '—';
 }
 
 export function resolveWeightKg(waybill: WaybillInventoryItem): number {

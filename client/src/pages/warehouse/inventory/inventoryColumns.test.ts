@@ -7,6 +7,7 @@ import {
   normalizeAllOrdersVisibleColumnIds,
   normalizeInventoryVisibleColumnIds,
   resolvePrintColumnIds,
+  resolveDeliveryStaff,
   resolveNoiDen,
   resolveTotalAmount,
   resolveUserNote,
@@ -115,6 +116,9 @@ describe('all orders visible columns', () => {
     expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('trip_label')).toBe(
       ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('order_status') + 1,
     );
+    expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('delivery_staff')).toBe(
+      ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('trip_label') + 1,
+    );
   });
 
   it('keeps required columns and preserves the canonical order for selected details', () => {
@@ -144,6 +148,14 @@ describe('all orders visible columns', () => {
 });
 
 describe('inventory display values', () => {
+  it('shows the last-mile employee code with a readable name fallback', () => {
+    expect(resolveDeliveryStaff({
+      id: 1,
+      last_mile_driver: { id: 7, username: 'NVPHAT01', name: 'Nguyễn Văn Phát' },
+    })).toBe('NVPHAT01 · Nguyễn Văn Phát');
+    expect(resolveDeliveryStaff({ id: 2, last_mile_driver_name: 'Tài xế đối tác' })).toBe('Tài xế đối tác');
+  });
+
   it('formats each trip allocation with packages, trip, plate, date, and trip status', () => {
     expect(formatInventoryTripHistoryLine({
       trip_id: '41',

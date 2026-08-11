@@ -72,6 +72,9 @@ export interface WaybillDetail {
   current_hub?: HubSummary | null;
   receiving_hub?: HubSummary | null;
   delivery_photo_url?: string | null;
+  last_mile_driver_id?: string | number | null;
+  last_mile_driver_name?: string | null;
+  last_mile_driver?: UserSummary | null;
   received_at?: string | null;
   created_at?: string | null;
   sent_date?: string | null;

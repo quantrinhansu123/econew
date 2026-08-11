@@ -31,6 +31,17 @@ describe('all-orders column filters', () => {
     expect(getAllOrdersColumnValue(rows[0], 'received_at')).toBe('31/07/2026');
   });
 
+  it('filters by the assigned last-mile employee', () => {
+    const assignedRows: WaybillInventoryItem[] = [
+      { id: 1, last_mile_driver: { id: 7, username: 'NVPHAT01', name: 'Nguyễn Văn Phát' } },
+      { id: 2, last_mile_driver_name: 'Tài xế đối tác' },
+    ];
+
+    expect(getAllOrdersColumnValue(assignedRows[0], 'delivery_staff')).toBe('NVPHAT01 · Nguyễn Văn Phát');
+    expect(applyAllOrdersColumnFilters(assignedRows, { delivery_staff: 'NVPHAT01 · Nguyễn Văn Phát' }))
+      .toEqual([assignedRows[0]]);
+  });
+
   it('indexes every split trip in the Chuyến / xe column', () => {
     const waybill: WaybillInventoryItem = {
       id: 4,

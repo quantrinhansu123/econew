@@ -78,10 +78,6 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
 
   const submitStatus = (status: DeliveryStatus) => {
     if (status === 'OUT_FOR_DELIVERY') {
-      if (!routeCode) {
-        setUploadError('Phải chọn tuyến giao.');
-        return;
-      }
       if (assignmentType === 'INTERNAL' && !driverName.trim()) {
         setUploadError('Phải nhập hoặc chọn tài xế nội bộ.');
         return;
@@ -90,15 +86,11 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
         setUploadError('Phải chọn đối tác giao hàng.');
         return;
       }
-      if (!licensePlate.trim()) {
-        setUploadError('Phải nhập biển kiểm soát giao chặng cuối.');
-        return;
-      }
       onConfirm(status, undefined, {
         assignment_type: assignmentType,
-        route_code: routeCode,
+        route_code: routeCode || undefined,
         driver_name: driverName.trim() || undefined,
-        license_plate: licensePlate.trim().toUpperCase(),
+        license_plate: licensePlate.trim().toUpperCase() || undefined,
         delivery_cost: parseAmountInput(deliveryCost),
         ...(assignmentType === 'INTERNAL' ? { driver_id: driverId, truck_id: truckId || undefined } : { vendor_id: vendorId }),
       });
@@ -131,7 +123,7 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
             <div className="space-y-3 rounded-xl border border-border bg-slate-50 p-3">
               <p className="font-black text-foreground">Phân giao chặng cuối</p>
               <select value={routeCode} onChange={(event) => setRouteCode(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">
-                <option value="">{routesLoading ? 'Đang tải tuyến...' : 'Chọn tuyến giao'}</option>
+                <option value="">{routesLoading ? 'Đang tải tuyến...' : 'Không chọn tuyến (không bắt buộc)'}</option>
                 {routeCode && !routes.some((route) => route.code === routeCode) && <option value={routeCode}>{routeCode} · Tuyến đang gán</option>}
                 {routes.map((route) => <option key={String(route.id)} value={route.code}>{route.code} · {route.name}</option>)}
               </select>
@@ -162,7 +154,7 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
                   <input value={driverName} onChange={(event) => setDriverName(event.target.value)} maxLength={255} placeholder="Nhập tên tài xế" className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none" />
                 </label>
                 <label className="text-[11px] font-bold text-muted-foreground">
-                  Biển kiểm soát
+                  Biển kiểm soát <span className="font-medium">(không bắt buộc)</span>
                   <input value={licensePlate} onChange={(event) => setLicensePlate(event.target.value.toUpperCase())} maxLength={32} placeholder="VD: 51H-123.45" className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold uppercase text-foreground outline-none" />
                 </label>
               </div>

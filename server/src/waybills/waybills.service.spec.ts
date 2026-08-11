@@ -1157,6 +1157,8 @@ describe('WaybillsService', () => {
 
     await service.getInventoryTripLines({ list_scope: 'all_orders' }, manager);
 
+    expect(qb.leftJoinAndSelect).toHaveBeenCalledWith('waybill.last_mile_driver', 'last_mile_driver');
+
     expect(qb.andWhere).not.toHaveBeenCalledWith(
       'COALESCE(waybill.current_hub_id, waybill.origin_hub_id) IN (:...hubIds)',
       { hubIds: ['1'] },
@@ -1576,6 +1578,38 @@ describe('WaybillsService', () => {
     });
   });
 
+  it('cho phép phân giao chặng cuối không chọn tuyến và biển kiểm soát', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.AT_DEST_HUB,
+      status: WaybillStatus.AT_DEST_HUB,
+      dest_hub_id: '2',
+      route_code: null,
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+    usersRepository.findOne.mockResolvedValue({
+      id: 'd1',
+      full_name: 'Tài xế A',
+      role_mask: Roles.DRIVER,
+      hub_id: '2',
+      is_active: true,
+    });
+
+    await service.updateStatus('1', {
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+      assignment_type: 'INTERNAL',
+      driver_id: 'd1',
+      driver_name: 'Tài xế A',
+    }, manager);
+
+    expect(waybill).toMatchObject({
+      current_state: WaybillStatus.OUT_FOR_DELIVERY,
+      route_code: null,
+      last_mile_driver_id: 'd1',
+      last_mile_license_plate: null,
+      xe_phat: null,
+    });
+  });
+
   it('lưu đối tác khi phân giao chặng cuối', async () => {
     const waybill = makeWaybill({ current_state: WaybillStatus.AT_DEST_HUB, status: WaybillStatus.AT_DEST_HUB });
     waybillsRepository.findOne.mockResolvedValue(waybill);
@@ -1677,6 +1711,9 @@ describe('WaybillsService', () => {
     expect(result).not.toHaveProperty('cod_amount');
     expect(result).not.toHaveProperty('freight_amount');
     expect(result).not.toHaveProperty('cc_amount');
+    expect(waybillsRepository.findOne).toHaveBeenCalledWith(expect.objectContaining({
+      relations: expect.arrayContaining(['last_mile_driver']),
+    }));
   });
 
   it('response exposes only COD amount to accountant for hub reconciliation', async () => {

@@ -5,6 +5,7 @@ import {
   resolveBillingUnit,
   resolveCongSg,
   resolveCustomerName,
+  resolveDeliveryStaff,
   resolveMaKh,
   resolveNoiDen,
   resolveOrderStatusBadge,
@@ -58,6 +59,7 @@ export const ALL_ORDERS_FILTERABLE_COLUMN_IDS: InventoryColumnId[] = [
   'stack_position',
   'loaded_at',
   'trip_label',
+  'delivery_staff',
   'user_note',
   'route',
   'receiver_phone',
@@ -132,6 +134,8 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
       return waybill.loaded_at ? formatInventoryDate(String(waybill.loaded_at)) : EMPTY_VALUE;
     case 'trip_label':
       return resolveInventoryTripHistoryText(waybill) || EMPTY_VALUE;
+    case 'delivery_staff':
+      return resolveDeliveryStaff(waybill);
     case 'user_note':
       return resolveUserNote(waybill) || EMPTY_VALUE;
     case 'route':

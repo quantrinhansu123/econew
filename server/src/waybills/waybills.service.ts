@@ -272,7 +272,7 @@ export class WaybillsService {
   async findAll(query: QueryWaybillsDto, currentUser: UserEntity) {
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 20);
-    const qb = this.waybillsRepository.createQueryBuilder('waybill').where('waybill.deleted_at IS NULL').leftJoinAndSelect('waybill.origin_hub', 'origin_hub').leftJoinAndSelect('waybill.dest_hub', 'dest_hub').leftJoinAndSelect('waybill.order', 'order');
+    const qb = this.waybillsRepository.createQueryBuilder('waybill').where('waybill.deleted_at IS NULL').leftJoinAndSelect('waybill.origin_hub', 'origin_hub').leftJoinAndSelect('waybill.dest_hub', 'dest_hub').leftJoinAndSelect('waybill.order', 'order').leftJoinAndSelect('waybill.last_mile_driver', 'last_mile_driver');
     this.applyFilters(qb, query);
     this.applyHubScope(qb, currentUser);
     const [items, total] = await qb.orderBy('waybill.created_at', 'DESC').skip((page - 1) * limit).take(limit).getManyAndCount();
@@ -562,7 +562,10 @@ export class WaybillsService {
   }
 
   async findOne(id: string, currentUser: UserEntity): Promise<WaybillRecord> {
-    const waybill = await this.waybillsRepository.findOne({ where: { id, deleted_at: IsNull() } as any, relations: ['origin_hub', 'dest_hub'] }) as WaybillRecord | null;
+    const waybill = await this.waybillsRepository.findOne({
+      where: { id, deleted_at: IsNull() } as any,
+      relations: ['origin_hub', 'dest_hub', 'last_mile_driver'],
+    }) as WaybillRecord | null;
     if (!waybill) throw new NotFoundException('Waybill not found');
     this.assertWaybillAccess(waybill, currentUser);
     return this.sanitize(waybill, currentUser);
@@ -920,7 +923,8 @@ export class WaybillsService {
       .where('waybill.deleted_at IS NULL')
       .leftJoinAndSelect('waybill.origin_hub', 'origin_hub')
       .leftJoinAndSelect('waybill.dest_hub', 'dest_hub')
-      .leftJoinAndSelect('waybill.order', 'order');
+      .leftJoinAndSelect('waybill.order', 'order')
+      .leftJoinAndSelect('waybill.last_mile_driver', 'last_mile_driver');
     this.applyFilters(qb, inventoryQuery);
     if (!isGlobalListScope) {
       this.applyHubScope(qb, currentUser);
@@ -2270,13 +2274,11 @@ export class WaybillsService {
     const assignmentType = dto.assignment_type;
     if (!assignmentType) throw new BadRequestException('Phải chọn hình thức phân giao nội bộ hoặc đối tác');
     const routeCode = dto.route_code?.trim() || waybill.route_code?.trim();
-    if (!routeCode) throw new BadRequestException('Phải chọn tuyến giao trước khi phân xe');
-    waybill.route_code = routeCode;
+    waybill.route_code = routeCode || null;
     const manualDriverName = dto.driver_name?.trim() || '';
     const manualLicensePlate = dto.license_plate?.trim().toUpperCase() || '';
     const deliveryCost = Number(dto.delivery_cost ?? waybill.last_mile_cost_amount ?? 0);
     if (!Number.isFinite(deliveryCost) || deliveryCost < 0) throw new BadRequestException('Cước giao chặng cuối không hợp lệ');
-    if (!manualLicensePlate) throw new BadRequestException('Phải nhập biển kiểm soát giao chặng cuối');
 
     if (assignmentType === 'INTERNAL') {
       const driverId = String(dto.driver_id || ((currentUser.role_mask & Roles.DRIVER) !== 0 ? currentUser.id : '')).trim();
@@ -2301,9 +2303,9 @@ export class WaybillsService {
         last_mile_truck_id: truck?.id ?? null,
         last_mile_vendor_id: null,
         last_mile_driver_name: driverName,
-        last_mile_license_plate: manualLicensePlate,
+        last_mile_license_plate: manualLicensePlate || null,
         last_mile_cost_amount: String(deliveryCost),
-        xe_phat: manualLicensePlate,
+        xe_phat: manualLicensePlate || null,
       });
       return;
     }
@@ -2317,9 +2319,9 @@ export class WaybillsService {
       last_mile_truck_id: null,
       last_mile_vendor_id: vendor.id,
       last_mile_driver_name: manualDriverName || null,
-      last_mile_license_plate: manualLicensePlate,
+      last_mile_license_plate: manualLicensePlate || null,
       last_mile_cost_amount: String(deliveryCost),
-      xe_phat: manualLicensePlate,
+      xe_phat: manualLicensePlate || null,
     });
   }
 

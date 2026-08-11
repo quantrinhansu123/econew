@@ -37,6 +37,7 @@ const printData: WaybillPrintData = {
   tongPhaiThuPhat: '0',
   dichVu: 'TIÊU CHUẨN 72H',
   dvGtgt: 'Tiêu chuẩn',
+  maNhanVienPhat: 'NVPHAT01',
   codStamp: false,
   showPricing: false,
 };
@@ -50,7 +51,8 @@ describe('waybill invoice layout', () => {
     expect(html).toContain('scale=4');
     expect(html).toContain('eco-phone-numbers');
     expect(html.match(/0946 936 999/g)).toHaveLength(1);
-    expect(html.match(/0869 444 816/g)).toHaveLength(1);
+    expect(html.match(/0869 444 845/g)).toHaveLength(1);
+    expect(html).not.toContain('0869 444 816');
     expect(html).not.toContain('0888.805.625');
     expect(html).not.toContain('D.vụ GTGT:');
     expect(html).toContain('eco-band--receiver-summary');
@@ -82,6 +84,10 @@ describe('waybill invoice layout', () => {
     expect(html).toContain('<span class="eco-stat-value">10.00</span>');
     expect(html).not.toContain('<strong>10.00</strong>');
     expect(html.match(/Mã BC gửi:/g)).toHaveLength(1);
+    expect(html).toContain('Quý khách vui lòng kiểm tra số lượng hàng hoá trước khi ký nhận.');
+    expect(html).toContain('Vui lòng quét mã QR để xem chính sách đền bù và điều kiện chuyển phát');
+    expect(html).toContain('Mã nhân viên phát');
+    expect(html).toContain('<strong class="eco-footer-staff-code">NVPHAT01</strong>');
     expect(html).toContain('/eco-policy-qr.jpg');
     expect(html).not.toContain('api.qrserver.com');
   });

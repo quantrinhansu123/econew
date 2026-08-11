@@ -40,7 +40,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
           <img src={WAYBILL_PRINT_LOGO_SRC} alt="" className="eco-logo" />
           <div className="eco-phone">
             <span className="eco-phone-label">Hotline</span>{' '}
-            <span className="eco-phone-numbers">0946 936 999 - 0869 444 816</span>
+            <span className="eco-phone-numbers">0946 936 999 - 0869 444 845</span>
           </div>
         </div>
         <div className="eco-a5-title">
@@ -158,7 +158,12 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         <div className="eco-footer-service">
           <div className="eco-footer-text">
             <p><b>Dịch vụ:</b> {value(data.dichVu)}</p>
-            <p><i>Quý khách vui lòng quét mã QR để xem chính sách đền bù và điều kiện chuyển phát</i></p>
+            <p>
+              <i>
+                Quý khách vui lòng kiểm tra số lượng hàng hoá trước khi ký nhận.<br />
+                Vui lòng quét mã QR để xem chính sách đền bù và điều kiện chuyển phát
+              </i>
+            </p>
           </div>
           <div className="eco-qr"><img src={WAYBILL_POLICY_QR_SRC} alt="QR chính sách ECO" /></div>
         </div>
@@ -168,6 +173,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         </div>
         <div className="eco-footer-staff">
           <b>Mã nhân viên phát</b>
+          <strong className="eco-footer-staff-code">{value(data.maNhanVienPhat)}</strong>
           <label><span /> Huỷ</label>
         </div>
       </footer>
