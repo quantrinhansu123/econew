@@ -13,7 +13,8 @@ import {
 import { ApiError, apiRequest } from '../lib/api';
 import { IMAGE_UPLOAD_ACCEPT, uploadWaybillImage } from '../lib/uploadImage';
 import ProofCameraDialog from './delivery/proof/ProofCameraDialog';
-import { normalizeDetectedWaybillCode, proofResultLabel } from './delivery/proof/deliveryProofUtils';
+import { isExactWaybillNotFoundError, proofResultLabel } from './delivery/proof/deliveryProofUtils';
+import { decodeWaybillCodeFromProofImage } from './delivery/proof/proofImageDecoder';
 
 type ProofStatus = 'PROCESSING' | 'SUCCESS' | 'UNREADABLE' | 'NOT_FOUND' | 'ALREADY_DELIVERED' | 'ERROR';
 
@@ -53,6 +54,7 @@ export default function DeliveryProofPage() {
   const [items, setItems] = useState<ProofItem[]>([]);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const itemsRef = useRef<ProofItem[]>([]);
+  const processingQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     itemsRef.current = items;
@@ -84,10 +86,7 @@ export default function DeliveryProofPage() {
 
     let detectedCode: string | null = null;
     try {
-      const { BrowserMultiFormatReader } = await import('@zxing/browser');
-      const reader = new BrowserMultiFormatReader();
-      const result = await reader.decodeFromImageUrl(previewUrl);
-      detectedCode = normalizeDetectedWaybillCode(result.getText());
+      detectedCode = await decodeWaybillCodeFromProofImage(previewUrl);
       if (!detectedCode) throw new Error('UNSUPPORTED_BARCODE');
     } catch {
       patchItem(id, {
@@ -102,11 +101,14 @@ export default function DeliveryProofPage() {
     try {
       resolved = await apiRequest<ResolveResponse>(`/waybills/proof-of-delivery/resolve?code=${encodeURIComponent(detectedCode)}`);
     } catch (error) {
-      if (error instanceof ApiError && error.status === 404) {
+      if (error instanceof ApiError && isExactWaybillNotFoundError(error)) {
         patchItem(id, { status: 'NOT_FOUND', message: `Không tồn tại vận đơn mang mã ${detectedCode}. Ảnh chưa được tải lên hoặc gắn vào đơn nào.` });
         return;
       }
-      patchItem(id, { status: 'ERROR', message: error instanceof Error ? error.message : 'Không kiểm tra được mã vận đơn.' });
+      const backendMessage = error instanceof ApiError && error.status === 404
+        ? 'Backend Báo phát chưa được cập nhật. Hãy deploy lại Render rồi thử lại; ảnh chưa được tải lên hoặc gắn vào đơn nào.'
+        : error instanceof Error ? error.message : 'Không kiểm tra được mã vận đơn.';
+      patchItem(id, { status: 'ERROR', message: backendMessage });
       return;
     }
 
@@ -148,6 +150,12 @@ export default function DeliveryProofPage() {
     }
   };
 
+  const enqueueItem = (id: string, file: File, previewUrl: string) => {
+    processingQueueRef.current = processingQueueRef.current
+      .then(() => processItem(id, file, previewUrl))
+      .catch(() => undefined);
+  };
+
   const addProofFiles = (selectedFiles: File[]) => {
     const files = selectedFiles.filter(file => file.type.startsWith('image/') || /\.(?:avif|gif|heic|heif|jpe?g|png|webp)$/i.test(file.name));
     if (!files.length) return;
@@ -161,7 +169,7 @@ export default function DeliveryProofPage() {
       message: 'Đang xếp hàng nhận diện...',
     }));
     setItems(current => [...additions, ...current]);
-    additions.forEach(item => { void processItem(item.id, item.file, item.previewUrl); });
+    additions.forEach(item => enqueueItem(item.id, item.file, item.previewUrl));
   };
 
   const addFiles = (event: ChangeEvent<HTMLInputElement>) => {
@@ -174,7 +182,7 @@ export default function DeliveryProofPage() {
     addProofFiles([file]);
   };
 
-  const retry = (item: ProofItem) => { void processItem(item.id, item.file, item.previewUrl); };
+  const retry = (item: ProofItem) => enqueueItem(item.id, item.file, item.previewUrl);
   const clearResults = () => {
     items.forEach(item => URL.revokeObjectURL(item.previewUrl));
     setItems([]);

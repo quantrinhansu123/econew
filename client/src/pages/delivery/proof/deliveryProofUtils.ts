@@ -19,6 +19,19 @@ export function normalizeDetectedWaybillCode(value: string): string | null {
   return normalized;
 }
 
+export function isExactWaybillNotFoundError(error: {
+  status?: number;
+  message?: string;
+  payload?: unknown;
+}): boolean {
+  if (error.status !== 404) return false;
+  const payloadMessage = error.payload && typeof error.payload === 'object' && 'message' in error.payload
+    ? (error.payload as { message?: unknown }).message
+    : null;
+  const message = typeof payloadMessage === 'string' ? payloadMessage : error.message;
+  return /^waybill not found$/i.test(String(message || '').trim());
+}
+
 export function proofResultLabel(status: string): string {
   switch (status) {
     case 'SUCCESS': return 'Báo phát thành công';
