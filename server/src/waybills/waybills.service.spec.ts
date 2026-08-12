@@ -1479,10 +1479,19 @@ describe('WaybillsService', () => {
       trip: { id: '46', status: TripStatus.IN_TRANSIT },
     }]);
 
-    const result = await service.updateDeliveryPreparation('1', { status: 'READY' }, manager);
+    const result = await service.updateDeliveryPreparation('1', {
+      status: 'READY',
+      note: '  Khách nhận sau 18:00  ',
+    }, manager);
 
-    expect(result).toMatchObject({ delivery_preparation_status: 'READY' });
-    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ delivery_preparation_status: 'READY' }));
+    expect(result).toMatchObject({
+      delivery_preparation_status: 'READY',
+      delivery_preparation_note: 'Khách nhận sau 18:00',
+    });
+    expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      delivery_preparation_status: 'READY',
+      delivery_preparation_note: 'Khách nhận sau 18:00',
+    }));
   });
 
   it('giao phần kiện không đổi toàn bộ vận đơn khỏi danh sách tồn', async () => {

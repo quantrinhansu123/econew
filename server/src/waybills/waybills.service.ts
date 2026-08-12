@@ -491,6 +491,7 @@ export class WaybillsService {
       waybill.delivery_hold_reason = null;
     }
     waybill.delivery_preparation_status = dto.status;
+    if (dto.note !== undefined) waybill.delivery_preparation_note = dto.note.trim() || null;
     waybill.delivery_confirmed_at = now;
     waybill.updated_by = currentUser.id;
     const saved = await this.waybillsRepository.save(waybill as any);
@@ -3329,6 +3330,7 @@ export class WaybillsService {
       delivery_preparation_status: this.auditText(waybill.delivery_preparation_status),
       delivery_scheduled_at: waybill.delivery_scheduled_at?.toISOString() ?? null,
       delivery_hold_reason: this.auditText(waybill.delivery_hold_reason),
+      delivery_preparation_note: this.auditText(waybill.delivery_preparation_note),
       delivery_confirmed_at: waybill.delivery_confirmed_at?.toISOString() ?? null,
       last_delivery_failure_reason: this.auditText(waybill.last_delivery_failure_reason),
       sent_date: this.auditText(waybill.sent_date || this.auditNoteField(note, 'ngay_gui')),

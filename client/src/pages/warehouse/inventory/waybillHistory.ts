@@ -75,6 +75,7 @@ const FIELD_LABELS: Record<string, string> = {
   delivery_preparation_status: 'Trạng thái xử lý trước giao',
   delivery_scheduled_at: 'Ngày hẹn giao',
   delivery_hold_reason: 'Lý do lưu kho',
+  delivery_preparation_note: 'Ghi chú gọi hẹn',
   delivery_confirmed_at: 'Thời gian xác nhận',
   last_delivery_failure_reason: 'Lý do giao không thành công',
   sent_date: 'Ngày gửi trên bill',

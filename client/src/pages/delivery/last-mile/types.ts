@@ -88,6 +88,7 @@ export interface LastMileWaybill {
   delivery_preparation_status?: 'PENDING_CONFIRMATION' | 'READY' | 'SCHEDULED' | 'NEEDS_ACTION' | 'HOLD' | null;
   delivery_scheduled_at?: string | null;
   delivery_hold_reason?: string | null;
+  delivery_preparation_note?: string | null;
   delivery_confirmed_at?: string | null;
   route_code?: string | null;
   last_delivery_failure_reason?: string | null;

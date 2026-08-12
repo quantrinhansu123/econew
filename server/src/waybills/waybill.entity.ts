@@ -124,6 +124,9 @@ export class WaybillEntity {
   @Column({ type: 'varchar', length: 500, nullable: true })
   delivery_hold_reason: string | null;
 
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  delivery_preparation_note: string | null;
+
   @Column({ type: 'timestamp', nullable: true })
   delivery_confirmed_at: Date | null;
 

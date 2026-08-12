@@ -122,6 +122,12 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
           {currentStatus === 'AT_DEST_HUB' && resources && (
             <div className="space-y-3 rounded-xl border border-border bg-slate-50 p-3">
               <p className="font-black text-foreground">Phân giao chặng cuối</p>
+              {waybill.delivery_preparation_note && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-amber-900">
+                  <p className="text-[10px] font-black uppercase tracking-wide">Ghi chú gọi hẹn</p>
+                  <p className="mt-1 whitespace-pre-wrap text-[12px] font-bold">{waybill.delivery_preparation_note}</p>
+                </div>
+              )}
               <select value={routeCode} onChange={(event) => setRouteCode(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">
                 <option value="">{routesLoading ? 'Đang tải tuyến...' : 'Không chọn tuyến (không bắt buộc)'}</option>
                 {routeCode && !routes.some((route) => route.code === routeCode) && <option value={routeCode}>{routeCode} · Tuyến đang gán</option>}

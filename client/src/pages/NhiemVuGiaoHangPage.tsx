@@ -26,7 +26,7 @@ const normalizeStatus = (waybill: LastMileWaybill) => String(waybill.current_sta
 const normalizeList = <T,>(response: ListResponse<T> | T[]) =>
   Array.isArray(response) ? response : response.items || response.data || response.waybills || [];
 
-type DeliveryColumnId = 'waybill' | 'receiver' | 'trip' | 'packages' | 'actualWeight' | 'cbm' | 'payment' | 'status' | 'actions';
+type DeliveryColumnId = 'waybill' | 'receiver' | 'trip' | 'packages' | 'actualWeight' | 'cbm' | 'payment' | 'preparationNote' | 'status' | 'actions';
 
 const DELIVERY_COLUMNS: Array<{ id: DeliveryColumnId; label: string; width: string; required?: boolean }> = [
   { id: 'waybill', label: 'Vận đơn', width: 'minmax(145px,0.85fr)', required: true },
@@ -36,6 +36,7 @@ const DELIVERY_COLUMNS: Array<{ id: DeliveryColumnId; label: string; width: stri
   { id: 'actualWeight', label: 'Kg thực tế', width: '100px' },
   { id: 'cbm', label: 'CBM', width: '90px' },
   { id: 'payment', label: 'Thanh toán', width: '90px' },
+  { id: 'preparationNote', label: 'Ghi chú gọi hẹn', width: 'minmax(200px,1.2fr)', required: true },
   { id: 'status', label: 'Trạng thái', width: 'minmax(180px,1fr)' },
   { id: 'actions', label: 'Thao tác', width: 'minmax(190px,auto)', required: true },
 ];
@@ -214,11 +215,11 @@ export default function NhiemVuGiaoHangPage() {
     }
   };
 
-  const confirmPreparation = async (status: 'READY' | 'SCHEDULED' | 'HOLD', scheduledAt?: string, reason?: string) => {
+  const confirmPreparation = async (status: 'READY' | 'SCHEDULED' | 'HOLD', scheduledAt?: string, reason?: string, note?: string) => {
     if (!preparationWaybill) return;
     setIsSubmitting(true); setActionError('');
     try {
-      await apiRequest(`/waybills/${preparationWaybill.id}/delivery-preparation`, { method: 'PATCH', body: { status, scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined, reason } });
+      await apiRequest(`/waybills/${preparationWaybill.id}/delivery-preparation`, { method: 'PATCH', body: { status, scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined, reason, note } });
       setPreparationWaybill(null); await loadTasks();
     } catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không lưu được xử lý.'); }
     finally { setIsSubmitting(false); }
@@ -411,6 +412,14 @@ export default function NhiemVuGiaoHangPage() {
                 {visibleColumnIds.includes('actualWeight') && <div className="text-[11px] font-extrabold"><span className="mr-1 text-muted-foreground xl:hidden">Kg thực tế:</span>{Number(waybill.actual_weight ?? waybill.weight ?? 0).toLocaleString('vi-VN')} kg</div>}
                 {visibleColumnIds.includes('cbm') && <div className="text-[11px] font-extrabold"><span className="mr-1 text-muted-foreground xl:hidden">CBM:</span>{Number(waybill.the_tich_m3 ?? 0).toLocaleString('vi-VN', { maximumFractionDigits: 4 })}</div>}
                 {visibleColumnIds.includes('payment') && <div className="text-[11px] font-bold text-muted-foreground"><span className="mr-1 xl:hidden">Thanh toán:</span>{waybill.payment_type || '—'}</div>}
+                {visibleColumnIds.includes('preparationNote') && (
+                <div className="min-w-0 text-[11px]">
+                  <span className="mr-1 font-bold text-muted-foreground xl:hidden">Ghi chú gọi hẹn:</span>
+                  <span className={clsx('font-bold', waybill.delivery_preparation_note ? 'text-amber-800' : 'text-muted-foreground')} title={waybill.delivery_preparation_note || undefined}>
+                    {waybill.delivery_preparation_note || '—'}
+                  </span>
+                </div>
+                )}
                 {visibleColumnIds.includes('status') && (
                 <div className="min-w-0 text-[11px]">
                   {['IN_TRANSIT', 'AT_DEST_HUB'].includes(status) && <p className={clsx('truncate font-extrabold', preparation === 'NEEDS_ACTION' ? 'text-red-700' : preparation === 'READY' ? 'text-emerald-700' : status === 'IN_TRANSIT' ? 'text-blue-700' : 'text-amber-700')} title={preparationText}>
@@ -482,7 +491,7 @@ export default function NhiemVuGiaoHangPage() {
         }}
         onConfirm={confirmUpdateStatus}
       />
-      <DeliveryPreparationDialog waybill={preparationWaybill} busy={isSubmitting} error={actionError} onClose={() => { setPreparationWaybill(null); setActionError(''); }} onConfirm={confirmPreparation}/>
+      {preparationWaybill && <DeliveryPreparationDialog key={String(preparationWaybill.task_id || preparationWaybill.id)} waybill={preparationWaybill} busy={isSubmitting} error={actionError} onClose={() => { setPreparationWaybill(null); setActionError(''); }} onConfirm={confirmPreparation}/>}
       <DeliveryHistoryDialog waybill={historyWaybill} items={historyItems} loading={historyLoading} onClose={() => setHistoryWaybill(null)}/>
       <DeliveryDispatchManifestDialog open={printOpen} waybills={displayedWaybills} showPricing={isManager} onClose={() => setPrintOpen(false)}/>
     </div>

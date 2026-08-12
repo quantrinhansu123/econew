@@ -9,4 +9,9 @@ export class UpdateDeliveryPreparationDto {
   @ApiProperty({ enum: DELIVERY_PREPARATION_STATUSES }) @IsIn(DELIVERY_PREPARATION_STATUSES) status: DeliveryPreparationStatus;
   @ApiPropertyOptional({ type: String, format: 'date-time' }) @IsOptional() @Type(() => Date) @IsDate() scheduled_at?: Date;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) reason?: string;
+  @ApiPropertyOptional({ description: 'Ghi chú cuộc gọi để điều phối giao hàng', maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
 }
