@@ -1,5 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequireRoles } from '../auth/decorators/require-roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -29,12 +31,16 @@ import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
 import { UpdateDeliveryPreparationDto } from './dto/update-delivery-preparation.dto';
 import { UpdateCodReconciliationDto } from './dto/update-cod-reconciliation.dto';
 import { ProofOfDeliveryDto } from './dto/proof-of-delivery.dto';
+import { GeminiWaybillRecognitionService } from './gemini-waybill-recognition.service';
 
 @ApiTags('Waybills')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('waybills')
 export class WaybillsController {
-  constructor(private readonly waybillsService: WaybillsService) {}
+  constructor(
+    private readonly waybillsService: WaybillsService,
+    private readonly geminiRecognitionService: GeminiWaybillRecognitionService,
+  ) {}
 
   @Post()
   @RequireRoles(Roles.WAREHOUSE, Roles.MANAGER, Roles.DIRECTOR)
@@ -150,6 +156,21 @@ export class WaybillsController {
   @ApiOperation({ summary: 'Resolve an exact waybill before attaching signed proof of delivery' })
   resolveProofOfDelivery(@Query('code') code: string, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.resolveProofOfDelivery(code, currentUser);
+  }
+
+  @Post('proof-of-delivery/recognize')
+  @HttpCode(HttpStatus.OK)
+  @RequireRoles(Roles.WAREHOUSE, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Use server-side Gemini as fallback to read a waybill code from a difficult proof photo' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  recognizeProofOfDelivery(@UploadedFile() file: Express.Multer.File) {
+    return this.geminiRecognitionService.recognize(file);
   }
 
   @Post('proof-of-delivery')

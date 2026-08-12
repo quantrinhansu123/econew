@@ -30,6 +30,10 @@ services:
         value: 1h
       - key: JWT_REFRESH_EXPIRES_IN
         value: 7d
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
       - key: CORS_ORIGIN
         value: https://eco-webapp.vercel.app
       - key: DB_POOL_MAX

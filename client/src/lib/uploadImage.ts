@@ -217,14 +217,7 @@ async function uploadStoredFile(file: File, endpoint: string, fallbackError: str
 }
 
 async function uploadImage(file: File, endpoint: string): Promise<string> {
-  const hasImageMime = file.type.toLowerCase().startsWith('image/');
-  const hasKnownImageExtension = /\.(?:avif|gif|heic|heif|jpe?g|png|webp)$/i.test(file.name);
-  if (!hasImageMime && !hasKnownImageExtension) {
-    throw new ApiError(400, 'Chỉ chấp nhận file ảnh.', null);
-  }
-  if (file.size > MAX_SOURCE_BYTES) {
-    throw new ApiError(400, 'Ảnh gốc tối đa 20 MB.', null);
-  }
+  validateImageSource(file);
 
   const uploadFile = await optimizeMobilePhoto(file);
   if (uploadFile.size > MAX_UPLOAD_BYTES) {
@@ -234,12 +227,49 @@ async function uploadImage(file: File, endpoint: string): Promise<string> {
   return uploadStoredFile(uploadFile, endpoint, 'Không upload được ảnh.');
 }
 
+function validateImageSource(file: File) {
+  const hasImageMime = file.type.toLowerCase().startsWith('image/');
+  const hasKnownImageExtension = /\.(?:avif|gif|heic|heif|jpe?g|png|webp)$/i.test(file.name);
+  if (!hasImageMime && !hasKnownImageExtension) {
+    throw new ApiError(400, 'Chỉ chấp nhận file ảnh.', null);
+  }
+  if (file.size > MAX_SOURCE_BYTES) {
+    throw new ApiError(400, 'Ảnh gốc tối đa 20 MB.', null);
+  }
+}
+
 export function uploadPaymentProof(file: File): Promise<string> {
   return uploadImage(file, '/uploads/payment-proofs');
 }
 
 export function uploadWaybillImage(file: File): Promise<string> {
   return uploadImage(file, '/uploads/waybill-images');
+}
+
+export async function recognizeWaybillCodeWithGemini(file: File): Promise<string | null> {
+  validateImageSource(file);
+  const uploadFile = await optimizeMobilePhoto(file);
+  if (uploadFile.size > MAX_UPLOAD_BYTES) {
+    throw new ApiError(400, 'Không thể nén ảnh nhận diện xuống dưới 5 MB.', null);
+  }
+
+  let attempt = await sendUploadAttempt(uploadFile, '/waybills/proof-of-delivery/recognize', getStoredAccessToken());
+  if (attempt.response.status === 401) {
+    const refreshed = await refreshTokenForUpload();
+    if (refreshed.token) {
+      attempt = await sendUploadAttempt(uploadFile, '/waybills/proof-of-delivery/recognize', refreshed.token);
+    }
+  }
+  if (!attempt.response.ok) {
+    throw new ApiError(
+      attempt.response.status,
+      getErrorMessage(attempt.payload, 'Gemini không nhận diện được ảnh.'),
+      attempt.payload,
+    );
+  }
+  if (!attempt.payload || typeof attempt.payload !== 'object' || !('waybill_code' in attempt.payload)) return null;
+  const code = (attempt.payload as { waybill_code?: unknown }).waybill_code;
+  return typeof code === 'string' && code.trim() ? code.trim() : null;
 }
 
 export function uploadCustomerPriceList(file: File, customerCode: string): Promise<string> {

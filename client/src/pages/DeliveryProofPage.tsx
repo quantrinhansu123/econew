@@ -11,7 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { ApiError, apiRequest } from '../lib/api';
-import { IMAGE_UPLOAD_ACCEPT, uploadWaybillImage } from '../lib/uploadImage';
+import { IMAGE_UPLOAD_ACCEPT, recognizeWaybillCodeWithGemini, uploadWaybillImage } from '../lib/uploadImage';
 import ProofCameraDialog from './delivery/proof/ProofCameraDialog';
 import { isExactWaybillNotFoundError, proofResultLabel } from './delivery/proof/deliveryProofUtils';
 import { decodeWaybillCodeFromProofImage } from './delivery/proof/proofImageDecoder';
@@ -85,18 +85,28 @@ export default function DeliveryProofPage() {
     });
 
     let detectedCode: string | null = null;
+    let recognitionSource: 'ZXING' | 'GEMINI' = 'ZXING';
     try {
       detectedCode = await decodeWaybillCodeFromProofImage(previewUrl);
+      if (!detectedCode) {
+        patchItem(id, { message: 'Barcode khó đọc. Đang dùng Gemini để nhận diện mã in trên phiếu...' });
+        detectedCode = await recognizeWaybillCodeWithGemini(file);
+        recognitionSource = 'GEMINI';
+      }
       if (!detectedCode) throw new Error('UNSUPPORTED_BARCODE');
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError) {
+        patchItem(id, { status: 'ERROR', message: error.message });
+        return;
+      }
       patchItem(id, {
         status: 'UNREADABLE',
-        message: 'Không đọc được mã vận đơn. Hãy chụp rõ, đủ sáng và giữ trọn barcode trong ảnh.',
+        message: 'ZXing và Gemini đều không đọc đủ mã vận đơn. Hãy chụp rõ, đủ sáng và giữ trọn phần đầu phiếu trong ảnh.',
       });
       return;
     }
 
-    patchItem(id, { detectedCode, message: `Đã đọc ${detectedCode}. Đang kiểm tra đúng vận đơn...` });
+    patchItem(id, { detectedCode, message: `${recognitionSource === 'GEMINI' ? 'Gemini' : 'Barcode'} đã đọc ${detectedCode}. Đang đối chiếu chính xác với dữ liệu vận đơn...` });
     let resolved: ResolveResponse;
     try {
       resolved = await apiRequest<ResolveResponse>(`/waybills/proof-of-delivery/resolve?code=${encodeURIComponent(detectedCode)}`);

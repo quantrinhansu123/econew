@@ -16,6 +16,7 @@ import { WaybillChangeLogEntity } from './waybill-change-log.entity';
 import { WaybillEntity } from './waybill.entity';
 import { WaybillsController } from './waybills.controller';
 import { WaybillsService } from './waybills.service';
+import { GeminiWaybillRecognitionService } from './gemini-waybill-recognition.service';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { WaybillsService } from './waybills.service';
     VendorsModule,
   ],
   controllers: [WaybillsController],
-  providers: [WaybillsService],
+  providers: [WaybillsService, GeminiWaybillRecognitionService],
   exports: [WaybillsService],
 })
 export class WaybillsModule {}
