@@ -46,7 +46,7 @@ describe('GeminiWaybillRecognitionService', () => {
 
     await expect(service.recognize(file)).resolves.toEqual({ waybill_code: 'ECOHAN109084', provider: 'GEMINI' });
     expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('gemini-3.6-flash:generateContent'),
+      expect.stringContaining('gemini-3.5-flash-lite:generateContent'),
       expect.objectContaining({
         headers: expect.objectContaining({ 'x-goog-api-key': 'server-secret' }),
       }),

@@ -8,6 +8,7 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_PRICE_LIST_BYTES = 10 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
 const MAX_IMAGE_EDGE = 2_000;
+const MAX_RECOGNITION_IMAGE_EDGE = 1_280;
 const OPTIMIZE_THRESHOLD_BYTES = 1_500_000;
 const UPLOAD_TIMEOUT_MS = 55_000;
 const SERVER_SUPPORTED_IMAGE_TYPES = new Set([
@@ -48,10 +49,22 @@ const getErrorMessage = (payload: unknown, fallback: string) => {
   return fallback;
 };
 
-async function optimizeMobilePhoto(file: File): Promise<File> {
+type ImageOptimizationOptions = {
+  forceTransform?: boolean;
+  jpegQuality?: number;
+  maxEdge?: number;
+};
+
+async function optimizeMobilePhoto(file: File, options: ImageOptimizationOptions = {}): Promise<File> {
+  const {
+    forceTransform = false,
+    jpegQuality = 0.82,
+    maxEdge = MAX_IMAGE_EDGE,
+  } = options;
   const mimeType = file.type.toLowerCase();
   const serverSupportsOriginal = SERVER_SUPPORTED_IMAGE_TYPES.has(mimeType);
   if (
+    !forceTransform &&
     serverSupportsOriginal
     && (mimeType === 'image/gif' || file.size <= OPTIMIZE_THRESHOLD_BYTES)
   ) {
@@ -73,7 +86,7 @@ async function optimizeMobilePhoto(file: File): Promise<File> {
   }
 
   try {
-    const ratio = Math.min(1, MAX_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height));
+    const ratio = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(bitmap.width * ratio));
     canvas.height = Math.max(1, Math.round(bitmap.height * ratio));
@@ -94,7 +107,7 @@ async function optimizeMobilePhoto(file: File): Promise<File> {
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
 
     const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, 'image/jpeg', 0.82);
+      canvas.toBlob(resolve, 'image/jpeg', jpegQuality);
     });
     if (!blob) {
       if (!serverSupportsOriginal) {
@@ -106,7 +119,7 @@ async function optimizeMobilePhoto(file: File): Promise<File> {
       }
       return file;
     }
-    if (serverSupportsOriginal && blob.size >= file.size && file.size <= MAX_UPLOAD_BYTES) {
+    if (!forceTransform && serverSupportsOriginal && blob.size >= file.size && file.size <= MAX_UPLOAD_BYTES) {
       return file;
     }
 
@@ -248,7 +261,11 @@ export function uploadWaybillImage(file: File): Promise<string> {
 
 export async function recognizeWaybillCodeWithGemini(file: File): Promise<string | null> {
   validateImageSource(file);
-  const uploadFile = await optimizeMobilePhoto(file);
+  const uploadFile = await optimizeMobilePhoto(file, {
+    forceTransform: true,
+    jpegQuality: 0.74,
+    maxEdge: MAX_RECOGNITION_IMAGE_EDGE,
+  });
   if (uploadFile.size > MAX_UPLOAD_BYTES) {
     throw new ApiError(400, 'Không thể nén ảnh nhận diện xuống dưới 5 MB.', null);
   }

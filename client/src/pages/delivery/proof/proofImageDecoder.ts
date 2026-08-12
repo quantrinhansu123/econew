@@ -1,11 +1,11 @@
 import { normalizeDetectedWaybillCode } from './deliveryProofUtils';
 
 export type ProofImageRotation = 0 | 90 | 180 | 270;
-export type ProofImageRegion = 'FULL' | 'HEADER' | 'TOP_RIGHT' | 'BARCODE_STRIP';
+export type ProofImageRegion = 'TOP_RIGHT' | 'BARCODE_STRIP';
 
 export const PROOF_IMAGE_ROTATIONS: ProofImageRotation[] = [0, 90, 270, 180];
-export const PROOF_IMAGE_DESKEW_ANGLES = [0, -6, 6, -12, 12] as const;
-export const PROOF_IMAGE_REGIONS: ProofImageRegion[] = ['FULL', 'HEADER', 'TOP_RIGHT', 'BARCODE_STRIP'];
+export const PROOF_IMAGE_REGIONS: ProofImageRegion[] = ['BARCODE_STRIP', 'TOP_RIGHT'];
+export const PROOF_ZXING_BUDGET_MS = 900;
 
 const MAX_IMAGE_SIDE = 2400;
 const MAX_CROP_SIDE = 1800;
@@ -57,12 +57,9 @@ const renderRotatedImage = (image: HTMLImageElement, rotation: ProofImageRotatio
 };
 
 const cropRegion = (source: HTMLCanvasElement, region: ProofImageRegion) => {
-  if (region === 'FULL') return source;
-  const normalized = region === 'HEADER'
-    ? { x: 0, y: 0, width: 1, height: 0.44 }
-    : region === 'TOP_RIGHT'
-      ? { x: 0.32, y: 0, width: 0.68, height: 0.46 }
-      : { x: 0.48, y: 0, width: 0.52, height: 0.31 };
+  const normalized = region === 'TOP_RIGHT'
+    ? { x: 0.32, y: 0, width: 0.68, height: 0.46 }
+    : { x: 0.48, y: 0, width: 0.52, height: 0.31 };
   const sourceX = Math.round(source.width * normalized.x);
   const sourceY = Math.round(source.height * normalized.y);
   const sourceWidth = Math.max(1, Math.round(source.width * normalized.width));
@@ -126,47 +123,51 @@ const decodeCanvas = (reader: BarcodeReader, canvas: HTMLCanvasElement) => {
 };
 
 const yieldToBrowser = () => new Promise<void>(resolve => globalThis.setTimeout(resolve, 0));
+const now = () => globalThis.performance?.now?.() ?? Date.now();
 
 async function decodeWithFormat(
   reader: BarcodeReader,
   image: HTMLImageElement,
   format: number,
   enhance: boolean,
+  deadline: number,
 ): Promise<string | null> {
   reader.possibleFormats = [format];
   const direct = await decodeImageElement(reader, image);
   if (direct) return direct;
 
   for (const rotation of PROOF_IMAGE_ROTATIONS) {
-    for (const deskewAngle of PROOF_IMAGE_DESKEW_ANGLES) {
-      const rotated = renderRotatedImage(image, rotation, deskewAngle);
-      for (const region of PROOF_IMAGE_REGIONS) {
+    if (now() >= deadline) return null;
+    const rotated = renderRotatedImage(image, rotation);
+    for (const region of PROOF_IMAGE_REGIONS) {
+      if (now() >= deadline) {
+        rotated.width = 1;
+        rotated.height = 1;
+        return null;
+      }
       const cropped = cropRegion(rotated, region);
       const detected = decodeCanvas(reader, cropped);
       if (detected) return detected;
-        if (enhance && region !== 'FULL') {
+      if (enhance) {
         const contrasted = increaseBarcodeContrast(cropped);
         const enhancedDetected = decodeCanvas(reader, contrasted);
         contrasted.width = 1;
         contrasted.height = 1;
         if (enhancedDetected) return enhancedDetected;
       }
-        if (cropped !== rotated) {
-          cropped.width = 1;
-          cropped.height = 1;
-        }
-      }
-      rotated.width = 1;
-      rotated.height = 1;
-      await yieldToBrowser();
+      cropped.width = 1;
+      cropped.height = 1;
     }
+    rotated.width = 1;
+    rotated.height = 1;
+    await yieldToBrowser();
   }
   return null;
 }
 
 /**
- * Reads the checked Code128 first, then an exact waybill QR as fallback.
- * Four rotations and header crops cover portrait, landscape and sideways proof photos.
+ * Runs a short Code128 pass over the ECO label header. Difficult photos fall back
+ * to server-side Gemini instead of blocking the phone with exhaustive ZXing work.
  */
 export async function decodeWaybillCodeFromProofImage(imageUrl: string): Promise<string | null> {
   const image = await loadImage(imageUrl);
@@ -174,7 +175,11 @@ export async function decodeWaybillCodeFromProofImage(imageUrl: string): Promise
   const { DecodeHintType } = await import('@zxing/library');
   const reader = new BrowserMultiFormatReader() as unknown as BarcodeReader;
   reader.setHints(new Map([[DecodeHintType.TRY_HARDER, true]]));
-  const code128 = await decodeWithFormat(reader, image, BarcodeFormat.CODE_128, true);
-  if (code128) return code128;
-  return decodeWithFormat(reader, image, BarcodeFormat.QR_CODE, false);
+  return decodeWithFormat(
+    reader,
+    image,
+    BarcodeFormat.CODE_128,
+    true,
+    now() + PROOF_ZXING_BUDGET_MS,
+  );
 }

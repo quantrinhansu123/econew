@@ -38,6 +38,8 @@ type ConfirmResponse = {
   waybill: { id: string; waybill_code: string; current_state?: string; status?: string };
 };
 
+const PROOF_PROCESSING_CONCURRENCY = 2;
+
 const createItemId = () => globalThis.crypto?.randomUUID?.()
   || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -54,7 +56,10 @@ export default function DeliveryProofPage() {
   const [items, setItems] = useState<ProofItem[]>([]);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const itemsRef = useRef<ProofItem[]>([]);
-  const processingQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const processingLanesRef = useRef<Promise<void>[]>(
+    Array.from({ length: PROOF_PROCESSING_CONCURRENCY }, () => Promise.resolve()),
+  );
+  const nextProcessingLaneRef = useRef(0);
 
   useEffect(() => {
     itemsRef.current = items;
@@ -161,7 +166,9 @@ export default function DeliveryProofPage() {
   };
 
   const enqueueItem = (id: string, file: File, previewUrl: string) => {
-    processingQueueRef.current = processingQueueRef.current
+    const laneIndex = nextProcessingLaneRef.current % PROOF_PROCESSING_CONCURRENCY;
+    nextProcessingLaneRef.current += 1;
+    processingLanesRef.current[laneIndex] = processingLanesRef.current[laneIndex]
       .then(() => processItem(id, file, previewUrl))
       .catch(() => undefined);
   };

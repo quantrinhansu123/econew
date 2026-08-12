@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { PROOF_IMAGE_DESKEW_ANGLES, PROOF_IMAGE_REGIONS, PROOF_IMAGE_ROTATIONS } from './proofImageDecoder';
+import { PROOF_IMAGE_REGIONS, PROOF_IMAGE_ROTATIONS, PROOF_ZXING_BUDGET_MS } from './proofImageDecoder';
 
 describe('proof image decoder plan', () => {
   it('tries every right-angle rotation used by phone photos', () => {
     expect(PROOF_IMAGE_ROTATIONS).toEqual([0, 90, 270, 180]);
   });
 
-  it('tries both the full image and focused label-header regions', () => {
-    expect(PROOF_IMAGE_REGIONS).toEqual(['FULL', 'HEADER', 'TOP_RIGHT', 'BARCODE_STRIP']);
+  it('tries only the focused ECO label-header regions before Gemini fallback', () => {
+    expect(PROOF_IMAGE_REGIONS).toEqual(['BARCODE_STRIP', 'TOP_RIGHT']);
   });
 
-  it('deskews the small camera tilts seen in proof photos', () => {
-    expect(PROOF_IMAGE_DESKEW_ANGLES).toEqual([0, -6, 6, -12, 12]);
+  it('keeps the local barcode pass under a short latency budget', () => {
+    expect(PROOF_ZXING_BUDGET_MS).toBe(900);
   });
 });

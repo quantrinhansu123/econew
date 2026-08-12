@@ -33,7 +33,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-3.6-flash
+        value: gemini-3.5-flash-lite
       - key: CORS_ORIGIN
         value: https://eco-webapp.vercel.app
       - key: DB_POOL_MAX
