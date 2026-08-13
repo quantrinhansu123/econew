@@ -838,13 +838,12 @@ export function computeGrandTotals(waybills: WaybillInventoryItem[], includeFrei
         1,
         Number(w.trip_package_count ?? w.package_count ?? w.declared_package_count ?? 0),
       );
-      const totalPackages = Math.max(1, Number(w.order_total_packages ?? w.package_count ?? packages));
-      const ratio = packages / totalPackages;
+      // inventory/trip-lines already allocates these metrics to trip_package_count.
       return {
         package_count: acc.package_count + packages,
-        weight_kg: acc.weight_kg + resolveWeightKg(w) * ratio,
-        volumetric_weight_kg: acc.volumetric_weight_kg + resolveVolumetricWeightKg(w) * ratio,
-        volume_m3: acc.volume_m3 + resolveVolumeM3(w) * ratio,
+        weight_kg: acc.weight_kg + resolveWeightKg(w),
+        volumetric_weight_kg: acc.volumetric_weight_kg + resolveVolumetricWeightKg(w),
+        volume_m3: acc.volume_m3 + resolveVolumeM3(w),
         freight: acc.freight + (includeFreight ? (Number(w.allocated_freight ?? resolveFreight(w)) || 0) : 0),
       };
     },

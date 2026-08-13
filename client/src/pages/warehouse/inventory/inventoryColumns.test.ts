@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ALL_ORDERS_DEFAULT_COLUMN_IDS,
   INVENTORY_DEFAULT_COLUMN_IDS,
+  computeGrandTotals,
   getDefaultVisibleColumnIds,
   formatInventoryTripHistoryLine,
   normalizeAllOrdersVisibleColumnIds,
@@ -209,5 +210,38 @@ describe('inventory display values', () => {
       freight_amount: 557_000,
       note: 'cuoc_chinh=532000 | phu_phi=25000',
     })).toBe(557_000);
+  });
+});
+
+describe('inventory grand totals', () => {
+  it('sums metrics already allocated by the inventory API without applying the package ratio again', () => {
+    const totals = computeGrandTotals([
+      {
+        id: 1,
+        package_count: 394,
+        order_total_packages: 394,
+        trip_package_count: 27,
+        remaining_packages: 27,
+        weight: 535,
+        volumetric_weight: 1_236,
+        the_tich_m3: 12.88,
+      },
+      {
+        id: 2,
+        package_count: 72,
+        order_total_packages: 72,
+        trip_package_count: 72,
+        weight: 633,
+        volumetric_weight: 5_386,
+        the_tich_m3: 4.42,
+      },
+    ], false);
+
+    expect(totals).toMatchObject({
+      package_count: 99,
+      weight_kg: 1_168,
+      volumetric_weight_kg: 6_622,
+      volume_m3: 17.3,
+    });
   });
 });
