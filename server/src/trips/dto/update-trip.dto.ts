@@ -28,6 +28,20 @@ export class UpdateTripDto {
   @MaxLength(32)
   manual_license_plate?: string | null;
 
+  @ApiPropertyOptional({ description: 'Tên tài xế thực hiện chuyến', nullable: true })
+  @IsOptional()
+  @Transform(({ value }) => value == null ? value : String(value).trim())
+  @IsString()
+  @MaxLength(255)
+  driver_name?: string | null;
+
+  @ApiPropertyOptional({ description: 'Số điện thoại tài xế thực hiện chuyến', nullable: true })
+  @IsOptional()
+  @Transform(({ value }) => value == null ? value : String(value).trim())
+  @IsString()
+  @MaxLength(32)
+  driver_phone?: string | null;
+
   @ApiPropertyOptional({ description: 'Nhà cung cấp thực hiện chuyến' })
   @IsOptional()
   @Transform(({ value }) => value == null ? value : String(value))

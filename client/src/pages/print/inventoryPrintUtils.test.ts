@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { WaybillInventoryItem } from '../warehouse/inventory/types';
 import { buildInventoryExcelRows } from '../warehouse/inventory/inventoryExcelUtils';
 import {
+  buildInventoryQueryForPrint,
   mapWaybillsToPrintRows,
   mapWaybillsToPrintSheets,
   reconcilePrintPayload,
@@ -9,6 +10,29 @@ import {
 } from './inventoryPrintUtils';
 
 describe('inventory stock-list print columns', () => {
+  it('filters print data by the selected origin HUB', () => {
+    const query = new URLSearchParams(buildInventoryQueryForPrint({
+      keyword: '',
+      ma_kh: '',
+      statuses: [],
+      orderStatusGroups: [],
+      noiDenKeyword: '',
+      billingUnits: [],
+      customerPaymentStatuses: [],
+      originHubIds: ['1'],
+      destHubIds: [],
+      paymentTypes: [],
+      priorities: [],
+      receivedFrom: '',
+      receivedTo: '',
+      page: 1,
+      limit: 10,
+    }));
+
+    expect(query.get('origin_hub_id')).toBe('1');
+    expect(query.has('hub_id')).toBe(false);
+  });
+
   it('maps only the columns selected by the inventory table', () => {
     const waybill: WaybillInventoryItem = {
       id: 1,

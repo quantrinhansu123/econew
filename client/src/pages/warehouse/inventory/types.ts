@@ -145,7 +145,7 @@ export interface InventoryFilters {
   noiDenKeyword: string;
   billingUnits: string[];
   customerPaymentStatuses: string[];
-  hubIds: string[];
+  originHubIds: string[];
   destHubIds: string[];
   paymentTypes: string[];
   priorities: string[];

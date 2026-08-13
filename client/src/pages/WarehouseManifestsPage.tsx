@@ -366,7 +366,7 @@ export default function WarehouseManifestsPage() {
           noiDenKeyword: '',
           billingUnits: [],
           customerPaymentStatuses: [],
-          hubIds: [],
+          originHubIds: [],
           destHubIds: [],
           paymentTypes: [],
           priorities: [],

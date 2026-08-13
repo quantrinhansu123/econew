@@ -58,6 +58,25 @@ describe('TrucksService canonical schema', () => {
     expect(result).not.toHaveProperty('capacity_kg');
   });
 
+  it('dispatcher được thêm BKS mới gắn với NCC để điều phối chuyến', async () => {
+    mockUniquePlate(null);
+    const dispatcher = { id: 'dp1', role_mask: Roles.DISPATCHER } as any;
+
+    const result = await service.create({
+      license_plate: '98H-052.18',
+      bks: '98H-052.18',
+      payload: 1,
+      vendor_id: 'vendor-1',
+      nha_xe: 'XE Chiến Hưng Yên',
+    }, dispatcher);
+
+    expect(result).toMatchObject({
+      license_plate: '98H-052.18',
+      bks: '98H-052.18',
+      vendor_id: 'vendor-1',
+    });
+  });
+
   it('create trùng license_plate bị chặn', async () => {
     mockUniquePlate(truck());
     await expect(service.create({ license_plate: '29H-12345', payload: 2500 }, manager)).rejects.toBeInstanceOf(ConflictException);

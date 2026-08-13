@@ -27,7 +27,7 @@ export class TrucksService {
   ) {}
 
   async create(dto: CreateTruckDto, currentUser: UserEntity): Promise<TruckEntity> {
-    this.assertRole(currentUser, [Roles.MANAGER, Roles.DIRECTOR]);
+    this.assertRole(currentUser, [Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR]);
     const licensePlate = this.normalizePlate(dto.license_plate);
     await this.assertUniquePlate(licensePlate);
     if (dto.driver_id) await this.assertDriverExists(dto.driver_id);

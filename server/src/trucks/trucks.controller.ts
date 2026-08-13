@@ -19,8 +19,8 @@ export class TrucksController {
   constructor(private readonly trucksService: TrucksService) {}
 
   @Post()
-  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Create an internal truck' })
+  @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Create a truck/BKS and optionally link it to a vendor' })
   create(@Body() dto: CreateTruckDto, @CurrentUser() currentUser: UserEntity) {
     return this.trucksService.create(dto, currentUser);
   }

@@ -399,6 +399,26 @@ describe('TripsService', () => {
       expect(trucks.save).not.toHaveBeenCalled();
     });
 
+    it('cho cập nhật thông tin tài xế trực tiếp trên chuyến', async () => {
+      mockFindOne({
+        id: '1',
+        status: TripStatus.IN_TRANSIT,
+        driver_name: 'Tài xế cũ',
+        driver_phone: '0901000000',
+        vendor_paid_amount: '0',
+      });
+
+      const result = await service.update('1', {
+        driver_name: '  Nguyễn Văn Mới  ',
+        driver_phone: ' 0912345678 ',
+      }, manager);
+
+      expect(result).toMatchObject({
+        driver_name: 'Nguyễn Văn Mới',
+        driver_phone: '0912345678',
+      });
+    });
+
     it('cho để trống NCC và cước xe khi chưa phát sinh thanh toán', async () => {
       mockFindOne({
         id: '1',
@@ -462,7 +482,7 @@ describe('TripsService', () => {
 
       await expect(
         service.update('1', { departure_time: new Date('2025-08-07T01:00:00Z') }, manager),
-      ).rejects.toThrow('Chuyến đã hủy chỉ được sửa BKS, NCC và cước xe');
+      ).rejects.toThrow('Chuyến đã hủy chỉ được sửa BKS, NCC, tài xế và cước xe');
       expect(trips.save).not.toHaveBeenCalled();
     });
   });
@@ -483,6 +503,29 @@ describe('TripsService', () => {
       manifestWaybills.find.mockResolvedValue([]);
       await service.startTrip('1', dispatcher);
       expect(manifests.save).toHaveBeenCalledWith(expect.objectContaining({ status: ManifestStatus.IN_TRANSIT }));
+    });
+
+    it('giữ thông tin tài xế đã sửa tay khi khởi hành', async () => {
+      mockFindOne({
+        id: '1',
+        status: TripStatus.PLANNED,
+        manifest_id: null,
+        truck_id: '5',
+        driver_name: 'Tài xế chuyến',
+        driver_phone: '0901234567',
+      });
+      trucks.findOne.mockResolvedValue({
+        id: '5',
+        ten_lai_xe: 'Tài xế mặc định',
+        driver: { full_name: 'Tài xế xe', phone: '0987654321' },
+      });
+
+      const result = await service.startTrip('1', dispatcher);
+
+      expect(result).toMatchObject({
+        driver_name: 'Tài xế chuyến',
+        driver_phone: '0901234567',
+      });
     });
 
     it('chuyển toàn bộ waybill MANIFEST_CLOSED → IN_TRANSIT', async () => {

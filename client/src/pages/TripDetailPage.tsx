@@ -294,7 +294,7 @@ export default function TripDetailPage() {
         noiDenKeyword: '',
         billingUnits: [],
         customerPaymentStatuses: [],
-        hubIds: [],
+        originHubIds: [],
         destHubIds: [],
         paymentTypes: [],
         priorities: [],
@@ -436,7 +436,7 @@ function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, is
       <Info label="Chốt cân/khối" value={`${formatNumber(trip.actual_total_weight, ' kg')} / ${formatNumber(trip.actual_total_volume, ' m³')}`} />
       <Info label="Trạng thái" value={<TripStatusBadge status={trip.status} />} />
       <div className="flex flex-wrap items-center gap-1 md:col-span-4">
-        {canEditTrip && <button type="button" onClick={openTransportEditor} className="h-8 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-bold text-violet-800"><Pencil size={13} className="mr-1 inline" />Sửa BKS / NCC / cước</button>}
+        {canEditTrip && <button type="button" onClick={openTransportEditor} className="h-8 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-bold text-violet-800"><Pencil size={13} className="mr-1 inline" />Sửa BKS / NCC / tài xế / cước</button>}
         {canEditTrip && String(trip.status || '') !== 'CANCELLED' && <button type="button" onClick={openScheduleEditor} className="h-8 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[11px] font-bold text-primary"><Pencil size={13} className="mr-1 inline" />Sửa ngày chuyến</button>}
         {canEditTrip && trip.manifest_id && String(trip.status || '') !== 'CANCELLED' && <button type="button" onClick={openAddWaybills} className="h-8 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-bold text-emerald-700"><Plus size={13} className="mr-1 inline" />Thêm đơn tồn</button>}
         {getAvailableTripActions(trip.status).filter(action => action !== 'arrive' || canConfirmEarlyArrival(trip)).map(action => (

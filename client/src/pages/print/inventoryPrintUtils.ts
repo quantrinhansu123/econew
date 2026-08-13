@@ -190,7 +190,7 @@ export function buildInventoryQueryForPrint(filters: InventoryFilters) {
   if (filters.ma_kh.trim()) params.set('ma_kh', filters.ma_kh.trim());
   if (filters.statuses.length) params.set('status', filters.statuses.join(','));
   if (filters.customerPaymentStatuses.length) params.set('customer_payment_status', filters.customerPaymentStatuses.join(','));
-  if (filters.hubIds.length) params.set('hub_id', filters.hubIds.join(','));
+  if (filters.originHubIds.length) params.set('origin_hub_id', filters.originHubIds.join(','));
   if (filters.destHubIds.length) params.set('dest_hub_id', filters.destHubIds.join(','));
   if (filters.paymentTypes.length) params.set('payment_type', filters.paymentTypes.join(','));
   if (filters.priorities.length) params.set('priority', filters.priorities.join(','));
@@ -205,7 +205,7 @@ export function summarizeFilters(filters: InventoryFilters) {
   if (filters.ma_kh.trim()) parts.push(`Mã KH: ${filters.ma_kh.trim()}`);
   if (filters.statuses.length) parts.push(`TT: ${filters.statuses.join(', ')}`);
   if (filters.customerPaymentStatuses.length) parts.push(`TT thanh toán: ${filters.customerPaymentStatuses.join(', ')}`);
-  if (filters.hubIds.length) parts.push(`Hub: ${filters.hubIds.length} bưu cục`);
+  if (filters.originHubIds.length) parts.push(`Bưu cục gửi: ${filters.originHubIds.length} bưu cục`);
   if (filters.destHubIds.length) parts.push(`HUB đến: ${filters.destHubIds.length} bưu cục`);
   if (filters.receivedFrom || filters.receivedTo) {
     parts.push(`Ngày nhận: ${filters.receivedFrom || '…'} → ${filters.receivedTo || '…'}`);

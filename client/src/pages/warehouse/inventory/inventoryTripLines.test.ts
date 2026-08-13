@@ -10,7 +10,7 @@ const filters: InventoryFilters = {
   noiDenKeyword: '',
   billingUnits: [],
   customerPaymentStatuses: [],
-  hubIds: [],
+  originHubIds: [],
   destHubIds: [],
   paymentTypes: [],
   priorities: [],
@@ -57,14 +57,15 @@ describe('all-orders inventory query', () => {
     expect(params.has('received_to')).toBe(false);
   });
 
-  it('serializes destination HUB filters independently from the current HUB', () => {
+  it('serializes origin and destination HUB filters independently', () => {
     const params = new URLSearchParams(buildInventoryTripLinesQuery({
       ...filters,
-      hubIds: ['1'],
+      originHubIds: ['1'],
       destHubIds: ['2', '3'],
     }));
 
-    expect(params.get('hub_id')).toBe('1');
+    expect(params.get('origin_hub_id')).toBe('1');
+    expect(params.has('hub_id')).toBe(false);
     expect(params.get('dest_hub_id')).toBe('2,3');
   });
 

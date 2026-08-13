@@ -176,7 +176,7 @@ export class TripsService {
     const trip = await this.findOne(id, currentUser);
     const isCancelledTrip = String(trip.status) === 'CANCELLED';
     if (isCancelledTrip && (dto.departure_time !== undefined || dto.arrival_time !== undefined || dto.route_stops !== undefined)) {
-      throw new BadRequestException('Chuyến đã hủy chỉ được sửa BKS, NCC và cước xe');
+      throw new BadRequestException('Chuyến đã hủy chỉ được sửa BKS, NCC, tài xế và cước xe');
     }
     const previousVendorId = this.resolveTripVendorId(trip);
     if (dto.truck_id !== undefined) {
@@ -221,6 +221,12 @@ export class TripsService {
     }
     if (dto.manual_license_plate !== undefined) {
       trip.manual_license_plate = dto.manual_license_plate?.trim().toUpperCase() || null;
+    }
+    if (dto.driver_name !== undefined) {
+      trip.driver_name = dto.driver_name?.trim() || null;
+    }
+    if (dto.driver_phone !== undefined) {
+      trip.driver_phone = dto.driver_phone?.trim() || null;
     }
     if (dto.vendor_id !== undefined) {
       const paidAmount = this.toNumber(trip.vendor_paid_amount);
@@ -324,8 +330,8 @@ export class TripsService {
     if (trip.truck_id) {
       const truck = await this.trucksRepository.findOne({ where: { id: trip.truck_id }, relations: ['driver'] });
       if (truck) {
-        trip.driver_name = truck.ten_lai_xe ?? truck.driver?.full_name ?? null;
-        trip.driver_phone = truck.driver?.phone ?? null;
+        trip.driver_name = trip.driver_name?.trim() || truck.ten_lai_xe || truck.driver?.full_name || null;
+        trip.driver_phone = trip.driver_phone?.trim() || truck.driver?.phone || null;
       }
     }
     if (manifest) {

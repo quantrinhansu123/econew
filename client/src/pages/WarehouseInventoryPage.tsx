@@ -84,7 +84,7 @@ const MANAGER = 32;
 const DIRECTOR = 64;
 const DISPATCHER = 8;
 const MUTABLE_WAYBILL_STATUSES = ['RECEIVED', 'IN_WAREHOUSE'];
-const defaultFilters: InventoryFilters = { keyword: '', ma_kh: '', statuses: [], orderStatusGroups: [], noiDenKeyword: '', billingUnits: [], customerPaymentStatuses: [], hubIds: [], destHubIds: [], paymentTypes: [], priorities: [], receivedFrom: '', receivedTo: '', page: 1, limit: 10 };
+const defaultFilters: InventoryFilters = { keyword: '', ma_kh: '', statuses: [], orderStatusGroups: [], noiDenKeyword: '', billingUnits: [], customerPaymentStatuses: [], originHubIds: [], destHubIds: [], paymentTypes: [], priorities: [], receivedFrom: '', receivedTo: '', page: 1, limit: 10 };
 const allOrdersDefaultFilters: InventoryFilters = { ...defaultFilters, limit: 25 };
 const billingUnitFilterOptions: FilterOption[] = [
   { value: 'Kg', label: 'Kg' },
@@ -221,8 +221,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ status: true, hub: true, destHub: true, payment: false, priority: false, received: false });
-  const [groupSearch, setGroupSearch] = useState<Record<string, string>>({ status: '', hub: '', destHub: '', payment: '', priority: '' });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ status: true, originHub: true, destHub: true, payment: false, priority: false, received: false });
+  const [groupSearch, setGroupSearch] = useState<Record<string, string>>({ status: '', originHub: '', destHub: '', payment: '', priority: '' });
   const [detailWaybill, setDetailWaybill] = useState<WaybillInventoryDetail | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDetailClosing, setIsDetailClosing] = useState(false);
@@ -275,7 +275,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     filters.statuses.length +
     filters.orderStatusGroups.length +
     filters.customerPaymentStatuses.length +
-    filters.hubIds.length +
+    filters.originHubIds.length +
     filters.destHubIds.length +
     filters.paymentTypes.length +
     filters.priorities.length +
@@ -409,7 +409,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     });
   };
   const setFilterArray = (
-    key: keyof Pick<InventoryFilters, 'statuses' | 'orderStatusGroups' | 'hubIds' | 'destHubIds' | 'paymentTypes' | 'priorities' | 'billingUnits'>,
+    key: keyof Pick<InventoryFilters, 'statuses' | 'orderStatusGroups' | 'originHubIds' | 'destHubIds' | 'paymentTypes' | 'priorities' | 'billingUnits'>,
     value: string[],
   ) => updateFilters({ [key]: value } as Partial<InventoryFilters>);
 
@@ -600,8 +600,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       summarizeFilters(filters),
       Object.fromEntries(visibleColumns.map((col) => [col.id, col.label])),
       {
-        currentHubIsHcm: filters.hubIds.length === 1
-          && String(hubs.find((hub) => String(hub.id) === filters.hubIds[0])?.code || '').toUpperCase() === 'HCM',
+        currentHubIsHcm: filters.originHubIds.length === 1
+          && String(hubs.find((hub) => String(hub.id) === filters.originHubIds[0])?.code || '').toUpperCase() === 'HCM',
       },
     );
     saveInventoryPrintPayload(sheets);
@@ -845,7 +845,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
 
           {!isAllOrders && <div className="hidden flex-wrap items-center gap-2 md:flex">
               <FilterSelect multiple icon={Tag} placeholder="Trạng thái" searchPlaceholder="Tìm trạng thái..." options={statusOptions} value={filters.statuses} onValueChange={value => setFilterArray('statuses', value)} className="h-9 min-w-[150px]" />
-              <FilterSelect multiple icon={Building2} placeholder="HUB hiện tại" searchPlaceholder="Tìm HUB hiện tại..." options={hubOptions} value={filters.hubIds} onValueChange={value => setFilterArray('hubIds', value)} className="h-9 min-w-[170px]" />
+              <FilterSelect multiple icon={Building2} placeholder="Bưu cục gửi" searchPlaceholder="Tìm bưu cục gửi..." options={hubOptions} value={filters.originHubIds} onValueChange={value => setFilterArray('originHubIds', value)} className="h-9 min-w-[170px]" />
               <FilterSelect multiple icon={Building2} placeholder="HUB đến" searchPlaceholder="Tìm HUB đến..." options={hubOptions} value={filters.destHubIds} onValueChange={value => setFilterArray('destHubIds', value)} className="h-9 min-w-[170px]" />
               <FilterSelect multiple icon={CreditCard} placeholder="Loại thanh toán" searchPlaceholder="Tìm thanh toán..." options={paymentOptions} value={filters.paymentTypes} onValueChange={value => setFilterArray('paymentTypes', value)} className="h-9 min-w-[170px]" />
               <FilterSelect multiple icon={Flag} placeholder="Mức ưu tiên" searchPlaceholder="Tìm ưu tiên..." options={priorityOptions} value={filters.priorities} onValueChange={value => setFilterArray('priorities', value)} className="h-9 min-w-[160px]" />
@@ -1861,9 +1861,9 @@ function MenuAction({
 
 function FilterBottomSheet({ isOpen, draftFilters, setDraftFilters, openGroups, setOpenGroups, groupSearch, setGroupSearch, hubOptions, onClose, onApply }: { isOpen: boolean; draftFilters: InventoryFilters; setDraftFilters: React.Dispatch<React.SetStateAction<InventoryFilters>>; openGroups: Record<string, boolean>; setOpenGroups: React.Dispatch<React.SetStateAction<Record<string, boolean>>>; groupSearch: Record<string, string>; setGroupSearch: React.Dispatch<React.SetStateAction<Record<string, string>>>; hubOptions: FilterOption[]; onClose: () => void; onApply: () => void; }) {
   if (!isOpen) return null;
-  const toggleValue = (key: keyof Pick<InventoryFilters, 'statuses' | 'hubIds' | 'destHubIds' | 'paymentTypes' | 'priorities'>, value: string) => setDraftFilters(prev => ({ ...prev, [key]: prev[key].includes(value) ? prev[key].filter(item => item !== value) : [...prev[key], value] }));
-  const setAll = (key: keyof Pick<InventoryFilters, 'statuses' | 'hubIds' | 'destHubIds' | 'paymentTypes' | 'priorities'>, values: string[]) => setDraftFilters(prev => ({ ...prev, [key]: values }));
-  return <div className="fixed inset-0 z-50 flex items-end justify-center md:hidden"><div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} /><div className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-border bg-background shadow-2xl"><div className="flex items-center justify-between border-b border-border bg-card p-5"><div className="flex items-center gap-2"><SlidersHorizontal size={18} className="text-primary" /><h2 className="text-lg font-black text-foreground">Bộ lọc</h2></div><button onClick={onClose} className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><X size={18} /></button></div><div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-4"><FilterGroup id="status" title="Trạng thái" options={statusOptions} selected={draftFilters.statuses} search={groupSearch.status} openGroups={openGroups} setOpenGroups={setOpenGroups} onSearch={(value) => setGroupSearch(prev => ({ ...prev, status: value }))} onToggle={(value) => toggleValue('statuses', value)} onAll={() => setAll('statuses', statusOptions.map(option => option.value))} onClear={() => setAll('statuses', [])} /><FilterGroup id="hub" title="HUB hiện tại" options={hubOptions} selected={draftFilters.hubIds} search={groupSearch.hub} openGroups={openGroups} setOpenGroups={setOpenGroups} onSearch={(value) => setGroupSearch(prev => ({ ...prev, hub: value }))} onToggle={(value) => toggleValue('hubIds', value)} onAll={() => setAll('hubIds', hubOptions.map(option => option.value))} onClear={() => setAll('hubIds', [])} /><FilterGroup id="destHub" title="HUB đến" options={hubOptions} selected={draftFilters.destHubIds} search={groupSearch.destHub} openGroups={openGroups} setOpenGroups={setOpenGroups} onSearch={(value) => setGroupSearch(prev => ({ ...prev, destHub: value }))} onToggle={(value) => toggleValue('destHubIds', value)} onAll={() => setAll('destHubIds', hubOptions.map(option => option.value))} onClear={() => setAll('destHubIds', [])} /><FilterGroup id="payment" title="Loại thanh toán PP/CC/COD" options={paymentOptions} selected={draftFilters.paymentTypes} search={groupSearch.payment} openGroups={openGroups} setOpenGroups={setOpenGroups} onSearch={(value) => setGroupSearch(prev => ({ ...prev, payment: value }))} onToggle={(value) => toggleValue('paymentTypes', value)} onAll={() => setAll('paymentTypes', paymentOptions.map(option => option.value))} onClear={() => setAll('paymentTypes', [])} /><FilterGroup id="priority" title="Mức ưu tiên" options={priorityOptions} selected={draftFilters.priorities} search={groupSearch.priority} openGroups={openGroups} setOpenGroups={setOpenGroups} onSearch={(value) => setGroupSearch(prev => ({ ...prev, priority: value }))} onToggle={(value) => toggleValue('priorities', value)} onAll={() => setAll('priorities', priorityOptions.map(option => option.value))} onClear={() => setAll('priorities', [])} /><DateGroup draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} /></div><div className="border-t border-border bg-card p-5"><button onClick={onApply} className="w-full rounded-xl bg-primary px-5 py-3 text-[13px] font-bold text-white shadow-sm shadow-primary/20">Áp dụng</button></div></div></div>;
+  const toggleValue = (key: keyof Pick<InventoryFilters, 'statuses' | 'originHubIds' | 'destHubIds' | 'paymentTypes' | 'priorities'>, value: string) => setDraftFilters(prev => ({ ...prev, [key]: prev[key].includes(value) ? prev[key].filter(item => item !== value) : [...prev[key], value] }));
+  const setAll = (key: keyof Pick<InventoryFilters, 'statuses' | 'originHubIds' | 'destHubIds' | 'paymentTypes' | 'priorities'>, values: string[]) => setDraftFilters(prev => ({ ...prev, [key]: values }));
+  return <div className="fixed inset-0 z-50 flex items-end justify-center md:hidden"><div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} /><div className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-border bg-background shadow-2xl"><div className="flex items-center justify-between border-b border-border bg-card p-5"><div className="flex items-center gap-2"><SlidersHorizontal size={18} className="text-primary" /><h2 className="text-lg font-black text-foreground">Bộ lọc</h2></div><button onClick={onClose} className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><X size={18} /></button></div><div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-4"><FilterGroup id="status" title="Trạng thái" options={statusOptions} selected={draftFilters.statuses} search={groupSearch.status} openGroups={openGroups} setOpenGroups={setOpenGroups} onSearch={(value) => setGroupSearch(prev => ({ ...prev, status: value }))} onToggle={(value) => toggleValue('statuses', value)} onAll={() => setAll('statuses', statusOptions.map(option => option.value))} onClear={() => setAll('statuses', [])} /><FilterGroup id="originHub" title="Bưu cục gửi" options={hubOptions} selected={draftFilters.originHubIds} search={groupSearch.originHub} openGroups={openGroups} setOpenGroups={setOpenGroups} onSearch={(value) => setGroupSearch(prev => ({ ...prev, originHub: value }))} onToggle={(value) => toggleValue('originHubIds', value)} onAll={() => setAll('originHubIds', hubOptions.map(option => option.value))} onClear={() => setAll('originHubIds', [])} /><FilterGroup id="destHub" title="HUB đến" options={hubOptions} selected={draftFilters.destHubIds} search={groupSearch.destHub} openGroups={openGroups} setOpenGroups={setOpenGroups} onSearch={(value) => setGroupSearch(prev => ({ ...prev, destHub: value }))} onToggle={(value) => toggleValue('destHubIds', value)} onAll={() => setAll('destHubIds', hubOptions.map(option => option.value))} onClear={() => setAll('destHubIds', [])} /><FilterGroup id="payment" title="Loại thanh toán PP/CC/COD" options={paymentOptions} selected={draftFilters.paymentTypes} search={groupSearch.payment} openGroups={openGroups} setOpenGroups={setOpenGroups} onSearch={(value) => setGroupSearch(prev => ({ ...prev, payment: value }))} onToggle={(value) => toggleValue('paymentTypes', value)} onAll={() => setAll('paymentTypes', paymentOptions.map(option => option.value))} onClear={() => setAll('paymentTypes', [])} /><FilterGroup id="priority" title="Mức ưu tiên" options={priorityOptions} selected={draftFilters.priorities} search={groupSearch.priority} openGroups={openGroups} setOpenGroups={setOpenGroups} onSearch={(value) => setGroupSearch(prev => ({ ...prev, priority: value }))} onToggle={(value) => toggleValue('priorities', value)} onAll={() => setAll('priorities', priorityOptions.map(option => option.value))} onClear={() => setAll('priorities', [])} /><DateGroup draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} /></div><div className="border-t border-border bg-card p-5"><button onClick={onApply} className="w-full rounded-xl bg-primary px-5 py-3 text-[13px] font-bold text-white shadow-sm shadow-primary/20">Áp dụng</button></div></div></div>;
 }
 
 function FilterGroup({ id, title, options, selected, search, openGroups, setOpenGroups, onSearch, onToggle, onAll, onClear }: { id: string; title: string; options: FilterOption[]; selected: string[]; search: string; openGroups: Record<string, boolean>; setOpenGroups: React.Dispatch<React.SetStateAction<Record<string, boolean>>>; onSearch: (value: string) => void; onToggle: (value: string) => void; onAll: () => void; onClear: () => void; }) {

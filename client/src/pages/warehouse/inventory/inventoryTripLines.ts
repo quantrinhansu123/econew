@@ -33,7 +33,7 @@ export function buildInventoryTripLinesQuery(
     | 'page'
     | 'limit'
     | 'keyword'
-    | 'hubIds'
+    | 'originHubIds'
     | 'destHubIds'
     | 'statuses'
     | 'orderStatusGroups'
@@ -78,7 +78,7 @@ export function buildInventoryTripLinesQuery(
   const statuses = [...new Set([...filters.statuses, ...statusFromGroups])];
   if (statuses.length) params.set('status', statuses.join(','));
   if (filters.customerPaymentStatuses.length) params.set('customer_payment_status', filters.customerPaymentStatuses.join(','));
-  if (filters.hubIds.length) params.set('hub_id', filters.hubIds.join(','));
+  if (filters.originHubIds.length) params.set('origin_hub_id', filters.originHubIds.join(','));
   if (filters.paymentTypes.length) params.set('payment_type', filters.paymentTypes.join(','));
   if (filters.priorities.length) params.set('priority', filters.priorities.join(','));
   if (filters.noiDenKeyword.trim()) params.set('noi_den', filters.noiDenKeyword.trim());
