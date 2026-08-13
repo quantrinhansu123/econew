@@ -59,6 +59,8 @@ export interface LastMileWaybill {
   cod_amount?: number | string | null;
   freight_amount?: number | string | null;
   note?: string | null;
+  noi_dung?: string | null;
+  mat_hang?: string | null;
   payment_type: PaymentType | string;
   cost_amount?: number | string | null;
   current_state: WaybillState | string;
@@ -68,7 +70,7 @@ export interface LastMileWaybill {
   origin_hub?: HubSummary | null;
   dest_hub?: HubSummary | null;
   last_mile_driver?: UserSummary | null;
-  delivery_assignment_type?: 'INTERNAL' | 'PARTNER' | null;
+  delivery_assignment_type?: 'INTERNAL' | 'PARTNER' | 'TECHNOLOGY' | 'CUSTOMER_PICKUP' | null;
   last_mile_truck_id?: string | number | null;
   last_mile_vendor_id?: string | number | null;
   last_mile_driver_name?: string | null;

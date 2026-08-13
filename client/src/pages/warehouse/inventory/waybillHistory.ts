@@ -75,7 +75,7 @@ const FIELD_LABELS: Record<string, string> = {
   delivery_preparation_status: 'Trạng thái xử lý trước giao',
   delivery_scheduled_at: 'Ngày hẹn giao',
   delivery_hold_reason: 'Lý do lưu kho',
-  delivery_preparation_note: 'Ghi chú gọi hẹn',
+  delivery_preparation_note: 'Ghi chú xử lý giao',
   delivery_confirmed_at: 'Thời gian xác nhận',
   last_delivery_failure_reason: 'Lý do giao không thành công',
   sent_date: 'Ngày gửi trên bill',
@@ -92,6 +92,14 @@ export const waybillHistoryFieldLabel = (field: string) => FIELD_LABELS[field] |
 
 export function formatWaybillHistoryValue(field: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
+  if (field === 'delivery_assignment_type') {
+    return ({
+      INTERNAL: 'Xe nội bộ',
+      PARTNER: 'Xe đối tác',
+      TECHNOLOGY: 'Xe công nghệ',
+      CUSTOMER_PICKUP: 'Khách tới HUB lấy',
+    } as Record<string, string>)[String(value)] || String(value);
+  }
   if (field === 'tinh_chat_hang_hoa') return specialGoodsLabels(value).join(', ') || '—';
   if (MONEY_FIELDS.has(field)) return formatMoney(value as number | string);
   if (field === 'weight' || field === 'volumetric_weight') return `${value} kg`;

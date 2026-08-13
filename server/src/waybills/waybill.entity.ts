@@ -98,7 +98,7 @@ export class WaybillEntity {
   last_mile_driver_id: string | null;
 
   @Column({ type: 'varchar', length: 16, nullable: true })
-  delivery_assignment_type: 'INTERNAL' | 'PARTNER' | null;
+  delivery_assignment_type: 'INTERNAL' | 'PARTNER' | 'TECHNOLOGY' | 'CUSTOMER_PICKUP' | null;
 
   @Column({ type: 'bigint', nullable: true })
   last_mile_truck_id: string | null;

@@ -7,6 +7,7 @@ import type { DeliveryResources, LastMileWaybill } from '../types';
 import type { DeliveryRouteOption } from '../../../../hooks/useDeliveryRoutes';
 
 type DeliveryStatus = 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED';
+type DispatchAssignmentType = 'INTERNAL' | 'PARTNER' | 'TECHNOLOGY';
 
 interface Props {
   waybill: LastMileWaybill | null;
@@ -17,14 +18,14 @@ interface Props {
   currentUserId?: string | number | null;
   routes?: DeliveryRouteOption[];
   routesLoading?: boolean;
-  onConfirm: (status: DeliveryStatus, deliveryPhotoUrl?: string, assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string; route_code?: string; driver_name?: string; license_plate?: string; delivery_cost?: number }, failureReason?: string) => void;
+  onConfirm: (status: DeliveryStatus, deliveryPhotoUrl?: string, assignment?: { assignment_type: DispatchAssignmentType; driver_id?: string; truck_id?: string; vendor_id?: string; route_code?: string; driver_name?: string; license_plate?: string; delivery_cost?: number }, failureReason?: string) => void;
 }
 
 export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, error, resources, routes = [], routesLoading = false, currentUserId, onClose, onConfirm }: Props) {
   const [photos, setPhotos] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
-  const [assignmentType, setAssignmentType] = useState<'INTERNAL' | 'PARTNER'>('INTERNAL');
+  const [assignmentType, setAssignmentType] = useState<DispatchAssignmentType>('INTERNAL');
   const [driverId, setDriverId] = useState('');
   const [truckId, setTruckId] = useState('');
   const [vendorId, setVendorId] = useState('');
@@ -37,7 +38,11 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
   useEffect(() => {
     setPhotos(String(waybill?.delivery_photo_url || '').split('|').map((item) => item.trim()).filter(Boolean));
     setUploadError('');
-    setAssignmentType(waybill?.delivery_assignment_type || 'INTERNAL');
+    setAssignmentType(
+      waybill?.delivery_assignment_type === 'PARTNER' || waybill?.delivery_assignment_type === 'TECHNOLOGY'
+        ? waybill.delivery_assignment_type
+        : 'INTERNAL',
+    );
     const currentDriver = resources?.drivers.find((driver) => String(driver.id) === String(currentUserId || ''));
     setDriverId(String(waybill?.last_mile_driver_id || currentDriver?.id || ''));
     setTruckId(String(waybill?.last_mile_truck_id || ''));
@@ -52,12 +57,15 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
   if (!waybill) return null;
 
   const currentStatus = String(waybill.current_state || '').toUpperCase();
-  const nextStatuses: DeliveryStatus[] = currentStatus === 'AT_DEST_HUB'
+  const isCustomerPickup = currentStatus === 'AT_DEST_HUB' && waybill.delivery_assignment_type === 'CUSTOMER_PICKUP';
+  const nextStatuses: DeliveryStatus[] = isCustomerPickup
+    ? ['DELIVERED']
+    : currentStatus === 'AT_DEST_HUB'
     ? ['OUT_FOR_DELIVERY']
     : ['DELIVERED', 'RETURNED'];
   const labels: Record<DeliveryStatus, string> = {
     OUT_FOR_DELIVERY: 'Bàn giao tài xế chặng cuối',
-    DELIVERED: 'Xác nhận giao thành công',
+    DELIVERED: isCustomerPickup ? 'Xác nhận khách đã lấy hàng' : 'Xác nhận giao thành công',
     RETURNED: 'Giao không thành công',
   };
 
@@ -86,13 +94,19 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
         setUploadError('Phải chọn đối tác giao hàng.');
         return;
       }
+      if (assignmentType === 'TECHNOLOGY' && !vendorId && !driverName.trim()) {
+        setUploadError('Phải chọn hoặc nhập đơn vị xe công nghệ.');
+        return;
+      }
       onConfirm(status, undefined, {
         assignment_type: assignmentType,
         route_code: routeCode || undefined,
         driver_name: driverName.trim() || undefined,
         license_plate: licensePlate.trim().toUpperCase() || undefined,
         delivery_cost: parseAmountInput(deliveryCost),
-        ...(assignmentType === 'INTERNAL' ? { driver_id: driverId, truck_id: truckId || undefined } : { vendor_id: vendorId }),
+        ...(assignmentType === 'INTERNAL'
+          ? { driver_id: driverId, truck_id: truckId || undefined }
+          : { vendor_id: vendorId || undefined }),
       });
       return;
     }
@@ -118,8 +132,8 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
           <button onClick={onClose} disabled={isSubmitting} className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><X size={18} /></button>
         </div>
         <div className="space-y-3 p-4 text-[13px] text-muted-foreground">
-          <p>Chọn trạng thái giao chặng cuối hợp lệ theo state machine cho vận đơn này.</p>
-          {currentStatus === 'AT_DEST_HUB' && resources && (
+          <p>{isCustomerPickup ? 'Khách tới HUB lấy hàng: chụp ảnh xác nhận để báo phát thành công.' : 'Chọn trạng thái giao chặng cuối hợp lệ theo state machine cho vận đơn này.'}</p>
+          {currentStatus === 'AT_DEST_HUB' && !isCustomerPickup && resources && (
             <div className="space-y-3 rounded-xl border border-border bg-slate-50 p-3">
               <p className="font-black text-foreground">Phân giao chặng cuối</p>
               {waybill.delivery_preparation_note && (
@@ -133,9 +147,10 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
                 {routeCode && !routes.some((route) => route.code === routeCode) && <option value={routeCode}>{routeCode} · Tuyến đang gán</option>}
                 {routes.map((route) => <option key={String(route.id)} value={route.code}>{route.code} · {route.name}</option>)}
               </select>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button type="button" onClick={() => setAssignmentType('INTERNAL')} className={`h-9 rounded-lg border text-[12px] font-black ${assignmentType === 'INTERNAL' ? 'border-primary bg-blue-50 text-primary' : 'border-border bg-white text-muted-foreground'}`}>Xe nội bộ</button>
                 <button type="button" onClick={() => setAssignmentType('PARTNER')} className={`h-9 rounded-lg border text-[12px] font-black ${assignmentType === 'PARTNER' ? 'border-primary bg-blue-50 text-primary' : 'border-border bg-white text-muted-foreground'}`}>Đối tác</button>
+                <button type="button" onClick={() => setAssignmentType('TECHNOLOGY')} className={`h-9 rounded-lg border text-[12px] font-black ${assignmentType === 'TECHNOLOGY' ? 'border-primary bg-blue-50 text-primary' : 'border-border bg-white text-muted-foreground'}`}>Xe công nghệ</button>
               </div>
               {assignmentType === 'INTERNAL' ? (
                 <div className="grid gap-2">
@@ -150,14 +165,14 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
                 </div>
               ) : (
                 <select value={vendorId} onChange={(event) => setVendorId(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">
-                  <option value="">Chọn đối tác giao hàng</option>
+                  <option value="">{assignmentType === 'TECHNOLOGY' ? 'Chọn ứng dụng / đơn vị (không bắt buộc)' : 'Chọn đối tác giao hàng'}</option>
                   {resources.vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{vendor.name || vendor.code}{vendor.phone ? ` · ${vendor.phone}` : ''}</option>)}
                 </select>
               )}
               <div className="grid gap-2 sm:grid-cols-2">
                 <label className="text-[11px] font-bold text-muted-foreground">
-                  Tài xế
-                  <input value={driverName} onChange={(event) => setDriverName(event.target.value)} maxLength={255} placeholder="Nhập tên tài xế" className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none" />
+                  {assignmentType === 'TECHNOLOGY' ? 'Ứng dụng / tài xế' : 'Tài xế'}
+                  <input value={driverName} onChange={(event) => setDriverName(event.target.value)} maxLength={255} placeholder={assignmentType === 'TECHNOLOGY' ? 'VD: Grab / A Nam' : 'Nhập tên tài xế'} className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none" />
                 </label>
                 <label className="text-[11px] font-bold text-muted-foreground">
                   Biển kiểm soát <span className="font-medium">(không bắt buộc)</span>
@@ -170,7 +185,7 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
               </label>
             </div>
           )}
-          {currentStatus === 'OUT_FOR_DELIVERY' && (
+          {(currentStatus === 'OUT_FOR_DELIVERY' || isCustomerPickup) && (
             <div className="rounded-xl border border-border bg-slate-50 p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-black text-foreground">Ảnh giao hàng</p>

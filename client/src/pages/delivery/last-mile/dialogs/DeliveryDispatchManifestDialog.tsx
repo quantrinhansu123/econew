@@ -25,7 +25,7 @@ function buildGroups(waybills: LastMileWaybill[]): DispatchGroup[] {
     const plate = String(waybill.last_mile_license_plate || waybill.last_mile_truck?.bks || waybill.last_mile_truck?.license_plate || '').trim().toUpperCase();
     const assignee = plate
       ? `plate:${plate}`
-      : waybill.delivery_assignment_type === 'PARTNER'
+      : waybill.delivery_assignment_type === 'PARTNER' || waybill.delivery_assignment_type === 'TECHNOLOGY'
         ? `vendor:${waybill.last_mile_vendor_id || waybill.last_mile_vendor?.id || 'unknown'}`
         : `truck:${waybill.last_mile_truck_id || waybill.last_mile_driver_id || 'unknown'}`;
     const key = `${waybill.route_code || 'CHUA-TUYEN'}|${assignee}`;
@@ -38,6 +38,7 @@ function buildGroups(waybills: LastMileWaybill[]): DispatchGroup[] {
     const plate = first.last_mile_license_plate || first.last_mile_truck?.bks || first.last_mile_truck?.license_plate || '';
     const driverName = first.last_mile_driver_name || first.last_mile_driver?.name || first.last_mile_driver?.username || '';
     const vendorName = first.last_mile_vendor?.name || first.last_mile_vendor?.code || '';
+    const usesVendor = first.delivery_assignment_type === 'PARTNER' || first.delivery_assignment_type === 'TECHNOLOGY';
     const manifestCode = `BKPHAT-${String(first.dest_hub?.code || first.dest_hub_id || 'HUB').toUpperCase()}-${routeCode}-${String(groupIndex + 1).padStart(2, '0')}`;
     const links: DispatchLink[] = items.map((waybill, index) => ({
       waybill_id: waybill.task_id || `${waybill.id}-${index}`,
@@ -73,9 +74,9 @@ function buildGroups(waybills: LastMileWaybill[]): DispatchGroup[] {
       trip: {
         id: key,
         departure_time: new Date().toISOString(),
-        carrier_label: first.delivery_assignment_type === 'PARTNER' ? vendorName : driverName,
-        driver_name: first.delivery_assignment_type === 'PARTNER' ? vendorName : driverName,
-        driver_phone: first.delivery_assignment_type === 'PARTNER' ? first.last_mile_vendor?.phone : first.last_mile_driver?.phone,
+        carrier_label: usesVendor ? vendorName || driverName : driverName,
+        driver_name: usesVendor ? vendorName || driverName : driverName,
+        driver_phone: usesVendor ? first.last_mile_vendor?.phone : first.last_mile_driver?.phone,
         truck: { bks: plate, license_plate: plate, ten_lai_xe: driverName },
       },
     } as unknown as LoadPlanningManifest;

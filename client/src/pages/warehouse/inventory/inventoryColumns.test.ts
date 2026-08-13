@@ -112,12 +112,15 @@ describe('inventory visible columns', () => {
 });
 
 describe('all orders visible columns', () => {
-  it('moves package count next to content and shows the carrying trip after status', () => {
+  it('moves package count next to content and shows delivery processing before the carrying trip', () => {
     expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('package_count')).toBe(
       ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('cong_sg') + 1,
     );
-    expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('trip_label')).toBe(
+    expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('delivery_processing')).toBe(
       ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('order_status') + 1,
+    );
+    expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('trip_label')).toBe(
+      ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('delivery_processing') + 1,
     );
     expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('delivery_staff')).toBe(
       ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('trip_label') + 1,

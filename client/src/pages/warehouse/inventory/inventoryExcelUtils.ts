@@ -105,6 +105,7 @@ const EXCEL_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>> = {
   service_type: 16,
   trip_label: 20,
   delivery_staff: 22,
+  delivery_processing: 34,
   loaded_at: 14,
   received_at: 14,
   noi_den: 14,

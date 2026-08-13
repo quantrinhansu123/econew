@@ -122,14 +122,20 @@ export interface WaybillInventoryItem {
   customer_payment_status?: CustomerPaymentStatus;
   customer_payment_note?: string | null;
   delivery_photo_url?: string | null;
-  delivery_assignment_type?: 'INTERNAL' | 'PARTNER' | null;
+  delivery_assignment_type?: 'INTERNAL' | 'PARTNER' | 'TECHNOLOGY' | 'CUSTOMER_PICKUP' | null;
   last_mile_driver_id?: string | number | null;
   last_mile_vendor_id?: string | number | null;
   last_mile_driver_name?: string | null;
   last_mile_license_plate?: string | null;
   last_mile_cost_amount?: number | string | null;
   last_mile_driver?: UserSummary | null;
-  last_mile_vendor?: { id: string | number; code?: string | null; name?: string | null } | null;
+  last_mile_vendor?: { id: string | number; code?: string | null; name?: string | null; service_type?: string | null } | null;
+  delivery_preparation_status?: 'PENDING_CONFIRMATION' | 'READY' | 'SCHEDULED' | 'NEEDS_ACTION' | 'HOLD' | null;
+  delivery_scheduled_at?: string | null;
+  delivery_hold_reason?: string | null;
+  delivery_preparation_note?: string | null;
+  delivery_confirmed_at?: string | null;
+  last_delivery_failure_reason?: string | null;
 }
 
 export interface WaybillInventoryDetail extends WaybillInventoryItem {

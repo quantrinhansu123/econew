@@ -48,6 +48,7 @@ import {
   resolveTransitFee,
   resolveTripStatusLabel,
   resolveDeliveryStaff,
+  resolveDeliveryProcessingPresentation,
   resolvePaymentMethod,
   resolveLoadedAt,
   resolveMaKh,
@@ -110,7 +111,9 @@ const statusConfig: Record<string, BadgeConfig> = {
   MANIFEST_CLOSED: { label: 'Chờ bốc', className: 'bg-slate-100 text-slate-700 border-slate-200' },
   LOADED: { label: 'Đã bốc', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   AT_DEST_HUB: { label: 'Tới hub đích', className: 'bg-violet-50 text-violet-700 border-violet-200' },
-  OUT_FOR_DELIVERY: { label: 'Đã giao', className: 'bg-green-50 text-green-700 border-green-200' },
+  OUT_FOR_DELIVERY: { label: 'Đang giao', className: 'bg-orange-50 text-orange-700 border-orange-200' },
+  DELIVERED: { label: 'Phát thành công', className: 'bg-green-50 text-green-700 border-green-200' },
+  RETURNED: { label: 'Giao không thành công', className: 'bg-red-50 text-red-700 border-red-200' },
 };
 
 const paymentConfig: Record<string, BadgeConfig> = {
@@ -1295,6 +1298,26 @@ function InventoryRow({
           </td>
         );
       }
+      case 'delivery_processing': {
+        const processing = resolveDeliveryProcessingPresentation(waybill);
+        const toneClass = {
+          slate: 'border-slate-200 bg-slate-50 text-slate-700',
+          blue: 'border-blue-200 bg-blue-50 text-blue-700',
+          violet: 'border-violet-200 bg-violet-50 text-violet-700',
+          amber: 'border-amber-200 bg-amber-50 text-amber-800',
+          emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+          red: 'border-red-200 bg-red-50 text-red-700',
+        }[processing.tone];
+        return (
+          <td className="border-r border-border px-2 py-2 align-top text-[12px]">
+            <span className={clsx('inline-flex rounded-full border px-2 py-0.5 text-[11px] font-extrabold', toneClass)}>
+              {processing.title}
+            </span>
+            {processing.detail && <p className="mt-1 whitespace-normal text-[11px] font-semibold text-slate-700">{processing.detail}</p>}
+            {processing.note && <p className="mt-1 whitespace-normal text-[11px] text-muted-foreground">Ghi chú: {processing.note}</p>}
+          </td>
+        );
+      }
       case 'billing_unit':
         return <td className={cellClass}>{resolveBillingUnit(waybill)}</td>;
       case 'billing_qty_detail':
@@ -1605,7 +1628,7 @@ function AllOrdersCompactTable({
 
   return (
     <div className="md:hidden min-w-0 overflow-x-auto bg-white">
-      <table className="w-[866px] table-fixed border-collapse text-left">
+      <table className="w-[1036px] table-fixed border-collapse text-left">
         <thead>
           <tr>
             <th className={`${headerClass} w-[34px] text-center`}>STT</th>
@@ -1618,12 +1641,14 @@ function AllOrdersCompactTable({
             <th className={`${headerClass} w-[72px]`}>ĐVT cước</th>
             <th className={`${headerClass} w-[82px] text-right`}>Thành tiền</th>
             <th className={`${headerClass} w-[72px]`}>HTTT</th>
+            <th className={`${headerClass} w-[170px]`}>Xử lý giao</th>
             <th className={`${headerClass} w-[104px] text-center`}>Thao tác</th>
           </tr>
         </thead>
         <tbody>
           {waybills.map((waybill, index) => {
             const totalAmount = resolveTotalAmount(waybill);
+            const processing = resolveDeliveryProcessingPresentation(waybill);
             return (
               <tr
                 key={`${waybill.id}-${waybill.split_id ?? 'base'}-compact`}
@@ -1648,6 +1673,9 @@ function AllOrdersCompactTable({
                   {canViewPricing ? displayValue(totalAmount, ' đ') : '—'}
                 </td>
                 <td className={cellClass} title={resolvePaymentMethod(waybill)}>{resolvePaymentMethod(waybill)}</td>
+                <td className={`${cellClass} font-bold text-slate-700`} title={processing.title}>
+                  {processing.title}
+                </td>
                 <td className="border-b border-slate-200 px-1 py-1" onClick={(event) => event.stopPropagation()}>
                   <AllOrdersActions
                     waybill={waybill}

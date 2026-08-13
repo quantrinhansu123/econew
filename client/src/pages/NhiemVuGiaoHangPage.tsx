@@ -9,6 +9,7 @@ import DeliveryPreparationDialog from './delivery/last-mile/dialogs/DeliveryPrep
 import DeliveryHistoryDialog from './delivery/last-mile/dialogs/DeliveryHistoryDialog';
 import DeliveryDispatchManifestDialog from './delivery/last-mile/dialogs/DeliveryDispatchManifestDialog';
 import type { DeliveryResources, HubSummary, LastMileWaybill, ListResponse, WaybillHistoryItem } from './delivery/last-mile/types';
+import { resolveDeliveryProcessingStatus } from './delivery/last-mile/deliveryProcessingStatus';
 import { useDeliveryRoutes } from '../hooks/useDeliveryRoutes';
 
 const WAREHOUSE = 1;
@@ -21,6 +22,7 @@ const canAct = (roleMask: number) => (roleMask & (WAREHOUSE | DRIVER | DISPATCHE
 const canPrepareDelivery = (roleMask: number) => (roleMask & (WAREHOUSE | DISPATCHER | MANAGER | DIRECTOR)) !== 0;
 const canDispatchDelivery = (roleMask: number) => (roleMask & (DISPATCHER | MANAGER | DIRECTOR)) !== 0;
 const canCompleteDelivery = (roleMask: number) => (roleMask & (DRIVER | DISPATCHER | MANAGER | DIRECTOR)) !== 0;
+const canConfirmCustomerPickup = (roleMask: number) => (roleMask & (WAREHOUSE | DRIVER | DISPATCHER | MANAGER | DIRECTOR)) !== 0;
 const normalizeStatus = (waybill: LastMileWaybill) => String(waybill.current_state || '').toUpperCase();
 
 const normalizeList = <T,>(response: ListResponse<T> | T[]) =>
@@ -36,8 +38,8 @@ const DELIVERY_COLUMNS: Array<{ id: DeliveryColumnId; label: string; width: stri
   { id: 'actualWeight', label: 'Kg thực tế', width: '100px' },
   { id: 'cbm', label: 'CBM', width: '90px' },
   { id: 'payment', label: 'Thanh toán', width: '90px' },
-  { id: 'preparationNote', label: 'Ghi chú gọi hẹn', width: 'minmax(200px,1.2fr)', required: true },
-  { id: 'status', label: 'Trạng thái', width: 'minmax(180px,1fr)' },
+  { id: 'preparationNote', label: 'Ghi chú xử lý', width: 'minmax(200px,1.2fr)', required: true },
+  { id: 'status', label: 'Trạng thái xử lý', width: 'minmax(220px,1.2fr)', required: true },
   { id: 'actions', label: 'Thao tác', width: 'minmax(190px,auto)', required: true },
 ];
 const DELIVERY_COLUMN_STORAGE_KEY = 'eco_delivery_task_columns_v1';
@@ -192,7 +194,7 @@ export default function NhiemVuGiaoHangPage() {
   const confirmUpdateStatus = async (
     status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED',
     deliveryPhotoUrl?: string,
-    assignment?: { assignment_type: 'INTERNAL' | 'PARTNER'; driver_id?: string; truck_id?: string; vendor_id?: string; route_code?: string; driver_name?: string; license_plate?: string; delivery_cost?: number },
+    assignment?: { assignment_type: 'INTERNAL' | 'PARTNER' | 'TECHNOLOGY'; driver_id?: string; truck_id?: string; vendor_id?: string; route_code?: string; driver_name?: string; license_plate?: string; delivery_cost?: number },
     failureReason?: string,
   ) => {
     if (!statusWaybill) return;
@@ -215,11 +217,11 @@ export default function NhiemVuGiaoHangPage() {
     }
   };
 
-  const confirmPreparation = async (status: 'READY' | 'SCHEDULED' | 'HOLD', scheduledAt?: string, reason?: string, note?: string) => {
+  const confirmPreparation = async (status: 'READY' | 'SCHEDULED' | 'HOLD', scheduledAt?: string, reason?: string, note?: string, readyMode?: 'DISPATCH' | 'CUSTOMER_PICKUP') => {
     if (!preparationWaybill) return;
     setIsSubmitting(true); setActionError('');
     try {
-      await apiRequest(`/waybills/${preparationWaybill.id}/delivery-preparation`, { method: 'PATCH', body: { status, scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined, reason, note } });
+      await apiRequest(`/waybills/${preparationWaybill.id}/delivery-preparation`, { method: 'PATCH', body: { status, scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined, reason, note, ready_mode: readyMode } });
       setPreparationWaybill(null); await loadTasks();
     } catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không lưu được xử lý.'); }
     finally { setIsSubmitting(false); }
@@ -338,18 +340,20 @@ export default function NhiemVuGiaoHangPage() {
           {displayedWaybills.map((waybill) => {
             const status = normalizeStatus(waybill);
             const preparation = waybill.delivery_preparation_status || 'PENDING_CONFIRMATION';
-            const canStart = canDispatchDelivery(roleMask) && status === 'AT_DEST_HUB' && preparation === 'READY';
+            const isCustomerPickup = waybill.delivery_assignment_type === 'CUSTOMER_PICKUP';
+            const canStart = canDispatchDelivery(roleMask) && status === 'AT_DEST_HUB' && preparation === 'READY' && !isCustomerPickup;
             const canPrepare = canPrepareDelivery(roleMask) && ['IN_TRANSIT', 'AT_DEST_HUB'].includes(status);
-            const canDeliver = canCompleteDelivery(roleMask) && status === 'OUT_FOR_DELIVERY';
-            const preparationText = preparation === 'READY'
-              ? 'Sẵn sàng giao'
-              : preparation === 'SCHEDULED'
-                ? `${status === 'IN_TRANSIT' ? 'Đã gọi · hẹn' : 'Hẹn'} ${waybill.delivery_scheduled_at ? new Date(waybill.delivery_scheduled_at).toLocaleString('vi-VN') : ''}`
-                : preparation === 'NEEDS_ACTION'
-                  ? 'Cần xử lý trong ngày'
-                  : preparation === 'HOLD'
-                    ? `Lưu kho · ${waybill.delivery_hold_reason || 'chờ xử lý'}`
-                    : 'Chờ gọi xác nhận';
+            const canDeliver = (canCompleteDelivery(roleMask) && status === 'OUT_FOR_DELIVERY')
+              || (canConfirmCustomerPickup(roleMask) && status === 'AT_DEST_HUB' && preparation === 'READY' && isCustomerPickup);
+            const processing = resolveDeliveryProcessingStatus(waybill);
+            const processingToneClass = {
+              slate: 'text-slate-700',
+              blue: 'text-blue-700',
+              violet: 'text-violet-700',
+              amber: 'text-amber-700',
+              emerald: 'text-emerald-700',
+              red: 'text-red-700',
+            }[processing.tone];
 
             return (
               <article
@@ -384,6 +388,12 @@ export default function NhiemVuGiaoHangPage() {
                 {visibleColumnIds.includes('receiver') && (
                 <div className="min-w-0 text-[12px]">
                   <p className="truncate font-bold text-foreground" title={waybill.receiver_info}>{waybill.receiver_info || '—'}</p>
+                  {(waybill.noi_dung || waybill.mat_hang) && (
+                    <p className="mt-1 flex min-w-0 items-center gap-1 font-bold text-slate-700" title={waybill.noi_dung || waybill.mat_hang || undefined}>
+                      <PackageOpen size={12} className="shrink-0 text-primary" />
+                      <span className="truncate">Hàng: {waybill.noi_dung || waybill.mat_hang}</span>
+                    </p>
+                  )}
                   {waybill.receiver_address && (
                     <p className="mt-1 flex min-w-0 items-center gap-1 text-muted-foreground" title={waybill.receiver_address}>
                       <MapPin size={12} className="shrink-0" />
@@ -414,7 +424,7 @@ export default function NhiemVuGiaoHangPage() {
                 {visibleColumnIds.includes('payment') && <div className="text-[11px] font-bold text-muted-foreground"><span className="mr-1 xl:hidden">Thanh toán:</span>{waybill.payment_type || '—'}</div>}
                 {visibleColumnIds.includes('preparationNote') && (
                 <div className="min-w-0 text-[11px]">
-                  <span className="mr-1 font-bold text-muted-foreground xl:hidden">Ghi chú gọi hẹn:</span>
+                  <span className="mr-1 font-bold text-muted-foreground xl:hidden">Ghi chú xử lý:</span>
                   <span className={clsx('font-bold', waybill.delivery_preparation_note ? 'text-amber-800' : 'text-muted-foreground')} title={waybill.delivery_preparation_note || undefined}>
                     {waybill.delivery_preparation_note || '—'}
                   </span>
@@ -422,17 +432,8 @@ export default function NhiemVuGiaoHangPage() {
                 )}
                 {visibleColumnIds.includes('status') && (
                 <div className="min-w-0 text-[11px]">
-                  {['IN_TRANSIT', 'AT_DEST_HUB'].includes(status) && <p className={clsx('truncate font-extrabold', preparation === 'NEEDS_ACTION' ? 'text-red-700' : preparation === 'READY' ? 'text-emerald-700' : status === 'IN_TRANSIT' ? 'text-blue-700' : 'text-amber-700')} title={preparationText}>
-                    {preparationText}
-                  </p>}
-                  {status === 'OUT_FOR_DELIVERY' && (
-                    <p className="truncate font-bold text-primary">
-                      Tuyến {waybill.route_code || '—'} · {' '}
-                      {waybill.delivery_assignment_type === 'PARTNER'
-                        ? `Đối tác: ${waybill.last_mile_vendor?.name || waybill.last_mile_vendor?.code || '—'}${waybill.last_mile_license_plate ? ` · ${waybill.last_mile_license_plate}` : ''}`
-                        : `Nội bộ: ${waybill.last_mile_driver_name || waybill.last_mile_driver?.name || waybill.last_mile_driver?.username || '—'}${waybill.last_mile_license_plate ? ` · ${waybill.last_mile_license_plate}` : ''}`}
-                    </p>
-                  )}
+                  <p className={clsx('font-extrabold', processingToneClass)} title={[processing.title, processing.detail].filter(Boolean).join(' · ')}>{processing.title}</p>
+                  {processing.detail && <p className="mt-1 font-bold text-muted-foreground" title={processing.detail}>{processing.detail}</p>}
                   {waybill.last_delivery_failure_reason && <p className="mt-1 truncate font-bold text-red-700" title={waybill.last_delivery_failure_reason}>Thất bại: {waybill.last_delivery_failure_reason}</p>}
                 </div>
                 )}
@@ -463,7 +464,7 @@ export default function NhiemVuGiaoHangPage() {
                       className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 text-[11px] font-extrabold text-white shadow-sm hover:bg-emerald-700"
                     >
                       <Truck size={13} />
-                      Giao hàng
+                      {isCustomerPickup && status === 'AT_DEST_HUB' ? 'Xác nhận lấy hàng' : 'Giao hàng'}
                     </button>
                   )}
                   {allowed && !canPrepare && !canStart && !canDeliver && (

@@ -17,10 +17,10 @@ export class UpdateWaybillStatusDto {
   @IsString()
   split_id?: string;
 
-  @ApiPropertyOptional({ enum: ['INTERNAL', 'PARTNER'] })
+  @ApiPropertyOptional({ enum: ['INTERNAL', 'PARTNER', 'TECHNOLOGY'] })
   @IsOptional()
-  @IsIn(['INTERNAL', 'PARTNER'])
-  assignment_type?: 'INTERNAL' | 'PARTNER';
+  @IsIn(['INTERNAL', 'PARTNER', 'TECHNOLOGY'])
+  assignment_type?: 'INTERNAL' | 'PARTNER' | 'TECHNOLOGY';
 
   @ApiPropertyOptional({ description: 'Tài xế nội bộ nhận giao' })
   @IsOptional()

@@ -7,6 +7,7 @@ import {
   resolveCompletionDate,
   resolveCongSg,
   resolveDeliveryStaff,
+  resolveDeliveryProcessingSummary,
   resolveFreight,
   resolveCustomerName,
   resolveServiceType,
@@ -98,6 +99,8 @@ export function inventoryPrintCellValue(
       return resolveInventoryTripHistoryText(waybill) || waybill.license_plate || '';
     case 'delivery_staff':
       return resolveDeliveryStaff(waybill).replace(/^—$/, '');
+    case 'delivery_processing':
+      return resolveDeliveryProcessingSummary(waybill);
     case 'loaded_at':
       return formatInventoryDate(resolveLoadedAt(waybill));
     case 'received_at':

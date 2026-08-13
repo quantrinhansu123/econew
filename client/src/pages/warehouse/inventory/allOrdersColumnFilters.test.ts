@@ -42,6 +42,19 @@ describe('all-orders column filters', () => {
       .toEqual([assignedRows[0]]);
   });
 
+  it('filters by the exact saved delivery processing choice', () => {
+    const processingRows: WaybillInventoryItem[] = [
+      { id: 1, current_state: 'AT_DEST_HUB', delivery_preparation_status: 'READY', delivery_assignment_type: 'CUSTOMER_PICKUP' },
+      { id: 2, current_state: 'OUT_FOR_DELIVERY', delivery_assignment_type: 'TECHNOLOGY' },
+    ];
+
+    expect(getAllOrdersColumnValue(processingRows[0], 'delivery_processing')).toContain('Sẵn sàng giao · khách tới lấy');
+    expect(getAllOrdersColumnValue(processingRows[1], 'delivery_processing')).toContain('Đã điều phối · xe công nghệ');
+    expect(applyAllOrdersColumnFilters(processingRows, {
+      delivery_processing: getAllOrdersColumnValue(processingRows[1], 'delivery_processing'),
+    })).toEqual([processingRows[1]]);
+  });
+
   it('indexes every split trip in the Chuyến / xe column', () => {
     const waybill: WaybillInventoryItem = {
       id: 4,

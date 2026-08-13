@@ -462,6 +462,7 @@ export class WaybillsService {
 
   async updateDeliveryPreparation(id: string, dto: UpdateDeliveryPreparationDto, currentUser: UserEntity) {
     const waybill = await this.findEditable(id, currentUser);
+    const previousLastMileVendorId = waybill.last_mile_vendor_id;
     const waybillStatus = this.getStatus(waybill);
     if (waybillStatus !== WaybillStatus.AT_DEST_HUB) {
       const activeDeliverySplits = await this.splitsRepository.find({
@@ -491,17 +492,40 @@ export class WaybillsService {
       waybill.delivery_hold_reason = null;
     }
     waybill.delivery_preparation_status = dto.status;
+    if (dto.status === 'READY') {
+      const readyMode = dto.ready_mode
+        ?? (waybill.delivery_assignment_type === 'CUSTOMER_PICKUP' ? 'CUSTOMER_PICKUP' : 'DISPATCH');
+      if (readyMode === 'CUSTOMER_PICKUP') {
+        Object.assign(waybill, {
+          delivery_assignment_type: 'CUSTOMER_PICKUP',
+          last_mile_driver_id: null,
+          last_mile_truck_id: null,
+          last_mile_vendor_id: null,
+          last_mile_driver_name: null,
+          last_mile_license_plate: null,
+          last_mile_cost_amount: '0',
+          xe_phat: null,
+        });
+      } else if (waybill.delivery_assignment_type === 'CUSTOMER_PICKUP') {
+        waybill.delivery_assignment_type = null;
+      }
+    } else if (waybill.delivery_assignment_type === 'CUSTOMER_PICKUP') {
+      waybill.delivery_assignment_type = null;
+    }
     if (dto.note !== undefined) waybill.delivery_preparation_note = dto.note.trim() || null;
     waybill.delivery_confirmed_at = now;
     waybill.updated_by = currentUser.id;
     const saved = await this.waybillsRepository.save(waybill as any);
     await this.recordWaybillChange(String(saved.id), `DELIVERY_PREPARATION_${dto.status}`, currentUser, before, saved);
+    if (previousLastMileVendorId && previousLastMileVendorId !== saved.last_mile_vendor_id) {
+      await this.vendorsService.refreshPayableBalance(previousLastMileVendorId);
+    }
     return this.sanitize(saved as WaybillRecord, currentUser);
   }
 
   async updateLastMileCost(id: string, dto: UpdateLastMileCostDto, currentUser: UserEntity) {
     const waybill = await this.findEditable(id, currentUser);
-    if (!waybill.delivery_assignment_type) {
+    if (!waybill.delivery_assignment_type || waybill.delivery_assignment_type === 'CUSTOMER_PICKUP') {
       throw new BadRequestException('Vận đơn chưa được phân giao chặng cuối');
     }
     const before = this.buildAuditSnapshot(waybill);
@@ -979,7 +1003,9 @@ export class WaybillsService {
       .leftJoinAndSelect('waybill.dest_hub', 'dest_hub')
       .leftJoinAndSelect('waybill.current_hub', 'current_hub')
       .leftJoinAndSelect('waybill.order', 'order')
-      .leftJoinAndSelect('waybill.last_mile_driver', 'last_mile_driver');
+      .leftJoinAndSelect('waybill.last_mile_driver', 'last_mile_driver')
+      .leftJoinAndSelect('waybill.last_mile_truck', 'last_mile_truck')
+      .leftJoinAndSelect('waybill.last_mile_vendor', 'last_mile_vendor');
     this.applyFilters(qb, inventoryQuery);
     if (!isGlobalListScope) {
       this.applyHubScope(qb, currentUser);
@@ -2461,7 +2487,7 @@ export class WaybillsService {
       throw new BadRequestException('Vận đơn phải được xác nhận sẵn sàng giao trước khi điều phối');
     }
     const assignmentType = dto.assignment_type;
-    if (!assignmentType) throw new BadRequestException('Phải chọn hình thức phân giao nội bộ hoặc đối tác');
+    if (!assignmentType) throw new BadRequestException('Phải chọn xe nội bộ, xe đối tác hoặc xe công nghệ');
     const routeCode = dto.route_code?.trim() || waybill.route_code?.trim();
     waybill.route_code = routeCode || null;
     const manualDriverName = dto.driver_name?.trim() || '';
@@ -2499,15 +2525,20 @@ export class WaybillsService {
       return;
     }
 
-    if (!dto.vendor_id) throw new BadRequestException('Phải chọn đối tác giao hàng');
-    const vendor = await this.vendorsRepository.findOne({ where: { id: String(dto.vendor_id), status: 'ACTIVE' } as any });
-    if (!vendor) throw new BadRequestException('Đối tác giao hàng không hợp lệ');
+    if (assignmentType === 'PARTNER' && !dto.vendor_id) throw new BadRequestException('Phải chọn đối tác giao hàng');
+    const vendor = dto.vendor_id
+      ? await this.vendorsRepository.findOne({ where: { id: String(dto.vendor_id), status: 'ACTIVE' } as any })
+      : null;
+    if (dto.vendor_id && !vendor) throw new BadRequestException('Đơn vị giao hàng không hợp lệ');
+    if (assignmentType === 'TECHNOLOGY' && !vendor && !manualDriverName) {
+      throw new BadRequestException('Phải chọn hoặc nhập đơn vị xe công nghệ');
+    }
     Object.assign(waybill, {
-      delivery_assignment_type: 'PARTNER',
+      delivery_assignment_type: assignmentType,
       last_mile_driver_id: null,
       last_mile_truck_id: null,
-      last_mile_vendor_id: vendor.id,
-      last_mile_driver_name: manualDriverName || null,
+      last_mile_vendor_id: vendor?.id ?? null,
+      last_mile_driver_name: manualDriverName || vendor?.name?.trim() || null,
       last_mile_license_plate: manualLicensePlate || null,
       last_mile_cost_amount: String(deliveryCost),
       xe_phat: manualLicensePlate || null,
@@ -3479,6 +3510,7 @@ export class WaybillsService {
         code: waybill.last_mile_vendor.code,
         name: waybill.last_mile_vendor.name,
         phone: waybill.last_mile_vendor.phone,
+        service_type: waybill.last_mile_vendor.service_type,
       };
     }
     result.noi_dung = this.resolveGoodsContent(waybill) || null;

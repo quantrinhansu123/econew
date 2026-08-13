@@ -6,6 +6,7 @@ import {
   resolveCongSg,
   resolveCustomerName,
   resolveDeliveryStaff,
+  resolveDeliveryProcessingSummary,
   resolveMaKh,
   resolveNoiDen,
   resolveOrderStatusBadge,
@@ -46,6 +47,7 @@ export const ALL_ORDERS_FILTERABLE_COLUMN_IDS: InventoryColumnId[] = [
   'noi_den',
   'receiver_address',
   'order_status',
+  'delivery_processing',
   'package_count',
   'billing_unit',
   'billing_qty_detail',
@@ -108,6 +110,8 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
       return resolveReceiverAddress(waybill) || EMPTY_VALUE;
     case 'order_status':
       return resolveOrderStatusBadge(waybill).label || EMPTY_VALUE;
+    case 'delivery_processing':
+      return resolveDeliveryProcessingSummary(waybill) || EMPTY_VALUE;
     case 'package_count':
       return resolvePackageCountSl(waybill);
     case 'billing_unit':

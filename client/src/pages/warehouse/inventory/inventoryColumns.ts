@@ -2,6 +2,10 @@ import type { InventoryTripHistoryItem, WaybillInventoryItem } from './types';
 import { resolveOrderStatusGroup, orderStatusGroupConfig } from './orderStatusUtils';
 import { resolveVietnamDistrict, resolveVietnamWard } from '../../../lib/vietnamAddressParts';
 import { resolveWaybillDisplayNote } from '../../../lib/waybillSpecialGoods';
+import {
+  resolveDeliveryProcessingStatus,
+  resolveDeliveryProcessingText,
+} from '../../delivery/last-mile/deliveryProcessingStatus';
 
 const VN_TIMEZONE = 'Asia/Ho_Chi_Minh';
 
@@ -166,6 +170,7 @@ export type InventoryColumnId =
   | 'received_at'
   | 'noi_den'
   | 'order_status'
+  | 'delivery_processing'
   | 'billing_unit'
   | 'billing_qty_detail'
   | 'unit_price'
@@ -222,6 +227,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'received_at', label: 'Ngày nhận đơn', defaultVisible: false },
   { id: 'noi_den', label: 'Tỉnh đến', defaultVisible: true },
   { id: 'order_status', label: 'Trạng thái đơn', defaultVisible: false },
+  { id: 'delivery_processing', label: 'Trạng thái xử lý giao', defaultVisible: false },
   { id: 'billing_unit', label: 'ĐVT cước', defaultVisible: false },
   { id: 'billing_qty_detail', label: 'Kg / khối', defaultVisible: false, align: 'right' },
   { id: 'unit_price', label: 'Đơn giá', defaultVisible: false, align: 'right' },
@@ -301,6 +307,7 @@ export const ALL_ORDERS_SENDER_COLUMN_IDS: InventoryColumnId[] = [
   'receiver_address',
   'bill_images',
   'order_status',
+  'delivery_processing',
   'trip_label',
   'delivery_staff',
   'billing_unit',
@@ -353,6 +360,7 @@ export const ALL_ORDERS_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>
   receiver_address: 250,
   bill_images: 90,
   order_status: 115,
+  delivery_processing: 260,
   trip_label: 340,
   delivery_staff: 150,
   billing_unit: 110,
@@ -403,6 +411,7 @@ export const ALL_ORDERS_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
   'receiver_address',
   'bill_images',
   'order_status',
+  'delivery_processing',
   'trip_label',
   'delivery_staff',
   'billing_unit',
@@ -440,6 +449,7 @@ const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   receiver_district: 'Quận/Huyện',
   receiver_ward: 'Phường/Xã',
   order_status: 'Trạng thái',
+  delivery_processing: 'Xử lý giao hàng',
   billing_qty_detail: 'Kg / khối',
   surcharge: 'Dịch vụ cộng thêm',
   stt: 'STT',
@@ -496,8 +506,8 @@ export function getAllOrdersDefaultVisibleColumnIds(): InventoryColumnId[] {
   return [...ALL_ORDERS_DEFAULT_COLUMN_IDS];
 }
 
-export const ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v2';
-const LEGACY_ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v1';
+export const ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v3';
+const LEGACY_ALL_ORDERS_COLUMN_STORAGE_KEYS = ['eco_all_orders_visible_columns_v2', 'eco_all_orders_visible_columns_v1'];
 
 export function normalizeAllOrdersVisibleColumnIds(ids: InventoryColumnId[]): InventoryColumnId[] {
   const selected = new Set(ids.filter((id) => ALL_ORDERS_SELECTABLE_COLUMN_IDS.includes(id)));
@@ -513,12 +523,15 @@ export function loadAllOrdersVisibleColumnIds(): InventoryColumnId[] {
   if (typeof window === 'undefined') return getAllOrdersDefaultVisibleColumnIds();
   const raw = localStorage.getItem(ALL_ORDERS_COLUMN_STORAGE_KEY);
   if (!raw) {
-    const legacyRaw = localStorage.getItem(LEGACY_ALL_ORDERS_COLUMN_STORAGE_KEY);
+    const legacyRaw = LEGACY_ALL_ORDERS_COLUMN_STORAGE_KEYS
+      .map((key) => localStorage.getItem(key))
+      .find(Boolean);
     if (!legacyRaw) return getAllOrdersDefaultVisibleColumnIds();
     try {
       const migrated = normalizeAllOrdersVisibleColumnIds([
         ...(JSON.parse(legacyRaw) as InventoryColumnId[]),
         'delivery_staff',
+        'delivery_processing',
       ]);
       localStorage.setItem(ALL_ORDERS_COLUMN_STORAGE_KEY, JSON.stringify(migrated));
       return migrated;
@@ -758,6 +771,14 @@ export function resolveDeliveryStaff(waybill: WaybillInventoryItem): string {
 
   const partner = waybill.last_mile_vendor;
   return partner?.code?.trim() || partner?.name?.trim() || '—';
+}
+
+export function resolveDeliveryProcessingPresentation(waybill: WaybillInventoryItem) {
+  return resolveDeliveryProcessingStatus(waybill);
+}
+
+export function resolveDeliveryProcessingSummary(waybill: WaybillInventoryItem): string {
+  return resolveDeliveryProcessingText(waybill);
 }
 
 export function resolveWeightKg(waybill: WaybillInventoryItem): number {

@@ -1494,6 +1494,73 @@ describe('WaybillsService', () => {
     }));
   });
 
+  it('lưu lựa chọn khách tới HUB lấy và xóa phân xe cũ', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.AT_DEST_HUB,
+      status: WaybillStatus.AT_DEST_HUB,
+      delivery_assignment_type: 'PARTNER',
+      last_mile_vendor_id: 'v1',
+      last_mile_driver_name: 'Tài xế cũ',
+      last_mile_license_plate: '50H-12345',
+      last_mile_cost_amount: '120000',
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+
+    const result = await service.updateDeliveryPreparation('1', {
+      status: 'READY',
+      ready_mode: 'CUSTOMER_PICKUP',
+      note: 'Khách sẽ tới kho lấy lúc 18:00',
+    }, manager);
+
+    expect(result).toMatchObject({
+      delivery_preparation_status: 'READY',
+      delivery_assignment_type: 'CUSTOMER_PICKUP',
+      delivery_preparation_note: 'Khách sẽ tới kho lấy lúc 18:00',
+      last_mile_vendor_id: null,
+      last_mile_driver_name: null,
+      last_mile_license_plate: null,
+      last_mile_cost_amount: '0',
+    });
+    expect(vendorsService.refreshPayableBalance).toHaveBeenCalledWith('v1');
+  });
+
+  it('đổi từ khách tới lấy về điều phối xe sẽ bỏ cờ khách tự lấy', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.AT_DEST_HUB,
+      status: WaybillStatus.AT_DEST_HUB,
+      delivery_assignment_type: 'CUSTOMER_PICKUP',
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+
+    await service.updateDeliveryPreparation('1', {
+      status: 'READY',
+      ready_mode: 'DISPATCH',
+    }, manager);
+
+    expect((waybill as any).delivery_assignment_type).toBeNull();
+  });
+
+  it('khách tới lấy có thể báo phát thành công trực tiếp bằng ảnh, không cần điều phối xe', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.AT_DEST_HUB,
+      status: WaybillStatus.AT_DEST_HUB,
+      delivery_preparation_status: 'READY',
+      delivery_assignment_type: 'CUSTOMER_PICKUP',
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+
+    await service.updateStatus('1', {
+      status: WaybillStatus.DELIVERED,
+      delivery_photo_url: 'https://example.com/customer-pickup.jpg',
+    }, warehouse);
+
+    expect(waybill).toMatchObject({
+      current_state: WaybillStatus.DELIVERED,
+      delivery_assignment_type: 'CUSTOMER_PICKUP',
+      delivery_photo_url: 'https://example.com/customer-pickup.jpg',
+    });
+  });
+
   it('giao phần kiện không đổi toàn bộ vận đơn khỏi danh sách tồn', async () => {
     const split = {
       id: 's38',
@@ -1742,6 +1809,26 @@ describe('WaybillsService', () => {
       last_mile_driver_name: 'Tài xế đối tác',
       last_mile_license_plate: '50H-67890',
       xe_phat: '50H-67890',
+    });
+  });
+
+  it('lưu xe công nghệ khi phân giao chặng cuối', async () => {
+    const waybill = makeWaybill({ current_state: WaybillStatus.AT_DEST_HUB, status: WaybillStatus.AT_DEST_HUB });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+    vendorsRepository.findOne.mockResolvedValue({ id: 'v2', name: 'Grab Express', status: 'ACTIVE' });
+
+    await service.updateStatus('1', {
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+      assignment_type: 'TECHNOLOGY',
+      vendor_id: 'v2',
+      license_plate: '59A-12345',
+    }, manager);
+
+    expect(waybill).toMatchObject({
+      delivery_assignment_type: 'TECHNOLOGY',
+      last_mile_vendor_id: 'v2',
+      last_mile_driver_name: 'Grab Express',
+      last_mile_license_plate: '59A-12345',
     });
   });
 
