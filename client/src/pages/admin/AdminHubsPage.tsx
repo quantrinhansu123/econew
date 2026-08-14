@@ -126,7 +126,7 @@ export default function AdminHubsPage() {
   const [selectedHubIds, setSelectedHubIds] = useState<string[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
 
-  const user = useMemo(getStoredUser, []);
+  const user = useMemo(() => getStoredUser(), []);
   const canManage = isManager(user?.role_mask ?? 0);
   const canDelete = isDirector(user?.role_mask ?? 0);
   const totalPages = Math.max(1, Math.ceil(total / filters.limit));
@@ -162,8 +162,14 @@ export default function AdminHubsPage() {
     }
   }
 
-  useEffect(() => { void fetchHubs(); }, [filters.keyword, filters.status, filters.province, filters.district, filters.type, filters.page, filters.limit]);
-  useEffect(() => { void fetchManagers(); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void fetchHubs(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [filters.keyword, filters.status, filters.province, filters.district, filters.type, filters.page, filters.limit]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void fetchManagers(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const updateFilter = <K extends keyof HubFilters>(key: K, value: HubFilters[K]) => setFilters(prev => ({ ...prev, [key]: value, page: key === 'page' ? Number(value) : 1 }));
   const setFormField = <K extends keyof HubFormState>(key: K, value: HubFormState[K]) => { setFormState(prev => ({ ...prev, [key]: value })); setActionError(''); };

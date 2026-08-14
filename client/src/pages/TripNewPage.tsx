@@ -150,7 +150,7 @@ export default function TripNewPage() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [arrivalTouched, setArrivalTouched] = useState(false);
 
-  const user = useMemo(getStoredUser, []);
+  const user = useMemo(() => getStoredUser(), []);
   const canCreate = hasPermission(user?.role_mask ?? 0);
   const selectedTruck = trucks.find((truck) => normalizeId(truck.id) === form.truck_id);
   const selectedManifest = manifests.find((manifest) => normalizeId(manifest.id) === form.manifest_id);
@@ -190,8 +190,6 @@ export default function TripNewPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    setIsLoading(true);
-    setLoadError('');
     Promise.all([
       apiRequest<ListResponse<TripCreateTruckSummary> | TripCreateTruckSummary[]>('/trucks/available', {
         signal: controller.signal,
