@@ -87,10 +87,12 @@ export default function ManifestExpensesSection({
   manifest,
   canManage,
   canDelete,
+  openFormOnMount = false,
 }: {
   manifest: LoadPlanningManifest;
   canManage: boolean;
   canDelete: boolean;
+  openFormOnMount?: boolean;
 }) {
   const trip = manifestTrip(manifest);
   const rawTripId = trip?.id ?? manifest.trip_id;
@@ -102,7 +104,7 @@ export default function ManifestExpensesSection({
   const [isLoading, setIsLoading] = useState(Boolean(tripId));
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(openFormOnMount && canManage && isClosed && Boolean(tripId));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ExpenseFormState>(emptyForm);
 

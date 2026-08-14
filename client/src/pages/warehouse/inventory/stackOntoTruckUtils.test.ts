@@ -44,6 +44,17 @@ describe('stack-onto-truck expected arrival', () => {
 
     expect(rows.map((row) => new Date(row.expected_arrival_at!).getDate())).toEqual([9, 10, 11]);
   });
+
+  it('uses the transit days configured on each destination hub', () => {
+    const loadingDate = new Date(2026, 7, 14, 8, 0, 0);
+    const rows = buildStackFormRows([
+      { id: 'w1', dest_hub: { id: '2', code: 'DAN', transit_days: 1 } },
+      { id: 'w2', dest_hub: { id: '3', code: 'KHANHHOA', transit_days: 2 } },
+      { id: 'w3', dest_hub: { id: '4', code: 'HCM', transit_days: 3 } },
+    ] as WaybillInventoryItem[], loadingDate);
+
+    expect(rows.map((row) => new Date(row.expected_arrival_at!).getDate())).toEqual([15, 16, 17]);
+  });
 });
 
 describe('stack-onto-truck request payload', () => {

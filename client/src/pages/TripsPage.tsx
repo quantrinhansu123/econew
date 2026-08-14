@@ -324,6 +324,19 @@ function TripCard({ trip, onOpen, onEdit, onPrint, onExpenses, onPrimaryAction, 
             ))}
           </div>
         )}
+        {trip.delivery_summary && trip.delivery_summary.total_waybills > 0 && (
+          trip.status === 'COMPLETED' ? (
+            <div className="mt-1.5 rounded-md border border-slate-200 bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800">
+              Hoàn thành: {trip.delivery_summary.completed_waybills.toLocaleString('vi-VN')} đơn
+            </div>
+          ) : (
+            <div className="mt-1.5 grid grid-cols-3 gap-1 text-center text-[10px] font-black">
+              <DeliveryCount className="border-blue-200 bg-blue-50 text-blue-800" label="Đã xử lý" value={trip.delivery_summary.processed_waybills} />
+              <DeliveryCount className="border-emerald-200 bg-emerald-50 text-emerald-800" label="Giao thành công" value={trip.delivery_summary.delivered_waybills} />
+              <DeliveryCount className="border-amber-200 bg-amber-50 text-amber-800" label="Chưa giao" value={trip.delivery_summary.pending_delivery_waybills} />
+            </div>
+          )
+        )}
       </button>
       <div className="mt-1.5 flex items-center gap-1 border-t border-slate-100 pt-1.5">
         <ActionButton title="Xem chi tiết" icon={<Eye size={14} />} onClick={onOpen} />
@@ -335,6 +348,10 @@ function TripCard({ trip, onOpen, onEdit, onPrint, onExpenses, onPrimaryAction, 
       </div>
     </article>
   );
+}
+
+function DeliveryCount({ className, label, value }: { className: string; label: string; value: number }) {
+  return <div className={clsx('min-w-0 rounded-md border px-1 py-1.5', className)}><p className="truncate">{label}</p><p className="mt-0.5 text-[13px]">{value.toLocaleString('vi-VN')}</p></div>;
 }
 
 function ProminentCell({ label, value, tone }: { label: string; value: ReactNode; tone: 'blue' | 'violet' }) {

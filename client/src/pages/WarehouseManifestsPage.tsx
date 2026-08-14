@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Eye, Filter, Loader2, PackageCheck, Plus, Printer, Search, Truck, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Filter, Loader2, PackageCheck, Pencil, Plus, Printer, ReceiptText, Search, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
@@ -180,6 +180,7 @@ export default function WarehouseManifestsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const user = useMemo(getStoredUser, []);
   const openManifestId = searchParams.get('openManifestId')?.trim() || '';
+  const shouldOpenExpense = searchParams.get('openExpense') === '1';
   const roleMask = user?.role_mask ?? 0;
   const allowed = canViewPage(roleMask);
   const mayAssign = canAssignTrip(roleMask);
@@ -202,6 +203,7 @@ export default function WarehouseManifestsPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDetailClosing, setIsDetailClosing] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [openExpenseOnDetail, setOpenExpenseOnDetail] = useState(false);
   const [assignManifest, setAssignManifest] = useState<LoadPlanningManifest | null>(null);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [isAssignClosing, setIsAssignClosing] = useState(false);
@@ -252,8 +254,8 @@ export default function WarehouseManifestsPage() {
   useEffect(() => {
     if (!allowed || isLoading || !openManifestId || isDetailOpen || isDetailLoading) return;
     const manifest = manifests.find((item) => String(item.id) === openManifestId) ?? ({ id: openManifestId } as LoadPlanningManifest);
-    void openDetail(manifest);
-  }, [allowed, isLoading, openManifestId, manifests, isDetailOpen, isDetailLoading]);
+    void openDetail(manifest, shouldOpenExpense);
+  }, [allowed, isLoading, openManifestId, shouldOpenExpense, manifests, isDetailOpen, isDetailLoading]);
 
   async function fetchOptions() {
     try {
@@ -291,10 +293,11 @@ export default function WarehouseManifestsPage() {
   const clearFilters = () => { const next = { ...defaultFilters, keyword: filters.keyword, limit: filters.limit }; setFilters(next); setDraftFilters(next); };
   const openFilters = () => { setDraftFilters(filters); setIsFilterOpen(true); };
   const applyFilters = () => { setFilters({ ...draftFilters, page: 1 }); setIsFilterOpen(false); };
-  const closeDetail = () => { setIsDetailClosing(true); if (openManifestId) setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('openManifestId'); return next; }, { replace: true }); window.setTimeout(() => { setIsDetailOpen(false); setDetailManifest(null); setIsDetailClosing(false); }, 180); };
+  const closeDetail = () => { setIsDetailClosing(true); if (openManifestId) setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('openManifestId'); next.delete('openExpense'); return next; }, { replace: true }); window.setTimeout(() => { setIsDetailOpen(false); setDetailManifest(null); setOpenExpenseOnDetail(false); setIsDetailClosing(false); }, 180); };
   const closeAssign = () => { setIsAssignClosing(true); window.setTimeout(() => { setIsAssignOpen(false); setAssignManifest(null); setIsAssignClosing(false); }, 180); };
 
-  async function openDetail(manifest: LoadPlanningManifest) {
+  async function openDetail(manifest: LoadPlanningManifest, openExpense = false) {
+    setOpenExpenseOnDetail(openExpense);
     setIsDetailOpen(true); setIsDetailLoading(true); setDetailManifest(manifest);
     try { setDetailManifest(await apiRequest<LoadPlanningManifest>(`/manifests/${manifest.id}`)); }
     catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không thể tải chi tiết bảng kê.'); }
@@ -494,6 +497,7 @@ export default function WarehouseManifestsPage() {
               hcmOutbound={transportManifestsByOrigin.HCM}
               statusTotals={transportStatusTotals}
               onDetail={openDetail}
+              onExpenses={(manifest) => void openDetail(manifest, true)}
               onPrint={openPrint}
             />
           )}
@@ -502,7 +506,7 @@ export default function WarehouseManifestsPage() {
         <div className="shrink-0 border-t border-border bg-card px-3 py-2"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[12px] font-bold text-muted-foreground">{`${transportManifestCount.toLocaleString('vi-VN')} chuyến đang hiển thị`}</p><div className="flex items-center gap-2"><SearchableSelect value={String(filters.limit)} onValueChange={value => updateFilters({ limit: Number(value), page: 1 })} options={[{ value: '20', label: '20' }, { value: '50', label: '50' }, { value: '100', label: '100' }]} className="h-9 w-[88px] rounded-lg bg-white px-3 text-[13px] text-muted-foreground" searchPlaceholder="Tìm số dòng..." /><span className="hidden text-[12px] text-muted-foreground sm:inline">/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white text-muted-foreground disabled:opacity-50"><ChevronRight size={16} /></button><span className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-primary px-2 text-[13px] font-bold text-white">{filters.page}</span><span className="text-[13px] font-bold text-foreground">/ {totalPages}</span></div></div></div>
       </div>
       <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} tripOptions={tripOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />
-      <ManifestDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} isSubmitting={isSubmitting} manifest={detailManifest} statusConfig={statusConfig} canManage={canManageManifest} canManageExpenses={canManageExpenses} canDeleteExpenses={canDeleteExpenses} showHubDeliveryStatus={userHubView === 'HCM'} onClose={closeDetail} onRemoveWaybill={confirmRemoveWaybill} onUpdateDispatchFields={updateDetailDispatchFields} onUpdateExpectedArrival={updateExpectedArrival} />
+      <ManifestDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} isSubmitting={isSubmitting} manifest={detailManifest} statusConfig={statusConfig} canManage={canManageManifest} canManageExpenses={canManageExpenses} canDeleteExpenses={canDeleteExpenses} openExpenseFormOnMount={openExpenseOnDetail} showHubDeliveryStatus={userHubView === 'HCM'} onClose={closeDetail} onRemoveWaybill={confirmRemoveWaybill} onUpdateDispatchFields={updateDetailDispatchFields} onUpdateExpectedArrival={updateExpectedArrival} />
       <AddEditManifestDialog isOpen={isFormOpen} isClosing={isFormClosing} isEditMode={isEditMode} isSubmitting={isSubmitting} formState={formState} hubs={hubs} onChange={(key, value) => setFormState(prev => ({ ...prev, [key]: value }))} onClose={closeForm} onSubmit={submitForm} />
       <AddWaybillsToManifestDialog isOpen={isAddWaybillsOpen} isClosing={isAddWaybillsClosing} isLoading={isWaybillLoading} isSubmitting={isSubmitting} error={addWaybillsError} manifest={addWaybillsManifest} originHubLabel={addWaybillsManifest ? resolveManifestOriginHubLabel(addWaybillsManifest, hubs) : '—'} waybills={waybillChoices} total={waybillTotal} formState={addWaybillsForm} onChange={patch => setAddWaybillsForm(prev => ({ ...prev, ...patch }))} onClose={closeAddWaybills} onSubmit={submitAddWaybills} />
       <PrintManifestDialog isOpen={isPrintOpen} isClosing={isPrintClosing} isLoading={isPrintLoading} manifest={printManifest} showPricing={canViewPricing(roleMask)} onClose={closePrint} />
@@ -517,12 +521,14 @@ function ManifestTransitBoard({
   hcmOutbound,
   statusTotals,
   onDetail,
+  onExpenses,
   onPrint,
 }: {
   hanOutbound: LoadPlanningManifest[];
   hcmOutbound: LoadPlanningManifest[];
   statusTotals: { IN_TRANSIT: number; ARRIVED: number; COMPLETED: number };
   onDetail: (manifest: LoadPlanningManifest) => void;
+  onExpenses: (manifest: LoadPlanningManifest) => void;
   onPrint: (manifest: LoadPlanningManifest) => void;
 }) {
   return (
@@ -539,6 +545,7 @@ function ManifestTransitBoard({
           emptyText="Chưa có xe đi từ Hà Nội."
           manifests={hanOutbound}
           onDetail={onDetail}
+          onExpenses={onExpenses}
           onPrint={onPrint}
         />
         <ManifestTransitTable
@@ -547,6 +554,7 @@ function ManifestTransitBoard({
           emptyText="Chưa có xe đi từ TP.HCM."
           manifests={hcmOutbound}
           onDetail={onDetail}
+          onExpenses={onExpenses}
           onPrint={onPrint}
         />
       </div>
@@ -560,6 +568,7 @@ function ManifestTransitTable({
   emptyText,
   manifests,
   onDetail,
+  onExpenses,
   onPrint,
 }: {
   title: string;
@@ -567,6 +576,7 @@ function ManifestTransitTable({
   emptyText: string;
   manifests: LoadPlanningManifest[];
   onDetail: (manifest: LoadPlanningManifest) => void;
+  onExpenses: (manifest: LoadPlanningManifest) => void;
   onPrint: (manifest: LoadPlanningManifest) => void;
 }) {
   return (
@@ -598,11 +608,17 @@ function ManifestTransitTable({
                       <p className="mt-0.5 truncate text-[11px] font-medium text-muted-foreground">
                         {formatManifestSubline(manifest)}
                       </p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        <DeliveryStat tone="blue" label="Đã xử lý" value={Number(manifest.processed_waybills ?? 0)} />
+                        <DeliveryStat tone="green" label="Giao thành công" value={Number(manifest.delivered_waybills ?? 0)} />
+                        <DeliveryStat tone="amber" label="Chưa giao" value={Number(manifest.pending_delivery_waybills ?? 0)} />
+                      </div>
                     </button>
                   </td>
-                  <td className="w-[88px] px-2 py-2 align-middle">
+                  <td className="w-[124px] px-2 py-2 align-middle">
                     <div className="flex justify-end gap-1">
-                      <IconAction label="Xem chi tiết" onClick={() => onDetail(manifest)} icon={<Eye size={14} />} />
+                      <IconAction label="Sửa bảng kê" onClick={() => onDetail(manifest)} icon={<Pencil size={14} />} />
+                      <IconAction label="Nhập chi phí" onClick={() => onExpenses(manifest)} icon={<ReceiptText size={14} />} />
                       <IconAction label="In bảng kê" onClick={() => onPrint(manifest)} icon={<Printer size={14} />} />
                     </div>
                   </td>
@@ -614,6 +630,15 @@ function ManifestTransitTable({
       </div>
     </section>
   );
+}
+
+function DeliveryStat({ tone, label, value }: { tone: 'blue' | 'green' | 'amber'; label: string; value: number }) {
+  const className = tone === 'green'
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+    : tone === 'amber'
+      ? 'border-amber-200 bg-amber-50 text-amber-800'
+      : 'border-blue-200 bg-blue-50 text-blue-800';
+  return <span className={clsx('rounded-md border px-2 py-1 text-[11px] font-black', className)}>{label}: {value.toLocaleString('vi-VN')}</span>;
 }
 
 function IconAction({ label, hint, icon, disabled, danger, onClick }: { label: string; hint?: string; icon: ReactNode; disabled?: boolean; danger?: boolean; onClick: () => void }) {

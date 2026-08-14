@@ -399,6 +399,29 @@ describe('TripsService', () => {
       expect(trucks.save).not.toHaveBeenCalled();
     });
 
+    it('returns delivery processing totals for each trip manifest', async () => {
+      const qb = new MockQb();
+      const trip = { id: '42', manifest_id: '10', status: TripStatus.ARRIVED, start_hub_id: '1', start_hub: { id: '1', code: 'HAN' }, end_hub_id: '2', end_hub: { id: '2', code: 'HCM' } };
+      qb.getManyAndCount.mockResolvedValue([[trip], 1]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+      waybillSplits.find.mockResolvedValue([]);
+      manifestWaybills.find.mockResolvedValue([
+        { manifest_id: '10', waybill: { id: '100', current_state: WaybillState.DELIVERED, delivery_preparation_status: 'READY' } },
+        { manifest_id: '10', waybill: { id: '101', current_state: WaybillState.AT_DEST_HUB, delivery_preparation_status: 'SCHEDULED' } },
+        { manifest_id: '10', waybill: { id: '102', current_state: WaybillState.AT_DEST_HUB, delivery_preparation_status: 'PENDING_CONFIRMATION' } },
+      ]);
+
+      const result = await service.findAll({ status: TripStatus.ARRIVED }, manager);
+
+      expect(result.data[0].delivery_summary).toEqual({
+        total_waybills: 3,
+        processed_waybills: 2,
+        delivered_waybills: 1,
+        pending_delivery_waybills: 2,
+        completed_waybills: 1,
+      });
+    });
+
     it('cho cập nhật thông tin tài xế trực tiếp trên chuyến', async () => {
       mockFindOne({
         id: '1',

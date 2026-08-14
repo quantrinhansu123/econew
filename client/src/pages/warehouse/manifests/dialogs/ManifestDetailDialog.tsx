@@ -17,6 +17,7 @@ interface Props {
   canManage: boolean;
   canManageExpenses?: boolean;
   canDeleteExpenses?: boolean;
+  openExpenseFormOnMount?: boolean;
   showHubDeliveryStatus?: boolean;
   onClose: () => void;
   onRemoveWaybill: (waybill: ManifestWaybill) => void;
@@ -24,14 +25,18 @@ interface Props {
   onUpdateExpectedArrival?: (manifest: LoadPlanningManifest, value: string) => Promise<void> | void;
 }
 
-type EditableFields = { ghi_chu_1: string; ghi_chu_2: string; ke_hoach: string; lai_xe_thu_ho: string };
+type EditableFields = { ghi_chu_1: string; ghi_chu_2: string; lai_xe_thu_ho: string };
 
 const display = (value?: string | number | null, fallback = '—') => value == null || value === '' ? fallback : String(value);
 const num = (value?: string | number | null, suffix = '') => value == null || value === '' ? '—' : `${Number(value).toLocaleString('vi-VN')}${suffix}`;
 const code = (manifest: LoadPlanningManifest) => manifest.manifest_code || manifest.code || `MF-${manifest.id}`;
 const manifestTrip = (manifest: LoadPlanningManifest) => manifest.trip ?? manifest.trips?.[0] ?? null;
 const expectedArrival = (manifest: LoadPlanningManifest) => manifestTrip(manifest)?.expected_arrival_time || manifestTrip(manifest)?.arrival_time || null;
-const formatDate = (value?: string | null) => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—';
+const formatDate = (value?: string | null) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+};
 const toDateTimeLocalValue = (value?: string | null) => { if (!value) return ''; const date = new Date(value); if (Number.isNaN(date.getTime())) return ''; return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16); };
 const badge = (status?: string | null, config?: BadgeConfig) => <span className={`inline-flex h-7 items-center rounded-full px-3 text-[12px] font-bold ${config?.className || 'bg-slate-100 text-slate-600'}`}>{config?.label || status || '—'}</span>;
 const extractWaybills = (manifest: LoadPlanningManifest | null): ManifestWaybill[] => manifest?.waybills?.length ? manifest.waybills : (manifest?.manifest_waybills || []).map((link) => link.waybill ? { ...link.waybill, loading_position: link.loading_position ?? link.waybill.loading_position, dispatch_fields: { ...(link.waybill.dispatch_fields ?? {}), ...(link.dispatch_fields ?? {}) } } : null).filter(Boolean) as ManifestWaybill[];
@@ -39,9 +44,15 @@ const contactName = (value?: string | null) => display((value || '').split('|')[
 const contactAddress = (value?: string | null) => (value || '').split('|').slice(2).join(' | ').trim() || display(value, '');
 const dispatchValue = (waybill: ManifestWaybill, key: string) => display(waybill.dispatch_fields?.[key] as string | number | null | undefined, '');
 const destinationName = (waybill: ManifestWaybill) => dispatchValue(waybill, 'noi_tra') || waybill.dest_hub?.name || waybill.dest_hub?.code || display(waybill.noi_den || waybill.dest_hub_id, '');
-const editableValues = (waybill: ManifestWaybill): EditableFields => ({ ghi_chu_1: dispatchValue(waybill, 'ghi_chu_1'), ghi_chu_2: dispatchValue(waybill, 'ghi_chu_2'), ke_hoach: dispatchValue(waybill, 'ke_hoach'), lai_xe_thu_ho: dispatchValue(waybill, 'lai_xe_thu_ho') });
+const editableValues = (waybill: ManifestWaybill): EditableFields => ({ ghi_chu_1: dispatchValue(waybill, 'ghi_chu_1'), ghi_chu_2: dispatchValue(waybill, 'ghi_chu_2'), lai_xe_thu_ho: dispatchValue(waybill, 'lai_xe_thu_ho') });
+const deliveryCompletion = (waybill: ManifestWaybill) => {
+  const state = String(waybill.current_state || waybill.status || '').toUpperCase();
+  if (state === 'DELIVERED') return { label: 'Phát thành công', date: waybill.delivered_at || waybill.delivery_time, className: 'border-emerald-200 bg-emerald-50 text-emerald-800' };
+  if (state === 'RETURNED') return { label: 'Giao không thành công', date: waybill.returned_at, className: 'border-red-200 bg-red-50 text-red-700' };
+  return { label: 'Chưa giao', date: null, className: 'border-amber-200 bg-amber-50 text-amber-800' };
+};
 
-export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isSubmitting = false, manifest, statusConfig, canManage, canManageExpenses = false, canDeleteExpenses = false, showHubDeliveryStatus = false, onClose, onRemoveWaybill, onUpdateDispatchFields, onUpdateExpectedArrival }: Props) {
+export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isSubmitting = false, manifest, statusConfig, canManage, canManageExpenses = false, canDeleteExpenses = false, openExpenseFormOnMount = false, showHubDeliveryStatus = false, onClose, onRemoveWaybill, onUpdateDispatchFields, onUpdateExpectedArrival }: Props) {
   if (!isOpen) return null;
   const waybills = extractWaybills(manifest);
   const mayRemoveWaybill = canManage && canRemoveWaybillsFromManifest(manifest);
@@ -70,10 +81,11 @@ export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isS
           </section>
 
           <ManifestExpensesSection
-            key={`${manifest.id}-${manifestTrip(manifest)?.id ?? manifest.trip_id ?? 'no-trip'}`}
+            key={`${manifest.id}-${manifestTrip(manifest)?.id ?? manifest.trip_id ?? 'no-trip'}-${openExpenseFormOnMount ? 'expense' : 'detail'}`}
             manifest={manifest}
             canManage={canManageExpenses}
             canDelete={canDeleteExpenses}
+            openFormOnMount={openExpenseFormOnMount}
           />
 
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -84,11 +96,11 @@ export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isS
             <div className="overflow-auto custom-scrollbar">
               <table className="hidden w-full min-w-[1040px] table-fixed border-separate border-spacing-0 text-left md:table">
                 <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] uppercase tracking-wider text-slate-600 shadow-sm">
-                  <tr><Header className="w-[50px] text-center">Vị trí</Header><Header className="w-[70px]">Ngày bốc</Header><Header className="w-[86px]">Mã tỉnh</Header><Header className="w-[118px]">Tên CTY / DV</Header><Header className="w-[128px]">Mặt hàng / Bill</Header><Header className="w-[170px]">Nơi trả / Địa chỉ</Header><Header className="w-[70px] text-right">SL / ĐVT</Header>{showHubDeliveryStatus && <Header className="w-[120px]">TT giao</Header>}{showHubDeliveryStatus && <Header className="w-[90px]">Ảnh</Header>}<Header className="w-[140px]">Ghi chú</Header><Header className="w-[100px]">Kế hoạch</Header><Header className="w-[108px] text-right">Thu hộ</Header><Header className="w-[100px] text-right">KG / M3 / QĐ</Header>{mayRemoveWaybill && <Header className="w-[52px] text-center">Gỡ</Header>}</tr>
+                  <tr><Header className="w-[50px] text-center">Vị trí</Header><Header className="w-[70px]">Ngày bốc</Header><Header className="w-[86px]">Mã tỉnh</Header><Header className="w-[118px]">Tên CTY / DV</Header><Header className="w-[128px]">Mặt hàng / Bill</Header><Header className="w-[170px]">Nơi trả / Địa chỉ</Header><Header className="w-[70px] text-right">SL / ĐVT</Header>{showHubDeliveryStatus && <Header className="w-[120px]">TT giao</Header>}{showHubDeliveryStatus && <Header className="w-[90px]">Ảnh</Header>}<Header className="w-[140px]">Ghi chú</Header><Header className="w-[126px]">Ngày hoàn thành</Header><Header className="w-[108px] text-right">Thu hộ</Header><Header className="w-[100px] text-right">KG / M3 / QĐ</Header>{mayRemoveWaybill && <Header className="w-[52px] text-center">Gỡ</Header>}</tr>
                 </thead>
                 <tbody>{waybills.map((waybill, index) => <WaybillRow key={waybill.id} waybill={waybill} index={index} canManage={canManage && !!onUpdateDispatchFields} isSubmitting={isSubmitting} showHubDeliveryStatus={showHubDeliveryStatus} mayRemoveWaybill={mayRemoveWaybill} onRemoveWaybill={onRemoveWaybill} onUpdateDispatchFields={onUpdateDispatchFields} />)}</tbody>
               </table>
-              <div className="grid gap-3 p-3 md:hidden">{waybills.map((waybill) => <article key={waybill.id} className="rounded-2xl border border-border bg-white p-4 text-[13px] shadow-sm"><div className="mb-3 text-base font-black text-primary">{display(waybill.waybill_code)}</div><Line label="Người gửi" value={contactName(waybill.sender_info)} /><Line label="Người nhận" value={contactName(waybill.receiver_info)} /><Line label="Trọng lượng" value={num(waybill.weight, ' kg')} /><Line label="Thanh toán" value={display(waybill.payment_type)} /></article>)}</div>
+              <div className="grid gap-3 p-3 md:hidden">{waybills.map((waybill) => { const completion = deliveryCompletion(waybill); return <article key={waybill.id} className="rounded-2xl border border-border bg-white p-4 text-[13px] shadow-sm"><div className="mb-3 text-base font-black text-primary">{display(waybill.waybill_code)}</div><Line label="Người gửi" value={contactName(waybill.sender_info)} /><Line label="Người nhận" value={contactName(waybill.receiver_info)} /><Line label="Trọng lượng" value={num(waybill.weight, ' kg')} /><Line label="Thanh toán" value={display(waybill.payment_type)} /><Line label="Hoàn thành" value={`${completion.label}${completion.date ? ` · ${formatDate(completion.date)}` : ''}`} /></article>; })}</div>
               {!waybills.length && <State label="Bảng kê chưa có vận đơn." />}
             </div>
           </section>
@@ -116,6 +128,7 @@ function WaybillRow({ waybill, index, canManage, isSubmitting, showHubDeliverySt
   const change = (key: keyof EditableFields, value: string) => setForm(prev => ({ ...prev, [key]: value }));
   const startEdit = () => { setForm(editableValues(waybill)); setIsEditing(true); };
   const save = async () => { if (!onUpdateDispatchFields) return; await onUpdateDispatchFields(waybill, form); setIsEditing(false); };
+  const completion = deliveryCompletion(waybill);
 
   return <tr className="group align-top transition-colors hover:bg-blue-50/50">
     <Cell align="center"><span className="inline-flex h-8 min-w-8 items-center justify-center rounded-xl bg-amber-100 px-2 font-black text-amber-800 ring-1 ring-amber-200">{display(waybill.loading_position ?? index + 1)}</span></Cell>
@@ -128,7 +141,7 @@ function WaybillRow({ waybill, index, canManage, isSubmitting, showHubDeliverySt
     {showHubDeliveryStatus && <Cell><span className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-800">{hubDeliveryLabelFromWaybill(waybill)}</span></Cell>}
     {showHubDeliveryStatus && <Cell><div className="flex flex-wrap gap-1">{parseDeliveryPhotos(waybill.delivery_photo_url).map((photo, photoIndex) => <img key={photoIndex} src={photo} alt="" className="h-8 w-8 rounded border border-slate-200 object-cover" />)}</div></Cell>}
     <Cell>{isEditing ? <EditField value={form.ghi_chu_1} placeholder="Ghi chú 1" onChange={value => change('ghi_chu_1', value)} /> : <StackLines primary={dispatchValue(waybill, 'ghi_chu_1') || '—'} secondary={dispatchValue(waybill, 'ghi_chu_2') || resolveWaybillDisplayNote(dispatchValue(waybill, 'ghi_chu_bill'))} />}{isEditing && <EditField className="mt-2" value={form.ghi_chu_2} placeholder="Ghi chú 2" onChange={value => change('ghi_chu_2', value)} />}</Cell>
-    <Cell>{isEditing ? <EditField value={form.ke_hoach} placeholder="Kế hoạch" onChange={value => change('ke_hoach', value)} /> : dispatchValue(waybill, 'ke_hoach')}</Cell>
+    <Cell><StackLines primary={<span className={`inline-flex rounded-md border px-2 py-1 text-[11px] font-black ${completion.className}`}>{completion.label}</span>} secondary={completion.date ? formatDate(completion.date) : '—'} /></Cell>
     <Cell align="right">{isEditing ? <EditField value={form.lai_xe_thu_ho} placeholder="Thu hộ" onChange={value => change('lai_xe_thu_ho', value)} /> : <StackLines primary={<span className="font-black text-slate-950">{dispatchValue(waybill, 'lai_xe_thu_ho') || '—'}</span>} secondary={`BC: ${dispatchValue(waybill, 'bc_thu_ho') || '—'}`} />}{canManage && <div className="mt-2 flex justify-end gap-1">{isEditing ? <><button title="Lưu" disabled={isSubmitting} onClick={save} className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white disabled:opacity-60"><Check size={14} /></button><button title="Hủy" disabled={isSubmitting} onClick={() => setIsEditing(false)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-60"><X size={14} /></button></> : <button onClick={startEdit} className="inline-flex h-8 items-center gap-1 rounded-lg border border-primary/20 bg-blue-50 px-2 text-[11px] font-black text-primary hover:bg-blue-100"><Edit3 size={13} />Sửa</button>}</div>}</Cell>
     <Cell align="right"><StackLines primary={<span className="font-black text-slate-950">{dispatchValue(waybill, 'kg') || display(waybill.weight, '') || '—'} kg</span>} secondary={`${dispatchValue(waybill, 'm3') || display(waybill.the_tich_m3 || waybill.volumetric_weight, '') || '—'} m3 · QĐ ${dispatchValue(waybill, 'qd') || '—'}`} /></Cell>
     {mayRemoveWaybill && <Cell align="center"><button type="button" title="Gỡ đơn" disabled={isSubmitting} onClick={() => onRemoveWaybill?.(waybill)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"><Trash2 size={14} /></button></Cell>}

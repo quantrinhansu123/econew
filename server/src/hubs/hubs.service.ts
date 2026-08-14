@@ -155,6 +155,7 @@ export class HubsService {
     if (dto.type !== undefined) normalized.type = dto.type;
     if (dto.latitude !== undefined) normalized.latitude = dto.latitude;
     if (dto.longitude !== undefined) normalized.longitude = dto.longitude;
+    if (dto.transit_days !== undefined) normalized.transit_days = dto.transit_days;
 
     textFields.forEach((field) => {
       if (dto[field] !== undefined) {

@@ -124,8 +124,8 @@ describe('ManifestsService', () => {
     manifestsRepo.createQueryBuilder.mockReturnValue(qb);
     qb.getManyAndCount.mockResolvedValue([[manifest], 1]);
     linksRepo.find.mockResolvedValue([
-      { manifest_id: '10', waybill_id: '100', dispatch_fields: { so_luong: '2', kg: '12.5' }, waybill: waybill({ id: '100', package_count: 4, weight: 25 }) },
-      { manifest_id: '10', waybill_id: '101', dispatch_fields: null, waybill: waybill({ id: '101', package_count: 3, weight: 15 }) },
+      { manifest_id: '10', waybill_id: '100', dispatch_fields: { so_luong: '2', kg: '12.5' }, waybill: waybill({ id: '100', package_count: 4, weight: 25, current_state: WaybillState.DELIVERED, status: WaybillState.DELIVERED }) },
+      { manifest_id: '10', waybill_id: '101', dispatch_fields: null, waybill: waybill({ id: '101', package_count: 3, weight: 15, delivery_preparation_status: 'SCHEDULED' }) },
     ]);
 
     const result = await service.findAll({}, manager);
@@ -135,6 +135,9 @@ describe('ManifestsService', () => {
       total_waybills: 2,
       total_packages: 5,
       total_weight: 27.5,
+      processed_waybills: 2,
+      delivered_waybills: 1,
+      pending_delivery_waybills: 1,
     });
   });
 

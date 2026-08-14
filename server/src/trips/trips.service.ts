@@ -149,6 +149,7 @@ export class TripsService {
         .map((trip) => trip.id),
     );
     await this.enrichRouteLabels(data);
+    await this.enrichDeliverySummaries(data);
     return { data, total, page, limit };
   }
 
@@ -169,6 +170,7 @@ export class TripsService {
       await this.waybillsService.reconcileTransportStatesForTrips([trip.id]);
     }
     await this.enrichRouteLabels([trip]);
+    await this.enrichDeliverySummaries([trip]);
     return trip;
   }
 
@@ -1075,6 +1077,7 @@ export class TripsService {
               hub_id: hubId,
               hub_code: split.waybill?.dest_hub?.code?.trim() || null,
               hub_name: split.waybill?.dest_hub?.name?.trim() || null,
+              transit_days: split.waybill?.dest_hub?.transit_days ?? null,
               expected_arrival_at: validExpectedArrival,
             });
             return;
@@ -1094,6 +1097,43 @@ export class TripsService {
         ? [origin, ...destinations].join(' → ')
         : `${origin} → ${trip.end_hub?.code || trip.end_hub_id}`;
     }
+  }
+
+  private async enrichDeliverySummaries(trips: TripEntity[]): Promise<void> {
+    if (!trips.length) return;
+    const manifestIds = [...new Set(trips.map((trip) => String(trip.manifest_id || '')).filter(Boolean))];
+    const links = manifestIds.length
+      ? (await this.manifestWaybillsRepository.find({
+        where: { manifest_id: In(manifestIds) },
+        relations: ['waybill'],
+      })) ?? []
+      : [];
+    const waybillsByManifest = links.reduce((map, link) => {
+      if (!link.waybill) return map;
+      const manifestId = String(link.manifest_id);
+      const current = map.get(manifestId) ?? new Map<string, WaybillEntity>();
+      current.set(String(link.waybill.id), link.waybill);
+      map.set(manifestId, current);
+      return map;
+    }, new Map<string, Map<string, WaybillEntity>>());
+
+    trips.forEach((trip) => {
+      const waybills = [...(waybillsByManifest.get(String(trip.manifest_id || ''))?.values() ?? [])];
+      const delivered = waybills.filter((waybill) => String(waybill.current_state || '').toUpperCase() === WaybillState.DELIVERED).length;
+      const processed = waybills.filter((waybill) => {
+        const state = String(waybill.current_state || '').toUpperCase();
+        const preparationStatus = String(waybill.delivery_preparation_status || '').toUpperCase();
+        return [WaybillState.OUT_FOR_DELIVERY, WaybillState.DELIVERED, WaybillState.RETURNED].includes(state as WaybillState)
+          || (Boolean(preparationStatus) && preparationStatus !== 'PENDING_CONFIRMATION');
+      }).length;
+      trip.delivery_summary = {
+        total_waybills: waybills.length,
+        processed_waybills: processed,
+        delivered_waybills: delivered,
+        pending_delivery_waybills: Math.max(0, waybills.length - delivered),
+        completed_waybills: trip.status === TripStatus.COMPLETED ? waybills.length : delivered,
+      };
+    });
   }
 
   /** Chốt chuyến đã quá giờ dự kiến; nút Đến hub chỉ còn dùng cho xe đến sớm. */

@@ -9,10 +9,18 @@ import { VendorEntity } from '../vendors/vendor.entity';
 @Entity('trips')
 export class TripEntity {
   route_label?: string;
+  delivery_summary?: {
+    total_waybills: number;
+    processed_waybills: number;
+    delivered_waybills: number;
+    pending_delivery_waybills: number;
+    completed_waybills: number;
+  };
   route_stops?: Array<{
     hub_id: string;
     hub_code: string | null;
     hub_name: string | null;
+    transit_days: number | null;
     expected_arrival_at: Date | null;
   }>;
 

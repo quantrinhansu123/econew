@@ -1,7 +1,7 @@
 export type TripStatus = 'PLANNED' | 'IN_TRANSIT' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED' | string;
 export type PaymentType = 'PP' | 'CC' | 'COD' | string;
 
-export interface HubSummary { id: string | number; code?: string | null; name?: string | null; address?: string | null; }
+export interface HubSummary { id: string | number; code?: string | null; name?: string | null; address?: string | null; transit_days?: number | null; }
 export interface VendorSummary { id: string | number; code?: string | null; name?: string | null; payable_balance?: number | string | null; }
 export interface TruckSummary { id: string | number; license_plate?: string | null; bks?: string | null; nha_xe?: string | null; ten_lai_xe?: string | null; status?: string | null; payload?: number | null; fuel_consumption_limit?: number | null; vendor?: VendorSummary | null; vendor_id?: string | number | null; driver?: { id?: string | number; full_name?: string | null; phone?: string | null } | null; }
 export interface ManifestSummary { id: string | number; manifest_code?: string | null; seal_code?: string | null; status?: string | null; origin_hub_id?: string | number | null; dest_hub_id?: string | number | null; origin_hub?: HubSummary | null; dest_hub?: HubSummary | null; }
@@ -59,11 +59,19 @@ export interface Trip {
   end_hub?: HubSummary | null;
   created_at?: string | null;
   route_label?: string | null;
+  delivery_summary?: {
+    total_waybills: number;
+    processed_waybills: number;
+    delivered_waybills: number;
+    pending_delivery_waybills: number;
+    completed_waybills: number;
+  } | null;
   route_stops?: Array<{
     hub_id: string | number;
     hub_code?: string | null;
     hub_name?: string | null;
     expected_arrival_at?: string | null;
+    transit_days?: number | null;
   }>;
 }
 
@@ -108,6 +116,7 @@ export interface TripCreateHubSummary {
   name?: string | null;
   address?: string | null;
   status?: string | null;
+  transit_days?: number | null;
 }
 
 export interface TripCreateTruckSummary {

@@ -10,6 +10,7 @@ export interface HubSummary {
   address?: string | null;
   is_active?: boolean | string | number | null;
   status?: string | null;
+  transit_days?: number | null;
 }
 
 export interface UserSummary {
@@ -23,6 +24,7 @@ export interface UserSummary {
 export interface InventoryTripHistoryItem {
   split_id?: string | number | null;
   trip_id?: string | number | null;
+  manifest_id?: string | number | null;
   package_count: number;
   license_plate?: string | null;
   carrier_label?: string | null;

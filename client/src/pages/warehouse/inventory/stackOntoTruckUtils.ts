@@ -69,14 +69,14 @@ export function resolveDestinationHubKey(waybill?: WaybillInventoryItem | null):
 
 export function computeExpectedArrivalDate(
   base?: string | Date | null,
-  hub?: { code?: string | null; name?: string | null } | null,
+  hub?: { code?: string | null; name?: string | null; transit_days?: number | null } | null,
 ): Date {
-  return expectedArrivalForHub(base, { hub_code: hub?.code, hub_name: hub?.name });
+  return expectedArrivalForHub(base, { hub_code: hub?.code, hub_name: hub?.name, transit_days: hub?.transit_days });
 }
 
 export function formatExpectedArrivalLabel(
   base?: string | Date | null,
-  hub?: { code?: string | null; name?: string | null } | null,
+  hub?: { code?: string | null; name?: string | null; transit_days?: number | null } | null,
 ): string {
   return new Intl.DateTimeFormat('vi-VN', {
     day: '2-digit',

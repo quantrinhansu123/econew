@@ -256,6 +256,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const inventoryRequestIdRef = useRef(0);
   const selectedWaybillCacheRef = useRef<Map<string, WaybillInventoryItem>>(new Map());
   const cashVoucherCloseTimerRef = useRef<number | null>(null);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const horizontalRailRef = useRef<HTMLDivElement | null>(null);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
+  const [showHorizontalRail, setShowHorizontalRail] = useState(false);
 
   useEffect(() => () => {
     if (cashVoucherCloseTimerRef.current != null) window.clearTimeout(cashVoucherCloseTimerRef.current);
@@ -295,6 +299,32 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     const searchResults = isAllOrders ? applyAllOrdersGlobalSearch(waybills, filters.keyword) : waybills;
     return applyAllOrdersColumnFilters(searchResults, columnFilters);
   }, [columnFilters, filters.keyword, isAllOrders, waybills]);
+  useEffect(() => {
+    if (!isAllOrders) return undefined;
+    const scrollElement = tableScrollRef.current;
+    if (!scrollElement) return undefined;
+    const measure = () => {
+      setTableScrollWidth(scrollElement.scrollWidth);
+      setShowHorizontalRail(scrollElement.scrollWidth > scrollElement.clientWidth + 1);
+    };
+    const frame = window.requestAnimationFrame(measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(scrollElement);
+    const table = scrollElement.querySelector('table');
+    if (table) observer.observe(table);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [displayedWaybills.length, isAllOrders, isLoading, visibleColumns]);
+
+  const syncHorizontalRail = (source: 'table' | 'rail') => {
+    const table = tableScrollRef.current;
+    const rail = horizontalRailRef.current;
+    if (!table || !rail) return;
+    if (source === 'table' && Math.abs(rail.scrollLeft - table.scrollLeft) > 1) rail.scrollLeft = table.scrollLeft;
+    if (source === 'rail' && Math.abs(table.scrollLeft - rail.scrollLeft) > 1) table.scrollLeft = rail.scrollLeft;
+  };
   const displayedFilterTotals = useMemo(() => {
     if (!isAllOrders) return filterTotals;
     return {
@@ -901,7 +931,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
           )}
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
+        <div ref={tableScrollRef} onScroll={() => syncHorizontalRail('table')} className="flex-1 min-h-0 overflow-auto custom-scrollbar">
           {isLoading ? <StateCard compact icon={<Loader2 className="animate-spin" size={24} />} title="Đang tải dữ liệu" description={isAllOrders ? 'Hệ thống đang lấy danh sách đơn từ API.' : 'Hệ thống đang lấy danh sách vận đơn tồn kho từ API.'} /> : displayedWaybills.length === 0 ? <StateCard compact icon={<Package size={24} />} title={isAllOrders ? 'Không có đơn phù hợp' : 'Chưa có đơn cần chia'} description={isAllOrders ? 'Thử bỏ bớt bộ lọc tìm kiếm hoặc bộ lọc tại tiêu đề cột.' : 'Tất cả đơn tồn kho đã phân hết kiện lên xe, hoặc thử đổi bộ lọc.'} /> : (
             <>
               <table
@@ -954,6 +984,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       onSplit={openSplit}
                       onCashVoucher={openCashVoucher}
                       onCustomerLedger={openCustomerLedger}
+                      onOpenTripManifest={(trip) => {
+                        if (trip.manifest_id) navigate(`/warehouse/manifests?openManifestId=${trip.manifest_id}&openExpense=1`);
+                        else if (trip.trip_id) navigate(`/trips/${trip.trip_id}`);
+                      }}
                     />
                   ))}
                 </tbody>
@@ -991,6 +1025,17 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             </>
           )}
         </div>
+
+        {isAllOrders && showHorizontalRail && (
+          <div
+            ref={horizontalRailRef}
+            onScroll={() => syncHorizontalRail('rail')}
+            className="fixed bottom-2 left-[96px] right-6 z-40 hidden h-4 overflow-x-auto overflow-y-hidden rounded border border-slate-300 bg-slate-100 shadow-md custom-scrollbar md:block"
+            aria-label="Cuộn ngang danh sách đơn"
+          >
+            <div style={{ width: tableScrollWidth, height: 1 }} />
+          </div>
+        )}
 
         <div className="border-t border-border bg-card px-4 py-3 flex items-center justify-between shrink-0">
           <p className="w-full text-center text-[12px] font-bold text-muted-foreground">
@@ -1135,6 +1180,7 @@ function InventoryRow({
   onSplit,
   onCashVoucher,
   onCustomerLedger,
+  onOpenTripManifest,
 }: InventoryItemProps & {
   hubs: HubSummary[];
   columns: InventoryColumnView[];
@@ -1145,6 +1191,7 @@ function InventoryRow({
   selected?: boolean;
   onToggleSelect?: (waybillId: string | number) => void;
   canPay?: boolean;
+  onOpenTripManifest?: (trip: NonNullable<WaybillInventoryItem['trip_history']>[number]) => void;
 }) {
   const cellClass = clsx(
     'border-r border-border max-w-[200px] truncate',
@@ -1205,7 +1252,13 @@ function InventoryRow({
                 {waybill.trip_history.map((trip, index) => {
                   const normalizedStatus = String(trip.status || '').toUpperCase();
                   return (
-                    <div key={`${trip.split_id ?? trip.trip_id ?? index}`} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] leading-4">
+                    <button
+                      type="button"
+                      key={`${trip.split_id ?? trip.trip_id ?? index}`}
+                      onClick={() => onOpenTripManifest?.(trip)}
+                      className="block w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-left text-[11px] leading-4 transition-colors hover:border-primary/40 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      title={trip.manifest_id ? 'Mở bảng kê của chuyến' : 'Mở chi tiết chuyến'}
+                    >
                       <p className="font-bold text-slate-800">
                         {Number(trip.package_count || 0).toLocaleString('vi-VN')} kiện
                         {trip.trip_id ? ` · Chuyến #${trip.trip_id}` : ''}
@@ -1222,7 +1275,7 @@ function InventoryRow({
                       )}>
                         {resolveTripStatusLabel(trip.status)}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -1784,6 +1837,7 @@ interface InventoryItemProps {
   onSplit: (waybill: WaybillInventoryItem) => void;
   onCashVoucher: (waybill: WaybillInventoryItem) => void;
   onCustomerLedger: (code: string) => void;
+  onOpenTripManifest?: (trip: NonNullable<WaybillInventoryItem['trip_history']>[number]) => void;
 }
 
 function Actions({

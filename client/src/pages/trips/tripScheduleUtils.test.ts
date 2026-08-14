@@ -23,6 +23,11 @@ describe('lịch dự kiến đến theo HUB', () => {
     expect(expectedArrivalOffsetDays({ hub_code: 'HCM' })).toBe(3);
   });
 
+  it('ưu tiên số ngày đã cấu hình tại bưu cục', () => {
+    expect(expectedArrivalOffsetDays({ hub_code: 'HCM', transit_days: 5 })).toBe(5);
+    expect(expectedArrivalOffsetDays({ hub_name: 'Đà Nẵng', transit_days: 2 })).toBe(2);
+  });
+
   it('thay giờ chung kiểu cũ bằng ngày mặc định riêng cho từng HUB', () => {
     const departure = '2026-08-05T16:48';
     const sharedLegacyTime = '2026-08-08T16:48:00.000Z';
@@ -37,5 +42,19 @@ describe('lịch dự kiến đến theo HUB', () => {
     }, departure);
 
     expect(stops.map((stop) => new Date(stop.expected_arrival_at).getDate())).toEqual([6, 7, 8]);
+  });
+
+  it('tạo lịch từng điểm dừng theo cấu hình bưu cục', () => {
+    const stops = buildTripScheduleRouteStops({
+      id: '45',
+      end_hub_id: '4',
+      route_stops: [
+        { hub_id: '2', hub_code: 'DAN', transit_days: 1, expected_arrival_at: null },
+        { hub_id: '3', hub_code: 'KHANHHOA', transit_days: 2, expected_arrival_at: null },
+        { hub_id: '4', hub_code: 'HCM', transit_days: 3, expected_arrival_at: null },
+      ],
+    }, '2026-08-14T08:00');
+
+    expect(stops.map((stop) => new Date(stop.expected_arrival_at).getDate())).toEqual([15, 16, 17]);
   });
 });

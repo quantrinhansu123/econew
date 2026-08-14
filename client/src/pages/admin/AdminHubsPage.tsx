@@ -45,7 +45,7 @@ const defaultVisibleHubColumns = hubTableHeaders.map(header => header.id);
 const defaultHubColumnOrder = hubTableHeaders.map(header => header.id);
 
 const emptyForm: HubFormState = {
-  code: '', name: '', type: 'POST_OFFICE', address: '', province: '', district: '', ward: '', coordinates: '', manager_id: '', manager_name: '', manager_phone: '', phone: '', status: 'true',
+  code: '', name: '', type: 'POST_OFFICE', address: '', province: '', district: '', ward: '', coordinates: '', manager_id: '', manager_name: '', manager_phone: '', phone: '', status: 'true', transit_days: '0',
 };
 
 const getStoredUser = (): AuthUserProfile | null => {
@@ -80,6 +80,7 @@ const buildHubMutationPayload = (formState: HubFormState): HubMutationPayload =>
     address: formState.address.trim(),
     province: formState.province.trim(),
     district: formState.district.trim(),
+    transit_days: Math.max(0, Number.parseInt(formState.transit_days, 10) || 0),
   };
 
   const ward = formState.ward.trim();
@@ -175,7 +176,7 @@ export default function AdminHubsPage() {
   const clearHubSelection = () => setSelectedHubIds([]);
 
   const hubToForm = (hub: Hub): HubFormState => ({
-    code: hub.code?.toUpperCase() || '', name: hub.name || '', type: hub.type || 'POST_OFFICE', address: hub.address || '', province: hub.province || '', district: hub.district || '', ward: hub.ward || '', coordinates: hub.coordinates || '', manager_id: normalizeId(hub.manager_id ?? hub.manager?.id), manager_name: getManagerName(hub) === 'Chưa phân công' ? '' : getManagerName(hub), manager_phone: getManagerPhone(hub) === '—' ? '' : getManagerPhone(hub), phone: hub.phone || '', status: normalizeStatus(hub),
+    code: hub.code?.toUpperCase() || '', name: hub.name || '', type: hub.type || 'POST_OFFICE', address: hub.address || '', province: hub.province || '', district: hub.district || '', ward: hub.ward || '', coordinates: hub.coordinates || '', manager_id: normalizeId(hub.manager_id ?? hub.manager?.id), manager_name: getManagerName(hub) === 'Chưa phân công' ? '' : getManagerName(hub), manager_phone: getManagerPhone(hub) === '—' ? '' : getManagerPhone(hub), phone: hub.phone || '', status: normalizeStatus(hub), transit_days: String(hub.transit_days ?? 0),
   });
 
   function openAdd() { setSelectedHub(null); setFormState(emptyForm); setIsEditMode(false); setIsFormOpen(true); setActionError(''); }

@@ -9,6 +9,7 @@ import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
 import type { AuthUserProfile } from './login/types';
 import CreateTripSuccessDialog from './trips/dialogs/CreateTripSuccessDialog';
+import { expectedArrivalOffsetDays } from './trips/tripScheduleUtils';
 import type { ListResponse, Trip, TripCreateFieldErrors, TripCreateFormState, TripCreateHubSummary, TripCreateManifestSummary, TripCreatePayload, TripCreateTruckSummary } from './trips/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -220,21 +221,47 @@ export default function TripNewPage() {
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   };
 
+  const arrivalForHub = (departureTime: string, hubId: string) => {
+    const hub = hubs.find((item) => normalizeId(item.id) === hubId);
+    return addDaysToDatetimeLocal(departureTime, expectedArrivalOffsetDays({
+      hub_code: hub?.code,
+      hub_name: hub?.name,
+      transit_days: hub?.transit_days,
+    }));
+  };
+
   const handleDepartureChange = (value: string) => {
     setField('departure_time', value);
     if (!arrivalTouched && value) {
-      setField('arrival_time', addDaysToDatetimeLocal(value, 3));
+      setField('arrival_time', arrivalForHub(value, form.end_hub_id));
     }
+  };
+
+  const handleEndHubChange = (value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      end_hub_id: value,
+      ...(!arrivalTouched && prev.departure_time
+        ? { arrival_time: arrivalForHub(prev.departure_time, value) }
+        : {}),
+    }));
+    setErrors((prev) => ({ ...prev, end_hub_id: undefined, arrival_time: undefined }));
   };
 
   const handleManifestChange = (value: string) => {
     const manifest = manifests.find((item) => normalizeId(item.id) === value);
-    setForm((prev) => ({
-      ...prev,
-      manifest_id: value,
-      start_hub_id: normalizeId(manifest?.origin_hub_id ?? manifest?.origin_hub?.id ?? prev.start_hub_id),
-      end_hub_id: normalizeId(manifest?.dest_hub_id ?? manifest?.dest_hub?.id ?? prev.end_hub_id),
-    }));
+    setForm((prev) => {
+      const endHubId = normalizeId(manifest?.dest_hub_id ?? manifest?.dest_hub?.id ?? prev.end_hub_id);
+      return {
+        ...prev,
+        manifest_id: value,
+        start_hub_id: normalizeId(manifest?.origin_hub_id ?? manifest?.origin_hub?.id ?? prev.start_hub_id),
+        end_hub_id: endHubId,
+        ...(!arrivalTouched && prev.departure_time
+          ? { arrival_time: arrivalForHub(prev.departure_time, endHubId) }
+          : {}),
+      };
+    });
     setErrors((prev) => ({ ...prev, manifest_id: undefined, start_hub_id: undefined, end_hub_id: undefined }));
   };
 
@@ -440,7 +467,7 @@ export default function TripNewPage() {
               <SearchableSelect
                 options={hubOptions}
                 value={form.end_hub_id}
-                onValueChange={(value) => setField('end_hub_id', value)}
+                onValueChange={handleEndHubChange}
                 placeholder="Chọn bưu cục đến"
                 className={clsx('mt-1.5 h-10 rounded-lg', errors.end_hub_id && 'border-red-300')}
               />
@@ -456,7 +483,7 @@ export default function TripNewPage() {
               error={errors.departure_time}
             />
             <FormInput
-              label="Giờ đến (mặc định +3 ngày, có thể sửa)"
+              label="Giờ đến (theo cấu hình bưu cục, có thể sửa)"
               icon={CalendarClock}
               type="datetime-local"
               value={form.arrival_time}

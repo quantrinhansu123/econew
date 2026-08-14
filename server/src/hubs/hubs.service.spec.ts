@@ -51,9 +51,9 @@ describe('HubsService', () => {
   it('create creates a hub with normalized code', async () => {
     hubsRepository.findOne.mockResolvedValue(null);
 
-    const result = await service.create({ code: ' han ', name: 'Bưu cục Hà Nội', type: HubType.HUB, province: 'Hà Nội', district: 'Cầu Giấy', address: '123 Xuân Thủy' });
+    const result = await service.create({ code: ' han ', name: 'Bưu cục Hà Nội', type: HubType.HUB, province: 'Hà Nội', district: 'Cầu Giấy', address: '123 Xuân Thủy', transit_days: 3 });
 
-    expect(hubsRepository.create).toHaveBeenCalledWith(expect.objectContaining({ code: 'HAN', is_active: true }));
+    expect(hubsRepository.create).toHaveBeenCalledWith(expect.objectContaining({ code: 'HAN', is_active: true, transit_days: 3 }));
     expect(result.code).toBe('HAN');
   });
 

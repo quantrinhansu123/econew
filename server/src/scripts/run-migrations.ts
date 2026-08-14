@@ -34,6 +34,10 @@ const ensureDeliveryWorkflowSchema = async (dataSource: DataSource) => {
   `);
 };
 
+const ensureHubScheduleSchema = async (dataSource: DataSource) => {
+  await dataSource.query(`ALTER TABLE "hubs" ADD COLUMN IF NOT EXISTS "transit_days" integer NOT NULL DEFAULT 0`);
+};
+
 const baselineLegacyDatabase = async (dataSource: DataSource): Promise<boolean> => {
   const [{ waybills_exists: waybillsExists }] = await dataSource.query(
     `SELECT to_regclass('public.waybills') IS NOT NULL AS waybills_exists`,
@@ -97,6 +101,7 @@ async function main() {
     await dataSource.initialize();
     const wasBaselined = await baselineLegacyDatabase(dataSource);
     await ensureDeliveryWorkflowSchema(dataSource);
+    await ensureHubScheduleSchema(dataSource);
     if (wasBaselined) return;
     const executed = await dataSource.runMigrations({ transaction: 'each' });
 

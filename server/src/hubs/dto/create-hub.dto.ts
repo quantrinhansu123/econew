@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export enum HubType {
   WAREHOUSE = 'WAREHOUSE',
@@ -81,4 +81,11 @@ export class CreateHubDto {
   @IsOptional()
   @IsLongitude()
   longitude?: number;
+
+  @ApiPropertyOptional({ example: 3, description: 'Số ngày từ lúc chuyến khởi hành đến bưu cục' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  transit_days?: number;
 }

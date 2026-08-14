@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { Building2, Hash, MapPin, Phone, Tag, User, X } from 'lucide-react';
+import { Building2, CalendarClock, Hash, MapPin, Phone, Tag, User, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { ReactNode } from 'react';
 import { SearchableSelect } from '../../../../components/ui/SearchableSelect';
@@ -60,6 +60,19 @@ export default function AddEditHubDialog({ isOpen, isClosing, isEditMode, isSubm
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <SelectField label="Loại hub" value={formState.type} options={typeOptions.filter(option => option.value)} onChange={value => setFormField('type', value)} icon={<Building2 size={16} />} />
                 <SelectField label="Trạng thái" value={formState.status} options={statusOptions.filter(option => option.value)} onChange={value => setFormField('status', value)} icon={<Tag size={16} />} />
+                <Field label="Số ngày đến bưu cục" icon={<CalendarClock size={16} />} className="sm:col-span-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="365"
+                    step="1"
+                    value={formState.transit_days}
+                    onChange={event => setFormField('transit_days', event.target.value)}
+                    className={inputClass}
+                    placeholder="VD: 3"
+                  />
+                  <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">Tính từ giờ khởi hành để tự xác định ngày dự kiến đến.</p>
+                </Field>
               </div>
             </Section>
 

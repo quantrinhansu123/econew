@@ -41,6 +41,7 @@ export interface Hub {
   usage_summary?: HubRiskSummary | null;
   created_at?: string | null;
   updated_at?: string | null;
+  transit_days?: number | null;
 }
 
 export interface HubListResponse {
@@ -83,6 +84,7 @@ export interface HubFormState {
   manager_phone: string;
   phone: string;
   status: string;
+  transit_days: string;
 }
 
 export type HubMutationPayload = {
@@ -99,6 +101,7 @@ export type HubMutationPayload = {
   phone?: string;
   latitude?: number;
   longitude?: number;
+  transit_days: number;
 };
 
 export interface FilterOption {

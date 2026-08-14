@@ -713,6 +713,7 @@ export class ManifestsService {
     manifests.forEach((manifest) => {
       const manifestLinks = linksByManifest.get(String(manifest.id)) ?? [];
       const waybillIds = new Set<string>();
+      const waybillsById = new Map<string, WaybillRecord>();
       let totalPackages = 0;
       let totalWeight = 0;
 
@@ -720,6 +721,7 @@ export class ManifestsService {
         const waybillId = String(waybill.id);
         if (waybillIds.has(waybillId)) return;
         waybillIds.add(waybillId);
+        waybillsById.set(waybillId, waybill);
         const fullPackages = Math.max(1, Number(waybill.package_count ?? 1));
         const packageCount = requestedPackages != null && requestedPackages > 0
           ? requestedPackages
@@ -761,6 +763,15 @@ export class ManifestsService {
       manifest.total_waybills = waybillIds.size;
       manifest.total_packages = totalPackages;
       manifest.total_weight = Math.round(totalWeight * 100) / 100;
+      const uniqueWaybills = [...waybillsById.values()];
+      manifest.delivered_waybills = uniqueWaybills.filter((waybill) => String(waybill.current_state || waybill.status || '').toUpperCase() === WaybillState.DELIVERED).length;
+      manifest.processed_waybills = uniqueWaybills.filter((waybill) => {
+        const state = String(waybill.current_state || waybill.status || '').toUpperCase();
+        const preparationStatus = String(waybill.delivery_preparation_status || '').toUpperCase();
+        return [WaybillState.OUT_FOR_DELIVERY, WaybillState.DELIVERED, WaybillState.RETURNED].includes(state as WaybillState)
+          || (Boolean(preparationStatus) && preparationStatus !== 'PENDING_CONFIRMATION');
+      }).length;
+      manifest.pending_delivery_waybills = Math.max(0, uniqueWaybills.length - manifest.delivered_waybills);
     });
   }
 

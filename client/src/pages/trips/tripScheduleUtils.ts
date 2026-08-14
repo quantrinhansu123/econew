@@ -11,6 +11,7 @@ export const toLocalDateTimeInput = (value?: string | null) => {
 export interface DestinationHubReference {
   hub_code?: string | null;
   hub_name?: string | null;
+  transit_days?: number | null;
 }
 
 export interface TripScheduleRouteStop extends DestinationHubReference {
@@ -27,6 +28,8 @@ const normalizeHub = (value?: string | null) => String(value || '')
 
 /** Số ngày mặc định theo HUB đến; HUB chưa có cấu hình giữ mặc định cũ là 3 ngày. */
 export function expectedArrivalOffsetDays(hub: DestinationHubReference): number {
+  const configuredDays = Number(hub.transit_days);
+  if (Number.isInteger(configuredDays) && configuredDays > 0) return configuredDays;
   const hubKey = `${normalizeHub(hub.hub_code)}${normalizeHub(hub.hub_name)}`;
   if (['DANANG', 'QUANGNAM', 'QUANGBINH', 'NGHEAN'].some((key) => hubKey.includes(key))) return 1;
   if (['KHANHHOA', 'BINHDINH', 'NINHTHUAN', 'BINHTHUAN'].some((key) => hubKey.includes(key))) return 2;
@@ -57,6 +60,7 @@ export function buildTripScheduleRouteStops(
           hub_code: trip.end_hub?.code,
           hub_name: trip.end_hub?.name,
           expected_arrival_at: trip.expected_arrival_time || trip.arrival_time,
+          transit_days: trip.end_hub?.transit_days,
         }]
       : [];
   const validExistingTimes = sourceStops
@@ -73,8 +77,9 @@ export function buildTripScheduleRouteStops(
       hub_id: String(stop.hub_id),
       hub_code: stop.hub_code,
       hub_name: stop.hub_name,
+      transit_days: stop.transit_days,
       expected_arrival_at: existing || toLocalDateTimeInput(
-        expectedArrivalForHub(departureTime, { hub_code: stop.hub_code, hub_name: stop.hub_name }).toISOString(),
+        expectedArrivalForHub(departureTime, { hub_code: stop.hub_code, hub_name: stop.hub_name, transit_days: stop.transit_days }).toISOString(),
       ),
     };
   });

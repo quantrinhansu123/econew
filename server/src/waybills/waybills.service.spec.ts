@@ -1217,14 +1217,14 @@ describe('WaybillsService', () => {
       {
         id: 's41', waybill_id: '1', trip_id: '41', package_count: 127,
         trip: {
-          id: '41', status: TripStatus.COMPLETED, departure_time: new Date('2026-08-06T01:00:00Z'),
+          id: '41', manifest_id: '141', status: TripStatus.COMPLETED, departure_time: new Date('2026-08-06T01:00:00Z'),
           truck: { bks: '15H-29078' },
         },
       },
       {
         id: 's46', waybill_id: '1', trip_id: '46', package_count: 60,
         trip: {
-          id: '46', status: TripStatus.IN_TRANSIT, departure_time: new Date('2026-08-08T01:00:00Z'),
+          id: '46', manifest_id: '146', status: TripStatus.IN_TRANSIT, departure_time: new Date('2026-08-08T01:00:00Z'),
           truck: { bks: '29E-078.04' },
         },
       },
@@ -1236,8 +1236,8 @@ describe('WaybillsService', () => {
     expect(result.items[0]).toMatchObject({
       remaining_packages: 0,
       trip_history: [
-        expect.objectContaining({ trip_id: '41', package_count: 127, license_plate: '15H-29078', status: TripStatus.COMPLETED }),
-        expect.objectContaining({ trip_id: '46', package_count: 60, license_plate: '29E-078.04', status: TripStatus.IN_TRANSIT }),
+        expect.objectContaining({ trip_id: '41', manifest_id: '141', package_count: 127, license_plate: '15H-29078', status: TripStatus.COMPLETED }),
+        expect.objectContaining({ trip_id: '46', manifest_id: '146', package_count: 60, license_plate: '29E-078.04', status: TripStatus.IN_TRANSIT }),
       ],
     });
   });

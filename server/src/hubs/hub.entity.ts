@@ -50,6 +50,9 @@ export class HubEntity {
   @Column({ type: 'double precision', nullable: true })
   longitude: number | null;
 
+  @Column({ type: 'int', default: 0 })
+  transit_days: number;
+
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
 
