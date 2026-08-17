@@ -35,6 +35,7 @@ import { useIncomingTripActions } from './warehouse/incoming/useIncomingTripActi
 import { useIncomingTrips } from './warehouse/incoming/useIncomingTrips';
 import { downloadIncomingTripsExcel } from './warehouse/incoming/incomingTripsExcelUtils';
 import type { IncomingTrip } from './warehouse/incoming/types';
+import VehicleManifestButton from './warehouse/inventory/VehicleManifestButton';
 
 export interface WarehouseIncomingPageProps {
   mode?: 'overview' | 'expected-arrivals';
@@ -332,15 +333,18 @@ export default function WarehouseIncomingPage({
         onClearFilters={handleClearFilters}
         summary={summary}
         headerActions={mode === 'overview' ? (
-          <button
-            type="button"
-            onClick={handleDownloadExcel}
-            disabled={isLoading || isExporting || !displayTrips.length}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[12px] font-extrabold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isExporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-            <span className="hidden sm:inline">Xuất Excel</span>
-          </button>
+          <>
+            <VehicleManifestButton />
+            <button
+              type="button"
+              onClick={handleDownloadExcel}
+              disabled={isLoading || isExporting || !displayTrips.length}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[12px] font-extrabold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isExporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+              <span className="hidden sm:inline">Xuất Excel</span>
+            </button>
+          </>
         ) : undefined}
       >
         {mode === 'expected-arrivals' ? (

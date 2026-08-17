@@ -53,37 +53,26 @@ export default function ManifestDispatchPrintView({ manifest, links, rows, visib
       <header className="manifest-dispatch-print-header">
         <h1 className="manifest-dispatch-print-title">BẢNG KÊ PHÁT HÀNG ECO</h1>
         <div className="manifest-dispatch-print-meta-grid" aria-label="Thông tin bảng kê">
-          <div className="manifest-dispatch-print-meta-item">
+          <div className="manifest-dispatch-print-meta-item manifest-dispatch-print-hub-item">
             <span className="manifest-dispatch-print-meta-label">HUB đi</span>
             <span className="manifest-dispatch-print-meta-value">{originHub}</span>
             <span className="manifest-dispatch-print-meta-detail">SĐT: {originHubPhone}</span>
           </div>
-          <div className="manifest-dispatch-print-meta-item">
+          <div className="manifest-dispatch-print-meta-item manifest-dispatch-print-hub-item">
             <span className="manifest-dispatch-print-meta-label">HUB đến</span>
             <span className="manifest-dispatch-print-meta-value">{destinationHub}</span>
             <span className="manifest-dispatch-print-meta-detail">SĐT: {destinationHubPhone}</span>
             <span className="manifest-dispatch-print-meta-detail">Dự kiến đến: {hubExpectedArrivalLabel}</span>
           </div>
-          <div className="manifest-dispatch-print-meta-item">
+          <div className="manifest-dispatch-print-meta-item manifest-dispatch-print-trip-item">
             <span className="manifest-dispatch-print-meta-label">Biển số xe</span>
             <span className="manifest-dispatch-print-meta-value">{licensePlate}</span>
-          </div>
-          <div className="manifest-dispatch-print-meta-item">
-            <span className="manifest-dispatch-print-meta-label">NCC / Tài xế</span>
-            <span className="manifest-dispatch-print-meta-value">{carrier}</span>
+            <span className="manifest-dispatch-print-meta-detail">NCC / Tài xế: {carrier}</span>
             <span className="manifest-dispatch-print-meta-detail">SĐT: {driverPhone}</span>
             <span className="manifest-dispatch-print-meta-detail">Khởi hành: {departureDate}</span>
           </div>
-          <div className="manifest-dispatch-print-meta-item">
-            <span className="manifest-dispatch-print-meta-label">Mã bảng kê</span>
-            <span className="manifest-dispatch-print-meta-value">{manifestCode}</span>
-          </div>
-          <div className="manifest-dispatch-print-meta-item">
-            <span className="manifest-dispatch-print-meta-label">Số dòng hàng</span>
-            <span className="manifest-dispatch-print-meta-value">{links.length.toLocaleString('vi-VN')}</span>
-          </div>
           <div className="manifest-dispatch-print-meta-item manifest-dispatch-print-qr-item">
-            <span className="manifest-dispatch-print-meta-label">Quét mở bảng kê</span>
+            <span className="manifest-dispatch-print-meta-label">{links.length.toLocaleString('vi-VN')} dòng hàng · Quét mở bảng kê</span>
             <img src={manifestQrUrl} alt={`Mã quét bảng kê ${manifestCode}`} className="manifest-dispatch-print-qr" />
             <span className="manifest-dispatch-print-meta-detail">{manifestCode}</span>
           </div>

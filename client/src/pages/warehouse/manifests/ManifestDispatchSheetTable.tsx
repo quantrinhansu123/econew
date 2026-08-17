@@ -195,7 +195,7 @@ export default function ManifestDispatchSheetTable({
 
     if (readOnly || meta.readOnly || !onCellChange) {
       return (
-        <div className={`min-h-[50px] px-1.5 py-2 text-[12px] font-semibold ${alignClass} ${isRedText || meta.money ? 'font-black text-red-600' : ''} ${isPartial && (columnId === 'kg' || columnId === 'm3') ? 'bg-amber-50 font-black text-slate-950' : ''}`}>
+        <div className={`${readOnly ? 'min-h-0 px-1 py-1 text-[10px] leading-tight' : 'min-h-[50px] px-1.5 py-2 text-[12px]'} font-semibold ${alignClass} ${isRedText || meta.money ? 'font-black text-red-600' : ''} ${isPartial && (columnId === 'kg' || columnId === 'm3') ? 'bg-amber-50 font-black text-slate-950' : ''}`}>
           {displayValue}
         </div>
       );
@@ -229,7 +229,7 @@ export default function ManifestDispatchSheetTable({
       </colgroup>
       <thead>
         <tr className="bg-[#c6efce] text-[11px] font-black">
-          <th className="dispatch-col-location border border-black bg-yellow-300 px-1 py-2">
+          <th className="dispatch-col-location border border-black bg-yellow-300 px-1 py-1">
             Vị trí
             <br />
             hàng
@@ -239,7 +239,7 @@ export default function ManifestDispatchSheetTable({
             return (
               <th
                 key={columnId}
-                className={`border border-black px-1 py-2 ${columnMeta.cellClass || ''} ${dispatchSheetHeaderClass(columnId)}`}
+                className={`border border-black px-1 py-1 ${columnMeta.cellClass || ''} ${dispatchSheetHeaderClass(columnId)}`}
               >
                 {renderHeaderLabel(columnId)}
               </th>
@@ -252,7 +252,7 @@ export default function ManifestDispatchSheetTable({
           const waybillId = dispatchRowKey(link);
           return (
             <tr key={waybillId || index} className="align-middle odd:bg-white even:bg-slate-100">
-              <td className="dispatch-col-location border border-black bg-yellow-300 px-1 py-2 font-black text-blue-900">
+              <td className="dispatch-col-location border border-black bg-yellow-300 px-1 py-1 font-black text-blue-900">
                 {link.loading_position ?? index + 1}
               </td>
               {dataColumns.map((columnId) => {
@@ -269,32 +269,32 @@ export default function ManifestDispatchSheetTable({
       </tbody>
       <tfoot>
         <tr className="bg-slate-100 font-black">
-          <td className="dispatch-col-location border border-black bg-yellow-300 px-2 py-2 text-right">TỔNG</td>
+          <td className="dispatch-col-location border border-black bg-yellow-300 px-1 py-1 text-right">TỔNG</td>
           {dataColumns.map((columnId) => {
             if (columnId === 'soLuong') {
               return (
-                <td key={columnId} className="border border-black px-2 py-2 text-center">
+                <td key={columnId} className="border border-black px-1 py-1 text-center">
                   {totals.soLuong} {totals.unitLabel}
                 </td>
               );
             }
             if (columnId === 'tangHaThuKhach') {
               return (
-                <td key={columnId} className="border border-black px-2 py-2 text-right text-red-600">
+                <td key={columnId} className="border border-black px-1 py-1 text-right text-red-600">
                   {totals.cod ? totals.cod.toLocaleString('vi-VN') : ''}
                 </td>
               );
             }
             if (columnId === 'kg') {
               return (
-                <td key={columnId} className="border border-black px-2 py-2 text-right">
+                <td key={columnId} className="border border-black px-1 py-1 text-right">
                   {totals.kg ? totals.kg.toLocaleString('vi-VN') : ''}
                 </td>
               );
             }
             if (columnId === 'm3') {
               return (
-                <td key={columnId} className="border border-black px-2 py-2 text-right">
+                <td key={columnId} className="border border-black px-1 py-1 text-right">
                   {totals.m3 ? totals.m3.toLocaleString('vi-VN') : ''}
                 </td>
               );
@@ -303,8 +303,8 @@ export default function ManifestDispatchSheetTable({
           })}
         </tr>
         <tr>
-          <td colSpan={dataColumns.length + 1} className="border border-black px-3 py-2 text-left text-[12px] font-bold manifest-dispatch-trip-footer">
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <td colSpan={dataColumns.length + 1} className="border border-black px-2 py-1 text-left text-[10px] font-bold manifest-dispatch-trip-footer">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span><strong>Xe:</strong> {driverLabel(manifest)}</span>
               <span><strong>Ngày:</strong> {formatShortDate(manifest.closed_at || manifest.created_at)}</span>
               <span><strong>BKS:</strong> {truckLabel(manifest)}</span>

@@ -9,6 +9,7 @@ import { TripKanbanCard } from './trips/TripKanbanCard';
 import { getPrimaryTripAction } from './trips/tripKanbanUtils';
 import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
 import type { HubSummary, ListResponse, Trip, TripAction } from './trips/types';
+import VehicleManifestButton from './warehouse/inventory/VehicleManifestButton';
 
 const tripKanbanStatuses = ['PLANNED', 'IN_TRANSIT', 'ARRIVED', 'COMPLETED'] as const;
 type TripKanbanStatus = (typeof tripKanbanStatuses)[number];
@@ -158,6 +159,7 @@ export default function TripsPage() {
             <span className="mx-2">·</span>{totals.arrived.toLocaleString('vi-VN')} đã đến
             <span className="mx-2">·</span>{totals.completed.toLocaleString('vi-VN')} hoàn tất
           </p>
+          <VehicleManifestButton />
           <FilterSelect
             icon={Building2}
             placeholder="Bưu cục đi"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { AlertTriangle, ArrowLeft, ArrowRight, CalendarClock, Edit3, Eye, Loader2, Phone, Printer, RefreshCcw, Save, Search, Truck, UserRound, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -12,12 +12,13 @@ import {
   saveVisibleDispatchColumnIds,
 } from './print/dispatchPrintColumns';
 import {
+  dispatchRowKey,
   resolveReceiverDistrict,
   resolveReceiverWard,
   type DispatchFieldKey,
   type DispatchLink,
 } from './warehouse/manifests/manifestDispatchDefaults';
-import ManifestDispatchSheetTable, { rowKey } from './warehouse/manifests/ManifestDispatchSheetTable';
+import ManifestDispatchSheetTable from './warehouse/manifests/ManifestDispatchSheetTable';
 import type { LoadPlanningManifest, ManifestDispatchFields } from './warehouse/manifests/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -95,7 +96,7 @@ export default function WarehouseManifestDetailPage() {
   const [message, setMessage] = useState('');
   const [visibleColumnIds, setVisibleColumnIds] = useState<DispatchPrintColumnId[]>(() => loadVisibleDispatchColumnIds(showPricing));
 
-  async function loadManifest() {
+  const loadManifest = useCallback(async () => {
     setIsLoading(true);
     setError('');
     try {
@@ -103,7 +104,7 @@ export default function WarehouseManifestDetailPage() {
       setManifest(response);
       const initial: EditableRows = {};
       normalizeLinks(response).forEach((link) => {
-        const key = rowKey(link);
+        const key = dispatchRowKey(link);
         if (key) initial[key] = { ...(link.dispatch_fields ?? {}) };
       });
       setRows(initial);
@@ -112,9 +113,12 @@ export default function WarehouseManifestDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [id]);
 
-  useEffect(() => { void loadManifest(); }, [id]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadManifest(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadManifest]);
 
   function openDispatchSheet(forPrint = false) {
     if (forPrint && manifest) {
@@ -168,7 +172,7 @@ export default function WarehouseManifestDetailPage() {
     setError('');
     setMessage('');
     try {
-      const payload = { rows: normalizeLinks(manifest).map((link) => ({ waybill_id: rowKey(link), fields: rows[rowKey(link)] ?? {} })) };
+      const payload = { rows: normalizeLinks(manifest).map((link) => ({ waybill_id: dispatchRowKey(link), fields: rows[dispatchRowKey(link)] ?? {} })) };
       const response = await apiRequest<LoadPlanningManifest>(`/manifests/${manifest.id}/dispatch-rows`, { method: 'PATCH', body: payload });
       setManifest(response);
       setMessage('Đã lưu thông tin bảng kê phát hàng.');

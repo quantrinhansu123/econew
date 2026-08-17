@@ -29,6 +29,7 @@ import {
   filterManifestAddableInventoryRows,
   isIncompleteSplitRow,
 } from './warehouse/inventory/inventoryTripLines';
+import VehicleManifestButton from './warehouse/inventory/VehicleManifestButton';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const WAREHOUSE = 1;
@@ -466,6 +467,7 @@ export default function WarehouseManifestsPage() {
             <button title="Mở bộ lọc" onClick={openFilters} className="relative h-10 w-10 rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 flex items-center justify-center md:hidden"><Filter size={16} />{activeFilterCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white">{activeFilterCount}</span>}</button>
             {activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
             <div className="hidden flex-1 md:block" />
+            <VehicleManifestButton />
             <button
               type="button"
               onClick={() => navigate('/trips/list')}
