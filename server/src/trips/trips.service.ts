@@ -521,6 +521,8 @@ export class TripsService {
       const rightTime = new Date(right.arrival_time || right.expected_arrival_time || right.departure_time || 0).getTime();
       return rightTime - leftTime;
     }).slice(0, limit);
+    await this.enrichRouteLabels(trips);
+    await this.enrichDeliverySummaries(trips);
     const data = await Promise.all(trips.map((trip) => this.toIncomingTripSummary(trip)));
     return { data, total: data.length };
   }

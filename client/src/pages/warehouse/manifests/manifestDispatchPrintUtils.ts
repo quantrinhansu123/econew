@@ -1,6 +1,5 @@
-import type { DispatchLink } from './manifestDispatchDefaults';
+import { dispatchRowKey, type DispatchLink } from './manifestDispatchDefaults';
 import type { LoadPlanningManifest, ManifestDispatchFields } from './types';
-import { rowKey } from './ManifestDispatchSheetTable';
 
 export function manifestPrintCode(manifest: LoadPlanningManifest) {
   return manifest.manifest_code || manifest.code || `BK-${manifest.id}`;
@@ -23,7 +22,7 @@ export function normalizeManifestPrintLinks(manifest: LoadPlanningManifest): Dis
 export function buildManifestPrintRows(links: DispatchLink[]): Record<string, ManifestDispatchFields> {
   const rows: Record<string, ManifestDispatchFields> = {};
   links.forEach((link) => {
-    const key = rowKey(link);
+    const key = dispatchRowKey(link);
     if (!key) return;
     rows[key] = {
       ...(link.waybill?.dispatch_fields ?? {}),
@@ -42,7 +41,7 @@ export function sortManifestPrintLinks(links: DispatchLink[]) {
 export interface ManifestPrintDestinationGroup {
   key: string;
   hubId?: string | number | null;
-  hub?: { id?: string | number | null; code?: string | null; name?: string | null } | null;
+  hub?: { id?: string | number | null; code?: string | null; name?: string | null; phone?: string | null; manager_phone?: string | null } | null;
   expectedArrivalAt?: string | number | Date | null;
   links: DispatchLink[];
 }

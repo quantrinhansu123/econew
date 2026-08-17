@@ -56,6 +56,8 @@ export type DispatchFieldKey =
   | 'qd'
   | 'du_kien_toi_hcm';
 
+export const dispatchRowKey = (link: DispatchLink) => String(link.waybill_id ?? link.waybill?.id ?? '');
+
 const blank = (value?: string | number | null) => (value == null || value === '' ? '' : String(value));
 
 export const parseSenderName = (info?: string | null) => (info || '').split('|')[0]?.trim() || '';

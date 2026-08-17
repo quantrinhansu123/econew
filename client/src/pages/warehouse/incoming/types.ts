@@ -1,3 +1,5 @@
+import type { Trip } from '../../trips/types';
+
 export interface IncomingHub {
   id?: string | number | null;
   code?: string | null;
@@ -19,23 +21,14 @@ export interface IncomingManifest {
   total_m3?: number | string | null;
 }
 
-export interface IncomingTrip {
-  id: string | number;
+export interface IncomingTrip extends Trip {
   manifest_id?: string | number | null;
   manifest_code?: string | null;
   seal_code?: string | null;
   origin_hub_id?: string | number | null;
-  start_hub_id?: string | number | null;
-  end_hub_id?: string | number | null;
   origin_hub?: IncomingHub | null;
-  start_hub?: IncomingHub | null;
-  end_hub?: IncomingHub | null;
   dest_hub?: IncomingHub | null;
-  departure_time?: string | null;
-  arrival_time?: string | null;
-  expected_arrival_time?: string | null;
   estimated_arrival_time?: string | null;
-  status?: string | null;
   manifest?: IncomingManifest | null;
   waybill_count?: number | null;
   total_waybills?: number | null;
@@ -48,9 +41,6 @@ export interface IncomingTrip {
   total_revenue?: number | string | null;
   expense_total?: number | string | null;
   license_plate?: string | null;
-  driver_name?: string | null;
-  driver_phone?: string | null;
-  vendor_id?: string | number | null;
   vendor_code?: string | null;
   vendor_name?: string | null;
   vehicle_type?: string | null;
@@ -58,18 +48,6 @@ export interface IncomingTrip {
   vendor_paid_amount?: number | string | null;
   vendor_payment_proof_url?: string | null;
   vendor_payment_note?: string | null;
-  trip_cost?: number | string | null;
-  other_costs?: number | string | null;
-  fuel_cost?: number | string | null;
-  truck?: {
-    license_plate?: string | null;
-    bks?: string | null;
-    ten_lai_xe?: string | null;
-    loai_xe?: string | null;
-    nha_xe?: string | null;
-    vendor?: { id?: string | number | null; code?: string | null; name?: string | null } | null;
-    driver?: { name?: string | null; phone?: string | null } | null;
-  } | null;
 }
 
 export interface IncomingTripListResponse {

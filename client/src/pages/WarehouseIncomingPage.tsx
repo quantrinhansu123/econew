@@ -28,6 +28,9 @@ import {
   summarizeIncomingTrips,
 } from './warehouse/incoming/incomingTripUtils';
 import type { IncomingVendorPaymentStatus } from './warehouse/incoming/incomingTripUtils';
+import { getPrimaryTripAction } from './trips/tripKanbanUtils';
+import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
+import type { TripAction } from './trips/types';
 import { useIncomingTripActions } from './warehouse/incoming/useIncomingTripActions';
 import { useIncomingTrips } from './warehouse/incoming/useIncomingTrips';
 import { downloadIncomingTripsExcel } from './warehouse/incoming/incomingTripsExcelUtils';
@@ -59,6 +62,10 @@ export default function WarehouseIncomingPage({
   const [ledgerVendor, setLedgerVendor] = useState<Vendor | null>(null);
   const [isLedgerVendorLoading, setIsLedgerVendorLoading] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [statusActionTrip, setStatusActionTrip] = useState<IncomingTrip | null>(null);
+  const [statusAction, setStatusAction] = useState<TripAction | null>(null);
+  const [isStatusSubmitting, setIsStatusSubmitting] = useState(false);
+  const [statusActionError, setStatusActionError] = useState('');
 
   const actions = useIncomingTripActions(refresh);
 
@@ -244,10 +251,16 @@ export default function WarehouseIncomingPage({
     }
   }, [vendorCode]);
 
-  const handleViewManifest = useCallback((trip: IncomingTrip) => {
-    const manifestId = getManifestId(trip);
-    if (!manifestId) return;
-    navigate(`/warehouse/manifests/${encodeURIComponent(String(manifestId))}`);
+  const handleOpenTrip = useCallback((trip: IncomingTrip) => {
+    navigate(`/trips/${encodeURIComponent(String(trip.id))}`);
+  }, [navigate]);
+
+  const handleEditTrip = useCallback((trip: IncomingTrip) => {
+    navigate(`/trips/${encodeURIComponent(String(trip.id))}?edit=manifest`);
+  }, [navigate]);
+
+  const handleOpenTripExpenses = useCallback((trip: IncomingTrip) => {
+    navigate(`/trips/${encodeURIComponent(String(trip.id))}/expenses`);
   }, [navigate]);
 
   const handlePrintManifest = useCallback((trip: IncomingTrip) => {
@@ -255,6 +268,37 @@ export default function WarehouseIncomingPage({
     if (!manifestId) return;
     window.open(`/print/manifest/${encodeURIComponent(String(manifestId))}`, '_blank', 'noopener');
   }, []);
+
+  const handleOpenPrimaryTripAction = useCallback((trip: IncomingTrip) => {
+    const nextAction = getPrimaryTripAction(trip.status);
+    if (!nextAction) return;
+    setStatusActionTrip(trip);
+    setStatusAction(nextAction);
+    setStatusActionError('');
+  }, []);
+
+  const closeStatusAction = useCallback(() => {
+    if (isStatusSubmitting) return;
+    setStatusActionTrip(null);
+    setStatusAction(null);
+    setStatusActionError('');
+  }, [isStatusSubmitting]);
+
+  const confirmStatusAction = useCallback(async () => {
+    if (!statusActionTrip || !statusAction) return;
+    setIsStatusSubmitting(true);
+    setStatusActionError('');
+    try {
+      await apiRequest(`/trips/${statusActionTrip.id}/${statusAction}`, { method: 'PATCH' });
+      setStatusActionTrip(null);
+      setStatusAction(null);
+      await refresh(false);
+    } catch (err) {
+      setStatusActionError(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái chuyến.');
+    } finally {
+      setIsStatusSubmitting(false);
+    }
+  }, [refresh, statusAction, statusActionTrip]);
 
   return (
     <>
@@ -303,8 +347,11 @@ export default function WarehouseIncomingPage({
           <IncomingExpectedTripCards
             trips={displayTrips}
             emptyText={emptyHint || emptyText}
-            onViewManifest={handleViewManifest}
-            onPrintManifest={handlePrintManifest}
+            onOpen={handleOpenTrip}
+            onEdit={handleEditTrip}
+            onPrint={handlePrintManifest}
+            onExpenses={handleOpenTripExpenses}
+            onPrimaryAction={handleOpenPrimaryTripAction}
           />
         ) : (
           <IncomingTripTable
@@ -347,6 +394,14 @@ export default function WarehouseIncomingPage({
         initialTab="thanh-toan"
         onClose={() => setLedgerVendor(null)}
         onEdit={() => undefined}
+      />
+      <TripStatusActionDialog
+        trip={statusActionTrip}
+        action={statusAction}
+        isSubmitting={isStatusSubmitting}
+        error={statusActionError}
+        onClose={closeStatusAction}
+        onConfirm={() => void confirmStatusAction()}
       />
     </>
   );

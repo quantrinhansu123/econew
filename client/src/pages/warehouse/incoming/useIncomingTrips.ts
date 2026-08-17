@@ -43,12 +43,11 @@ export function useIncomingTrips(options?: { source?: IncomingTripsSource }) {
 
   const fetchExpectedArrivals = useCallback(async () => {
     const query = new URLSearchParams({ limit: '100' });
-    if (userHubId) query.set('end_hub_id', userHubId);
     const response = await apiRequest<IncomingTripListResponse | IncomingTrip[]>(
       `/trips/expected-arrivals?${query.toString()}`,
     );
     return normalizeList(response).filter(isInTransitTrip);
-  }, [userHubId]);
+  }, []);
 
   const fetchIncomingTrips = useCallback(async (showLoading = false) => {
     if (!userHubId && !isManagerPlus) {

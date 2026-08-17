@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Loader2, Printer } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Download, Loader2, Printer } from 'lucide-react';
 import { apiRequest } from '../../lib/api';
 import ManifestDispatchPrintView from '../warehouse/manifests/ManifestDispatchPrintView';
 import {
@@ -13,6 +13,7 @@ import type { LoadPlanningManifest } from '../warehouse/manifests/types';
 import DispatchPrintColumnDropdown from './DispatchPrintColumnDropdown';
 import type { DispatchPrintColumnId } from './dispatchPrintColumns';
 import { loadVisibleDispatchColumnIds, saveVisibleDispatchColumnIds } from './dispatchPrintColumns';
+import { downloadManifestPrintExcel } from '../warehouse/manifests/manifestPrintExcelUtils';
 import './inventory-stock-list.css';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -50,17 +51,13 @@ export default function PrintManifestPage() {
   const navigate = useNavigate();
   const [manifest, setManifest] = useState<LoadPlanningManifest | null>(null);
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(Boolean(id));
   const showPricing = canViewPricing();
   const [printColumnIds, setPrintColumnIds] = useState<DispatchPrintColumnId[]>(() => loadVisibleDispatchColumnIds(showPricing));
 
   useEffect(() => {
     document.title = 'Bảng kê phát hàng ECO';
-    if (!id) {
-      setError('Thiếu mã bảng kê.');
-      setIsLoading(false);
-      return;
-    }
+    if (!id) return;
     void apiRequest<LoadPlanningManifest>(`/manifests/${id}`)
       .then((response) => setManifest(response))
       .catch(() => setError('Không tải được dữ liệu bảng kê.'))
@@ -92,12 +89,12 @@ export default function PrintManifestPage() {
     );
   }
 
-  if (error || !manifest || !links.length) {
+  if (error || !id || !manifest || !links.length) {
     return (
       <div className="inventory-stock-wrap flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md rounded-xl border border-red-200 bg-red-50 p-6 text-center">
           <AlertTriangle className="mx-auto text-red-600" size={28} />
-          <p className="mt-3 text-[14px] font-bold text-red-800">{error || 'Bảng kê chưa có dòng hàng để in.'}</p>
+          <p className="mt-3 text-[14px] font-bold text-red-800">{error || (!id ? 'Thiếu mã bảng kê.' : 'Bảng kê chưa có dòng hàng để in.')}</p>
           <button
             type="button"
             onClick={() => navigate(-1)}
@@ -128,6 +125,14 @@ export default function PrintManifestPage() {
             canViewPricing={showPricing}
             onChange={updatePrintColumnIds}
           />
+          <button
+            type="button"
+            onClick={() => downloadManifestPrintExcel(manifest, destinationGroups, rows, printColumnIds)}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-[13px] font-bold text-emerald-700 hover:bg-emerald-100"
+          >
+            <Download size={16} />
+            Tải Excel
+          </button>
           <button
             type="button"
             onClick={() => void printManifestWhenReady()}

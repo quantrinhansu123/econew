@@ -6,6 +6,7 @@ import {
 } from '../../print/dispatchPrintColumns';
 import {
   computeDispatchTotals,
+  dispatchRowKey,
   formatReceiverAddressWithPhone,
   getDispatchCellValue,
   resolveReceiverDistrict,
@@ -16,8 +17,13 @@ import {
 import { dispatchSheetHeaderClass, DISPATCH_SHEET_PRINT_WIDTHS, getDispatchSheetColumnMeta } from './manifestDispatchSheetColumns';
 import type { LoadPlanningManifest, ManifestDispatchFields } from './types';
 import { buildDispatchBarcodeUrl } from '../../print/dispatchBarcode';
+import { formatMoney, parseAmountInput } from '../../../lib/formatMoney';
 
 type EditableRows = Record<string, ManifestDispatchFields>;
+
+const formatDispatchMoneyCell = (value: string) => (
+  value ? formatMoney(parseAmountInput(value), { empty: '', suffix: '' }) : ''
+);
 
 const formatShortDate = (value?: string | null) => {
   if (!value) return '—';
@@ -53,10 +59,6 @@ const driverPhoneLabel = (manifest: LoadPlanningManifest) =>
   || 'Chưa có SĐT';
 const expectedArrival = (manifest: LoadPlanningManifest) =>
   manifestTrip(manifest)?.expected_arrival_time || manifestTrip(manifest)?.arrival_time || null;
-
-export function rowKey(link: DispatchLink) {
-  return String(link.waybill_id ?? link.waybill?.id ?? '');
-}
 
 function renderAddressCell(value: string) {
   const phoneMatch = value.match(/SĐT:\s*([^·]+)/i);
@@ -113,7 +115,7 @@ export default function ManifestDispatchSheetTable({
   readOnly = false,
   onCellChange,
 }: Props) {
-  const totals = useMemo(() => computeDispatchTotals(links, rows, rowKey), [links, rows]);
+  const totals = useMemo(() => computeDispatchTotals(links, rows, dispatchRowKey), [links, rows]);
   const dataColumns = visibleColumnIds.filter((id) => id !== 'viTriHang');
 
   function renderHeaderLabel(columnId: DispatchPrintColumnId) {
@@ -162,7 +164,7 @@ export default function ManifestDispatchSheetTable({
       const value = saved || String(link.waybill?.cost_amount ?? '');
       return (
         <div className="min-h-[50px] px-1.5 py-2 text-right text-[12px] font-black text-red-600">
-          {value ? Number(value).toLocaleString('vi-VN') : ''}
+          {formatDispatchMoneyCell(value)}
         </div>
       );
     }
@@ -180,6 +182,7 @@ export default function ManifestDispatchSheetTable({
     if (!fieldKey) return null;
 
     const value = getDispatchCellValue(rows, link, waybillId, fieldKey);
+    const displayValue = meta.money ? formatDispatchMoneyCell(value) : value;
     const allocatedPackages = Number(getDispatchCellValue(rows, link, waybillId, 'so_luong'));
     const totalPackages = Number(link.waybill?.package_count ?? allocatedPackages);
     const isPartial = Number.isFinite(allocatedPackages)
@@ -193,7 +196,7 @@ export default function ManifestDispatchSheetTable({
     if (readOnly || meta.readOnly || !onCellChange) {
       return (
         <div className={`min-h-[50px] px-1.5 py-2 text-[12px] font-semibold ${alignClass} ${isRedText || meta.money ? 'font-black text-red-600' : ''} ${isPartial && (columnId === 'kg' || columnId === 'm3') ? 'bg-amber-50 font-black text-slate-950' : ''}`}>
-          {value}
+          {displayValue}
         </div>
       );
     }
@@ -246,7 +249,7 @@ export default function ManifestDispatchSheetTable({
       </thead>
       <tbody>
         {links.map((link, index) => {
-          const waybillId = rowKey(link);
+          const waybillId = dispatchRowKey(link);
           return (
             <tr key={waybillId || index} className="align-middle odd:bg-white even:bg-slate-100">
               <td className="dispatch-col-location border border-black bg-yellow-300 px-1 py-2 font-black text-blue-900">

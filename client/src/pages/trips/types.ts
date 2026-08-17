@@ -1,10 +1,10 @@
 export type TripStatus = 'PLANNED' | 'IN_TRANSIT' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED' | string;
 export type PaymentType = 'PP' | 'CC' | 'COD' | string;
 
-export interface HubSummary { id: string | number; code?: string | null; name?: string | null; address?: string | null; transit_days?: number | null; }
-export interface VendorSummary { id: string | number; code?: string | null; name?: string | null; payable_balance?: number | string | null; }
-export interface TruckSummary { id: string | number; license_plate?: string | null; bks?: string | null; nha_xe?: string | null; ten_lai_xe?: string | null; status?: string | null; payload?: number | null; fuel_consumption_limit?: number | null; vendor?: VendorSummary | null; vendor_id?: string | number | null; driver?: { id?: string | number; full_name?: string | null; phone?: string | null } | null; }
-export interface ManifestSummary { id: string | number; manifest_code?: string | null; seal_code?: string | null; status?: string | null; origin_hub_id?: string | number | null; dest_hub_id?: string | number | null; origin_hub?: HubSummary | null; dest_hub?: HubSummary | null; }
+export interface HubSummary { id?: string | number | null; code?: string | null; name?: string | null; address?: string | null; transit_days?: number | null; }
+export interface VendorSummary { id?: string | number | null; code?: string | null; name?: string | null; payable_balance?: number | string | null; }
+export interface TruckSummary { id?: string | number | null; license_plate?: string | null; bks?: string | null; nha_xe?: string | null; ten_lai_xe?: string | null; loai_xe?: string | null; phone?: string | null; status?: string | null; payload?: number | null; fuel_consumption_limit?: number | null; vendor?: VendorSummary | null; vendor_id?: string | number | null; driver?: { id?: string | number | null; name?: string | null; full_name?: string | null; phone?: string | null } | null; }
+export interface ManifestSummary { id?: string | number | null; manifest_code?: string | null; seal_code?: string | null; status?: string | null; origin_hub_id?: string | number | null; dest_hub_id?: string | number | null; origin_hub?: HubSummary | null; dest_hub?: HubSummary | null; }
 
 export interface WaybillSummary {
   id?: string | number;
