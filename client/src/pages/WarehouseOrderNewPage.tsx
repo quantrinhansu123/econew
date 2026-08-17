@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, FileSpreadsheet, Loader2, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, FileSpreadsheet, Loader2, ShieldAlert, Trash2 } from 'lucide-react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { getLoginDisplayName, getStoredAuthUser } from '../lib/authUser';
@@ -32,6 +32,7 @@ import { canViewWaybillPricing } from './print/waybillPricingAccess';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const CREATE_ROLES = 1 | 32 | 64;
+const DIRECTOR_ROLE = 64;
 const INITIAL_BILL_LIST_LIMIT = 20;
 const EXPANDED_BILL_LIST_LIMIT = 100;
 type NextWaybillCodeResponse = { waybill_code?: string; code?: string };
@@ -91,6 +92,7 @@ export default function WarehouseOrderNewPage() {
   const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [bills, setBills] = useState<BillListItem[]>([]);
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
+  const [checkedBillIds, setCheckedBillIds] = useState<string[]>([]);
   const [form, setForm] = useState<NewOrderFormState>(() => emptyOrderForm());
   const [customerPriceList, setCustomerPriceList] = useState<{ url: string; name: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -107,6 +109,7 @@ export default function WarehouseOrderNewPage() {
   const [hasMoreBills, setHasMoreBills] = useState(false);
 
   const canCreate = hasCreateRole(user?.role_mask ?? 0);
+  const canDeleteBills = ((user?.role_mask ?? 0) & DIRECTOR_ROLE) !== 0;
   const canViewPricing = canViewWaybillPricing(user?.role_mask);
   const loginName = getLoginDisplayName(user as Parameters<typeof getLoginDisplayName>[0]);
   const hubOptions = useMemo(
@@ -487,7 +490,55 @@ export default function WarehouseOrderNewPage() {
     window.open(`/print/waybills?${query}`, '_blank', 'noopener');
   };
 
+  const handleDeleteCheckedBills = async () => {
+    if (!canDeleteBills || checkedBillIds.length === 0 || isSubmitting) return;
+    const selectedBills = checkedBillIds
+      .map((id) => bills.find((bill) => bill.id === id))
+      .filter((bill): bill is BillListItem => Boolean(bill));
+    if (selectedBills.length === 0) {
+      setCheckedBillIds([]);
+      return;
+    }
+    const label = selectedBills.length === 1
+      ? `vận đơn ${selectedBills[0].waybill_code}`
+      : `${selectedBills.length} vận đơn đã chọn`;
+    if (!window.confirm(`Xóa ${label}? Thao tác này không thể hoàn tác trên giao diện.`)) return;
+
+    setIsSubmitting(true);
+    setActionError('');
+    const failed: Array<{ bill: BillListItem; message: string }> = [];
+    const deletedIds = new Set<string>();
+    for (const bill of selectedBills) {
+      try {
+        await apiRequest(`/waybills/${bill.id}`, { method: 'DELETE' });
+        deletedIds.add(bill.id);
+      } catch (error) {
+        failed.push({
+          bill,
+          message: error instanceof ApiError ? error.message : 'Không thể xóa vận đơn.',
+        });
+      }
+    }
+
+    try {
+      await loadBills(billFilterDate, billListLimitRef.current);
+      setCheckedBillIds(failed.map(({ bill }) => bill.id));
+      if (selectedBillId && deletedIds.has(selectedBillId)) await handleNew();
+      if (failed.length > 0) {
+        const firstFailure = failed[0];
+        const deletedCount = deletedIds.size;
+        setActionError(
+          `${deletedCount > 0 ? `Đã xóa ${deletedCount} đơn. ` : ''}`
+          + `Không xóa được ${failed.length} đơn; ${firstFailure.bill.waybill_code}: ${firstFailure.message}`,
+        );
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleBillFilterDateChange = (value: string) => {
+    setCheckedBillIds([]);
     setBillFilterDate(value);
     void loadBills(value, value ? EXPANDED_BILL_LIST_LIMIT : INITIAL_BILL_LIST_LIMIT);
   };
@@ -536,6 +587,18 @@ export default function WarehouseOrderNewPage() {
           <h1 className="text-[15px] font-extrabold text-foreground">Nhập đơn mới</h1>
           <p className="text-[12px] font-medium text-muted-foreground">Thông tin đơn hàng</p>
         </div>
+        {checkedBillIds.length > 0 && (
+          <button
+            type="button"
+            onClick={() => void handleDeleteCheckedBills()}
+            disabled={!canDeleteBills || isSubmitting}
+            title={canDeleteBills ? 'Xóa các bill đã chọn' : 'Chỉ tài khoản DIRECTOR được xóa bill'}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 text-[12px] font-extrabold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Trash2 size={15} />
+            <span>Xóa ({checkedBillIds.length})</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setIsBulkImportOpen(true)}
@@ -571,6 +634,8 @@ export default function WarehouseOrderNewPage() {
             bills={bills}
             selectedBillId={selectedBillId}
             onSelectBill={(bill) => void handleSelectBill(bill)}
+            checkedBillIds={checkedBillIds}
+            onCheckedBillIdsChange={setCheckedBillIds}
             hubOptions={hubOptions}
             onSave={() => void handleSave()}
             onNew={() => void handleNew()}

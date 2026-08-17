@@ -7,6 +7,8 @@ interface Props {
   bills: BillListItem[];
   selectedId: string | null;
   onSelect: (bill: BillListItem) => void;
+  checkedBillIds: string[];
+  onCheckedBillIdsChange: (billIds: string[]) => void;
   disabled?: boolean;
   filterDate: string;
   onFilterDateChange: (value: string) => void;
@@ -37,6 +39,8 @@ export default function BillListSidebar({
   bills,
   selectedId,
   onSelect,
+  checkedBillIds,
+  onCheckedBillIdsChange,
   disabled = false,
   filterDate,
   onFilterDateChange,
@@ -47,7 +51,7 @@ export default function BillListSidebar({
   onPrintBill,
 }: Props) {
   const [collapsedDates, setCollapsedDates] = useState<Record<string, boolean>>({});
-  const [checkedIds, setCheckedIds] = useState<Record<string, boolean>>({});
+  const checkedIds = useMemo(() => new Set(checkedBillIds), [checkedBillIds]);
 
   const filteredBills = useMemo(
     () => bills.filter((bill) => billMatchesDate(bill, filterDate)),
@@ -55,11 +59,11 @@ export default function BillListSidebar({
   );
 
   const selectedCount = useMemo(
-    () => filteredBills.filter((bill) => checkedIds[bill.id]).length,
+    () => filteredBills.filter((bill) => checkedIds.has(bill.id)).length,
     [filteredBills, checkedIds],
   );
 
-  const allVisibleChecked = filteredBills.length > 0 && filteredBills.every((bill) => checkedIds[bill.id]);
+  const allVisibleChecked = filteredBills.length > 0 && filteredBills.every((bill) => checkedIds.has(bill.id));
 
   const toggleDate = (date: string) => {
     const key = date || UNKNOWN_DATE_KEY;
@@ -67,33 +71,34 @@ export default function BillListSidebar({
   };
 
   const toggleBill = (billId: string) => {
-    setCheckedIds((current) => ({ ...current, [billId]: !current[billId] }));
+    const updated = new Set(checkedIds);
+    if (updated.has(billId)) updated.delete(billId);
+    else updated.add(billId);
+    onCheckedBillIdsChange([...updated]);
   };
 
   const toggleAllVisible = () => {
     const next = !allVisibleChecked;
-    setCheckedIds((current) => {
-      const updated = { ...current };
-      for (const bill of filteredBills) {
-        updated[bill.id] = next;
-      }
-      return updated;
-    });
+    const updated = new Set(checkedIds);
+    for (const bill of filteredBills) {
+      if (next) updated.add(bill.id);
+      else updated.delete(bill.id);
+    }
+    onCheckedBillIdsChange([...updated]);
   };
 
   const toggleDateGroup = (billIds: string[]) => {
-    const allChecked = billIds.every((id) => checkedIds[id]);
-    setCheckedIds((current) => {
-      const updated = { ...current };
-      for (const id of billIds) {
-        updated[id] = !allChecked;
-      }
-      return updated;
-    });
+    const allChecked = billIds.every((id) => checkedIds.has(id));
+    const updated = new Set(checkedIds);
+    for (const id of billIds) {
+      if (allChecked) updated.delete(id);
+      else updated.add(id);
+    }
+    onCheckedBillIdsChange([...updated]);
   };
 
   const handleBulkPrint = () => {
-    const ids = filteredBills.filter((bill) => checkedIds[bill.id]).map((bill) => bill.id);
+    const ids = filteredBills.filter((bill) => checkedIds.has(bill.id)).map((bill) => bill.id);
     if (!ids.length) return;
     onBulkPrint(ids);
   };
@@ -168,7 +173,7 @@ export default function BillListSidebar({
                 ? filteredBills.filter((item) => (item.date || UNKNOWN_DATE_KEY) === dateKey)
                 : [];
               const groupIds = groupBills.map((item) => item.id);
-              const groupAllChecked = groupIds.length > 0 && groupIds.every((id) => checkedIds[id]);
+              const groupAllChecked = groupIds.length > 0 && groupIds.every((id) => checkedIds.has(id));
 
               return (
                 <Fragment key={bill.id}>
@@ -202,7 +207,7 @@ export default function BillListSidebar({
                       <td className="border-b border-r border-slate-300 px-1 py-1.5 text-center">
                         <input
                           type="checkbox"
-                          checked={Boolean(checkedIds[bill.id])}
+                          checked={checkedIds.has(bill.id)}
                           onChange={() => toggleBill(bill.id)}
                           className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary"
                           onClick={(event) => event.stopPropagation()}

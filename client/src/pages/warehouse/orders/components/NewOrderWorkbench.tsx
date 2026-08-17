@@ -29,6 +29,8 @@ interface Props {
   bills: BillListItem[];
   selectedBillId: string | null;
   onSelectBill: (bill: BillListItem) => void;
+  checkedBillIds: string[];
+  onCheckedBillIdsChange: (billIds: string[]) => void;
   hubOptions: { value: string; label: string }[];
   onSave: () => void;
   onNew: () => void;
@@ -61,6 +63,8 @@ export default function NewOrderWorkbench({
   bills,
   selectedBillId,
   onSelectBill,
+  checkedBillIds,
+  onCheckedBillIdsChange,
   hubOptions,
   onSave,
   onNew,
@@ -418,6 +422,8 @@ export default function NewOrderWorkbench({
           bills={bills}
           selectedId={selectedBillId}
           onSelect={onSelectBill}
+          checkedBillIds={checkedBillIds}
+          onCheckedBillIdsChange={onCheckedBillIdsChange}
           disabled={isBusy}
           filterDate={billFilterDate}
           onFilterDateChange={onBillFilterDateChange}
