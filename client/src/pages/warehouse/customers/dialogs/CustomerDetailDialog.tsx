@@ -17,6 +17,7 @@ import CustomerCashVouchersPanel, { type CashVoucherFilters } from '../panels/Cu
 import CustomerBillsPanel from '../panels/CustomerBillsPanel';
 import {
   buildPaidByWaybill,
+  computeCustomerDebtSummary,
   computeVoucherMeta,
   getBillFreight,
   resolvePaidForBill,
@@ -254,10 +255,12 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   const statementData = useMemo(() => {
     const paidMaps = buildPaidByWaybill(cashVouchers);
     const voucherMeta = computeVoucherMeta(cashVouchers);
-    const totalFreight = inventoryItems.reduce((sum, item) => sum + getBillFreight(item), 0);
-    const totalPaid = inventoryItems.reduce((sum, item) => sum + resolvePaidForBill(item, paidMaps), 0);
-    return { paidMaps, voucherMeta, totalFreight, totalPaid, totalDebt: totalFreight - totalPaid };
-  }, [cashVouchers, inventoryItems]);
+    return {
+      paidMaps,
+      voucherMeta,
+      ...computeCustomerDebtSummary(inventoryItems, paidMaps, customer?.opening_debt, true),
+    };
+  }, [cashVouchers, customer?.opening_debt, inventoryItems]);
   const collectableBills = useMemo(() => inventoryItems.map((item) => {
     const freight = getBillFreight(item);
     const paid = resolvePaidForBill(item, statementData.paidMaps);
@@ -521,6 +524,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
               <Row label="Loại KH" value={customer.customer_type || 'KHACH_HANG'} />
               <Row label="Trạng thái" value={customer.is_suspended ? 'Tạm dừng' : customer.status || 'ACTIVE'} />
               <Row label="Số đơn" value={String(customer.waybill_count ?? inventoryTotal ?? 0)} />
+              <Row label="Công nợ tồn cũ" value={formatMoney(customer.opening_debt ?? 0)} />
             </DetailSection>
 
             <DetailSection title="Liên hệ">
@@ -570,6 +574,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
 
             <DetailSection title="Thanh toán">
               <Row label="Hình thức CN" value={customer.credit_type} />
+              <Row label="Công nợ tồn cũ" value={formatMoney(customer.opening_debt ?? 0)} />
               <Row label="Ngân hàng" value={customer.bank_name} />
               <Row label="Tài khoản" value={customer.bank_account} />
               <Row label="Chủ t.khoản" value={customer.bank_account_holder} />
@@ -736,6 +741,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
             items={inventoryItems}
             totalCount={inventoryTotal}
             vouchers={cashVouchers}
+            openingDebt={customer.opening_debt}
             filters={billFilters}
             loading={inventoryLoading}
             vouchersLoading={canViewCashVouchers && cashVouchersLoading}
@@ -752,6 +758,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
           <div className="space-y-4">
             <DetailSection title="Thông tin thanh toán">
               <Row label="Hình thức CN" value={customer.credit_type} />
+              <Row label="Công nợ tồn cũ" value={formatMoney(customer.opening_debt ?? 0)} />
               <Row label="Cơ chế" value={customer.mechanism} />
               <Row label="Ngân hàng" value={customer.bank_name} />
               <Row label="Tài khoản" value={customer.bank_account} />
@@ -829,8 +836,9 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
               <p><b>MST:</b> {customer.tax_id || '—'} <span className="mx-2">·</span> <b>Hợp đồng:</b> {customer.contract_code || '—'}</p>
             </div>
 
-            <div className="mt-4 grid grid-cols-4 gap-2">
+            <div className="mt-4 grid grid-cols-5 gap-2">
               <PrintMetric label="Số đơn" value={inventoryItems.length.toLocaleString('vi-VN')} />
+              <PrintMetric label="Công nợ tồn cũ" value={printMoney(statementData.openingDebt)} />
               <PrintMetric label="Tổng cước" value={printMoney(statementData.totalFreight)} />
               <PrintMetric label="Đã TT theo đơn" value={printMoney(statementData.totalPaid)} />
               <PrintMetric label="Công nợ còn lại" value={printMoney(statementData.totalDebt)} />

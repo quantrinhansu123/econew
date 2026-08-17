@@ -12,6 +12,7 @@ import {
 } from '../../orders/orderFormData';
 import { WAYBILL_SPECIAL_GOODS_OPTIONS } from '../../../../lib/waybillSpecialGoods';
 import { VIETNAM_PROVINCES_63 } from '../../../../lib/vietnamProvince';
+import { formatAmountInput } from '../../../../lib/formatMoney';
 
 interface Props {
   isOpen: boolean;
@@ -132,6 +133,16 @@ export default function CustomerFormDialog({
                   value={form.discount_percent}
                   onChange={(e) => onChange('discount_percent', e.target.value)}
                   className={inputClass}
+                />
+              </Field>
+              <Field label="Công nợ tồn cũ">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={form.opening_debt}
+                  onChange={(e) => onChange('opening_debt', formatAmountInput(e.target.value))}
+                  className={`${inputClass} text-right font-extrabold tabular-nums`}
+                  placeholder="0"
                 />
               </Field>
               <Field label="Địa chỉ gửi" className="sm:col-span-2">

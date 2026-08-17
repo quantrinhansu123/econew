@@ -134,6 +134,9 @@ export class CustomerEntity {
   @Column({ type: 'double precision', default: 0 })
   discount_percent: number;
 
+  @Column({ type: 'numeric', precision: 18, scale: 2, default: 0 })
+  opening_debt: string;
+
   @Column({ type: 'varchar', length: 32, default: 'ACTIVE' })
   status: string;
 

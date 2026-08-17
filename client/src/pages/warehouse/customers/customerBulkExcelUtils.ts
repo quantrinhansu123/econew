@@ -1,5 +1,6 @@
 import { read, utils, writeFile } from 'xlsx';
 import { normalizeVnPhone } from '../orders/orderFormUtils';
+import { parseAmountInput } from '../../../lib/formatMoney';
 import {
   CUSTOMER_BULK_COLUMNS,
   CUSTOMER_BULK_INSTRUCTIONS,
@@ -112,6 +113,12 @@ export function validateCustomerBulkRows(rows: ParsedCustomerBulkRow[]): ParsedC
       const discount = Number(values.discount_percent.replace(',', '.'));
       if (!Number.isFinite(discount) || discount < 0) errors.push('Chiết khấu % không hợp lệ.');
     }
+    if (values.opening_debt) {
+      const openingDebt = parseAmountInput(values.opening_debt);
+      if (values.opening_debt.includes('-') || !/\d/.test(values.opening_debt) || !Number.isSafeInteger(openingDebt)) {
+        errors.push('Công nợ tồn cũ không hợp lệ.');
+      }
+    }
     return { ...row, errors };
   });
 }
@@ -178,6 +185,12 @@ export function buildCustomerBulkPayload(values: CustomerBulkRow, updating: bool
     payload.discount_percent = Number(values.discount_percent.replace(',', '.'));
   } else if (!updating) {
     payload.discount_percent = 0;
+  }
+
+  if (values.opening_debt.trim()) {
+    payload.opening_debt = parseAmountInput(values.opening_debt);
+  } else if (!updating) {
+    payload.opening_debt = 0;
   }
 
   if (values.status.trim()) {

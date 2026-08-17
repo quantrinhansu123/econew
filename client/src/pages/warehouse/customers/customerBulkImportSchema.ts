@@ -14,6 +14,7 @@ export type CustomerBulkFieldKey =
   | 'manager_name'
   | 'price_table'
   | 'discount_percent'
+  | 'opening_debt'
   | 'delivery_handler'
   | 'region'
   | 'credit_type'
@@ -44,6 +45,7 @@ export const CUSTOMER_BULK_COLUMNS: CustomerBulkColumn[] = [
   { key: 'manager_name', label: 'NV quản lý', required: false, sample: '' },
   { key: 'price_table', label: 'Bảng giá', required: false, sample: 'TIÊU CHUẨN 72H' },
   { key: 'discount_percent', label: 'Chiết khấu %', required: false, sample: '0' },
+  { key: 'opening_debt', label: 'Công nợ tồn cũ', required: false, sample: '1500000' },
   { key: 'delivery_handler', label: 'Giao nhận', required: false, sample: 'ADMIN' },
   { key: 'region', label: 'Khu vực', required: false, sample: '' },
   { key: 'credit_type', label: 'Công nợ', required: false, sample: 'K' },
@@ -61,6 +63,7 @@ export const CUSTOMER_BULK_TEMPLATE_NOTES: Partial<Record<CustomerBulkFieldKey, 
   phone_hcm: 'dùng khi tỉnh nhận là HCM',
   address_hcm: 'dùng khi tỉnh nhận là HCM',
   discount_percent: 'để trống mặc định 0 khi tạo mới',
+  opening_debt: 'số dư công nợ chốt từ kỳ cũ; để trống mặc định 0',
   status: 'ACTIVE hoặc SUSPENDED; để trống là ACTIVE',
 };
 
@@ -71,6 +74,7 @@ export const CUSTOMER_BULK_INSTRUCTIONS = [
   'Điện thoại có thể viết liền, có khoảng trắng, dấu chấm hoặc dấu gạch; hệ thống chỉ lưu phần số.',
   'Nên định dạng các cột điện thoại là Text để Excel không bỏ số 0 đầu.',
   'Kho HCM gồm Người nhận HCM, ĐT nhận HCM và Địa chỉ kho HCM.',
+  'Công nợ tồn cũ là số dư đầu kỳ và sẽ tự cộng vào công nợ hiện tại của khách hàng.',
   'Trạng thái chỉ nhận ACTIVE (Hoạt động) hoặc SUSPENDED (Tạm dừng).',
   'Dòng mẫu được hệ thống tự bỏ qua; nhập dữ liệu thật từ dòng kế tiếp.',
 ];

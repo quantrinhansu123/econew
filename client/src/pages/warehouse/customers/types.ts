@@ -34,6 +34,7 @@ export interface CustomerListItem {
   default_payment_method?: string | null;
   default_special_goods?: string | null;
   discount_percent: number | string;
+  opening_debt?: number | string | null;
   delivery_handler: string | null;
   contact_person: string | null;
   manager_name?: string | null;

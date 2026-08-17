@@ -7,18 +7,20 @@ import type { WaybillInventoryItem } from '../../inventory/types';
 import type { WaybillCashVoucher } from '../../inventory/dialogs/WaybillCashVoucherDialog';
 import {
   buildPaidByWaybill,
+  computeCustomerDebtSummary,
   filterBills,
-  formatMoney,
   getBillFreight,
   resolvePaidForBill,
   type BillFilters,
 } from '../utils/customerFinanceUtils';
+import { formatMoney } from '../../../../lib/formatMoney';
 
 interface Props {
   customerCode: string;
   items: WaybillInventoryItem[];
   totalCount: number;
   vouchers: WaybillCashVoucher[];
+  openingDebt?: number | string | null;
   filters: BillFilters;
   loading: boolean;
   vouchersLoading: boolean;
@@ -37,6 +39,7 @@ export default function CustomerBillsPanel({
   items,
   totalCount,
   vouchers,
+  openingDebt = 0,
   filters,
   loading,
   vouchersLoading,
@@ -55,33 +58,21 @@ export default function CustomerBillsPanel({
   const filteredItems = useMemo(() => filterBills(items, filters), [items, filters]);
 
   const summary = useMemo(() => {
-    let totalFreight = 0;
-    let totalPaid = 0;
-    for (const item of filteredItems) {
-      const freight = getBillFreight(item);
-      const paid = showPaymentColumns ? resolvePaidForBill(item, paidMaps) : 0;
-      totalFreight += freight;
-      totalPaid += paid;
-    }
-    return {
-      totalFreight,
-      totalPaid,
-      totalDebt: totalFreight - totalPaid,
-      count: filteredItems.length,
-    };
-  }, [filteredItems, paidMaps, showPaymentColumns]);
+    return computeCustomerDebtSummary(filteredItems, paidMaps, openingDebt, showPaymentColumns);
+  }, [filteredItems, openingDebt, paidMaps, showPaymentColumns]);
 
   const hasFilters = Boolean(filters.fromDate || filters.toDate || filters.billCode.trim() || filters.paymentType);
 
   return (
     <div className="space-y-4">
       {canViewCost && (
-        <div className={clsx('grid grid-cols-1 gap-3', showPaymentColumns ? 'sm:grid-cols-3' : 'sm:grid-cols-1')}>
-          <SummaryCard label="Tổng cước phí" value={formatMoney(summary.totalFreight, '0 đ')} tone="blue" />
+        <div className={clsx('grid grid-cols-1 gap-3', showPaymentColumns ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-1')}>
+          {showPaymentColumns && <SummaryCard label="Công nợ tồn cũ" value={formatMoney(summary.openingDebt)} tone="amber" />}
+          <SummaryCard label="Tổng cước phí" value={formatMoney(summary.totalFreight)} tone="blue" />
           {showPaymentColumns && (
             <>
-              <SummaryCard label="Đã thanh toán" value={formatMoney(summary.totalPaid, '0 đ')} tone="emerald" />
-              <SummaryCard label="Công nợ cần trả" value={formatMoney(summary.totalDebt, '0 đ')} tone="red" />
+              <SummaryCard label="Đã thanh toán" value={formatMoney(summary.totalPaid)} tone="emerald" />
+              <SummaryCard label="Công nợ hiện tại" value={formatMoney(summary.totalDebt)} tone="red" />
             </>
           )}
         </div>
@@ -211,9 +202,9 @@ export default function CustomerBillsPanel({
                         <td className="px-3 py-2.5 text-right font-bold">{formatMoney(freight)}</td>
                         {showPaymentColumns && (
                           <>
-                            <td className="px-3 py-2.5 text-right font-bold text-emerald-700">{formatMoney(paid, '0 đ')}</td>
+                            <td className="px-3 py-2.5 text-right font-bold text-emerald-700">{formatMoney(paid)}</td>
                             <td className={clsx('px-3 py-2.5 text-right font-extrabold', debt > 0 ? 'text-red-600' : debt < 0 ? 'text-emerald-700' : 'text-foreground')}>
-                              {formatMoney(debt, '0 đ')}
+                              {formatMoney(debt)}
                             </td>
                           </>
                         )}
@@ -242,12 +233,14 @@ export default function CustomerBillsPanel({
   );
 }
 
-function SummaryCard({ label, value, tone }: { label: string; value: string; tone: 'emerald' | 'red' | 'blue' }) {
+function SummaryCard({ label, value, tone }: { label: string; value: string; tone: 'emerald' | 'red' | 'blue' | 'amber' }) {
   const toneClass =
     tone === 'emerald'
       ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
       : tone === 'red'
         ? 'border-red-200 bg-red-50 text-red-700'
+        : tone === 'amber'
+          ? 'border-amber-200 bg-amber-50 text-amber-800'
         : 'border-blue-200 bg-blue-50 text-blue-800';
 
   return (

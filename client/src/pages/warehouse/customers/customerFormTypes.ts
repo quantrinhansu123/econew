@@ -42,6 +42,7 @@ export type CustomerFormState = {
   default_payment_method: string;
   default_special_goods: string[];
   discount_percent: string;
+  opening_debt: string;
   delivery_handler: string;
   status: string;
   mobile: string;
@@ -79,6 +80,7 @@ export const emptyCustomerForm = (): CustomerFormState => ({
   default_payment_method: '',
   default_special_goods: [],
   discount_percent: '0',
+  opening_debt: '',
   delivery_handler: '',
   status: 'ACTIVE',
   mobile: '',

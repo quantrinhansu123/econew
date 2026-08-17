@@ -37,6 +37,7 @@ describe('customer bulk Excel import', () => {
         mobile: '912 345 678',
         phone_hcm: '+84 888 727 897',
         status: 'active',
+        opening_debt: '1.500.000',
       };
       return values[column.key] ?? '';
     });
@@ -53,6 +54,7 @@ describe('customer bulk Excel import', () => {
         mobile: '0912345678',
         phone_hcm: '0888727897',
         status: 'ACTIVE',
+        opening_debt: '1.500.000',
       },
     });
   });
@@ -62,7 +64,7 @@ describe('customer bulk Excel import', () => {
       { rowNumber: 3, values: rowFrom({ code: 'ABC', name: 'Khách A' }), errors: [] },
       {
         rowNumber: 4,
-        values: rowFrom({ code: 'ABC', name: 'Khách B', email: 'sai-email', status: 'LOCKED', discount_percent: '-1' }),
+        values: rowFrom({ code: 'ABC', name: 'Khách B', email: 'sai-email', status: 'LOCKED', discount_percent: '-1', opening_debt: '-1000' }),
         errors: [],
       },
     ];
@@ -75,19 +77,22 @@ describe('customer bulk Excel import', () => {
       'Email không hợp lệ.',
       'Trạng thái phải là ACTIVE hoặc SUSPENDED.',
       'Chiết khấu % không hợp lệ.',
+      'Công nợ tồn cũ không hợp lệ.',
     ]));
   });
 
   it('keeps blank fields out of update payloads and applies create defaults', () => {
-    const values = rowFrom({ code: 'ABC', name: 'Khách A', discount_percent: '4,5' });
+    const values = rowFrom({ code: 'ABC', name: 'Khách A', discount_percent: '4,5', opening_debt: '2.500.000' });
 
     expect(buildCustomerBulkPayload(values, true)).toEqual({
       name: 'Khách A',
       discount_percent: 4.5,
+      opening_debt: 2_500_000,
     });
     expect(buildCustomerBulkPayload(rowFrom({ code: 'ABC', name: 'Khách A' }), false)).toEqual({
       name: 'Khách A',
       discount_percent: 0,
+      opening_debt: 0,
       status: 'ACTIVE',
       is_suspended: false,
       code: 'ABC',

@@ -1,6 +1,10 @@
 import type { WaybillCashVoucher } from '../../inventory/dialogs/WaybillCashVoucherDialog';
 import type { WaybillInventoryItem } from '../../inventory/types';
 import type { CashVoucherFilters, CashVoucherMeta } from '../panels/CustomerCashVouchersPanel';
+import { formatMoney as formatSharedMoney } from '../../../../lib/formatMoney';
+
+export const formatMoney = (value?: number | string | null, empty = '—') =>
+  formatSharedMoney(value, { empty });
 
 export interface BillFilters {
   fromDate: string;
@@ -13,9 +17,6 @@ export interface PaidByWaybillMaps {
   byWaybillId: Map<string, number>;
   byBillCode: Map<string, number>;
 }
-
-export const formatMoney = (value?: number | string | null, empty = '—') =>
-  value == null || value === '' ? empty : `${Number(value).toLocaleString('vi-VN')} đ`;
 
 export function isDateInRange(value: string | null | undefined, fromDate: string, toDate: string) {
   if (!fromDate && !toDate) return true;
@@ -86,6 +87,28 @@ export function resolvePaidForBill(item: WaybillInventoryItem, maps: PaidByWaybi
 
 export function getBillFreight(item: WaybillInventoryItem) {
   return Number(item.customer_payment_due_amount ?? item.freight_amount ?? item.cost_amount ?? 0) || 0;
+}
+
+export function computeCustomerDebtSummary(
+  items: WaybillInventoryItem[],
+  paidMaps: PaidByWaybillMaps,
+  openingDebt: number | string | null | undefined,
+  includePayments = true,
+) {
+  let totalFreight = 0;
+  let totalPaid = 0;
+  for (const item of items) {
+    totalFreight += getBillFreight(item);
+    if (includePayments) totalPaid += resolvePaidForBill(item, paidMaps);
+  }
+  const normalizedOpeningDebt = Math.max(0, Number(openingDebt) || 0);
+  return {
+    openingDebt: normalizedOpeningDebt,
+    totalFreight,
+    totalPaid,
+    totalDebt: normalizedOpeningDebt + totalFreight - totalPaid,
+    count: items.length,
+  };
 }
 
 export function filterBills(items: WaybillInventoryItem[], filters: BillFilters) {

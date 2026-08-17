@@ -98,6 +98,7 @@ export class CustomersService {
       contract_code: dto.contract_code?.trim() || code,
       customer_type: dto.customer_type?.trim() || 'KHACH_HANG',
       discount_percent: dto.discount_percent ?? 0,
+      opening_debt: String(dto.opening_debt ?? 0),
       status: dto.status?.trim() || 'ACTIVE',
     });
     const saved = await this.customersRepository.save(customer);
@@ -110,7 +111,7 @@ export class CustomersService {
       throw new NotFoundException('Không tìm thấy khách hàng');
     }
 
-    const { code, ...rest } = dto;
+    const { code, opening_debt: openingDebt, ...rest } = dto;
     if (code !== undefined) {
       const normalized = code.trim().toUpperCase();
       const existing = await this.customersRepository.findOne({ where: { code: normalized, deleted_at: IsNull() } });
@@ -121,6 +122,7 @@ export class CustomersService {
     }
 
     Object.assign(customer, rest);
+    if (openingDebt !== undefined) customer.opening_debt = String(openingDebt);
     const saved = await this.customersRepository.save(customer);
     return this.sanitize(saved);
   }
@@ -174,6 +176,7 @@ export class CustomersService {
     return {
       ...rest,
       discount_percent: Number(rest.discount_percent ?? 0),
+      opening_debt: Number(rest.opening_debt ?? 0),
     };
   }
 }

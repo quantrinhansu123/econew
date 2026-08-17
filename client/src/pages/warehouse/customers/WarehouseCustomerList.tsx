@@ -23,6 +23,7 @@ import type { CustomerRecord } from './customerFormTypes';
 import type { CustomerFormState } from './customerFormTypes';
 import { customerToForm, formToPayload, validateCustomerForm } from './customerFormUtils';
 import type { CustomerListItem, CustomerListResponse } from './types';
+import { formatMoney } from '../../../lib/formatMoney';
 
 const CustomerBulkImportDialog = lazy(() => import('./dialogs/CustomerBulkImportDialog'));
 
@@ -262,10 +263,10 @@ export default function WarehouseCustomerList({
               description={manageable ? 'Bấm "Thêm khách hàng mới" để tạo bản ghi đầu tiên.' : undefined}
             />
           ) : (
-            <table className="w-full min-w-[1360px] border-collapse text-left text-[13px]">
+            <table className="w-full min-w-[1460px] border-collapse text-left text-[13px]">
               <thead className="sticky top-0 z-10 bg-slate-100 text-[11px] font-extrabold uppercase tracking-wide text-slate-600">
                 <tr>
-                  {['Mã KH', 'Tên KH', 'Người nhận', 'Tên tắt', 'Tỉnh đến', 'Địa chỉ gửi', 'ĐC kho HCM', 'ĐT nhận', 'CK %', 'Giao nhận', 'TT', 'Số đơn', 'Thao tác'].map((h) => (
+                  {['Mã KH', 'Tên KH', 'Người nhận', 'Tên tắt', 'Tỉnh đến', 'Địa chỉ gửi', 'ĐC kho HCM', 'ĐT nhận', 'CK %', 'Nợ tồn cũ', 'Giao nhận', 'TT', 'Số đơn', 'Thao tác'].map((h) => (
                     <th key={h} className="border-b border-border px-3 py-3">
                       {h}
                     </th>
@@ -297,6 +298,9 @@ export default function WarehouseCustomerList({
                       </span>
                     </td>
                     <td className="px-3 py-3">{Number(customer.discount_percent) || 0}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-right font-extrabold tabular-nums text-red-600">
+                      {formatMoney(customer.opening_debt ?? 0)}
+                    </td>
                     <td className="px-3 py-3">{customer.delivery_handler || '—'}</td>
                     <td className="px-3 py-3">
                       {customer.is_suspended || customer.status === 'SUSPENDED' ? (

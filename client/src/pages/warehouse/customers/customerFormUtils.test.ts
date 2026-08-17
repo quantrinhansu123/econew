@@ -15,6 +15,7 @@ describe('customer bill defaults form', () => {
       default_special_goods: ['OVERSIZED', 'LIQUID'],
       price_list_url: 'https://example.com/bao-gia.xlsx',
       price_list_name: 'bao-gia.xlsx',
+      opening_debt: '1.500.000',
     }, false);
 
     expect(payload).toMatchObject({
@@ -25,6 +26,7 @@ describe('customer bill defaults form', () => {
       default_special_goods: 'OVERSIZED,LIQUID',
       price_list_url: 'https://example.com/bao-gia.xlsx',
       price_list_name: 'bao-gia.xlsx',
+      opening_debt: 1_500_000,
     });
   });
 
@@ -35,9 +37,11 @@ describe('customer bill defaults form', () => {
       name: 'Khách ABC',
       destination_province: 'HCM',
       default_special_goods: 'HIGH_VALUE,FRAGILE',
+      opening_debt: 2_750_000,
     } as any);
     expect(form.destination_province).toBe('Hồ Chí Minh');
     expect(form.default_special_goods).toEqual(['HIGH_VALUE', 'FRAGILE']);
+    expect(form.opening_debt).toBe('2.750.000');
 
     const cleared = formToPayload({
       ...emptyCustomerForm(),

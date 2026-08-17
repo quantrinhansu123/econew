@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsEmail, IsNotEmpty, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class CreateCustomerDto {
   @ApiPropertyOptional({ default: 'KHACH_HANG' })
@@ -65,5 +65,11 @@ export class CreateCustomerDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(32) phone_dng?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(128) destination_province?: string;
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) discount_percent?: number;
+  @ApiPropertyOptional({ default: 0, description: 'Công nợ khách hàng chuyển tiếp từ kỳ cũ' })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  opening_debt?: number;
   @ApiPropertyOptional({ default: 'ACTIVE' }) @IsOptional() @IsString() @MaxLength(32) status?: string;
 }

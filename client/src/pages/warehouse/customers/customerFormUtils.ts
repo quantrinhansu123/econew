@@ -3,6 +3,7 @@ import type { CustomerListItem } from './types';
 import { normalizeWaybillSpecialGoods, serializeWaybillSpecialGoods } from '../../../lib/waybillSpecialGoods';
 import { canonicalProvinceLabel } from '../../../lib/vietnamProvince';
 import { normalizeDeliveryMethod } from '../orders/orderFormData';
+import { formatAmountInputFromNumber, parseAmountInput } from '../../../lib/formatMoney';
 
 const str = (v: string | null | undefined) => v ?? '';
 
@@ -33,6 +34,7 @@ export function customerToForm(source: CustomerListItem | CustomerRecord): Custo
     default_payment_method: str(source.default_payment_method),
     default_special_goods: normalizeWaybillSpecialGoods(source.default_special_goods),
     discount_percent: String(source.discount_percent ?? 0),
+    opening_debt: formatAmountInputFromNumber(source.opening_debt),
     delivery_handler: str(source.delivery_handler),
     status: source.is_suspended || source.status === 'SUSPENDED' ? 'SUSPENDED' : source.status || 'ACTIVE',
     mobile: str(source.mobile),
@@ -81,6 +83,7 @@ export function formToPayload(form: CustomerFormState, isEdit: boolean) {
     default_payment_method: optionalDefault(form.default_payment_method),
     default_special_goods: optionalDefault(serializeWaybillSpecialGoods(form.default_special_goods)),
     discount_percent: Number(form.discount_percent) || 0,
+    opening_debt: parseAmountInput(form.opening_debt),
     delivery_handler: optional(form.delivery_handler),
     status: form.status,
     is_suspended: form.status === 'SUSPENDED',
