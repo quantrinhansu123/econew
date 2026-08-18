@@ -1,19 +1,28 @@
 import 'reflect-metadata';
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
+import { AttendanceLocationEntity } from './attendance/attendance-location.entity';
+import { AttendanceLogEntity } from './attendance/attendance-log.entity';
 import { CarrierDirectoryEntity } from './carrier-directory/carrier-directory.entity';
 import { CashJournalEntryEntity } from './cash-journal-entries/cash-journal-entry.entity';
 import { CashTransactionDetailEntity } from './cash-transaction-details/cash-transaction-detail.entity';
 import { ChanhShipmentEntity } from './chanh-shipments/chanh-shipment.entity';
 import { CustomerDirectoryEntity } from './customer-directory/customer-directory.entity';
+import { CustomerListViewEntity } from './customers/customer-list.view.entity';
+import { CustomerEntity } from './customers/customer.entity';
+import { DashboardKpiEntity } from './dashboard/dashboard-kpi.entity';
 import { getDatabaseUrl } from './database-url';
 import { ExpenseEntity } from './expenses/expense.entity';
+import { CashFundEntity } from './finance/cash-fund.entity';
+import { FinanceReconciliationEntity } from './finance/reconciliation.entity';
+import { FundBalanceEntity } from './fund-balances/fund-balance.entity';
 import { HubEntity } from './hubs/hub.entity';
 import { ManifestEntity } from './manifests/manifest.entity';
 import { ManifestWaybillEntity } from './manifests/manifest-waybill.entity';
 import { NorthSouthShipmentEntity } from './north-south-shipments/north-south-shipment.entity';
 import { OrderEntity } from './orders/order.entity';
 import { ReconciliationEntity } from './reconciliations/reconciliation.entity';
+import { DeliveryRouteEntity } from './routes/route.entity';
 import { StaffMemberEntity } from './staff-members/staff-member.entity';
 import { TripEntity } from './trips/trip.entity';
 import { TruckEntity } from './trucks/truck.entity';
@@ -24,11 +33,11 @@ import { VendorPaymentEntity } from './vendors/vendor-payment.entity';
 import { VendorEntity } from './vendors/vendor.entity';
 import { VehicleCostEntity } from './vehicle-costs/vehicle-cost.entity';
 import { VehicleDirectoryEntity } from './vehicle-directory/vehicle-directory.entity';
-import { WaybillEntity } from './waybills/waybill.entity';
-import { WaybillChangeLogEntity } from './waybills/waybill-change-log.entity';
 import { WarehouseEntity } from './warehouses/warehouse.entity';
-import { AttendanceLocationEntity } from './attendance/attendance-location.entity';
-import { AttendanceLogEntity } from './attendance/attendance-log.entity';
+import { WaybillCashVoucherEntity } from './waybills/waybill-cash-voucher.entity';
+import { WaybillChangeLogEntity } from './waybills/waybill-change-log.entity';
+import { WaybillSplitEntity } from './waybills/waybill-split.entity';
+import { WaybillEntity } from './waybills/waybill.entity';
 
 const getPositiveInteger = (value: string | undefined, fallback: number) => {
   const parsed = Number(value);
@@ -45,33 +54,42 @@ export default new DataSource({
     idleTimeoutMillis: getPositiveInteger(process.env.DB_IDLE_TIMEOUT_MS, 10_000),
   },
   entities: [
-    HubEntity,
-    UserEntity,
-    UserHubEntity,
-    WaybillEntity,
-    WaybillChangeLogEntity,
-    ManifestEntity,
-    ManifestWaybillEntity,
-    TruckEntity,
-    TripEntity,
-    ExpenseEntity,
-    ReconciliationEntity,
-    VehicleDirectoryEntity,
-    VehicleCostEntity,
-    CashTransactionDetailEntity,
-    NorthSouthShipmentEntity,
-    OrderEntity,
-    StaffMemberEntity,
-    CarrierDirectoryEntity,
-    ChanhShipmentEntity,
-    CustomerDirectoryEntity,
-    CashJournalEntryEntity,
-    WarehouseEntity,
-    VendorEntity,
-    VendorDebtEntryEntity,
-    VendorPaymentEntity,
     AttendanceLocationEntity,
     AttendanceLogEntity,
+    CarrierDirectoryEntity,
+    CashFundEntity,
+    CashJournalEntryEntity,
+    CashTransactionDetailEntity,
+    ChanhShipmentEntity,
+    CustomerDirectoryEntity,
+    CustomerEntity,
+    CustomerListViewEntity,
+    DashboardKpiEntity,
+    DeliveryRouteEntity,
+    ExpenseEntity,
+    FinanceReconciliationEntity,
+    FundBalanceEntity,
+    HubEntity,
+    ManifestEntity,
+    ManifestWaybillEntity,
+    NorthSouthShipmentEntity,
+    OrderEntity,
+    ReconciliationEntity,
+    StaffMemberEntity,
+    TripEntity,
+    TruckEntity,
+    UserEntity,
+    UserHubEntity,
+    VehicleCostEntity,
+    VehicleDirectoryEntity,
+    VendorDebtEntryEntity,
+    VendorEntity,
+    VendorPaymentEntity,
+    WarehouseEntity,
+    WaybillCashVoucherEntity,
+    WaybillChangeLogEntity,
+    WaybillEntity,
+    WaybillSplitEntity,
   ],
   migrations: [__filename.endsWith('.js') ? 'dist/migrations/*.js' : 'src/migrations/*.ts'],
   synchronize: false,

@@ -4,6 +4,7 @@ import { AlertCircle, Eye, Loader2, Pencil, Plus, RefreshCw, Search, Trash2, X }
 import { ApiError, apiRequest } from '../../lib/api';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { fetchVendorSelectOptions } from '../../lib/vendorOptions';
+import { formatMoney } from '../../lib/formatMoney';
 
 type FieldType = 'text' | 'number' | 'date' | 'time' | 'password' | 'vendor';
 
@@ -150,12 +151,11 @@ function fields(definitions: string[]): FieldConfig[] {
 }
 
 function formatField(value: unknown, field: FieldConfig) {
-  if (commonMoneyFields.has(field.key)) return formatMoney(value);
+  if (commonMoneyFields.has(field.key)) return formatMoney(value as number | string | null);
   return formatValue(value);
 }
 
 function formatValue(value: unknown) { return value === null || value === undefined || value === '' ? '—' : String(value); }
-function formatMoney(value: unknown) { const amount = Number(value ?? 0); return Number.isFinite(amount) ? amount.toLocaleString('vi-VN') : formatValue(value); }
 function State({ icon, title }: { icon: ReactNode; title: string }) { return <div className="flex min-h-[260px] flex-col items-center justify-center gap-2 text-muted-foreground">{icon}<p className="font-semibold">{title}</p></div>; }
 function IconButton({ title, children, danger, onClick }: { title: string; children: ReactNode; danger?: boolean; onClick: () => void }) { return <button title={title} onClick={onClick} className={`rounded-lg border p-2 transition-colors ${danger ? 'border-red-200 text-red-600 hover:bg-red-50' : 'border-border text-muted-foreground hover:bg-muted'}`}>{children}</button>; }
 function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) { return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-xl"><div className="sticky top-0 flex items-center justify-between border-b border-border bg-white px-5 py-4"><h2 className="text-lg font-bold">{title}</h2><button onClick={onClose} className="rounded-lg p-2 hover:bg-muted"><X size={18} /></button></div><div className="p-5">{children}</div></div></div>; }
