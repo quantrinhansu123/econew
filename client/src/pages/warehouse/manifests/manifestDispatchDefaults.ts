@@ -1,6 +1,7 @@
 import type { ManifestDispatchFields } from './types';
 import { resolveVietnamDistrict, resolveVietnamWard } from '../../../lib/vietnamAddressParts';
 import { resolveWaybillDisplayNote } from '../../../lib/waybillSpecialGoods';
+import { resolveDeliveryProcessingText } from '../../delivery/last-mile/deliveryProcessingStatus';
 
 export type DispatchLink = {
   waybill_id?: string | number | null;
@@ -25,6 +26,20 @@ export type DispatchLink = {
     weight?: number | string | null;
     the_tich_m3?: number | string | null;
     volumetric_weight?: number | string | null;
+    current_state?: string | null;
+    status?: string | null;
+    delivery_preparation_status?: string | null;
+    delivery_scheduled_at?: string | Date | null;
+    delivery_hold_reason?: string | null;
+    delivery_preparation_note?: string | null;
+    delivery_assignment_type?: 'INTERNAL' | 'PARTNER' | 'TECHNOLOGY' | 'CUSTOMER_PICKUP' | null;
+    route_code?: string | null;
+    last_mile_driver_name?: string | null;
+    last_mile_license_plate?: string | null;
+    last_delivery_failure_reason?: string | null;
+    delivery_time?: string | null;
+    delivered_at?: string | null;
+    returned_at?: string | null;
     dispatch_fields?: ManifestDispatchFields | null;
     dest_hub?: { id?: string | number | null; code?: string | null; name?: string | null; phone?: string | null; manager_phone?: string | null } | null;
     dest_hub_id?: string | number | null;
@@ -126,6 +141,29 @@ const parseNoteField = (note: string | null | undefined, key: string) => {
   return match?.[1]?.trim() || '';
 };
 
+export function resolveDispatchService(waybill: DispatchLink['waybill']) {
+  const service = parseNoteField(waybill?.note, 'dich_vu');
+  const normalized = service.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (!service || normalized.includes('tieu chuan')) return 'TC';
+  if (normalized.includes('nhanh 48')) return 'N48';
+  if (normalized.includes('cham 4-6')) return 'C4-6';
+  return service;
+}
+
+export function resolveDispatchDeliveryInstruction(waybill: DispatchLink['waybill']) {
+  const method = parseNoteField(waybill?.note, 'giao_hang');
+  if (/^(lay|nhan) tai (kho|van phong)/i.test(method.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))) {
+    return 'Nhận tại kho ECO';
+  }
+  return method || 'Tận nơi';
+}
+
+const formatDeliveryCompletionDate = (waybill: DispatchLink['waybill']) => {
+  const state = String(waybill?.current_state || waybill?.status || '').toUpperCase();
+  if (state !== 'DELIVERED' && state !== 'RETURNED') return '';
+  return formatDispatchShortDate(waybill?.delivery_time || waybill?.delivered_at || waybill?.returned_at);
+};
+
 export function resolveReceiverDistrict(waybill: DispatchLink['waybill']) {
   const address = parseReceiverAddress(waybill?.receiver_info, waybill?.receiver_address);
   return resolveVietnamDistrict(
@@ -152,17 +190,21 @@ export function resolveDispatchDefault(link: DispatchLink, key: DispatchFieldKey
     case 'ten_cty':
       return parseSenderName(waybill?.sender_info);
     case 'dv':
-      return 'TC';
+      return resolveDispatchService(waybill);
     case 'mat_hang':
       return resolveGoodsContent(waybill) || blank(waybill?.waybill_code);
     case 'noi_tra':
-      return '';
+      return resolveDispatchDeliveryInstruction(waybill);
     case 'so_luong':
       return blank(waybill?.package_count) || '1';
     case 'loai':
       return 'kiện';
     case 'dia_chi':
       return formatReceiverAddressWithPhone(link);
+    case 'trang_thai_giao':
+      return resolveDeliveryProcessingText(waybill ?? {});
+    case 'ngay_hoan_thanh':
+      return formatDeliveryCompletionDate(waybill);
     case 'ke_hoach':
       return resolveDestinationWarehouse(waybill);
     case 'ma_bill':
@@ -186,6 +228,9 @@ export function getDispatchCellValue(
   rowKey: string,
   key: DispatchFieldKey,
 ): string {
+  if (key === 'dv' || key === 'noi_tra' || key === 'trang_thai_giao' || key === 'ngay_hoan_thanh') {
+    return resolveDispatchDefault(link, key);
+  }
   const saved = rows[rowKey]?.[key];
   const value = saved == null || saved === '' ? resolveDispatchDefault(link, key) : String(saved);
   return key === 'ghi_chu_bill' ? resolveWaybillDisplayNote(value) : value;

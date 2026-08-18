@@ -436,6 +436,27 @@ export class ManifestsService {
     return parts.slice(2).join(' | ').trim() || parts[0] || '';
   }
 
+  private parseWaybillNoteField(note: string | null | undefined, key: string): string {
+    const match = String(note || '').match(new RegExp(`${key}=([^|]+)`, 'i'));
+    return match?.[1]?.trim() || '';
+  }
+
+  private dispatchServiceCode(note: string | null | undefined): string {
+    const service = this.parseWaybillNoteField(note, 'dich_vu');
+    const normalized = service.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (!service || normalized.includes('tieu chuan')) return 'TC';
+    if (normalized.includes('nhanh 48')) return 'N48';
+    if (normalized.includes('cham 4-6')) return 'C4-6';
+    return service;
+  }
+
+  private dispatchDeliveryInstruction(note: string | null | undefined): string {
+    const method = this.parseWaybillNoteField(note, 'giao_hang');
+    const normalized = method.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (/^(lay|nhan) tai (kho|van phong)/.test(normalized)) return 'Nhận tại kho ECO';
+    return method || 'Tận nơi';
+  }
+
   private buildInitialDispatchFields(waybill: WaybillRecord, packageCount: number) {
     const address = waybill.receiver_address?.trim() || this.parseContactAddress(waybill.receiver_info);
     const phone = waybill.receiver_phone?.trim() || this.parseContactPhone(waybill.receiver_info);
@@ -443,9 +464,9 @@ export class ManifestsService {
     return this.sanitizeDispatchFields({
       ma_tinh: waybill.dest_hub?.code || waybill.dest_hub?.name || waybill.noi_den,
       ten_cty: this.parseContactName(waybill.sender_info),
-      dv: 'TC',
+      dv: this.dispatchServiceCode(waybill.note),
       mat_hang: waybill.noi_dung || '',
-      noi_tra: '',
+      noi_tra: this.dispatchDeliveryInstruction(waybill.note),
       so_luong: String(packageCount),
       loai: 'kiện',
       dia_chi: diaChi,
