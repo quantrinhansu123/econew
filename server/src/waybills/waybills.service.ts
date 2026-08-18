@@ -2311,6 +2311,9 @@ export class WaybillsService {
       note: waybill.note,
       split_note: split.note?.trim() || null,
       load_status: split.load_status ?? WaybillSplitLoadStatus.WAITING_LOAD,
+      current_state: waybill.current_state,
+      delivered_at: waybill.delivered_at,
+      delivery_time: waybill.delivery_time,
     };
   }
 

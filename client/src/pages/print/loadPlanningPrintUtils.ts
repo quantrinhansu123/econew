@@ -9,6 +9,7 @@ import type { DispatchPrintRow, DispatchPrintTotals } from './dispatchPrintForma
 import { formatDispatchMoney } from './dispatchPrintFormat';
 import { resolveVietnamDistrict, resolveVietnamWard } from '../../lib/vietnamAddressParts';
 import { resolveWaybillDisplayNote } from '../../lib/waybillSpecialGoods';
+import { formatDispatchShortDate } from '../warehouse/manifests/manifestDispatchDefaults';
 
 export const LOAD_PLANNING_PRINT_STORAGE_KEY = 'eco_load_planning_print_v2';
 
@@ -37,7 +38,10 @@ export interface LoadPlanningPrintPayload {
 
 const fmt = (value?: string | number | null) => (value == null || value === '' ? '' : String(value));
 
-const DISPATCH_COMPLETION_DAYS = 3;
+const resolveCompletionDate = (item: LoadPlanningBoardItem) =>
+  String(item.current_state || '').toUpperCase() === 'DELIVERED'
+    ? formatDispatchShortDate(item.delivered_at || item.delivery_time)
+    : '';
 
 type HubLike = {
   id?: string | number | null;
@@ -107,40 +111,6 @@ function destinationInstruction(destination: ResolvedHub) {
   return `Kho ${destination.label === 'Chưa xác định' ? 'HUB đến' : destination.label}`;
 }
 
-function normalizeNgayBoc(value: string) {
-  const raw = value.trim();
-  if (!raw) return '';
-  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[3]}/${iso[2]}`;
-  return raw;
-}
-
-function parseDispatchDayMonth(value: string) {
-  const match = value.trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
-  if (!match) return null;
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  let year = match[3] ? Number(match[3]) : new Date().getFullYear();
-  if (year < 100) year += 2000;
-  if (!day || month < 1 || month > 12) return null;
-  const date = new Date(year, month - 1, day);
-  if (Number.isNaN(date.getTime()) || date.getDate() !== day || date.getMonth() !== month - 1) return null;
-  return date;
-}
-
-function formatDispatchDayMonth(date: Date) {
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  return `${day}/${month}`;
-}
-
-function addDaysToDispatchDate(ngayBoc: string, days: number) {
-  const date = parseDispatchDayMonth(ngayBoc);
-  if (!date) return '';
-  date.setDate(date.getDate() + days);
-  return formatDispatchDayMonth(date);
-}
-
 const isCarrierGoodsNote = (note: string, item: LoadPlanningBoardItem) => {
   const normalized = note.trim().toLowerCase();
   if (/^xe\s/.test(normalized)) return true;
@@ -196,7 +166,7 @@ function mapItemToDispatchRow(item: LoadPlanningBoardItem, showPricing: boolean)
     nguoiNhanDiaChi: fmt(item.dia_chi),
     diaChiNhan: fmt(item.dia_chi),
     tinhTrangGiaoHang: splitLoadStatusLabel(item.load_status),
-    ngayHoanThanh: addDaysToDispatchDate(normalizeNgayBoc(fmt(item.ngay_boc)), DISPATCH_COMPLETION_DAYS),
+    ngayHoanThanh: resolveCompletionDate(item),
     keHoach: destinationInstruction(route.destination),
     tangHaThuKhach: formatDispatchMoney(cod),
     cuoc: showPricing ? formatDispatchMoney(freight) : '',
@@ -351,7 +321,9 @@ export function mapStackOntoTruckToPrintPayload(
         nguoiNhanDiaChi: String(waybill?.receiver_address || '').trim(),
         diaChiNhan: String(waybill?.receiver_address || '').trim(),
         tinhTrangGiaoHang: '',
-        ngayHoanThanh: addDaysToDispatchDate(normalizeNgayBoc(ngayBoc), DISPATCH_COMPLETION_DAYS),
+        ngayHoanThanh: waybill && String(waybill.current_state || waybill.status || '').toUpperCase() === 'DELIVERED'
+          ? formatDispatchShortDate(waybill.delivered_at || waybill.delivery_time)
+          : '',
         keHoach: row.delivery_instruction || destinationInstruction(route.destination),
         tangHaThuKhach: formatDispatchMoney(allocateByPackages(codTotal, pkg, totalPkg)),
         cuoc: showPricing ? formatDispatchMoney(allocateByPackages(freightTotal, pkg, totalPkg)) : '',

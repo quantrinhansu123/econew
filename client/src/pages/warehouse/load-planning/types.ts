@@ -126,6 +126,9 @@ export interface LoadPlanningBoardItem {
   note?: string | null;
   split_note?: string | null;
   load_status?: string | null;
+  current_state?: string | null;
+  delivered_at?: string | null;
+  delivery_time?: string | null;
 }
 
 export interface LoadPlanningTruckGroup {

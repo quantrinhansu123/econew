@@ -6,7 +6,9 @@ import {
   ALL_ORDERS_FINANCIAL_COLUMN_IDS,
   ALL_ORDERS_PREFIX_COLUMN_IDS,
   ALL_ORDERS_SENDER_COLUMN_IDS,
+  ALL_ORDERS_STICKY_COLUMN_IDS,
   ALL_ORDERS_SUFFIX_COLUMN_IDS,
+  getAllOrdersStickyLeft,
   type InventoryColumnId,
   type InventoryColumnView,
 } from './inventoryColumns';
@@ -184,7 +186,11 @@ export default function AllOrdersTableHeader({
           <th
             key={col.id}
             rowSpan={2}
-            className="border-b border-r border-border bg-slate-100 px-1.5 py-2.5 font-bold text-slate-600 whitespace-nowrap text-center"
+            style={col.id === 'stt' ? { left: 0 } : undefined}
+            className={clsx(
+              'border-b border-r border-border bg-slate-100 px-1.5 py-2.5 font-bold text-slate-600 whitespace-nowrap text-center',
+              col.id === 'stt' && 'sticky z-30',
+            )}
           >
             <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} />
           </th>
@@ -222,7 +228,12 @@ export default function AllOrdersTableHeader({
         {senderColumns.map((col) => (
           <th
             key={col.id}
-            className="overflow-hidden border-b border-r border-border px-1.5 py-2.5 font-bold whitespace-nowrap"
+            style={ALL_ORDERS_STICKY_COLUMN_IDS.includes(col.id) ? { left: getAllOrdersStickyLeft(col.id) } : undefined}
+            className={clsx(
+              'overflow-hidden border-b border-r border-border px-1.5 py-2.5 font-bold whitespace-nowrap',
+              ALL_ORDERS_STICKY_COLUMN_IDS.includes(col.id) && 'sticky z-30 bg-slate-100',
+              col.id === ALL_ORDERS_STICKY_COLUMN_IDS.at(-1) && 'shadow-[5px_0_8px_rgba(15,23,42,0.10)]',
+            )}
           >
             <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} />
           </th>

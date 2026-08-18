@@ -29,6 +29,7 @@ import {
 import { downloadInventoryExcel } from './warehouse/inventory/inventoryExcelUtils';
 import {
   ALL_ORDERS_COLUMN_WIDTHS,
+  ALL_ORDERS_STICKY_COLUMN_IDS,
   canCollectCashPayment,
   computeGrandTotals,
   formatInventoryDate,
@@ -38,6 +39,7 @@ import {
   normalizeAllOrdersVisibleColumnIds,
   normalizeInventoryVisibleColumnIds,
   resolveVisibleColumnViews,
+  getAllOrdersStickyLeft,
   resolveCongSg,
   resolvePackageCountSl,
   resolveFreight,
@@ -1202,11 +1204,26 @@ function InventoryRow({
   const isPartialLine = displayedPackages > 0 && orderPackages > 0 && displayedPackages < orderPackages;
 
   const renderCell = (colId: InventoryColumnId) => {
+    const stickyAllOrdersCellProps = isAllOrders && ALL_ORDERS_STICKY_COLUMN_IDS.includes(colId)
+      ? {
+          style: { left: getAllOrdersStickyLeft(colId) },
+          className: clsx(
+            cellClass,
+            'sticky z-[5]',
+            getStorageAgeRowClass(waybill).includes('red')
+              ? 'bg-red-50 group-hover:bg-red-100'
+              : getStorageAgeRowClass(waybill).includes('amber')
+                ? 'bg-amber-50 group-hover:bg-amber-100'
+                : 'bg-white group-hover:bg-sky-50',
+            colId === ALL_ORDERS_STICKY_COLUMN_IDS.at(-1) && 'shadow-[5px_0_8px_rgba(15,23,42,0.10)]',
+          ),
+        }
+      : { className: cellClass };
     switch (colId) {
       case 'stt':
-        return <td className={`${cellClass} text-center font-bold text-muted-foreground`}>{rowIndex ?? '—'}</td>;
+        return <td style={isAllOrders ? { left: 0 } : undefined} className={clsx(cellClass, 'text-center font-bold text-muted-foreground', isAllOrders && 'sticky z-[5]', isAllOrders && (getStorageAgeRowClass(waybill).includes('red') ? 'bg-red-50 group-hover:bg-red-100' : getStorageAgeRowClass(waybill).includes('amber') ? 'bg-amber-50 group-hover:bg-amber-100' : 'bg-white group-hover:bg-sky-50'))}>{rowIndex ?? '—'}</td>;
       case 'cong_sg':
-        return <td className={cellClass}>{resolveCongSg(waybill)}</td>;
+        return <td {...stickyAllOrdersCellProps}>{resolveCongSg(waybill)}</td>;
       case 'stack_position':
         return (
           <td className={`${cellClass} min-w-[72px] text-muted-foreground`}>
@@ -1217,17 +1234,19 @@ function InventoryRow({
         return <td className={`${cellClass} font-bold text-violet-800`}>{waybill.order_code || '—'}</td>;
       case 'waybill_code':
         return (
-          <td className={`${cellClass} ${isAllOrders ? 'font-bold' : 'font-extrabold text-primary'}`}>
+          <td {...stickyAllOrdersCellProps} className={clsx(stickyAllOrdersCellProps.className, isAllOrders ? 'font-bold' : 'font-extrabold text-primary')}>
             {displayCode(waybill)}
           </td>
         );
       case 'customer_name':
         return (
           <td
+            style={stickyAllOrdersCellProps.style}
             className={clsx(
               'border-r border-border font-semibold',
+              stickyAllOrdersCellProps.className,
               isAllOrders
-                ? 'truncate whitespace-nowrap px-2 py-2 text-[12px]'
+                ? 'truncate whitespace-nowrap'
                 : clsx(cellClass),
             )}
             title={resolveCustomerName(waybill)}
@@ -1320,7 +1339,7 @@ function InventoryRow({
         );
       case 'received_at':
         return (
-          <td className={`${cellClass} text-muted-foreground`}>
+          <td {...stickyAllOrdersCellProps} className={clsx(stickyAllOrdersCellProps.className, 'text-muted-foreground')}>
             {formatDate(isAllOrders ? waybill.sent_date : (waybill.received_at || waybill.created_at))}
           </td>
         );
@@ -1428,7 +1447,7 @@ function InventoryRow({
         );
       case 'ma_kh':
         return (
-          <td className={cellClass} onClick={(event) => event.stopPropagation()}>
+          <td {...stickyAllOrdersCellProps} onClick={(event) => event.stopPropagation()}>
             {isAllOrders && resolveMaKh(waybill) !== '—' ? (
               <button
                 type="button"

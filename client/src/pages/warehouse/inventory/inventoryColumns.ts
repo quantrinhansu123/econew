@@ -396,6 +396,23 @@ export const ALL_ORDERS_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>
   actions: 112,
 };
 
+/** Năm cột nghiệp vụ luôn hiển thị khi cuộn ngang danh sách đơn. */
+export const ALL_ORDERS_STICKY_COLUMN_IDS: InventoryColumnId[] = [
+  'received_at',
+  'customer_name',
+  'ma_kh',
+  'waybill_code',
+  'cong_sg',
+];
+
+export function getAllOrdersStickyLeft(columnId: InventoryColumnId): number | undefined {
+  const index = ALL_ORDERS_STICKY_COLUMN_IDS.indexOf(columnId);
+  if (index < 0) return undefined;
+  return ALL_ORDERS_STICKY_COLUMN_IDS
+    .slice(0, index)
+    .reduce((left, id) => left + (ALL_ORDERS_COLUMN_WIDTHS[id] || 120), ALL_ORDERS_COLUMN_WIDTHS.stt || 0);
+}
+
 export const ALL_ORDERS_SELECTABLE_COLUMN_IDS: InventoryColumnId[] = [
   ...ALL_ORDERS_SENDER_COLUMN_IDS,
   ...ALL_ORDERS_FINANCIAL_COLUMN_IDS,

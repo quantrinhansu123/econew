@@ -76,7 +76,7 @@ function mapLinkToRow(link: ManifestLink, index: number, showPricing: boolean): 
     nguoiNhanDiaChi: receiverAddress,
     diaChiNhan: receiverAddress,
     tinhTrangGiaoHang: dispatchValue(fields, 'trang_thai_giao'),
-    ngayHoanThanh: dispatchValue(fields, 'ngay_hoan_thanh'),
+    ngayHoanThanh: resolveDispatchDefault(link, 'ngay_hoan_thanh'),
     keHoach: dispatchValue(fields, 'ke_hoach'),
     tangHaThuKhach: formatDispatchMoney(cod),
     cuoc: showPricing ? formatDispatchMoney(freight) : '',

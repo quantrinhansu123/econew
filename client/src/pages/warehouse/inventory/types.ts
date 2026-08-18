@@ -128,6 +128,8 @@ export interface WaybillInventoryItem {
   customer_payment_status?: CustomerPaymentStatus;
   customer_payment_note?: string | null;
   delivery_photo_url?: string | null;
+  delivered_at?: string | null;
+  delivery_time?: string | null;
   delivery_assignment_type?: 'INTERNAL' | 'PARTNER' | 'TECHNOLOGY' | 'CUSTOMER_PICKUP' | null;
   last_mile_driver_id?: string | number | null;
   last_mile_vendor_id?: string | number | null;

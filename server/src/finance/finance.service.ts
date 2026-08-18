@@ -196,6 +196,7 @@ export class FinanceService {
       .addSelect('origin_hub.code', 'origin_hub_code')
       .addSelect('dest_hub.code', 'dest_hub_code')
       .addSelect('waybill.current_state', 'current_state')
+      .addSelect('waybill.payment_type', 'payment_type')
       .addSelect('COALESCE(waybill.sent_date, waybill.created_at::date)', 'sent_date')
       .addSelect('COALESCE(waybill.delivered_at, waybill.delivery_time)', 'delivered_at')
       .addSelect('waybill.freight_amount', 'freight_amount')

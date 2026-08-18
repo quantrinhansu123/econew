@@ -160,8 +160,8 @@ export function resolveDispatchDeliveryInstruction(waybill: DispatchLink['waybil
 
 const formatDeliveryCompletionDate = (waybill: DispatchLink['waybill']) => {
   const state = String(waybill?.current_state || waybill?.status || '').toUpperCase();
-  if (state !== 'DELIVERED' && state !== 'RETURNED') return '';
-  return formatDispatchShortDate(waybill?.delivery_time || waybill?.delivered_at || waybill?.returned_at);
+  if (state !== 'DELIVERED') return '';
+  return formatDispatchShortDate(waybill?.delivered_at || waybill?.delivery_time);
 };
 
 export function resolveReceiverDistrict(waybill: DispatchLink['waybill']) {
