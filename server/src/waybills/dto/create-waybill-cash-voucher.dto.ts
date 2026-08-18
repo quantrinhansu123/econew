@@ -9,6 +9,12 @@ export class CreateWaybillCashVoucherDto {
   @IsIn(['Thu', 'Chi'])
   voucher_type: 'Thu' | 'Chi';
 
+  @ApiPropertyOptional({ enum: ['MANUAL', 'CUSTOMER_PAYOUT'] })
+  @IsOptional()
+  @IsString()
+  @IsIn(['MANUAL', 'CUSTOMER_PAYOUT'])
+  source_type?: 'MANUAL' | 'CUSTOMER_PAYOUT';
+
   @ApiProperty()
   @Type(() => Number)
   @IsNumber()

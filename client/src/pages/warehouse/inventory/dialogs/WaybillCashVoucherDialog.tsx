@@ -22,6 +22,8 @@ export interface WaybillCashVoucher {
   waybill_code?: string | null;
   voucher_type?: string | null;
   amount?: number | string | null;
+  source_type?: 'MANUAL' | 'COD_COLLECTION' | 'CUSTOMER_PAYOUT' | string | null;
+  fund_id?: string | number | null;
   note?: string | null;
   image_url?: string | null;
   created_by_name?: string | null;

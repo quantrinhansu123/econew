@@ -9,22 +9,27 @@ import { UserEntity } from '../users/user.entity';
 import { WaybillEntity } from '../waybills/waybill.entity';
 import { FinanceService } from './finance.service';
 import { FinanceReconciliationEntity } from './reconciliation.entity';
+import { CashFundEntity } from './cash-fund.entity';
 
 const createQueryBuilder = (options: { one?: unknown; many?: unknown[]; count?: number; rawMany?: unknown[] } = {}) => {
   const qb: any = {
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
+    leftJoin: jest.fn().mockReturnThis(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
     groupBy: jest.fn().mockReturnThis(),
     addGroupBy: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
     offset: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     getOne: jest.fn().mockResolvedValue(options.one ?? null),
+    getMany: jest.fn().mockResolvedValue(options.many ?? []),
+    getCount: jest.fn().mockResolvedValue(options.count ?? (options.many ?? []).length),
     getManyAndCount: jest.fn().mockResolvedValue([options.many ?? [], options.count ?? (options.many ?? []).length]),
     getRawMany: jest.fn().mockResolvedValue(options.rawMany ?? []),
   };
@@ -74,12 +79,14 @@ describe('FinanceService', () => {
   let hubsRepository: ReturnType<typeof createRepository>;
   let tripsRepository: ReturnType<typeof createRepository>;
   let waybillsRepository: ReturnType<typeof createRepository>;
+  let cashFundsRepository: ReturnType<typeof createRepository>;
 
   beforeEach(async () => {
     reconciliationsRepository = createRepository();
     hubsRepository = createRepository();
     tripsRepository = createRepository();
     waybillsRepository = createRepository();
+    cashFundsRepository = createRepository();
     hubsRepository.findOne.mockResolvedValue(hub);
     reconciliationsRepository.findOne.mockResolvedValue(null);
 
@@ -90,6 +97,7 @@ describe('FinanceService', () => {
         { provide: getRepositoryToken(HubEntity), useValue: hubsRepository },
         { provide: getRepositoryToken(TripEntity), useValue: tripsRepository },
         { provide: getRepositoryToken(WaybillEntity), useValue: waybillsRepository },
+        { provide: getRepositoryToken(CashFundEntity), useValue: cashFundsRepository },
       ],
     }).compile();
 
@@ -177,6 +185,43 @@ describe('FinanceService', () => {
     reconciliationsRepository.createQueryBuilder.mockReturnValue(qb);
     const result = await service.getHubReconciliation({}, accountant);
     expect(result.items[0]).toMatchObject({ cod_cash_held: 100, cc_cash_held: 50, total_remitted: 40, remaining_amount: 110 });
+  });
+
+  it('lists every bill with COD or receiver-paid freight and exposes trip and manifest data', async () => {
+    const qb = createQueryBuilder({
+      count: 1,
+      rawMany: [{
+        id: '76',
+        waybill_code: 'ECOHAN109076',
+        cod_amount: '500000',
+        cc_amount: '120000',
+        freight_amount: '120000',
+        collect_amount: '620000',
+        cod_collected_amount: '0',
+        trip_id: '78',
+        manifest_code: 'BK-260814-8838',
+        cod_reconciled_at: null,
+      }],
+    });
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    const result = await service.getHubCodWaybills({ collection_status: 'PENDING' }, accountant);
+
+    expect(qb.andWhere.mock.calls.some(([condition]: [unknown]) => (
+      typeof condition === 'string'
+      && condition.includes("waybill.payment_type = 'CC'")
+      && condition.includes('waybill.cod_amount')
+    ))).toBe(true);
+    expect(qb.andWhere).toHaveBeenCalledWith('waybill.cod_reconciled_at IS NULL');
+    expect(result.items[0]).toMatchObject({
+      waybill_code: 'ECOHAN109076',
+      trip_id: '78',
+      manifest_code: 'BK-260814-8838',
+      cod_amount: 500000,
+      cc_amount: 120000,
+      collect_amount: 620000,
+      cod_collection_status: 'PENDING',
+    });
   });
 
   it('approveInternalTripCost blocks missing trip', async () => {

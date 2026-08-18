@@ -46,15 +46,26 @@ export function filterCashVouchers(vouchers: WaybillCashVoucher[], filters: Cash
 export function computeVoucherMeta(vouchers: WaybillCashVoucher[]): CashVoucherMeta {
   let totalThu = 0;
   let totalChi = 0;
+  let codOffset = 0;
+  let customerPayout = 0;
   for (const voucher of vouchers) {
     const amount = Number(voucher.amount) || 0;
-    if (String(voucher.voucher_type).toLowerCase() === 'thu') totalThu += amount;
-    else if (String(voucher.voucher_type).toLowerCase() === 'chi') totalChi += amount;
+    if (String(voucher.voucher_type).toLowerCase() === 'thu') {
+      totalThu += amount;
+      if (voucher.source_type === 'COD_COLLECTION') codOffset += amount;
+    }
+    else if (String(voucher.voucher_type).toLowerCase() === 'chi') {
+      totalChi += amount;
+      if (voucher.source_type === 'CUSTOMER_PAYOUT') customerPayout += amount;
+    }
   }
   return {
     total: vouchers.length,
     total_thu: totalThu,
     total_chi: totalChi,
+    manual_thu: totalThu - codOffset,
+    cod_offset: codOffset,
+    customer_payout: customerPayout,
     net: totalThu - totalChi,
   };
 }

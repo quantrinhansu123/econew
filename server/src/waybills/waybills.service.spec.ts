@@ -13,6 +13,7 @@ import { WaybillEntity } from './waybill.entity';
 import { WaybillCashVoucherEntity } from './waybill-cash-voucher.entity';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
 import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
+import { CashFundEntity } from '../finance/cash-fund.entity';
 
 const manager = { id: 'u1', role_mask: Roles.MANAGER, hub_id: '1' } as any;
 const warehouse = { id: 'u2', role_mask: Roles.WAREHOUSE, hub_id: '1' } as any;
@@ -90,6 +91,7 @@ describe('WaybillsService', () => {
   let manifestsRepository: any;
   let manifestWaybillsRepository: any;
   let cashVouchersRepository: any;
+  let cashFundsRepository: any;
   let transactionOrderRepository: any;
   let dataSource: any;
   let ordersService: any;
@@ -160,6 +162,10 @@ describe('WaybillsService', () => {
       save: jest.fn(async (value) => value),
       create: jest.fn((value) => value),
       createQueryBuilder: jest.fn(createQueryBuilder),
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
+    cashFundsRepository = {
+      findOne: jest.fn(),
     };
     transactionOrderRepository = {
       update: jest.fn().mockResolvedValue(undefined),
@@ -171,6 +177,7 @@ describe('WaybillsService', () => {
       [ManifestWaybillEntity, manifestWaybillsRepository],
       [WaybillSplitEntity, splitsRepository],
       [WaybillCashVoucherEntity, cashVouchersRepository],
+      [CashFundEntity, cashFundsRepository],
       [TripEntity, tripsRepository],
       [OrderEntity, transactionOrderRepository],
     ]);
@@ -1303,23 +1310,51 @@ describe('WaybillsService', () => {
     await expect(service.updateCodFee('1', { cod_amount: -1 }, accountant)).rejects.toThrow(BadRequestException);
   });
 
-  it('confirms a COD waybill for hub reconciliation', async () => {
-    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ payment_type: PaymentType.COD }));
+  it('confirms the total COD and receiver-paid freight into a cash fund', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ payment_type: PaymentType.COD, cod_amount: 500000, cc_amount: 120000 }));
+    cashFundsRepository.findOne.mockResolvedValue({ id: 'fund-1', code: 'QUY_HAN', name: 'Quỹ Hà Nội', is_active: true, hub_id: '1' });
+    cashVouchersRepository.findOne.mockResolvedValue(null);
 
-    const result = await service.updateCodReconciliation('1', { confirmed: true }, accountant);
+    const result = await service.updateCodReconciliation('1', { confirmed: true, fund_id: 'fund-1' }, accountant);
 
     expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
       cod_reconciled_at: expect.any(Date),
       cod_reconciled_by: accountant.id,
+      cod_fund_id: 'fund-1',
+      cod_collected_amount: '620000',
       updated_by: accountant.id,
+    }));
+    expect(cashVouchersRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      waybill_id: '1',
+      voucher_type: 'Thu',
+      source_type: 'COD_COLLECTION',
+      fund_id: 'fund-1',
+      amount: '620000',
     }));
     expect(result.cod_reconciled_at).toEqual(expect.any(Date));
   });
 
-  it('rejects hub COD reconciliation for a non-COD waybill', async () => {
+  it('rejects hub COD reconciliation when the bill has nothing to collect', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ payment_type: PaymentType.PP }));
 
-    await expect(service.updateCodReconciliation('1', { confirmed: true }, accountant)).rejects.toThrow(BadRequestException);
+    await expect(service.updateCodReconciliation('1', { confirmed: true, fund_id: 'fund-1' }, accountant)).rejects.toThrow(BadRequestException);
+  });
+
+  it('uses freight as the receiver-paid amount for legacy CC bills without cc_amount', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      payment_type: PaymentType.CC,
+      freight_amount: '350000',
+      cc_amount: 0,
+    }));
+    cashFundsRepository.findOne.mockResolvedValue({ id: 'fund-1', code: 'QUY_HAN', name: 'Quỹ Hà Nội', is_active: true, hub_id: '1' });
+    cashVouchersRepository.findOne.mockResolvedValue(null);
+
+    await service.updateCodReconciliation('1', { confirmed: true, fund_id: 'fund-1' }, accountant);
+
+    expect(cashVouchersRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      amount: '350000',
+      source_type: 'COD_COLLECTION',
+    }));
   });
 
   it('ACCOUNTANT can update COD after MANIFEST_CLOSED and WAREHOUSE cannot', async () => {
@@ -1710,6 +1745,36 @@ describe('WaybillsService', () => {
       waybill_code: 'ECOHAN109076',
       customer_payment_status: CustomerPaymentStatus.PAID,
     }));
+  });
+
+  it('creates a customer payout only up to the credit balance produced by COD offset', async () => {
+    const waybill = makeWaybill({
+      id: '76',
+      waybill_code: 'ECOHAN109076',
+      freight_amount: '400000',
+      customer_payment_status: CustomerPaymentStatus.PAID,
+    });
+    const voucherQb = createQueryBuilder();
+    voucherQb.getRawOne.mockResolvedValue({ net_paid: '1000000' });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+    cashVouchersRepository.createQueryBuilder.mockReturnValue(voucherQb);
+
+    await expect(service.createCashVoucher('76', {
+      waybill_code: 'ECOHAN109076',
+      voucher_type: 'Chi',
+      source_type: 'CUSTOMER_PAYOUT',
+      amount: 600000,
+    }, accountant)).resolves.toEqual(expect.objectContaining({
+      source_type: 'CUSTOMER_PAYOUT',
+      amount: '600000',
+    }));
+
+    await expect(service.createCashVoucher('76', {
+      waybill_code: 'ECOHAN109076',
+      voucher_type: 'Chi',
+      source_type: 'CUSTOMER_PAYOUT',
+      amount: 600001,
+    }, accountant)).rejects.toThrow(BadRequestException);
   });
 
   it('bulk payment creates one exact payment per selected bill and marks each bill paid', async () => {

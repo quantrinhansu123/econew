@@ -26,6 +26,7 @@ const EXPECTED_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
   'dest_hub',
   'package_count',
   'cod_amount',
+  'cod_collection_status',
   'waybill_code',
   'user_note',
   'weight',

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, DataSource, In, IsNull, Not, Repository, SelectQueryBuilder } from 'typeorm';
+import { Brackets, DataSource, EntityManager, In, IsNull, Not, Repository, SelectQueryBuilder } from 'typeorm';
+import { CashFundEntity } from '../finance/cash-fund.entity';
 import { HubEntity } from '../hubs/hub.entity';
 import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
@@ -610,6 +611,7 @@ export class WaybillsService {
   async update(id: string, dto: UpdateWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
     const auditBefore = this.buildAuditSnapshot(waybill);
+    const collectionAmountBefore = this.getCollectOnDeliveryAmount(waybill);
     const patch: UpdateWaybillDto = { ...dto };
     const nullableReceiverPatch = patch as unknown as Record<
       'receiver_name' | 'receiver_phone' | 'receiver_address',
@@ -689,7 +691,7 @@ export class WaybillsService {
         || waybill.noi_den;
     }
 
-    const saved = destChanged && requestedDestHubId
+    let saved = destChanged && requestedDestHubId
       ? await this.rerouteDestinationBeforeDeparture(
           id,
           requestedDestHubId,
@@ -698,6 +700,10 @@ export class WaybillsService {
           originChanged,
         )
       : await this.waybillsRepository.save(waybill);
+    const collectionAmountChanged = this.getCollectOnDeliveryAmount(saved as WaybillRecord) !== collectionAmountBefore;
+    if (collectionAmountChanged && saved.cod_reconciled_at) {
+      saved = await this.clearCodCollection(saved as WaybillRecord);
+    }
     if (patch.package_count !== undefined) {
       await this.synchronizeAllocatedPackageCount(String(saved.id), Math.max(1, Number(saved.package_count ?? 1)));
     }
@@ -856,29 +862,86 @@ export class WaybillsService {
   async updateCodFee(id: string, dto: UpdateCodFeeDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findMutable(id, currentUser);
     const auditBefore = this.buildAuditSnapshot(waybill);
+    const collectionAmountBefore = this.getCollectOnDeliveryAmount(waybill);
     if ([dto.cod_amount, dto.freight_amount, dto.cc_amount].some((value) => value !== undefined && value < 0)) throw new BadRequestException('COD and fee amounts cannot be negative');
     if (!MUTABLE_STATUSES.includes(this.getStatus(waybill)) && !this.hasAnyRole(currentUser, [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR])) throw new ForbiddenException('Insufficient role permissions to update locked fees');
     Object.assign(waybill, { ...dto, updated_by: currentUser.id });
-    const saved = await this.waybillsRepository.save(waybill);
+    let saved = await this.waybillsRepository.save(waybill);
+    const collectionAmountChanged = this.getCollectOnDeliveryAmount(saved as WaybillRecord) !== collectionAmountBefore;
+    if (collectionAmountChanged && saved.cod_reconciled_at) {
+      saved = await this.clearCodCollection(saved as WaybillRecord);
+    }
     await this.recordWaybillChange(String(saved.id), 'COD_FEE_UPDATED', currentUser, auditBefore, saved);
     return this.sanitize(saved, currentUser);
   }
 
   async updateCodReconciliation(id: string, dto: UpdateCodReconciliationDto, currentUser: UserEntity): Promise<WaybillRecord> {
-    const waybill = await this.waybillsRepository.findOne({
-      where: { id, deleted_at: IsNull() } as any,
-      relations: ['origin_hub', 'dest_hub', 'current_hub'],
-    }) as WaybillRecord | null;
-    if (!waybill) throw new NotFoundException('Waybill not found');
-    if (waybill.payment_type !== PaymentType.COD) {
-      throw new BadRequestException('Chỉ vận đơn COD mới được xác nhận đối soát tại bưu cục');
+    if (!this.hasAnyRole(currentUser, [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR])) {
+      throw new ForbiddenException('Insufficient role permissions to reconcile COD');
     }
 
-    waybill.cod_reconciled_at = dto.confirmed ? new Date() : null;
-    waybill.cod_reconciled_by = dto.confirmed ? currentUser.id : null;
-    waybill.updated_by = currentUser.id;
-    const saved = await this.waybillsRepository.save(waybill);
-    return this.sanitize(saved as WaybillRecord, currentUser) as WaybillRecord;
+    return this.dataSource.transaction(async (manager) => {
+      const waybillsRepository = manager.getRepository(WaybillEntity);
+      const cashVouchersRepository = manager.getRepository(WaybillCashVoucherEntity);
+      const cashFundsRepository = manager.getRepository(CashFundEntity);
+      const waybill = await waybillsRepository.findOne({
+        where: { id, deleted_at: IsNull() } as any,
+        relations: ['origin_hub', 'dest_hub', 'current_hub'],
+      }) as WaybillRecord | null;
+      if (!waybill) throw new NotFoundException('Waybill not found');
+      this.assertWaybillAccess(waybill, currentUser);
+
+      if (!dto.confirmed) {
+        await cashVouchersRepository.delete({ waybill_id: String(waybill.id), source_type: 'COD_COLLECTION' } as any);
+        waybill.cod_reconciled_at = null;
+        waybill.cod_reconciled_by = null;
+        waybill.cod_fund_id = null;
+        waybill.cod_collected_amount = '0';
+        waybill.updated_by = currentUser.id;
+        await this.applyCustomerPaymentStatus(manager, waybill);
+        return this.sanitize(await waybillsRepository.save(waybill) as WaybillRecord, currentUser) as WaybillRecord;
+      }
+
+      const collectAmount = this.getCollectOnDeliveryAmount(waybill);
+      if (collectAmount <= 0) {
+        throw new BadRequestException('Bill không còn số tiền phải thu khi phát');
+      }
+      const fundId = dto.fund_id?.trim();
+      if (!fundId) throw new BadRequestException('Vui lòng chọn sổ quỹ nhận tiền');
+      const fund = await cashFundsRepository.findOne({ where: { id: fundId, is_active: true }, relations: ['hub'] });
+      if (!fund) throw new NotFoundException('Sổ quỹ không tồn tại hoặc đã ngừng sử dụng');
+      if (!isManager(currentUser.role_mask) && fund.hub_id && String(fund.hub_id) !== String(currentUser.hub_id)) {
+        throw new ForbiddenException('Không được ghi nhận tiền vào sổ quỹ của bưu cục khác');
+      }
+
+      const existingVoucher = await cashVouchersRepository.findOne({
+        where: { waybill_id: String(waybill.id), source_type: 'COD_COLLECTION' } as any,
+      });
+      const voucher = existingVoucher ?? cashVouchersRepository.create({
+        waybill_id: String(waybill.id),
+        waybill_code: waybill.waybill_code,
+        voucher_type: 'Thu',
+        source_type: 'COD_COLLECTION',
+        image_url: null,
+        created_by_id: currentUser.id,
+        created_by_name: currentUser.full_name?.trim() || currentUser.username,
+      });
+      Object.assign(voucher, {
+        amount: String(collectAmount),
+        fund_id: String(fund.id),
+        note: `Phiếu thu tiền COD · ${fund.code} - ${fund.name}`,
+      });
+      await cashVouchersRepository.save(voucher);
+
+      waybill.cod_reconciled_at = new Date();
+      waybill.cod_reconciled_by = currentUser.id;
+      waybill.cod_fund_id = String(fund.id);
+      waybill.cod_collected_amount = String(collectAmount);
+      waybill.updated_by = currentUser.id;
+      await this.applyCustomerPaymentStatus(manager, waybill);
+      const saved = await waybillsRepository.save(waybill);
+      return this.sanitize({ ...saved, cod_fund: { id: fund.id, code: fund.code, name: fund.name } } as WaybillRecord, currentUser) as WaybillRecord;
+    });
   }
 
   async cancel(id: string, dto: CancelWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
@@ -886,7 +949,8 @@ export class WaybillsService {
     if (!MUTABLE_STATUSES.includes(this.getStatus(waybill))) throw new BadRequestException('Only RECEIVED or IN_WAREHOUSE waybills can be cancelled');
     this.setStatus(waybill, WaybillStatus.CANCELLED);
     Object.assign(waybill, { cancelled_at: new Date(), cancel_reason: dto.reason, updated_by: currentUser.id });
-    return this.saveWithAudit(waybill, currentUser, 'CANCEL');
+    const cleared = waybill.cod_reconciled_at ? await this.clearCodCollection(waybill) : waybill;
+    return this.saveWithAudit(cleared as WaybillRecord, currentUser, 'CANCEL');
   }
 
   async softDelete(id: string, currentUser: UserEntity): Promise<void> {
@@ -1264,6 +1328,19 @@ export class WaybillsService {
       const paidBefore = Number(paymentSummary?.net_paid) || 0;
       const totalDue = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
       const remainingBefore = Math.max(0, totalDue - paidBefore);
+      const customerCreditBefore = Math.max(0, paidBefore - totalDue);
+      if (dto.source_type === 'CUSTOMER_PAYOUT') {
+        if (dto.voucher_type !== 'Chi') {
+          throw new BadRequestException('Phiếu chi trả khách phải là loại Chi');
+        }
+        if (dto.amount > customerCreditBefore) {
+          throw new BadRequestException(
+            customerCreditBefore <= 0
+              ? `Bill ${waybill.waybill_code} không có tiền dư để chi trả khách`
+              : `Số tiền chi vượt quá số dư ${customerCreditBefore.toLocaleString('vi-VN')} đ của bill ${waybill.waybill_code}`,
+          );
+        }
+      }
       if (dto.voucher_type === 'Thu' && (totalDue <= 0 || dto.amount > remainingBefore)) {
         throw new BadRequestException(
           totalDue <= 0
@@ -1276,6 +1353,7 @@ export class WaybillsService {
         waybill_id: String(waybill.id),
         waybill_code: waybill.waybill_code,
         voucher_type: dto.voucher_type,
+        source_type: dto.source_type ?? 'MANUAL',
         amount: String(dto.amount),
         note: dto.note?.trim() || null,
         image_url: dto.image_url?.trim() || null,
@@ -3432,6 +3510,51 @@ export class WaybillsService {
     return PaymentType.PP;
   }
 
+  private getCollectOnDeliveryAmount(
+    waybill: Pick<WaybillEntity, 'cod_amount' | 'cc_amount' | 'payment_type' | 'freight_amount' | 'cost_amount'>,
+  ): number {
+    const cod = Number(waybill.cod_amount ?? 0) || 0;
+    const storedCc = Number(waybill.cc_amount ?? 0) || 0;
+    const cc = storedCc > 0
+      ? storedCc
+      : waybill.payment_type === PaymentType.CC
+        ? Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0
+        : 0;
+    return Math.max(0, cod + cc);
+  }
+
+  private async applyCustomerPaymentStatus(manager: EntityManager, waybill: WaybillRecord): Promise<void> {
+    const paymentSummary = await manager.getRepository(WaybillCashVoucherEntity).createQueryBuilder('voucher')
+      .select(
+        `COALESCE(SUM(CASE WHEN LOWER(voucher.voucher_type) = 'thu' THEN voucher.amount ELSE -voucher.amount END), 0)`,
+        'net_paid',
+      )
+      .where('voucher.waybill_id = :waybillId', { waybillId: String(waybill.id) })
+      .getRawOne<{ net_paid: string }>();
+    const totalDue = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
+    const netPaid = Number(paymentSummary?.net_paid ?? 0) || 0;
+    waybill.customer_payment_status = totalDue > 0 && netPaid >= totalDue
+      ? CustomerPaymentStatus.PAID
+      : waybill.customer_payment_status === CustomerPaymentStatus.PAID
+        ? null
+        : waybill.customer_payment_status ?? null;
+  }
+
+  private async clearCodCollection(waybill: WaybillRecord): Promise<WaybillRecord> {
+    return this.dataSource.transaction(async (manager) => {
+      await manager.getRepository(WaybillCashVoucherEntity).delete({
+        waybill_id: String(waybill.id),
+        source_type: 'COD_COLLECTION',
+      } as any);
+      waybill.cod_reconciled_at = null;
+      waybill.cod_reconciled_by = null;
+      waybill.cod_fund_id = null;
+      waybill.cod_collected_amount = '0';
+      await this.applyCustomerPaymentStatus(manager, waybill);
+      return manager.getRepository(WaybillEntity).save(waybill) as Promise<WaybillRecord>;
+    });
+  }
+
   private async saveWithAudit(waybill: WaybillRecord, currentUser: UserEntity, action: string): Promise<WaybillRecord> {
     waybill.last_audit_action = action;
     waybill.last_audit_user_id = currentUser.id;
@@ -3489,7 +3612,16 @@ export class WaybillsService {
   }
 
   private sanitize(waybill: WaybillRecord, currentUser: UserEntity): WaybillRecord {
-    const result: Record<string, any> = { ...waybill, status: this.getStatus(waybill) };
+    const collectOnDeliveryAmount = this.getCollectOnDeliveryAmount(waybill);
+    const result: Record<string, any> = {
+      ...waybill,
+      status: this.getStatus(waybill),
+      cod_collection_status: collectOnDeliveryAmount <= 0
+        ? 'NOT_APPLICABLE'
+        : waybill.cod_reconciled_at
+          ? 'COLLECTED'
+          : 'PENDING',
+    };
     if (isManager(currentUser.role_mask) || hasRole(currentUser.role_mask, Roles.ACCOUNTANT)) {
       result.customer_payment_due_amount = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
     }

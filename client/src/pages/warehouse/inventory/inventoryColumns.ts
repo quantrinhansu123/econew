@@ -201,6 +201,7 @@ export type InventoryColumnId =
   | 'dest_hub'
   | 'payment_type'
   | 'cod_amount'
+  | 'cod_collection_status'
   | 'priority'
   | 'actions';
 
@@ -258,11 +259,12 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'dest_hub', label: 'Hub đến', defaultVisible: true },
   { id: 'payment_type', label: 'TT', defaultVisible: false },
   { id: 'cod_amount', label: 'COD', defaultVisible: true, align: 'right' },
+  { id: 'cod_collection_status', label: 'Trạng thái thu COD', defaultVisible: true },
   { id: 'priority', label: 'Ưu tiên', defaultVisible: false },
   { id: 'actions', label: 'Thao tác', defaultVisible: true },
 ];
 
-export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v8';
+export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v9';
 
 /** Các cột hiện mặc định lần đầu; người dùng có thể bỏ chọn và lưu lại. */
 export const INVENTORY_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
@@ -274,6 +276,7 @@ export const INVENTORY_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
   'dest_hub',
   'package_count',
   'cod_amount',
+  'cod_collection_status',
   'waybill_code',
   'user_note',
   'weight',

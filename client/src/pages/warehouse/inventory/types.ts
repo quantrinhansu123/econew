@@ -73,6 +73,10 @@ export interface WaybillInventoryItem {
   status?: WaybillInventoryStatus | null;
   payment_type?: PaymentType | null;
   cod_amount?: number | string | null;
+  cc_amount?: number | string | null;
+  cod_collection_status?: 'NOT_APPLICABLE' | 'PENDING' | 'COLLECTED' | string | null;
+  cod_reconciled_at?: string | null;
+  cod_collected_amount?: number | string | null;
   cost_amount?: number | string | null;
   freight_amount?: number | string | null;
   customer_payment_due_amount?: number | string | null;

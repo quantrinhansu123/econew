@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { clsx } from 'clsx';
-import { Loader2, Plus, Printer, Receipt } from 'lucide-react';
+import { HandCoins, Loader2, Plus, Printer, Receipt } from 'lucide-react';
 import { ProofImageButton } from '../../../../components/ImagePreviewModal';
 import { DayPicker } from '../../../../components/ui/DayPicker';
 import { formatMoney } from '../../../../lib/formatMoney';
@@ -17,6 +17,9 @@ export interface CashVoucherMeta {
   total?: number;
   total_thu?: number;
   total_chi?: number;
+  manual_thu?: number;
+  cod_offset?: number;
+  customer_payout?: number;
   net?: number;
 }
 
@@ -28,6 +31,7 @@ interface Props {
   error: string;
   onFiltersChange: (patch: Partial<CashVoucherFilters>) => void;
   onCollect: () => void;
+  onPayout: () => void;
   onPrintStatement: () => void;
 }
 
@@ -53,6 +57,7 @@ export default function CustomerCashVouchersPanel({
   error,
   onFiltersChange,
   onCollect,
+  onPayout,
   onPrintStatement,
 }: Props) {
   const filteredVouchers = useMemo(() => filterCashVouchers(vouchers, filters), [vouchers, filters]);
@@ -88,6 +93,14 @@ export default function CustomerCashVouchersPanel({
           </button>
           <button
             type="button"
+            onClick={onPayout}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-[13px] font-extrabold text-amber-800 shadow-sm hover:bg-amber-100"
+          >
+            <HandCoins size={16} />
+            Chi trả khách
+          </button>
+          <button
+            type="button"
             onClick={onCollect}
             className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-[13px] font-extrabold text-white shadow-sm hover:bg-emerald-700"
           >
@@ -97,10 +110,11 @@ export default function CustomerCashVouchersPanel({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <SummaryCard label="Tổng thanh toán" value={displayMoney(meta.total_thu)} tone="emerald" />
-        <SummaryCard label="Điều chỉnh giảm" value={displayMoney(meta.total_chi)} tone="red" />
-        <SummaryCard label="Thực thanh toán" value={displayMoney(meta.net)} tone="blue" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Khách thanh toán" value={displayMoney(meta.manual_thu)} tone="emerald" />
+        <SummaryCard label="COD đã đối trừ" value={displayMoney(meta.cod_offset)} tone="blue" />
+        <SummaryCard label="Đã chi trả khách" value={displayMoney(meta.customer_payout)} tone="amber" />
+        <SummaryCard label="Đối trừ ròng" value={displayMoney(meta.net)} tone="blue" />
       </div>
 
       <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
@@ -181,6 +195,15 @@ export default function CustomerCashVouchersPanel({
                 <div className="divide-y divide-border/70">
                   {group.items.map((voucher) => {
                     const isThu = String(voucher.voucher_type).toLowerCase() === 'thu';
+                    const isCodOffset = voucher.source_type === 'COD_COLLECTION';
+                    const isCustomerPayout = voucher.source_type === 'CUSTOMER_PAYOUT';
+                    const voucherLabel = isCodOffset
+                      ? 'Phiếu thu COD'
+                      : isCustomerPayout
+                        ? 'Chi trả khách'
+                        : isThu
+                          ? 'Khách thanh toán'
+                          : 'Điều chỉnh giảm';
                     return (
                       <div key={String(voucher.id)} className="px-4 py-3">
                         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -189,10 +212,16 @@ export default function CustomerCashVouchersPanel({
                               <span
                                 className={clsx(
                                   'rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase',
-                                  isThu ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700',
+                                  isCodOffset
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : isCustomerPayout
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : isThu
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : 'bg-red-100 text-red-700',
                                 )}
                               >
-                                {isThu ? 'Thanh toán' : 'Điều chỉnh giảm'}
+                                {voucherLabel}
                               </span>
                               <span className="text-[15px] font-extrabold text-foreground">{displayMoney(voucher.amount)}</span>
                             </div>
@@ -230,12 +259,14 @@ export default function CustomerCashVouchersPanel({
   );
 }
 
-function SummaryCard({ label, value, tone }: { label: string; value: string; tone: 'emerald' | 'red' | 'blue' }) {
+function SummaryCard({ label, value, tone }: { label: string; value: string; tone: 'emerald' | 'red' | 'blue' | 'amber' }) {
   const toneClass =
     tone === 'emerald'
       ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
       : tone === 'red'
         ? 'border-red-200 bg-red-50 text-red-700'
+        : tone === 'amber'
+          ? 'border-amber-200 bg-amber-50 text-amber-800'
         : 'border-blue-200 bg-blue-50 text-blue-800';
 
   return (

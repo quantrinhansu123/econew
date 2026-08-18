@@ -7,12 +7,17 @@ import { HubEntity } from '../hubs/hub.entity';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
 import { WaybillEntity } from '../waybills/waybill.entity';
+import { CashFundEntity } from './cash-fund.entity';
 import { ApproveInternalCostDto } from './dto/approve-internal-cost.dto';
 import { ApproveVendorCostDto } from './dto/approve-vendor-cost.dto';
 import { CodReconciliationQueryDto } from './dto/cod-reconciliation-query.dto';
+import { CreateCashFundDto } from './dto/create-cash-fund.dto';
 import { CreateReconciliationDto } from './dto/create-reconciliation.dto';
 import { HubReconciliationQueryDto } from './dto/hub-reconciliation-query.dto';
+import { QueryCashFundsDto } from './dto/query-cash-funds.dto';
+import { QueryHubCodWaybillsDto } from './dto/query-hub-cod-waybills.dto';
 import { QueryReconciliationsDto } from './dto/query-reconciliations.dto';
+import { UpdateCashFundDto } from './dto/update-cash-fund.dto';
 import { UpdateReconciliationDto } from './dto/update-reconciliation.dto';
 import { UpdateRemittanceStatusDto } from './dto/update-remittance-status.dto';
 import { FinanceReconciliationEntity } from './reconciliation.entity';
@@ -28,7 +33,202 @@ export class FinanceService {
     @InjectRepository(HubEntity) private readonly hubsRepository: Repository<HubEntity>,
     @InjectRepository(TripEntity) private readonly tripsRepository: Repository<TripEntity>,
     @InjectRepository(WaybillEntity) private readonly waybillsRepository: Repository<WaybillEntity>,
+    @InjectRepository(CashFundEntity) private readonly cashFundsRepository: Repository<CashFundEntity>,
   ) {}
+
+  async findCashFunds(query: QueryCashFundsDto, currentUser: UserEntity): Promise<Record<string, unknown>[]> {
+    this.assertFinanceRole(currentUser);
+    if (query.hub_id) {
+      await this.assertHubExists(query.hub_id, false);
+      this.assertHubAccess(query.hub_id, currentUser);
+    }
+
+    const qb = this.cashFundsRepository.createQueryBuilder('fund')
+      .leftJoinAndSelect('fund.hub', 'hub')
+      .orderBy('fund.is_active', 'DESC')
+      .addOrderBy('fund.code', 'ASC');
+    if (!query.include_inactive) qb.andWhere('fund.is_active = true');
+    if (query.hub_id) qb.andWhere('(fund.hub_id = :hubId OR fund.hub_id IS NULL)', { hubId: query.hub_id });
+    if (!isManager(currentUser.role_mask)) {
+      if (!currentUser.hub_id) throw new ForbiddenException('User is not assigned to a hub');
+      qb.andWhere('(fund.hub_id = :userHubId OR fund.hub_id IS NULL)', { userHubId: currentUser.hub_id });
+    }
+
+    const funds = await qb.getMany();
+    if (!funds.length) return [];
+    const balances = await this.waybillsRepository.createQueryBuilder('waybill')
+      .select('waybill.cod_fund_id', 'fund_id')
+      .addSelect('COALESCE(SUM(waybill.cod_collected_amount), 0)', 'balance')
+      .addSelect('COUNT(*)', 'collection_count')
+      .where('waybill.cod_reconciled_at IS NOT NULL')
+      .andWhere('waybill.cod_fund_id IN (:...fundIds)', { fundIds: funds.map((fund) => fund.id) })
+      .andWhere('waybill.deleted_at IS NULL')
+      .groupBy('waybill.cod_fund_id')
+      .getRawMany<{ fund_id: string; balance: string; collection_count: string }>();
+    const balanceByFund = new Map(balances.map((row) => [String(row.fund_id), row]));
+    return funds.map((fund) => {
+      const balance = balanceByFund.get(String(fund.id));
+      return {
+        ...fund,
+        balance_amount: Number(balance?.balance ?? 0),
+        collection_count: Number(balance?.collection_count ?? 0),
+      };
+    });
+  }
+
+  async createCashFund(dto: CreateCashFundDto, currentUser: UserEntity): Promise<Record<string, unknown>> {
+    this.assertFinanceRole(currentUser);
+    const code = dto.code.trim().toUpperCase();
+    const name = dto.name.trim();
+    const hubId = dto.hub_id?.trim() || null;
+    if (!code || !name) throw new BadRequestException('Mã quỹ và tên sổ quỹ là bắt buộc');
+    if (hubId) {
+      await this.assertHubExists(hubId, true);
+      this.assertHubAccess(hubId, currentUser);
+    }
+    if (await this.cashFundsRepository.findOne({ where: { code } })) {
+      throw new ConflictException(`Mã quỹ ${code} đã tồn tại`);
+    }
+    const fund = this.cashFundsRepository.create({
+      code,
+      name,
+      hub_id: hubId,
+      is_active: dto.is_active ?? true,
+      note: dto.note?.trim() || null,
+      created_by: currentUser.id,
+    });
+    return this.sanitizeCashFund(await this.cashFundsRepository.save(fund));
+  }
+
+  async updateCashFund(id: string, dto: UpdateCashFundDto, currentUser: UserEntity): Promise<Record<string, unknown>> {
+    this.assertFinanceRole(currentUser);
+    const fund = await this.cashFundsRepository.findOne({ where: { id }, relations: ['hub'] });
+    if (!fund) throw new NotFoundException('Không tìm thấy sổ quỹ');
+    if (fund.hub_id) this.assertHubAccess(fund.hub_id, currentUser);
+
+    if (dto.code !== undefined) {
+      const code = dto.code.trim().toUpperCase();
+      if (!code) throw new BadRequestException('Mã quỹ là bắt buộc');
+      const duplicate = await this.cashFundsRepository.findOne({ where: { code } });
+      if (duplicate && String(duplicate.id) !== String(id)) throw new ConflictException(`Mã quỹ ${code} đã tồn tại`);
+      fund.code = code;
+    }
+    if (dto.name !== undefined) {
+      const name = dto.name.trim();
+      if (!name) throw new BadRequestException('Tên sổ quỹ là bắt buộc');
+      fund.name = name;
+    }
+    if (dto.hub_id !== undefined) {
+      const hubId = dto.hub_id.trim() || null;
+      if (hubId) {
+        await this.assertHubExists(hubId, true);
+        this.assertHubAccess(hubId, currentUser);
+      }
+      fund.hub_id = hubId;
+    }
+    if (dto.is_active !== undefined) fund.is_active = dto.is_active;
+    if (dto.note !== undefined) fund.note = dto.note.trim() || null;
+    return this.sanitizeCashFund(await this.cashFundsRepository.save(fund));
+  }
+
+  async getHubCodWaybills(query: QueryHubCodWaybillsDto, currentUser: UserEntity): Promise<Paginated<Record<string, unknown>>> {
+    this.assertFinanceRole(currentUser);
+    this.validateDateRange(query.date_from, query.date_to);
+    if (query.hub_id) {
+      await this.assertHubExists(query.hub_id, false);
+      this.assertHubAccess(query.hub_id, currentUser);
+    }
+    const page = query.page ?? 1;
+    const limit = this.resolveLimit(query.limit ?? 20);
+    const receiverPaidFreightSql = `CASE
+      WHEN COALESCE(waybill.cc_amount, 0) > 0 THEN waybill.cc_amount
+      WHEN waybill.payment_type = 'CC' THEN COALESCE(waybill.freight_amount, waybill.cost_amount, 0)
+      ELSE 0
+    END`;
+    const collectAmountSql = `(COALESCE(waybill.cod_amount, 0) + (${receiverPaidFreightSql}))`;
+    const qb = this.waybillsRepository.createQueryBuilder('waybill')
+      .leftJoin('hubs', 'origin_hub', 'origin_hub.id = waybill.origin_hub_id')
+      .leftJoin('hubs', 'dest_hub', 'dest_hub.id = waybill.dest_hub_id')
+      .leftJoin('cash_funds', 'fund', 'fund.id = waybill.cod_fund_id')
+      .leftJoin(
+        'waybill_splits',
+        'latest_split',
+        `latest_split.id = (
+          SELECT split_lookup.id
+          FROM waybill_splits split_lookup
+          WHERE split_lookup.waybill_id = waybill.id AND split_lookup.trip_id IS NOT NULL
+          ORDER BY split_lookup.created_at DESC, split_lookup.id DESC
+          LIMIT 1
+        )`,
+      )
+      .leftJoin('trips', 'trip', 'trip.id = latest_split.trip_id')
+      .leftJoin('manifests', 'manifest', 'manifest.id = trip.manifest_id')
+      .where('waybill.deleted_at IS NULL')
+      .andWhere('waybill.current_state <> :cancelledStatus', { cancelledStatus: 'CANCELLED' })
+      .andWhere(`${collectAmountSql} > 0`);
+
+    if (query.keyword?.trim()) {
+      const keyword = `%${query.keyword.trim()}%`;
+      qb.andWhere(new Brackets((builder) => builder
+        .where('waybill.waybill_code ILIKE :keyword', { keyword })
+        .orWhere('waybill.ma_kh ILIKE :keyword', { keyword })
+        .orWhere('waybill.sender_info ILIKE :keyword', { keyword })
+        .orWhere('waybill.receiver_info ILIKE :keyword', { keyword })
+        .orWhere('manifest.manifest_code ILIKE :keyword', { keyword })
+        .orWhere('CAST(trip.id AS TEXT) ILIKE :keyword', { keyword })
+        .orWhere('fund.code ILIKE :keyword', { keyword })));
+    }
+    if (query.collection_status === 'PENDING') qb.andWhere('waybill.cod_reconciled_at IS NULL');
+    if (query.collection_status === 'COLLECTED') qb.andWhere('waybill.cod_reconciled_at IS NOT NULL');
+    if (query.date_from) qb.andWhere('COALESCE(waybill.sent_date, waybill.created_at::date) >= :dateFrom', { dateFrom: query.date_from });
+    if (query.date_to) qb.andWhere('COALESCE(waybill.sent_date, waybill.created_at::date) <= :dateTo', { dateTo: query.date_to });
+    this.applyWaybillScope(qb, query.hub_id, currentUser);
+
+    const total = await qb.clone().getCount();
+    const rawItems = await qb
+      .select('waybill.id', 'id')
+      .addSelect('waybill.waybill_code', 'waybill_code')
+      .addSelect('waybill.ma_kh', 'ma_kh')
+      .addSelect('waybill.sender_info', 'sender_info')
+      .addSelect('waybill.receiver_info', 'receiver_info')
+      .addSelect('waybill.origin_hub_id', 'origin_hub_id')
+      .addSelect('waybill.dest_hub_id', 'dest_hub_id')
+      .addSelect('origin_hub.code', 'origin_hub_code')
+      .addSelect('dest_hub.code', 'dest_hub_code')
+      .addSelect('waybill.current_state', 'current_state')
+      .addSelect('COALESCE(waybill.sent_date, waybill.created_at::date)', 'sent_date')
+      .addSelect('COALESCE(waybill.delivered_at, waybill.delivery_time)', 'delivered_at')
+      .addSelect('waybill.freight_amount', 'freight_amount')
+      .addSelect('waybill.cod_amount', 'cod_amount')
+      .addSelect(receiverPaidFreightSql, 'cc_amount')
+      .addSelect(collectAmountSql, 'collect_amount')
+      .addSelect('waybill.cod_collected_amount', 'cod_collected_amount')
+      .addSelect('waybill.cod_reconciled_at', 'cod_reconciled_at')
+      .addSelect('waybill.cod_reconciled_by', 'cod_reconciled_by')
+      .addSelect('trip.id', 'trip_id')
+      .addSelect('trip.status', 'trip_status')
+      .addSelect('manifest.id', 'manifest_id')
+      .addSelect('manifest.manifest_code', 'manifest_code')
+      .addSelect('fund.id', 'fund_id')
+      .addSelect('fund.code', 'fund_code')
+      .addSelect('fund.name', 'fund_name')
+      .orderBy('waybill.cod_reconciled_at', 'ASC', 'NULLS FIRST')
+      .addOrderBy('COALESCE(waybill.sent_date, waybill.created_at::date)', 'DESC')
+      .addOrderBy('waybill.id', 'DESC')
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getRawMany<Record<string, unknown>>();
+
+    return this.paginate(rawItems.map((item) => ({
+      ...item,
+      freight_amount: Number(item.freight_amount ?? 0),
+      cod_amount: Number(item.cod_amount ?? 0),
+      cc_amount: Number(item.cc_amount ?? 0),
+      collect_amount: Number(item.collect_amount ?? 0),
+      cod_collected_amount: Number(item.cod_collected_amount ?? 0),
+      cod_collection_status: item.cod_reconciled_at ? 'COLLECTED' : 'PENDING',
+    })), total, page, limit);
+  }
 
   async createReconciliation(dto: CreateReconciliationDto, currentUser: UserEntity): Promise<Record<string, unknown>> {
     this.assertFinanceRole(currentUser);
@@ -178,6 +378,20 @@ export class FinanceService {
 
   buildFinanceScope(currentUser: UserEntity): Scope {
     return { hubId: currentUser.hub_id ?? undefined, canViewSystem: isManager(currentUser.role_mask), canViewProfit: isManager(currentUser.role_mask) };
+  }
+
+  private sanitizeCashFund(fund: CashFundEntity): Record<string, unknown> {
+    return {
+      id: fund.id,
+      code: fund.code,
+      name: fund.name,
+      hub_id: fund.hub_id,
+      is_active: fund.is_active,
+      note: fund.note,
+      hub: fund.hub ? { id: fund.hub.id, code: fund.hub.code, name: fund.hub.name } : null,
+      created_at: fund.created_at,
+      updated_at: fund.updated_at,
+    };
   }
 
   private async getPendingCosts(query: QueryReconciliationsDto, currentUser: UserEntity, internal: boolean): Promise<Paginated<Record<string, unknown>>> {

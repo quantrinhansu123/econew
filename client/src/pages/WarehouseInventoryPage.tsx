@@ -1477,6 +1477,23 @@ function InventoryRow({
         return <td className="px-4 py-3 border-r border-border"><Badge config={paymentConfig[String(waybill.payment_type || '')]} fallback={waybill.payment_type || '—'} /></td>;
       case 'cod_amount':
         return <td className={`${cellClass} font-bold`}>{displayValue(waybill.allocated_cod ?? waybill.cod_amount, ' đ')}</td>;
+      case 'cod_collection_status': {
+        const collectStatus = String(waybill.cod_collection_status || 'NOT_APPLICABLE');
+        const collected = collectStatus === 'COLLECTED';
+        const pending = collectStatus === 'PENDING';
+        return (
+          <td className={cellClass}>
+            <span className={clsx(
+              'inline-flex rounded-full px-2 py-1 text-[11px] font-bold',
+              collected && 'bg-emerald-50 text-emerald-700',
+              pending && 'bg-amber-50 text-amber-700',
+              !collected && !pending && 'bg-slate-100 text-slate-500',
+            )}>
+              {collected ? 'Đã thu COD' : pending ? 'Chờ thu COD' : 'Không thu'}
+            </span>
+          </td>
+        );
+      }
       case 'priority':
         return (
           <td className="overflow-visible px-4 py-3 border-r border-border">
@@ -1791,6 +1808,7 @@ function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openAct
           />
         } />
         <MobileInfo label="COD" value={displayValue(waybill.allocated_cod ?? waybill.cod_amount, ' đ')} />
+        <MobileInfo label="Trạng thái thu COD" value={waybill.cod_collection_status === 'COLLECTED' ? 'Đã thu COD' : waybill.cod_collection_status === 'PENDING' ? 'Chờ thu COD' : 'Không thu'} />
         <MobileInfo label="Số kiện" value={
           waybill.remaining_packages != null
             ? `${waybill.remaining_packages} / ${waybill.order_total_packages ?? waybill.package_count ?? waybill.remaining_packages} (còn chia)`

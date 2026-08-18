@@ -24,6 +24,7 @@ import {
   type BillFilters,
 } from '../utils/customerFinanceUtils';
 import type { WaybillCashVoucher } from '../../inventory/dialogs/WaybillCashVoucherDialog';
+import CustomerPayoutDialog from './CustomerPayoutDialog';
 
 interface Props {
   customer: CustomerRecord | null;
@@ -213,6 +214,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   const [collectSubmitting, setCollectSubmitting] = useState(false);
   const [collectError, setCollectError] = useState('');
   const [isStatementOpen, setIsStatementOpen] = useState(false);
+  const [isPayoutOpen, setIsPayoutOpen] = useState(false);
 
   const canViewCost = useMemo(() => {
     const user = getStoredUser();
@@ -248,6 +250,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
         setCollectNote('');
         setCollectError('');
         setIsStatementOpen(false);
+        setIsPayoutOpen(false);
       });
     }
   }, [customer?.id, initialTab]);
@@ -272,6 +275,12 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   const collectTotal = selectedCollectBills.reduce((sum, { item }) => (
     sum + parseAmountInput(collectAmounts[String(item.id)] || '')
   ), 0);
+  const accountCredit = Math.max(0, -statementData.totalDebt);
+  const creditBills = useMemo(() => inventoryItems.map((item) => {
+    const freight = getBillFreight(item);
+    const paid = resolvePaidForBill(item, statementData.paidMaps);
+    return { item, credit: Math.max(0, paid - freight) };
+  }).filter(({ credit }) => credit > 0), [inventoryItems, statementData.paidMaps]);
 
   useEffect(() => {
     const needsInventory = activeTab === 'don-hang' || activeTab === 'bill' || activeTab === 'thanh-toan';
@@ -383,6 +392,18 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
 
   const loadCashVouchers = async (maKh: string) => {
     setCashVouchers(await loadAllCustomerCashVouchers(maKh));
+  };
+
+  const reloadCustomerFinance = async () => {
+    const maKh = customer?.code?.trim();
+    if (!maKh) return;
+    const [{ items, total }, vouchers] = await Promise.all([
+      loadAllCustomerBills(maKh),
+      loadAllCustomerCashVouchers(maKh),
+    ]);
+    setInventoryItems(items);
+    setInventoryTotal(total);
+    setCashVouchers(vouchers);
   };
 
   const openCollectDialog = () => {
@@ -776,6 +797,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                 error={cashVouchersError}
                 onFiltersChange={handleCashVoucherFiltersChange}
                 onCollect={openCollectDialog}
+                onPayout={() => setIsPayoutOpen(true)}
                 onPrintStatement={printPaymentStatement}
               />
             ) : (
@@ -836,17 +858,17 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
               <p><b>MST:</b> {customer.tax_id || '—'} <span className="mx-2">·</span> <b>Hợp đồng:</b> {customer.contract_code || '—'}</p>
             </div>
 
-            <div className="mt-4 grid grid-cols-5 gap-2">
+            <div className="mt-4 grid grid-cols-3 gap-2">
               <PrintMetric label="Số đơn" value={inventoryItems.length.toLocaleString('vi-VN')} />
               <PrintMetric label="Công nợ tồn cũ" value={printMoney(statementData.openingDebt)} />
               <PrintMetric label="Tổng cước" value={printMoney(statementData.totalFreight)} />
-              <PrintMetric label="Đã TT theo đơn" value={printMoney(statementData.totalPaid)} />
-              <PrintMetric label="Công nợ còn lại" value={printMoney(statementData.totalDebt)} />
             </div>
-            <div className="mt-2 grid grid-cols-4 gap-2">
-              <PrintMetric label="Tổng thanh toán" value={printMoney(statementData.voucherMeta.total_thu)} />
-              <PrintMetric label="Điều chỉnh giảm" value={printMoney(statementData.voucherMeta.total_chi)} />
-              <PrintMetric label="Thực thanh toán" value={printMoney(statementData.voucherMeta.net)} />
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <PrintMetric label="Khách thanh toán" value={printMoney(statementData.voucherMeta.manual_thu)} />
+              <PrintMetric label="Phiếu thu COD" value={printMoney(statementData.voucherMeta.cod_offset)} />
+              <PrintMetric label="Đã chi trả khách" value={printMoney(statementData.voucherMeta.customer_payout)} />
+              <PrintMetric label="Đối trừ ròng" value={printMoney(statementData.voucherMeta.net)} />
+              <PrintMetric label={statementData.totalDebt < 0 ? 'ECO cần trả khách' : 'Công nợ còn lại'} value={printMoney(Math.abs(statementData.totalDebt))} />
               <PrintMetric label="Số giao dịch" value={Number(statementData.voucherMeta.total || 0).toLocaleString('vi-VN')} />
             </div>
 
@@ -887,7 +909,13 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                     <td className="border border-slate-300 px-2 py-2">{formatDate(voucher.created_at)}</td>
                     <td className="border border-slate-300 px-2 py-2 font-bold">{voucher.waybill_code || voucher.waybill_id || '—'}</td>
                     <td className="border border-slate-300 px-2 py-2">
-                      {String(voucher.voucher_type).toLowerCase() === 'thu' ? 'Thanh toán' : 'Điều chỉnh giảm'}
+                      {voucher.source_type === 'COD_COLLECTION'
+                        ? 'Phiếu thu COD'
+                        : voucher.source_type === 'CUSTOMER_PAYOUT'
+                          ? 'Chi trả khách'
+                          : String(voucher.voucher_type).toLowerCase() === 'thu'
+                            ? 'Khách thanh toán'
+                            : 'Điều chỉnh giảm'}
                     </td>
                     <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(voucher.amount)}</td>
                     <td className="border border-slate-300 px-2 py-2">{voucher.note || '—'}</td>
@@ -1097,6 +1125,15 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
             </div>
           </div>
         )}
+        <CustomerPayoutDialog
+          open={isPayoutOpen}
+          customerName={customer.name}
+          customerCode={customer.code}
+          accountCredit={accountCredit}
+          bills={creditBills}
+          onClose={() => setIsPayoutOpen(false)}
+          onSaved={reloadCustomerFinance}
+        />
       </div>
     </div>,
     document.body,

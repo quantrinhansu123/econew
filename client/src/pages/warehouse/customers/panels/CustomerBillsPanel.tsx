@@ -8,6 +8,7 @@ import type { WaybillCashVoucher } from '../../inventory/dialogs/WaybillCashVouc
 import {
   buildPaidByWaybill,
   computeCustomerDebtSummary,
+  computeVoucherMeta,
   filterBills,
   getBillFreight,
   resolvePaidForBill,
@@ -60,19 +61,32 @@ export default function CustomerBillsPanel({
   const summary = useMemo(() => {
     return computeCustomerDebtSummary(filteredItems, paidMaps, openingDebt, showPaymentColumns);
   }, [filteredItems, openingDebt, paidMaps, showPaymentColumns]);
+  const voucherMeta = useMemo(() => {
+    const ids = new Set(filteredItems.map((item) => String(item.id)));
+    const codes = new Set(filteredItems.map((item) => (item.waybill_code || item.order_code || '').trim().toUpperCase()).filter(Boolean));
+    return computeVoucherMeta(vouchers.filter((voucher) => (
+      (voucher.waybill_id != null && ids.has(String(voucher.waybill_id)))
+      || Boolean(voucher.waybill_code && codes.has(voucher.waybill_code.trim().toUpperCase()))
+    )));
+  }, [filteredItems, vouchers]);
 
   const hasFilters = Boolean(filters.fromDate || filters.toDate || filters.billCode.trim() || filters.paymentType);
 
   return (
     <div className="space-y-4">
       {canViewCost && (
-        <div className={clsx('grid grid-cols-1 gap-3', showPaymentColumns ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-1')}>
+        <div className={clsx('grid grid-cols-1 gap-3', showPaymentColumns ? 'sm:grid-cols-2 xl:grid-cols-5' : 'sm:grid-cols-1')}>
           {showPaymentColumns && <SummaryCard label="Công nợ tồn cũ" value={formatMoney(summary.openingDebt)} tone="amber" />}
           <SummaryCard label="Tổng cước phí" value={formatMoney(summary.totalFreight)} tone="blue" />
           {showPaymentColumns && (
             <>
-              <SummaryCard label="Đã thanh toán" value={formatMoney(summary.totalPaid)} tone="emerald" />
-              <SummaryCard label="Công nợ hiện tại" value={formatMoney(summary.totalDebt)} tone="red" />
+              <SummaryCard label="COD đã đối trừ" value={formatMoney(voucherMeta.cod_offset)} tone="blue" />
+              <SummaryCard label="Đã TT / COD" value={formatMoney(summary.totalPaid)} tone="emerald" />
+              <SummaryCard
+                label={summary.totalDebt < 0 ? 'ECO cần trả khách' : 'Công nợ hiện tại'}
+                value={formatMoney(Math.abs(summary.totalDebt))}
+                tone={summary.totalDebt < 0 ? 'amber' : 'red'}
+              />
             </>
           )}
         </div>
@@ -177,8 +191,8 @@ export default function CustomerBillsPanel({
                 <th className="px-3 py-2.5 text-right">Kiện</th>
                 <th className="px-3 py-2.5">TT</th>
                 {canViewCost && <th className="px-3 py-2.5 text-right">Cước phí</th>}
-                {showPaymentColumns && <th className="px-3 py-2.5 text-right">Đã TT</th>}
-                {showPaymentColumns && <th className="px-3 py-2.5 text-right">Công nợ cần trả</th>}
+                {showPaymentColumns && <th className="px-3 py-2.5 text-right">Đã TT / COD</th>}
+                {showPaymentColumns && <th className="px-3 py-2.5 text-right">Số dư bill</th>}
                 <th className="px-3 py-2.5 text-right">In</th>
               </tr>
             </thead>

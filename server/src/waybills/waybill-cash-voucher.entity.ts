@@ -19,6 +19,12 @@ export class WaybillCashVoucherEntity {
   @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
   amount: string;
 
+  @Column({ type: 'varchar', length: 32, default: 'MANUAL' })
+  source_type: 'MANUAL' | 'COD_COLLECTION' | 'CUSTOMER_PAYOUT';
+
+  @Column({ type: 'bigint', nullable: true })
+  fund_id: string | null;
+
   @Column({ type: 'varchar', length: 1024, nullable: true })
   note: string | null;
 

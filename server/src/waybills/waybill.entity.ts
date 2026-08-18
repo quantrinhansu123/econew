@@ -151,11 +151,20 @@ export class WaybillEntity {
   @Column({ type: 'decimal', default: 0 })
   cod_amount: string;
 
+  @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
+  cc_amount: string;
+
   @Column({ type: 'timestamp', nullable: true })
   cod_reconciled_at: Date | null;
 
   @Column({ type: 'bigint', nullable: true })
   cod_reconciled_by: string | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  cod_fund_id: string | null;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  cod_collected_amount: string;
 
   @Column({ type: 'int', default: 1 })
   package_count: number;

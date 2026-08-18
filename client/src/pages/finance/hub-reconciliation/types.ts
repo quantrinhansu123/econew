@@ -67,8 +67,36 @@ export interface CodReconciliationWaybill {
   current_state?: string | null;
   payment_type?: string | null;
   cod_amount?: string | number | null;
+  cc_amount?: string | number | null;
+  freight_amount?: string | number | null;
+  collect_amount?: string | number | null;
+  cod_collected_amount?: string | number | null;
+  ma_kh?: string | null;
+  sent_date?: string | null;
   created_at?: string | null;
   delivered_at?: string | null;
+  trip_id?: string | number | null;
+  trip_status?: string | null;
+  manifest_id?: string | number | null;
+  manifest_code?: string | null;
+  origin_hub_code?: string | null;
+  dest_hub_code?: string | null;
+  fund_id?: string | number | null;
+  fund_code?: string | null;
+  fund_name?: string | null;
+  cod_collection_status?: 'PENDING' | 'COLLECTED' | string | null;
   cod_reconciled_at?: string | null;
   cod_reconciled_by?: string | number | null;
+}
+
+export interface CashFund {
+  id: string | number;
+  code: string;
+  name: string;
+  hub_id?: string | number | null;
+  is_active: boolean;
+  note?: string | null;
+  balance_amount?: number | string | null;
+  collection_count?: number | string | null;
+  hub?: HubSummary | null;
 }

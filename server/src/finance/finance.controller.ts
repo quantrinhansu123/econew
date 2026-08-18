@@ -9,9 +9,13 @@ import { UserEntity } from '../users/user.entity';
 import { ApproveInternalCostDto } from './dto/approve-internal-cost.dto';
 import { ApproveVendorCostDto } from './dto/approve-vendor-cost.dto';
 import { CodReconciliationQueryDto } from './dto/cod-reconciliation-query.dto';
+import { CreateCashFundDto } from './dto/create-cash-fund.dto';
 import { CreateReconciliationDto } from './dto/create-reconciliation.dto';
 import { HubReconciliationQueryDto } from './dto/hub-reconciliation-query.dto';
+import { QueryCashFundsDto } from './dto/query-cash-funds.dto';
+import { QueryHubCodWaybillsDto } from './dto/query-hub-cod-waybills.dto';
 import { QueryReconciliationsDto } from './dto/query-reconciliations.dto';
+import { UpdateCashFundDto } from './dto/update-cash-fund.dto';
 import { UpdateReconciliationDto } from './dto/update-reconciliation.dto';
 import { UpdateRemittanceStatusDto } from './dto/update-remittance-status.dto';
 import { FinanceService } from './finance.service';
@@ -23,6 +27,34 @@ const FINANCE_ROLES = [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR];
 @Controller('finance')
 export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
+
+  @Get('cash-funds')
+  @RequireRoles(...FINANCE_ROLES)
+  @ApiOperation({ summary: 'List cash funds and current confirmed COD balances' })
+  findCashFunds(@Query() query: QueryCashFundsDto, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.findCashFunds(query, currentUser);
+  }
+
+  @Post('cash-funds')
+  @RequireRoles(...FINANCE_ROLES)
+  @ApiOperation({ summary: 'Create a cash fund' })
+  createCashFund(@Body() dto: CreateCashFundDto, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.createCashFund(dto, currentUser);
+  }
+
+  @Patch('cash-funds/:id')
+  @RequireRoles(...FINANCE_ROLES)
+  @ApiOperation({ summary: 'Update a cash fund' })
+  updateCashFund(@Param('id') id: string, @Body() dto: UpdateCashFundDto, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.updateCashFund(id, dto, currentUser);
+  }
+
+  @Get('hub-cod-waybills')
+  @RequireRoles(...FINANCE_ROLES)
+  @ApiOperation({ summary: 'List bills with money to collect on delivery' })
+  getHubCodWaybills(@Query() query: QueryHubCodWaybillsDto, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.getHubCodWaybills(query, currentUser);
+  }
 
   @Post('reconciliations')
   @RequireRoles(...FINANCE_ROLES)
