@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, Repository } from 'typeorm';
 import { clampPaginationLimit } from '../common/pagination';
 import { Roles, isManager } from '../common/roles';
+import { getAssignedHubIds } from '../common/user-hub-scope';
 import { WaybillState, TripStatus } from '../common/enums';
 import { HubEntity } from '../hubs/hub.entity';
 import { TripEntity } from '../trips/trip.entity';
@@ -835,26 +836,29 @@ export class ManifestsService {
 
   private applyHubScope(qb: any, currentUser: UserEntity) {
     if (isManager(currentUser.role_mask)) return;
-    if (!currentUser.hub_id) {
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (!assignedHubIds.length) {
       qb.andWhere('1 = 0');
       return;
     }
-    qb.andWhere(new Brackets((builder) => builder.where('manifest.origin_hub_id = :hubId', { hubId: currentUser.hub_id }).orWhere('manifest.dest_hub_id = :hubId', { hubId: currentUser.hub_id })));
+    qb.andWhere(new Brackets((builder) => builder
+      .where('manifest.origin_hub_id IN (:...assignedHubIds)', { assignedHubIds })
+      .orWhere('manifest.dest_hub_id IN (:...assignedHubIds)', { assignedHubIds })));
   }
 
   private assertManifestAccess(manifest: ManifestRecord, currentUser: UserEntity) {
     if (isManager(currentUser.role_mask)) return;
-    if (!currentUser.hub_id) throw new ForbiddenException('User is not assigned to a hub');
-    const userHubId = String(currentUser.hub_id);
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (!assignedHubIds.length) throw new ForbiddenException('User is not assigned to a hub');
     const allowedHubIds = [manifest.origin_hub_id, manifest.dest_hub_id].map((id) => String(id ?? ''));
-    if (!allowedHubIds.includes(userHubId)) {
+    if (!allowedHubIds.some((hubId) => assignedHubIds.includes(hubId))) {
       throw new ForbiddenException('User cannot access this manifest outside assigned hub');
     }
   }
 
   private async assertHubAccess(hubId: string, currentUser: UserEntity) {
     if (isManager(currentUser.role_mask)) return;
-    if (String(currentUser.hub_id ?? '') !== String(hubId)) {
+    if (!getAssignedHubIds(currentUser).includes(String(hubId))) {
       throw new ForbiddenException('User is not assigned to this hub');
     }
   }

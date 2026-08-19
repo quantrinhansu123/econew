@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ClipboardCheck, Layers, Loader2, Package, PackageCheck, RotateCcw, Search, ShieldAlert, Truck, UserRound, Warehouse } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ClipboardCheck, Loader2, Package, PackageCheck, RotateCcw, Search, ShieldAlert, Truck, UserRound, Warehouse } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { clsx } from 'clsx';
 
 import { ApiError, apiRequest } from '../lib/api';
 import WaybillReceiveConfirmDialog from './warehouse/orders/dialogs/WaybillReceiveConfirmDialog';
-import WaybillPackageSplitEditor from './warehouse/inventory/WaybillPackageSplitEditor';
 import type { BadgeConfig, DeliveryResources, HubSummary, ReceiveFormState, ReceiveWaybillPayload, UserSummary, WaybillDetail } from './warehouse/orders/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -105,18 +104,6 @@ export default function WarehouseOrderReceivePage() {
   const isTerminal = isFinalized;
   const hubAllowed = userHubIds.size === 0 || userHubIds.has(normalizeId(waybill?.current_hub_id)) || userHubIds.has(normalizeId(waybill?.origin_hub_id));
   const hasManifestOrTrip = Boolean(waybill?.manifest_id || waybill?.trip_id);
-  const splitDisabled = !waybill || isReceived || isFinalized || hasManifestOrTrip || !hubAllowed;
-  const splitDisabledReason = !waybill
-    ? undefined
-    : isFinalized
-      ? 'Vận đơn đã kết thúc, không thể tách hàng.'
-      : isReceived
-        ? 'Phải xác nhận đã nhập kho trước khi tách hàng hoặc phân xe.'
-        : hasManifestOrTrip
-        ? 'Vận đơn đã gắn manifest/chuyến — không thể tách tại đây.'
-        : !hubAllowed
-          ? 'Vận đơn không thuộc hub được phân quyền.'
-          : undefined;
   const alreadyInWarehouse = status === 'IN_WAREHOUSE';
   const receiveDisabled = !waybill || !hasReceiveRole || !isReceived || isTerminal || hasManifestOrTrip || !hubAllowed || alreadyInWarehouse || isSubmitting;
 
@@ -134,7 +121,7 @@ export default function WarehouseOrderReceivePage() {
 
   const infoMessages = useMemo(() => {
     if (waybill && alreadyInWarehouse && !isTerminal) {
-      return ['Vận đơn đã được xác nhận nhập kho. Không cần tiếp nhận lại — có thể phân xe bên dưới.'];
+      return ['Vận đơn đã được xác nhận nhập kho. Không cần tiếp nhận lại.'];
     }
     return [];
   }, [alreadyInWarehouse, isTerminal, waybill]);
@@ -414,19 +401,6 @@ export default function WarehouseOrderReceivePage() {
               </div>
             </form>
 
-            {waybill && (
-              <section className="rounded-2xl border border-border bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center gap-2 border-b border-border pb-3">
-                  <Layers size={16} className="text-violet-700" />
-                  <span className="text-[12px] font-bold uppercase tracking-wider text-violet-700">Tách hàng · phân xe ngay</span>
-                </div>
-                <WaybillPackageSplitEditor
-                  waybill={waybill}
-                  disabled={splitDisabled}
-                  disabledReason={splitDisabledReason}
-                />
-              </section>
-            )}
           </div>
 
           <div className="rounded-2xl border border-border bg-white shadow-sm overflow-hidden">

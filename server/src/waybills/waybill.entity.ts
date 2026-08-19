@@ -276,6 +276,10 @@ export class WaybillEntity {
   @JoinColumn({ name: 'last_mile_driver_id' })
   last_mile_driver: UserEntity | null;
 
+  @ManyToOne(() => UserEntity, { nullable: true })
+  @JoinColumn({ name: 'created_by' })
+  creator: UserEntity | null;
+
   @ManyToOne(() => TruckEntity, { nullable: true })
   @JoinColumn({ name: 'last_mile_truck_id' })
   last_mile_truck: TruckEntity | null;

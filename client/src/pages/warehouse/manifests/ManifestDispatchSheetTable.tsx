@@ -303,12 +303,12 @@ export default function ManifestDispatchSheetTable({
           })}
         </tr>
         <tr>
-          <td colSpan={dataColumns.length + 1} className="border border-black px-2 py-1 text-left text-[10px] font-bold manifest-dispatch-trip-footer">
+          <td colSpan={dataColumns.length + 1} className="border border-black px-2 py-1 text-left font-bold manifest-dispatch-trip-footer">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span><strong>Xe:</strong> {driverLabel(manifest)}</span>
               <span><strong>Ngày:</strong> {formatShortDate(manifest.closed_at || manifest.created_at)}</span>
               <span><strong>BKS:</strong> {truckLabel(manifest)}</span>
-              <span><strong>SĐT:</strong> {driverPhoneLabel(manifest)}</span>
+              <span className="manifest-dispatch-phone"><strong>SĐT:</strong> {driverPhoneLabel(manifest)}</span>
               {expectedArrival(manifest) ? (
                 <span className="manifest-dispatch-eta rounded bg-yellow-300 px-3 py-1 font-black">
                   {formatExpectedArrival(expectedArrival(manifest))}

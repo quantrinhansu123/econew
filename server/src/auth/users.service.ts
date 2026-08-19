@@ -7,9 +7,13 @@ import { AssignRoleDto } from './dto/assign-role.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RegisterUserDto } from './dto/register-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { HubEntity } from '../hubs/hub.entity';
 import { UserEntity } from '../users/user.entity';
 
-export type SafeUserProfile = Omit<UserEntity, 'password_hash' | 'refresh_token'>;
+export type SafeUserProfile = Omit<UserEntity, 'password_hash' | 'refresh_token' | 'user_hubs'> & {
+  hubs: HubEntity[];
+  hub_ids: string[];
+};
 
 @Injectable()
 export class UsersService {
@@ -39,7 +43,10 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<UserEntity | null> {
-    return this.usersRepository.findOne({ where: { email } });
+    return this.usersRepository.findOne({
+      where: { email },
+      relations: ['hub', 'user_hubs', 'user_hubs.hub'],
+    });
   }
 
   async findByLogin(identifier: string): Promise<UserEntity | null> {
@@ -49,6 +56,7 @@ export class UsersService {
         { email: normalized },
         { username: normalized },
       ] as FindOptionsWhere<UserEntity>[],
+      relations: ['hub', 'user_hubs', 'user_hubs.hub'],
     });
   }
 
@@ -116,8 +124,18 @@ export class UsersService {
   }
 
   toSafeUser(user: UserEntity): SafeUserProfile {
-    const { password_hash: _passwordHash, refresh_token: _refreshToken, ...safeUser } = user;
-    return safeUser;
+    const { password_hash: _passwordHash, refresh_token: _refreshToken, user_hubs: userHubs, ...safeUser } = user;
+    const hubsById = new Map<string, HubEntity>();
+    if (user.hub) hubsById.set(String(user.hub.id), user.hub);
+    for (const assignment of userHubs ?? []) {
+      if (assignment.hub) hubsById.set(String(assignment.hub.id), assignment.hub);
+    }
+    const hubs = [...hubsById.values()];
+    return {
+      ...safeUser,
+      hubs,
+      hub_ids: hubs.map((hub) => String(hub.id)),
+    };
   }
 
   private async ensureUniqueUser(email: string, username: string): Promise<void> {
@@ -135,7 +153,10 @@ export class UsersService {
   }
 
   private async getUserOrThrow(where: FindOptionsWhere<UserEntity>): Promise<UserEntity> {
-    const user = await this.usersRepository.findOne({ where });
+    const user = await this.usersRepository.findOne({
+      where,
+      relations: ['hub', 'user_hubs', 'user_hubs.hub'],
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }

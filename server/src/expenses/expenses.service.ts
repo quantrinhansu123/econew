@@ -4,6 +4,7 @@ import { Brackets, Repository } from 'typeorm';
 import { TripStatus } from '../common/enums';
 import { clampPaginationLimit } from '../common/pagination';
 import { Roles, hasRole, isManager } from '../common/roles';
+import { getAssignedHubIds, getDefaultHubId } from '../common/user-hub-scope';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
 import { VendorsService } from '../vendors/vendors.service';
@@ -37,7 +38,7 @@ export class ExpensesService {
       amount: String(dto.amount ?? 0),
       description: dto.description?.trim() || null,
       vendor_id: vendor?.id ?? null,
-      hub_id: dto.hub_id != null ? String(dto.hub_id) : currentUser.hub_id,
+      hub_id: dto.hub_id != null ? String(dto.hub_id) : getDefaultHubId(currentUser) ?? null,
       created_by: currentUser.id,
     });
     const saved = await this.expensesRepository.save(expense);
@@ -138,10 +139,11 @@ export class ExpensesService {
 
   private applyHubScope(qb: any, currentUser: UserEntity): void {
     if (isManager(currentUser.role_mask) || hasRole(currentUser.role_mask, Roles.ACCOUNTANT)) return;
-    if (!currentUser.hub_id) return;
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (!assignedHubIds.length) return;
     qb.andWhere(new Brackets((inner) => {
-      inner.where('trip.start_hub_id = :userHubId', { userHubId: currentUser.hub_id })
-        .orWhere('trip.end_hub_id = :userHubId', { userHubId: currentUser.hub_id });
+      inner.where('trip.start_hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds })
+        .orWhere('trip.end_hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds });
     }));
   }
 

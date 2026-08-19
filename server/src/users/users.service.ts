@@ -17,9 +17,13 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UserHubEntity } from './user-hub.entity';
 import { UserEntity } from './user.entity';
 
-export type SafeUser = Omit<UserEntity, 'password_hash' | 'refresh_token'>;
+export type SafeUser = Omit<UserEntity, 'password_hash' | 'refresh_token' | 'user_hubs'> & {
+  hubs: HubEntity[];
+  hub_ids: string[];
+};
 
 const VALID_ROLE_MASK = Roles.WAREHOUSE | Roles.PACKER | Roles.DRIVER | Roles.DISPATCHER | Roles.ACCOUNTANT | Roles.MANAGER | Roles.DIRECTOR;
 const ACTIVE_TRIP_STATUSES = [TripStatus.PLANNED, TripStatus.IN_TRANSIT];
@@ -31,6 +35,7 @@ export class UsersService {
 
   constructor(
     @InjectRepository(UserEntity) private readonly usersRepository: Repository<UserEntity>,
+    @InjectRepository(UserHubEntity) private readonly userHubsRepository: Repository<UserHubEntity>,
     @InjectRepository(HubEntity) private readonly hubsRepository: Repository<HubEntity>,
     @InjectRepository(TripEntity) private readonly tripsRepository: Repository<TripEntity>,
     @InjectRepository(TruckEntity) private readonly trucksRepository: Repository<TruckEntity>,
@@ -44,7 +49,8 @@ export class UsersService {
     const email = this.normalizeEmail(dto.email);
     const phone = this.normalizePhone(dto.phone);
     await this.ensureUniqueUser(email, phone);
-    if (dto.hub_id) await this.ensureHubExists(dto.hub_id);
+    const hubIds = this.normalizeHubIds(dto.hub_ids, dto.hub_id);
+    await this.ensureHubsExist(hubIds);
 
     const user = this.usersRepository.create({
       email,
@@ -53,13 +59,15 @@ export class UsersService {
       full_name: dto.full_name.trim(),
       password_hash: await bcrypt.hash(dto.password, this.saltRounds),
       role_mask: dto.role_mask,
-      hub_id: dto.hub_id ?? null,
+      hub_id: hubIds[0] ?? null,
       is_active: true,
       refresh_token: null,
       last_login_at: null,
     });
 
-    return this.toSafeUser(await this.usersRepository.save(user));
+    const savedUser = await this.usersRepository.save(user);
+    await this.syncUserHubs(savedUser.id, hubIds);
+    return this.toSafeUser(await this.getUserOrThrow(savedUser.id));
   }
 
   async findAll(query: QueryUsersDto) {
@@ -68,14 +76,23 @@ export class UsersService {
     const limit = clampPaginationLimit(query.limit, 20);
     const queryBuilder = this.usersRepository
       .createQueryBuilder('users')
-      .leftJoinAndSelect('users.hub', 'hub');
+      .leftJoinAndSelect('users.hub', 'hub')
+      .leftJoinAndSelect('users.user_hubs', 'user_hubs')
+      .leftJoinAndSelect('user_hubs.hub', 'assigned_hub')
+      .distinct(true);
 
     if (query.keyword?.trim()) {
       const keyword = `%${query.keyword.trim()}%`;
       queryBuilder.andWhere(new Brackets((qb) => qb.where('users.email ILIKE :keyword', { keyword }).orWhere('users.full_name ILIKE :keyword', { keyword }).orWhere('users.phone ILIKE :keyword', { keyword })));
     }
     if (query.role_mask !== undefined) queryBuilder.andWhere('(users.role_mask & :roleMask) <> 0', { roleMask: query.role_mask });
-    if (query.hub_id) queryBuilder.andWhere('users.hub_id = :hubId', { hubId: query.hub_id });
+    if (query.hub_id) {
+      queryBuilder.andWhere(
+        new Brackets((qb) => qb
+          .where('users.hub_id = :hubId', { hubId: query.hub_id })
+          .orWhere('user_hubs.hub_id = :hubId', { hubId: query.hub_id })),
+      );
+    }
     if (typeof query.is_active === 'boolean') queryBuilder.andWhere('users.is_active = :isActive', { isActive: query.is_active });
 
     const [users, total] = await queryBuilder.orderBy('users.created_at', 'DESC').skip((page - 1) * limit).take(limit).getManyAndCount();
@@ -127,9 +144,12 @@ export class UsersService {
 
   async assignHub(id: string, dto: AssignUserHubDto): Promise<SafeUser> {
     const user = await this.getUserOrThrow(id);
-    if (dto.hub_id) await this.ensureHubExists(dto.hub_id);
-    user.hub_id = dto.hub_id ?? null;
-    return this.toSafeUser(await this.usersRepository.save(user));
+    const hubIds = this.normalizeHubIds(dto.hub_ids, dto.hub_id);
+    await this.ensureHubsExist(hubIds);
+    user.hub_id = hubIds[0] ?? null;
+    await this.usersRepository.save(user);
+    await this.syncUserHubs(user.id, hubIds);
+    return this.toSafeUser(await this.getUserOrThrow(id));
   }
 
   async remove(id: string, actor?: UserEntity): Promise<void> {
@@ -147,13 +167,31 @@ export class UsersService {
 
   async findActiveUsersByRole(roleMask: number): Promise<SafeUser[]> {
     this.validateRoleMask(roleMask);
-    const users = await this.usersRepository.createQueryBuilder('users').where('users.is_active = true').andWhere('(users.role_mask & :roleMask) <> 0', { roleMask }).orderBy('users.full_name', 'ASC').getMany();
+    const users = await this.usersRepository
+      .createQueryBuilder('users')
+      .leftJoinAndSelect('users.hub', 'hub')
+      .leftJoinAndSelect('users.user_hubs', 'user_hubs')
+      .leftJoinAndSelect('user_hubs.hub', 'assigned_hub')
+      .where('users.is_active = true')
+      .andWhere('(users.role_mask & :roleMask) <> 0', { roleMask })
+      .orderBy('users.full_name', 'ASC')
+      .getMany();
     return users.map((user) => this.toSafeUser(user));
   }
 
   toSafeUser(user: UserEntity): SafeUser {
-    const { password_hash: _passwordHash, refresh_token: _refreshToken, ...safeUser } = user;
-    return safeUser;
+    const { password_hash: _passwordHash, refresh_token: _refreshToken, user_hubs: userHubs, ...safeUser } = user;
+    const hubsById = new Map<string, HubEntity>();
+    if (user.hub) hubsById.set(String(user.hub.id), user.hub);
+    for (const assignment of userHubs ?? []) {
+      if (assignment.hub) hubsById.set(String(assignment.hub.id), assignment.hub);
+    }
+    const hubs = [...hubsById.values()];
+    return {
+      ...safeUser,
+      hubs,
+      hub_ids: hubs.map((hub) => String(hub.id)),
+    };
   }
 
   private normalizeEmail(email: string): string {
@@ -178,14 +216,32 @@ export class UsersService {
   }
 
   private async getUserOrThrow(id: string): Promise<UserEntity> {
-    const user = await this.usersRepository.findOne({ where: { id } });
+    const user = await this.usersRepository.findOne({
+      where: { id },
+      relations: ['hub', 'user_hubs', 'user_hubs.hub'],
+    });
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
 
-  private async ensureHubExists(hubId: string): Promise<void> {
-    const hub = await this.hubsRepository.findOne({ where: { id: hubId, deleted_at: IsNull() } as never });
-    if (!hub) throw new NotFoundException('Hub not found');
+  private normalizeHubIds(hubIds?: string[], legacyHubId?: string | null): string[] {
+    const source = hubIds !== undefined ? hubIds : legacyHubId ? [legacyHubId] : [];
+    return [...new Set(source.map((hubId) => String(hubId).trim()).filter(Boolean))];
+  }
+
+  private async ensureHubsExist(hubIds: string[]): Promise<void> {
+    if (!hubIds.length) return;
+    const hubs = await this.hubsRepository.find({
+      where: { id: In(hubIds), deleted_at: IsNull() } as never,
+    });
+    if (hubs.length !== hubIds.length) throw new NotFoundException('Hub not found');
+  }
+
+  private async syncUserHubs(userId: string, hubIds: string[]): Promise<void> {
+    await this.userHubsRepository.delete({ user_id: userId });
+    if (!hubIds.length) return;
+    const rows = hubIds.map((hubId) => this.userHubsRepository.create({ user_id: userId, hub_id: hubId }));
+    await this.userHubsRepository.save(rows);
   }
 
   private assertNotSelf(id: string, actor: UserEntity | undefined, action: string): void {

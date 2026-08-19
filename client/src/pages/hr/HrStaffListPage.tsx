@@ -15,9 +15,14 @@ import { ROLE_BITS } from '../admin/users/types';
 import { hasManagerRole, normalizeUserList } from '../../lib/userNormalize';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
-const emptyForm: UserFormState = { username: '', name: '', phone: '', role_mask: '1', password: '', hub_id: '' };
+const emptyForm: UserFormState = { username: '', name: '', phone: '', role_mask: '1', password: '', hub_ids: [] };
 
-const getUserHubId = (user: UserAccount) => String(user.hub?.id || user.hubs?.[0]?.id || '');
+const getUserHubIds = (user: UserAccount) => {
+  const ids = user.hub_ids?.length
+    ? user.hub_ids
+    : [...(user.hub ? [user.hub] : []), ...(user.hubs ?? [])].map((hub) => hub.id);
+  return [...new Set(ids.map(String).filter(Boolean))];
+};
 const validRoleMask = ROLE_BITS.reduce((sum, role) => sum + role.value, 0);
 const isDirector = (roleMask = 0) => (Number(roleMask) & 64) !== 0;
 
@@ -185,7 +190,7 @@ export default function HrStaffListPage() {
       phone: user.phone || '',
       role_mask: String(user.role_mask || 1),
       password: '',
-      hub_id: getUserHubId(user),
+      hub_ids: getUserHubIds(user),
     });
     setFieldErrors({});
     setFormOpen(true);
@@ -211,10 +216,10 @@ export default function HrStaffListPage() {
             body: { role_mask: Number(form.role_mask) },
           });
         }
-        if (form.hub_id !== getUserHubId(editingUser)) {
+        if ([...form.hub_ids].sort().join(',') !== [...getUserHubIds(editingUser)].sort().join(',')) {
           await apiRequest(`/users/${editingUser.id}/hub`, {
             method: 'PATCH',
-            body: { hub_id: form.hub_id || null },
+            body: { hub_ids: form.hub_ids },
           });
         }
       } else {
@@ -226,7 +231,7 @@ export default function HrStaffListPage() {
             phone: form.phone.trim() || undefined,
             password: form.password,
             role_mask: Number(form.role_mask),
-            ...(form.hub_id ? { hub_id: form.hub_id } : {}),
+            hub_ids: form.hub_ids,
           },
         });
       }

@@ -137,6 +137,7 @@ describe('WaybillsService', () => {
     usersRepository = {
       findOne: jest.fn(),
       find: jest.fn().mockResolvedValue([]),
+      createQueryBuilder: jest.fn(createQueryBuilder),
     };
     vendorsRepository = {
       findOne: jest.fn(),
@@ -1097,6 +1098,47 @@ describe('WaybillsService', () => {
     expect(qb.andWhere).toHaveBeenCalled();
   });
 
+  it('user assigned to multiple hubs is scoped to every assigned hub', async () => {
+    const qb = createQueryBuilder();
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+    await service.findAll({}, { ...warehouse, hub_ids: ['1', '2'] } as any);
+
+    const inner = evaluateFirstBrackets(qb);
+    expect(inner.where).toHaveBeenCalledWith(
+      'waybill.origin_hub_id IN (:...assignedHubIds)',
+      { assignedHubIds: ['1', '2'] },
+    );
+    expect(inner.orWhere).toHaveBeenCalledWith(
+      'waybill.dest_hub_id IN (:...assignedHubIds)',
+      { assignedHubIds: ['1', '2'] },
+    );
+  });
+
+  it('releases only package splits that are not attached to a trip', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      current_state: WaybillStatus.IN_WAREHOUSE,
+      status: WaybillStatus.IN_WAREHOUSE,
+    }));
+    splitsRepository.find.mockResolvedValue([
+      { id: 'split-orphan', waybill_id: '1', trip_id: null, truck_id: 'truck-1' },
+    ]);
+
+    await expect(service.releaseUnassignedPackageSplits('1', warehouse)).resolves.toEqual({ released_count: 1 });
+
+    expect(splitsRepository.delete).toHaveBeenCalledWith({ id: expect.any(Object) });
+  });
+
+  it('does not release a waybill when there is no orphan package split', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      current_state: WaybillStatus.IN_WAREHOUSE,
+      status: WaybillStatus.IN_WAREHOUSE,
+    }));
+    splitsRepository.find.mockResolvedValue([]);
+
+    await expect(service.releaseUnassignedPackageSplits('1', warehouse)).rejects.toThrow(BadRequestException);
+    expect(splitsRepository.delete).not.toHaveBeenCalled();
+  });
+
   it('create stores up to four normalized bill images', async () => {
     waybillsRepository.findOne.mockResolvedValue(null);
     const result = await service.create({
@@ -2009,13 +2051,32 @@ describe('WaybillsService', () => {
   });
 
   it('response omits fee fields for non-manager users', async () => {
-    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ cod_amount: 10, freight_amount: 20, cc_amount: 30 }));
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      cod_amount: 10,
+      freight_amount: 20,
+      cc_amount: 30,
+      creator: {
+        id: 'u2',
+        username: 'kho.han',
+        full_name: 'Nhân viên kho Hà Nội',
+        password_hash: 'must-not-leak',
+        hub_id: '1',
+      },
+    }));
     const result = await service.findOne('1', warehouse);
     expect(result).not.toHaveProperty('cod_amount');
     expect(result).not.toHaveProperty('freight_amount');
     expect(result).not.toHaveProperty('cc_amount');
+    expect(result.creator).toEqual({
+      id: 'u2',
+      username: 'kho.han',
+      name: 'Nhân viên kho Hà Nội',
+      full_name: 'Nhân viên kho Hà Nội',
+      hub_id: '1',
+    });
+    expect(result.creator).not.toHaveProperty('password_hash');
     expect(waybillsRepository.findOne).toHaveBeenCalledWith(expect.objectContaining({
-      relations: expect.arrayContaining(['last_mile_driver']),
+      relations: expect.arrayContaining(['last_mile_driver', 'creator']),
     }));
   });
 

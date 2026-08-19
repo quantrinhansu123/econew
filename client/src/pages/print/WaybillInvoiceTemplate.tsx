@@ -169,6 +169,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
         </div>
         <div className="eco-footer-staff">
           <b>Mã nhân viên nhận</b>
+          <strong className="eco-footer-staff-code">{value(data.maNhanVienNhan)}</strong>
           <label><span /> Chuyển hoàn</label>
         </div>
         <div className="eco-footer-staff">

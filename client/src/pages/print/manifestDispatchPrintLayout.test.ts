@@ -19,6 +19,13 @@ describe('compact manifest and trip layouts', () => {
     expect(css).toMatch(/@media print[\s\S]*\.manifest-dispatch-sheet-table tbody td > div\s*\{[^}]*font-size:\s*5\.8pt !important;/s);
   });
 
+  it('keeps hub, driver and phone metadata readable on screen and paper', () => {
+    expect(css).toMatch(/\.manifest-dispatch-print-meta-detail\s*\{[^}]*font-size:\s*9pt;/s);
+    expect(css).toMatch(/\.manifest-dispatch-phone\s*\{[^}]*font-size:\s*10pt;[^}]*font-weight:\s*900;/s);
+    expect(css).toMatch(/\.manifest-dispatch-sheet-table tfoot tr:last-child td\s*\{[^}]*font-size:\s*9\.5pt;/s);
+    expect(printView.match(/manifest-dispatch-phone/g)).toHaveLength(3);
+  });
+
   it('keeps trip information in three compact two-column rows', () => {
     expect(tripCard).toContain('<CompactCell label="Tuyến" value={routeLabel(trip)} />');
     expect(tripCard).not.toContain('label="Tuyến" value={routeLabel(trip)} className="col-span-2"');

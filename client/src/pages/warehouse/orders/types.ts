@@ -79,6 +79,7 @@ export interface WaybillDetail {
   received_at?: string | null;
   created_at?: string | null;
   sent_date?: string | null;
+  creator?: UserSummary | null;
   received_by?: UserSummary | null;
   warehouse_intake_method?: WarehouseIntakeMethod | null;
   warehouse_intake_truck_id?: string | number | null;

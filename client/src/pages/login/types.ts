@@ -12,6 +12,8 @@ export interface AuthUserProfile {
   phone: string;
   role_mask: number;
   hub_id: string | null;
+  hub_ids?: string[];
+  hubs?: Array<{ id: string | number; code?: string | null; name?: string | null }>;
   is_active: boolean;
   last_login_at: string | null;
   created_at: string;

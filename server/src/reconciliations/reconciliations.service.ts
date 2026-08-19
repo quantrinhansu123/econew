@@ -4,6 +4,7 @@ import { Brackets, LessThan, Repository } from 'typeorm';
 import { RemittanceStatus } from '../common/enums';
 import { clampPaginationLimit } from '../common/pagination';
 import { Roles, hasRole, isManager } from '../common/roles';
+import { getAssignedHubIds } from '../common/user-hub-scope';
 import { HubEntity } from '../hubs/hub.entity';
 import { UserEntity } from '../users/user.entity';
 import { CreateReconciliationDto } from './dto/create-reconciliation.dto';
@@ -128,15 +129,16 @@ export class ReconciliationsService {
 
   private applyHubScope(qb: any, currentUser: UserEntity): void {
     if (FULL_RECONCILIATION_VIEW_ROLES.some((role) => hasRole(currentUser.role_mask, role))) return;
-    if (!currentUser.hub_id) return;
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (!assignedHubIds.length) return;
     qb.andWhere(new Brackets((inner) => {
-      inner.where('reconciliation.hub_id = :userHubId', { userHubId: currentUser.hub_id });
+      inner.where('reconciliation.hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds });
     }));
   }
 
   private assertHubAccess(hubId: string, currentUser: UserEntity): void {
     if (FULL_RECONCILIATION_VIEW_ROLES.some((role) => hasRole(currentUser.role_mask, role))) return;
-    if (currentUser.hub_id !== hubId) throw new NotFoundException('Hub not found');
+    if (!getAssignedHubIds(currentUser).includes(String(hubId))) throw new NotFoundException('Hub not found');
   }
 
   private assertNonNegative(...values: Array<number | undefined>): void {

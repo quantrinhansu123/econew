@@ -196,6 +196,17 @@ describe('inventory display values', () => {
     })).toBe('127 kiện · Chuyến #41 · BKS 15H-29078 · 06/08 · Đang chạy');
   });
 
+  it('labels a truck allocation without a trip as an orphan allocation', () => {
+    expect(formatInventoryTripHistoryLine({
+      split_id: 'split-1',
+      trip_id: null,
+      manifest_id: null,
+      package_count: 100,
+      license_plate: '29H76629',
+      status: null,
+    })).toBe('100 kiện · Chưa có chuyến · BKS 29H76629 · Phân xe rời');
+  });
+
   it('prefers the waybill destination over the destination hub', () => {
     const waybill: WaybillInventoryItem = {
       id: 1,

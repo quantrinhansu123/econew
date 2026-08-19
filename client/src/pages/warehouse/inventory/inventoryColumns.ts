@@ -51,13 +51,18 @@ export function resolveTripStatusLabel(status?: string | null): string {
   return TRIP_STATUS_LABELS[normalized] || normalized || 'Chưa khởi hành';
 }
 
+export function resolveInventoryTripStatusLabel(trip: InventoryTripHistoryItem): string {
+  if (!trip.trip_id && !trip.manifest_id) return 'Phân xe rời';
+  return resolveTripStatusLabel(trip.status);
+}
+
 export function formatInventoryTripHistoryLine(trip: InventoryTripHistoryItem): string {
   const parts = [
     `${Number(trip.package_count || 0).toLocaleString('vi-VN')} kiện`,
     trip.trip_id ? `Chuyến #${trip.trip_id}` : 'Chưa có chuyến',
     trip.license_plate ? `BKS ${trip.license_plate}` : null,
     trip.departure_time ? formatInventoryDate(trip.departure_time, { short: true }) : null,
-    resolveTripStatusLabel(trip.status),
+    resolveInventoryTripStatusLabel(trip),
   ];
   return parts.filter(Boolean).join(' · ');
 }
@@ -399,7 +404,7 @@ export const ALL_ORDERS_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>
   cod_amount: 120,
   customer_payment_status: 115,
   customer_payment_note: 140,
-  actions: 112,
+  actions: 148,
 };
 
 /** Năm cột nghiệp vụ luôn hiển thị khi cuộn ngang danh sách đơn. */

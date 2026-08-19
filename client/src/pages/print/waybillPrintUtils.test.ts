@@ -40,6 +40,16 @@ describe('buildWaybillPrintData receiver fields', () => {
     })).maNhanVienPhat).toBe('Tài xế đối tác');
   });
 
+  it('prints the full name of the employee account that created the bill', () => {
+    expect(buildWaybillPrintData(waybill({
+      creator: { id: '12', username: 'lenamson', full_name: 'Lê Nam Sơn' },
+    })).maNhanVienNhan).toBe('Lê Nam Sơn');
+
+    expect(buildWaybillPrintData(waybill({
+      creator: { id: '13', username: 'kho.hcm' },
+    })).maNhanVienNhan).toBe('kho.hcm');
+  });
+
   it('adds readable spacing to phone numbers on the printed bill', () => {
     expect(formatPhoneForPrint('0908809863')).toBe('0908 809 863');
     expect(formatPhoneForPrint('0908 809 863')).toBe('0908 809 863');

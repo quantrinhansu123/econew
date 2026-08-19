@@ -60,10 +60,10 @@ export const moduleGroups: ModuleGroup[] = [
     id: 'warehouse',
     path: '/warehouse',
     section: 'Quản lý kho & bưu cục',
-    requiredRoleMask: WAREHOUSE_ROLES,
+    requiredRoleMask: WAREHOUSE_ROLES | DISPATCHER,
     items: [
       { icon: Warehouse, title: 'Danh sách đơn', description: 'Xem toàn bộ vận đơn theo ngày và mã bill.', colorScheme: 'blue', path: '/warehouse/orders', requiredRoleMask: WAREHOUSE_ROLES },
-      { icon: Warehouse, title: 'Đơn tồn', description: 'Theo dõi vận đơn tồn kho chưa phân đủ kiện lên xe.', colorScheme: 'slate', path: '/warehouse/inventory', requiredRoleMask: WAREHOUSE_ROLES, isHidden: true },
+      { icon: Warehouse, title: 'Đơn tồn', description: 'Theo dõi vận đơn tồn kho chưa phân đủ kiện lên xe.', colorScheme: 'slate', path: '/warehouse/inventory', requiredRoleMask: DISPATCHER | MANAGER_ROLES },
       { icon: Building2, title: 'Danh sách Bưu cục', description: 'Tra cứu danh sách bưu cục HAN, HCM và thông tin vận hành.', colorScheme: 'blue', path: '/warehouse/hubs', requiredRoleMask: WAREHOUSE_ROLES },
       { icon: AlertTriangle, title: 'Tất cả chuyến xe', description: 'Theo dõi toàn bộ chuyến xe, lịch sử, ngày đến, BKS và tài xế.', colorScheme: 'orange', path: '/warehouse/incoming', requiredRoleMask: WAREHOUSE_ROLES },
       { icon: AlertTriangle, title: 'Xe đang đến', description: 'Chỉ hiện xe đang trên đường đến bưu cục hiện tại; xe đã đến sẽ tự ẩn.', colorScheme: 'orange', path: '/warehouse/incoming_hcm', requiredRoleMask: WAREHOUSE_ROLES },

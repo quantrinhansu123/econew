@@ -17,6 +17,7 @@ export interface UserAccount {
   phone: string;
   role_mask: number;
   status?: string | boolean | null;
+  hub_ids?: Array<string | number>;
   hubs?: HubSummary[] | null;
   hub?: HubSummary | null;
 }
@@ -58,7 +59,7 @@ export interface UserFormState {
   phone: string;
   role_mask: string;
   password: string;
-  hub_id: string;
+  hub_ids: string[];
 }
 
 export interface UserFieldErrors {
@@ -67,5 +68,5 @@ export interface UserFieldErrors {
   phone?: string;
   role_mask?: string;
   password?: string;
-  hub_id?: string;
+  hub_ids?: string;
 }

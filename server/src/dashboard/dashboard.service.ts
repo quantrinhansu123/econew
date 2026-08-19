@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, SelectQueryBuilder } from 'typeorm';
 import { PaymentType, RemittanceStatus, TripStatus, WaybillState } from '../common/enums';
 import { Roles, hasRole, isManager } from '../common/roles';
+import { getAssignedHubIds, getDefaultHubId } from '../common/user-hub-scope';
 import { ExpenseEntity } from '../expenses/expense.entity';
 import { HubEntity } from '../hubs/hub.entity';
 import { ManifestEntity } from '../manifests/manifest.entity';
@@ -178,7 +179,7 @@ export class DashboardService {
   }
 
   buildDashboardScope(currentUser: UserEntity): Scope {
-    return { hubId: currentUser.hub_id ?? undefined, canViewSystem: isManager(currentUser.role_mask), canViewFinance: hasRole(currentUser.role_mask, Roles.ACCOUNTANT) || isManager(currentUser.role_mask), canViewProfit: isManager(currentUser.role_mask) };
+    return { hubId: getDefaultHubId(currentUser), canViewSystem: isManager(currentUser.role_mask), canViewFinance: hasRole(currentUser.role_mask, Roles.ACCOUNTANT) || isManager(currentUser.role_mask), canViewProfit: isManager(currentUser.role_mask) };
   }
 
   private async normalizeQuery<T extends QueryDashboardDto>(query: T, currentUser: UserEntity): Promise<T> {
@@ -191,7 +192,7 @@ export class DashboardService {
     if (query.hub_id) {
       const hub = await this.hubsRepository.findOne({ where: { id: query.hub_id } });
       if (!hub) throw new NotFoundException('Hub not found');
-      if (!isManager(currentUser.role_mask) && currentUser.hub_id && currentUser.hub_id !== query.hub_id) throw new ForbiddenException('User cannot view dashboard outside assigned hub');
+      if (!isManager(currentUser.role_mask) && getAssignedHubIds(currentUser).length && !getAssignedHubIds(currentUser).includes(String(query.hub_id))) throw new ForbiddenException('User cannot view dashboard outside assigned hub');
     }
     return { ...query, date_from: dateFrom, date_to: dateTo, limit: this.resolveLimit(query.limit) };
   }

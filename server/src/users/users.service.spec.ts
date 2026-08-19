@@ -9,9 +9,11 @@ import { UsersService } from './users.service';
 jest.mock('bcrypt', () => ({ hash: jest.fn() }));
 
 const createRepositoryMock = () => ({
+  find: jest.fn(),
   findOne: jest.fn(),
   create: jest.fn((input) => input as UserEntity),
   save: jest.fn((input) => Promise.resolve(input as UserEntity)),
+  delete: jest.fn(),
   createQueryBuilder: jest.fn(),
   count: jest.fn(),
 });
@@ -19,6 +21,7 @@ const createRepositoryMock = () => ({
 describe('UsersService', () => {
   let service: UsersService;
   let usersRepository: ReturnType<typeof createRepositoryMock>;
+  let userHubsRepository: ReturnType<typeof createRepositoryMock>;
   let hubsRepository: ReturnType<typeof createRepositoryMock>;
   let tripsRepository: ReturnType<typeof createRepositoryMock>;
   let trucksRepository: ReturnType<typeof createRepositoryMock>;
@@ -46,19 +49,20 @@ describe('UsersService', () => {
 
   beforeEach(() => {
     usersRepository = createRepositoryMock();
+    userHubsRepository = createRepositoryMock();
     hubsRepository = createRepositoryMock();
     tripsRepository = createRepositoryMock();
     trucksRepository = createRepositoryMock();
     manifestsRepository = createRepositoryMock();
     reconciliationsRepository = createRepositoryMock();
     waybillsRepository = createRepositoryMock();
-    service = new UsersService(usersRepository as never, hubsRepository as never, tripsRepository as never, trucksRepository as never, manifestsRepository as never, reconciliationsRepository as never, waybillsRepository as never);
+    service = new UsersService(usersRepository as never, userHubsRepository as never, hubsRepository as never, tripsRepository as never, trucksRepository as never, manifestsRepository as never, reconciliationsRepository as never, waybillsRepository as never);
     (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-new');
   });
 
   it('create creates an active safe user with normalized email and hashed password', async () => {
-    usersRepository.findOne.mockResolvedValue(null);
-    hubsRepository.findOne.mockResolvedValue(hub);
+    usersRepository.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...user, hub, user_hubs: [{ user_id: '1', hub_id: '1', hub }] });
+    hubsRepository.find.mockResolvedValue([hub]);
 
     const result = await service.create({ email: ' STAFF@ECO.TEST ', phone: '+84901234567', full_name: 'Staff One', password: 'password123', role_mask: Roles.WAREHOUSE, hub_id: '1' });
 
@@ -80,6 +84,7 @@ describe('UsersService', () => {
   it('findAll filters by keyword, role_mask, hub_id, and is_active', async () => {
     const queryBuilder = {
       leftJoinAndSelect: jest.fn().mockReturnThis(),
+      distinct: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
@@ -139,8 +144,25 @@ describe('UsersService', () => {
 
   it('assignHub rejects missing hub', async () => {
     usersRepository.findOne.mockResolvedValue(user);
-    hubsRepository.findOne.mockResolvedValue(null);
+    hubsRepository.find.mockResolvedValue([]);
     await expect(service.assignHub('1', { hub_id: '404' })).rejects.toThrow(NotFoundException);
+  });
+
+  it('assignHub persists multiple hub assignments and keeps the first as default', async () => {
+    const hcm = { ...hub, id: '2', code: 'HCM', name: 'Hồ Chí Minh' } as HubEntity;
+    usersRepository.findOne
+      .mockResolvedValueOnce({ ...user })
+      .mockResolvedValueOnce({ ...user, hub_id: '1', hub, user_hubs: [{ user_id: '1', hub_id: '1', hub }, { user_id: '1', hub_id: '2', hub: hcm }] });
+    hubsRepository.find.mockResolvedValue([hub, hcm]);
+
+    const result = await service.assignHub('1', { hub_ids: ['1', '2'] });
+
+    expect(userHubsRepository.delete).toHaveBeenCalledWith({ user_id: '1' });
+    expect(userHubsRepository.save).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ user_id: '1', hub_id: '1' }),
+      expect.objectContaining({ user_id: '1', hub_id: '2' }),
+    ]));
+    expect(result.hub_ids).toEqual(['1', '2']);
   });
 
   it('updateStatus blocks deactivating current account', async () => {

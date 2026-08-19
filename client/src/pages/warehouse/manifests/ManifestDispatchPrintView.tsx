@@ -56,19 +56,19 @@ export default function ManifestDispatchPrintView({ manifest, links, rows, visib
           <div className="manifest-dispatch-print-meta-item manifest-dispatch-print-hub-item">
             <span className="manifest-dispatch-print-meta-label">HUB đi</span>
             <span className="manifest-dispatch-print-meta-value">{originHub}</span>
-            <span className="manifest-dispatch-print-meta-detail">SĐT: {originHubPhone}</span>
+            <span className="manifest-dispatch-print-meta-detail manifest-dispatch-phone">SĐT: {originHubPhone}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item manifest-dispatch-print-hub-item">
             <span className="manifest-dispatch-print-meta-label">HUB đến</span>
             <span className="manifest-dispatch-print-meta-value">{destinationHub}</span>
-            <span className="manifest-dispatch-print-meta-detail">SĐT: {destinationHubPhone}</span>
+            <span className="manifest-dispatch-print-meta-detail manifest-dispatch-phone">SĐT: {destinationHubPhone}</span>
             <span className="manifest-dispatch-print-meta-detail">Dự kiến đến: {hubExpectedArrivalLabel}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item manifest-dispatch-print-trip-item">
             <span className="manifest-dispatch-print-meta-label">Biển số xe</span>
             <span className="manifest-dispatch-print-meta-value">{licensePlate}</span>
             <span className="manifest-dispatch-print-meta-detail">NCC / Tài xế: {carrier}</span>
-            <span className="manifest-dispatch-print-meta-detail">SĐT: {driverPhone}</span>
+            <span className="manifest-dispatch-print-meta-detail manifest-dispatch-phone">SĐT: {driverPhone}</span>
             <span className="manifest-dispatch-print-meta-detail">Khởi hành: {departureDate}</span>
           </div>
           <div className="manifest-dispatch-print-meta-item manifest-dispatch-print-qr-item">

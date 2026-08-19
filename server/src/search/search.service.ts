@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, SelectQueryBuilder } from 'typeorm';
 import { PaymentType, TripStatus, WaybillState } from '../common/enums';
 import { Roles, hasRole, isManager } from '../common/roles';
+import { getAssignedHubIds } from '../common/user-hub-scope';
 import { HubEntity } from '../hubs/hub.entity';
 import { ManifestEntity } from '../manifests/manifest.entity';
 import { TripEntity } from '../trips/trip.entity';
@@ -304,8 +305,8 @@ export class SearchService {
     if (
       !isManager(currentUser.role_mask)
       && !hasRole(currentUser.role_mask, Roles.ACCOUNTANT)
-      && currentUser.hub_id
-      && currentUser.hub_id !== hubId
+      && getAssignedHubIds(currentUser).length
+      && !getAssignedHubIds(currentUser).includes(String(hubId))
     ) throw new ForbiddenException('User cannot search outside assigned hub');
   }
 
@@ -337,11 +338,12 @@ export class SearchService {
       qb.andWhere('waybill.last_mile_driver_id = :driverId', { driverId: currentUser.id });
       return;
     }
-    if (!currentUser.hub_id) throw new ForbiddenException('User is not assigned to a hub');
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (!assignedHubIds.length) throw new ForbiddenException('User is not assigned to a hub');
     qb.andWhere(new Brackets((inner) => inner
-      .where('waybill.origin_hub_id = :userHubId', { userHubId: currentUser.hub_id })
-      .orWhere('waybill.dest_hub_id = :userHubId', { userHubId: currentUser.hub_id })
-      .orWhere('waybill.current_hub_id = :userHubId', { userHubId: currentUser.hub_id })));
+      .where('waybill.origin_hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds })
+      .orWhere('waybill.dest_hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds })
+      .orWhere('waybill.current_hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds })));
   }
 
   private applyTripScope(qb: SelectQueryBuilder<TripEntity>, currentUser: UserEntity): void {
@@ -350,10 +352,11 @@ export class SearchService {
       qb.andWhere('truck.driver_id = :driverId', { driverId: currentUser.id });
       return;
     }
-    if (!currentUser.hub_id) throw new ForbiddenException('User is not assigned to a hub');
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (!assignedHubIds.length) throw new ForbiddenException('User is not assigned to a hub');
     qb.andWhere(new Brackets((inner) => inner
-      .where('trip.start_hub_id = :userHubId', { userHubId: currentUser.hub_id })
-      .orWhere('trip.end_hub_id = :userHubId', { userHubId: currentUser.hub_id })));
+      .where('trip.start_hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds })
+      .orWhere('trip.end_hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds })));
   }
 
   private sanitizeWaybill(waybill: WaybillSearchRow, currentUser: UserEntity): Record<string, unknown> {

@@ -65,6 +65,7 @@ describe('UsersService', () => {
     await expect(service.findByLogin(' USER01 ')).resolves.toBe(user);
     expect(repository.findOne).toHaveBeenCalledWith({
       where: [{ email: 'user01' }, { username: 'user01' }],
+      relations: ['hub', 'user_hubs', 'user_hubs.hub'],
     });
   });
 

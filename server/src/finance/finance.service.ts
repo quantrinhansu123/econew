@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, SelectQueryBuilder } from 'typeorm';
 import { PaymentType, RemittanceStatus } from '../common/enums';
 import { Roles, hasRole, isManager } from '../common/roles';
+import { getAssignedHubIds, getDefaultHubId } from '../common/user-hub-scope';
 import { HubEntity } from '../hubs/hub.entity';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
@@ -60,8 +61,9 @@ export class FinanceService {
     if (!query.include_inactive) qb.andWhere('fund.is_active = true');
     if (query.hub_id) qb.andWhere('(fund.hub_id = :hubId OR fund.hub_id IS NULL)', { hubId: query.hub_id });
     if (!isManager(currentUser.role_mask)) {
-      if (!currentUser.hub_id) throw new ForbiddenException('User is not assigned to a hub');
-      qb.andWhere('(fund.hub_id = :userHubId OR fund.hub_id IS NULL)', { userHubId: currentUser.hub_id });
+      const assignedHubIds = getAssignedHubIds(currentUser);
+      if (!assignedHubIds.length) throw new ForbiddenException('User is not assigned to a hub');
+      qb.andWhere('(fund.hub_id IN (:...userHubIds) OR fund.hub_id IS NULL)', { userHubIds: assignedHubIds });
     }
 
     const funds = await qb.getMany();
@@ -401,7 +403,7 @@ export class FinanceService {
   }
 
   buildFinanceScope(currentUser: UserEntity): Scope {
-    return { hubId: currentUser.hub_id ?? undefined, canViewSystem: isManager(currentUser.role_mask), canViewProfit: isManager(currentUser.role_mask) };
+    return { hubId: getDefaultHubId(currentUser), canViewSystem: isManager(currentUser.role_mask), canViewProfit: isManager(currentUser.role_mask) };
   }
 
   private sanitizeCashFund(fund: CashFundEntity): Record<string, unknown> {
@@ -506,27 +508,37 @@ export class FinanceService {
 
   private assertHubAccess(hubId: string, currentUser: UserEntity): void {
     if (isManager(currentUser.role_mask)) return;
-    if (currentUser.hub_id !== hubId) throw new ForbiddenException('User cannot access finance data outside assigned hub');
+    if (!getAssignedHubIds(currentUser).includes(String(hubId))) throw new ForbiddenException('User cannot access finance data outside assigned hub');
   }
 
   private applyReconciliationScope(qb: SelectQueryBuilder<FinanceReconciliationEntity>, currentUser: UserEntity): void {
     if (isManager(currentUser.role_mask)) return;
-    if (!currentUser.hub_id) throw new ForbiddenException('User is not assigned to a hub');
-    qb.andWhere('reconciliation.hub_id = :userHubId', { userHubId: currentUser.hub_id });
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (!assignedHubIds.length) throw new ForbiddenException('User is not assigned to a hub');
+    if (assignedHubIds.length === 1) {
+      qb.andWhere('reconciliation.hub_id = :userHubId', { userHubId: assignedHubIds[0] });
+    } else {
+      qb.andWhere('reconciliation.hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds });
+    }
   }
 
   private applyTripScope(qb: SelectQueryBuilder<TripEntity>, hubId: string | undefined, currentUser: UserEntity): void {
     if (isManager(currentUser.role_mask) && !hubId) return;
-    const scopedHubId = hubId ?? currentUser.hub_id;
-    if (!scopedHubId) throw new ForbiddenException('User is not assigned to a hub');
-    qb.andWhere(new Brackets((inner) => inner.where('trip.start_hub_id = :hubId', { hubId: scopedHubId }).orWhere('trip.end_hub_id = :hubId', { hubId: scopedHubId })));
+    const scopedHubIds = hubId ? [String(hubId)] : getAssignedHubIds(currentUser);
+    if (!scopedHubIds.length) throw new ForbiddenException('User is not assigned to a hub');
+    qb.andWhere(new Brackets((inner) => inner
+      .where('trip.start_hub_id IN (:...hubIds)', { hubIds: scopedHubIds })
+      .orWhere('trip.end_hub_id IN (:...hubIds)', { hubIds: scopedHubIds })));
   }
 
   private applyWaybillScope(qb: SelectQueryBuilder<WaybillEntity>, hubId: string | undefined, currentUser: UserEntity): void {
     if (isManager(currentUser.role_mask) && !hubId) return;
-    const scopedHubId = hubId ?? currentUser.hub_id;
-    if (!scopedHubId) throw new ForbiddenException('User is not assigned to a hub');
-    qb.andWhere(new Brackets((inner) => inner.where('waybill.origin_hub_id = :hubId', { hubId: scopedHubId }).orWhere('waybill.dest_hub_id = :hubId', { hubId: scopedHubId }).orWhere('waybill.current_hub_id = :hubId', { hubId: scopedHubId })));
+    const scopedHubIds = hubId ? [String(hubId)] : getAssignedHubIds(currentUser);
+    if (!scopedHubIds.length) throw new ForbiddenException('User is not assigned to a hub');
+    qb.andWhere(new Brackets((inner) => inner
+      .where('waybill.origin_hub_id IN (:...hubIds)', { hubIds: scopedHubIds })
+      .orWhere('waybill.dest_hub_id IN (:...hubIds)', { hubIds: scopedHubIds })
+      .orWhere('waybill.current_hub_id IN (:...hubIds)', { hubIds: scopedHubIds })));
   }
 
   private applyDateRangeToWaybill(qb: SelectQueryBuilder<WaybillEntity>, query: QueryReconciliationsDto): void {

@@ -4,6 +4,7 @@ import { Brackets, In, Not, Repository } from 'typeorm';
 import { PaymentType, TripStatus, VendorTripPaymentStatus, WaybillState } from '../common/enums';
 import { clampPaginationLimit } from '../common/pagination';
 import { Roles, isManager } from '../common/roles';
+import { getAssignedHubIds } from '../common/user-hub-scope';
 import { HubEntity } from '../hubs/hub.entity';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
 import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
@@ -97,6 +98,7 @@ export class TripsService {
 
   async findAll(query: QueryTripsDto, currentUser: UserEntity) {
     await this.processScheduledArrivals();
+    const assignedHubIds = getAssignedHubIds(currentUser);
     const hubScopeId =
       query.end_hub_id != null
         ? String(query.end_hub_id)
@@ -104,7 +106,7 @@ export class TripsService {
           ? String(query.start_hub_id)
           : isManager(currentUser.role_mask)
             ? undefined
-            : currentUser.hub_id ?? undefined;
+            : assignedHubIds.length === 1 ? assignedHubIds[0] : undefined;
 
     const backfillStatuses = new Set<string>([
       TripStatus.IN_TRANSIT,
@@ -487,15 +489,16 @@ export class TripsService {
     const limit = clampPaginationLimit(query.limit, 100);
     const managerPlus = isManager(currentUser.role_mask);
     const requestedHubId = query.end_hub_id != null ? String(query.end_hub_id) : undefined;
-    const hubId = managerPlus ? requestedHubId : currentUser.hub_id ?? undefined;
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    const scopedHubIds = managerPlus
+      ? requestedHubId ? [requestedHubId] : []
+      : requestedHubId && assignedHubIds.includes(requestedHubId) ? [requestedHubId] : assignedHubIds;
 
-    if (!managerPlus && !hubId) {
+    if (!managerPlus && !scopedHubIds.length) {
       throw new ForbiddenException('Tài khoản chưa được gán bưu cục');
     }
 
-    if (hubId) {
-      await this.waybillsService.backfillInTransitTripsForHub(hubId);
-    }
+    await Promise.all(scopedHubIds.map((hubId) => this.waybillsService.backfillInTransitTripsForHub(hubId)));
 
     const qb = this.tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
@@ -510,8 +513,10 @@ export class TripsService {
       .leftJoinAndSelect('trip.expenses', 'trip_expenses')
       .where('trip.status = :status', { status: TripStatus.IN_TRANSIT });
 
-    if (hubId) {
-      qb.andWhere('trip.end_hub_id = :endHubId', { endHubId: hubId });
+    if (scopedHubIds.length === 1) {
+      qb.andWhere('trip.end_hub_id = :endHubId', { endHubId: scopedHubIds[0] });
+    } else if (scopedHubIds.length > 1) {
+      qb.andWhere('trip.end_hub_id IN (:...endHubIds)', { endHubIds: scopedHubIds });
     }
 
     this.applyHubScope(qb, currentUser);
@@ -529,11 +534,13 @@ export class TripsService {
 
   async getIncomingOverview(query: QueryTripsDto, currentUser: UserEntity) {
     const managerPlus = isManager(currentUser.role_mask);
-    if (!managerPlus && !currentUser.hub_id) {
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (!managerPlus && !assignedHubIds.length) {
       throw new ForbiddenException('Tài khoản chưa được gán bưu cục');
     }
 
-    await this.waybillsService.backfillInTransitTripsForHub(managerPlus ? undefined : currentUser.hub_id ?? undefined);
+    if (managerPlus) await this.waybillsService.backfillInTransitTripsForHub(undefined);
+    else await Promise.all(assignedHubIds.map((hubId) => this.waybillsService.backfillInTransitTripsForHub(hubId)));
 
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 100);
@@ -982,10 +989,11 @@ export class TripsService {
 
   private applyHubScope(qb: any, currentUser: UserEntity): void {
     if (isManager(currentUser.role_mask)) return;
-    if (!currentUser.hub_id) return;
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (!assignedHubIds.length) return;
     qb.andWhere(new Brackets((inner) => {
-      inner.where('trip.start_hub_id = :userHubId', { userHubId: currentUser.hub_id })
-        .orWhere('trip.end_hub_id = :userHubId', { userHubId: currentUser.hub_id });
+      inner.where('trip.start_hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds })
+        .orWhere('trip.end_hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds });
     }));
   }
 

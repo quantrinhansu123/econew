@@ -17,8 +17,13 @@ import UserDetailDialog from './users/dialogs/UserDetailDialog';
 import UserStatusConfirmDialog from './users/dialogs/UserStatusConfirmDialog';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
-const emptyForm: UserFormState = { username: '', name: '', phone: '', role_mask: '1', password: '', hub_id: '' };
-const getUserHubId = (user: UserAccount) => String(user.hub?.id || user.hubs?.[0]?.id || '');
+const emptyForm: UserFormState = { username: '', name: '', phone: '', role_mask: '1', password: '', hub_ids: [] };
+const getUserHubIds = (user: UserAccount) => {
+  const ids = user.hub_ids?.length
+    ? user.hub_ids
+    : [...(user.hub ? [user.hub] : []), ...(user.hubs ?? [])].map((hub) => hub.id);
+  return [...new Set(ids.map(String).filter(Boolean))];
+};
 const validRoleMask = ROLE_BITS.reduce((sum, role) => sum + role.value, 0);
 
 const getStoredUser = (): AuthUserProfile | null => { const raw = localStorage.getItem(USER_PROFILE_KEY) || sessionStorage.getItem(USER_PROFILE_KEY); if (!raw) return null; try { return JSON.parse(raw) as AuthUserProfile; } catch { return null; } };
@@ -46,7 +51,7 @@ export default function AdminUsersPage() {
   const [roleUser, setRoleUser] = useState<UserAccount | null>(null);
   const [roleValue, setRoleValue] = useState(1);
   const [hubUser, setHubUser] = useState<UserAccount | null>(null);
-  const [hubValue, setHubValue] = useState('');
+  const [hubValue, setHubValue] = useState<string[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
   const [statusDialog, setStatusDialog] = useState<ConfirmDialogState>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -80,12 +85,12 @@ export default function AdminUsersPage() {
 
   const validate = () => { const errors: UserFieldErrors = {}; const mask = Number(form.role_mask); const email = form.username.trim(); if (!email) errors.username = 'Email bắt buộc.'; else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.username = 'Email không hợp lệ.'; if (!form.name.trim()) errors.name = 'Họ tên bắt buộc.'; if (form.phone && !/^[0-9+\-\s().]{8,20}$/.test(form.phone)) errors.phone = 'Số điện thoại không hợp lệ.'; if (!isEdit && (!form.password || form.password.length < 8)) errors.password = 'Mật khẩu tối thiểu 8 ký tự.'; else if (isEdit && form.password && form.password.length < 8) errors.password = 'Mật khẩu tối thiểu 8 ký tự.'; if (!Number.isInteger(mask) || mask < 1 || (mask | validRoleMask) !== validRoleMask) errors.role_mask = 'Role mask không hợp lệ.'; if (!canDelete && editingUser && ((editingUser.role_mask & 64) !== (mask & 64))) errors.role_mask = 'MANAGER không được cấp/gỡ DIRECTOR.'; setFieldErrors(errors); return !Object.keys(errors).length; };
   const openCreate = () => { setIsEdit(false); setEditingUser(null); setForm(emptyForm); setFieldErrors({}); setFormOpen(true); };
-  const openEdit = (user: UserAccount) => { setIsEdit(true); setEditingUser(user); setForm({ username: user.username || '', name: user.name || '', phone: user.phone || '', role_mask: String(user.role_mask || 1), password: '', hub_id: getUserHubId(user) }); setFieldErrors({}); setFormOpen(true); };
-  const submitForm = async () => { if (!validate()) return; setSubmitting(true); try { if (isEdit && editingUser) { await apiRequest(`/users/${editingUser.id}`, { method: 'PATCH', body: { email: form.username.trim(), full_name: form.name.trim(), phone: form.phone.trim() || undefined, ...(form.password.trim() ? { password: form.password } : {}) } }); if (Number(form.role_mask) !== editingUser.role_mask) await apiRequest(`/users/${editingUser.id}/role`, { method: 'PATCH', body: { role_mask: Number(form.role_mask) } }); if (form.hub_id !== getUserHubId(editingUser)) await apiRequest(`/users/${editingUser.id}/hub`, { method: 'PATCH', body: { hub_id: form.hub_id || null } }); } else await apiRequest('/users', { method: 'POST', body: { email: form.username.trim(), full_name: form.name.trim(), phone: form.phone.trim() || undefined, password: form.password, role_mask: Number(form.role_mask), ...(form.hub_id ? { hub_id: form.hub_id } : {}) } }); setFormOpen(false); await loadUsers(); } finally { setSubmitting(false); } };
+  const openEdit = (user: UserAccount) => { setIsEdit(true); setEditingUser(user); setForm({ username: user.username || '', name: user.name || '', phone: user.phone || '', role_mask: String(user.role_mask || 1), password: '', hub_ids: getUserHubIds(user) }); setFieldErrors({}); setFormOpen(true); };
+  const submitForm = async () => { if (!validate()) return; setSubmitting(true); try { if (isEdit && editingUser) { await apiRequest(`/users/${editingUser.id}`, { method: 'PATCH', body: { email: form.username.trim(), full_name: form.name.trim(), phone: form.phone.trim() || undefined, ...(form.password.trim() ? { password: form.password } : {}) } }); if (Number(form.role_mask) !== editingUser.role_mask) await apiRequest(`/users/${editingUser.id}/role`, { method: 'PATCH', body: { role_mask: Number(form.role_mask) } }); if ([...form.hub_ids].sort().join(',') !== [...getUserHubIds(editingUser)].sort().join(',')) await apiRequest(`/users/${editingUser.id}/hub`, { method: 'PATCH', body: { hub_ids: form.hub_ids } }); } else await apiRequest('/users', { method: 'POST', body: { email: form.username.trim(), full_name: form.name.trim(), phone: form.phone.trim() || undefined, password: form.password, role_mask: Number(form.role_mask), hub_ids: form.hub_ids } }); setFormOpen(false); await loadUsers(); } finally { setSubmitting(false); } };
   const submitRole = async () => { if (!roleUser) return; setSubmitting(true); try { await apiRequest(`/users/${roleUser.id}/role`, { method: 'PATCH', body: { role_mask: roleValue } }); setRoleUser(null); await loadUsers(); } finally { setSubmitting(false); } };
-  const submitHub = async () => { if (!hubUser) return; setSubmitting(true); try { await apiRequest(`/users/${hubUser.id}/hub`, { method: 'PATCH', body: { hub_id: hubValue } }); setHubUser(null); await loadUsers(); } finally { setSubmitting(false); } };
+  const submitHub = async () => { if (!hubUser) return; setSubmitting(true); try { await apiRequest(`/users/${hubUser.id}/hub`, { method: 'PATCH', body: { hub_ids: hubValue } }); setHubUser(null); await loadUsers(); } finally { setSubmitting(false); } };
   const openRole = (user: UserAccount) => { setRoleUser(user); setRoleValue(user.role_mask); };
-  const openHub = (user: UserAccount) => { setHubUser(user); setHubValue(String(user.hub?.id || user.hubs?.[0]?.id || '')); };
+  const openHub = (user: UserAccount) => { setHubUser(user); setHubValue(getUserHubIds(user)); };
   const isSelf = (user: UserAccount) => String(currentUser?.id) === String(user.id);
   const confirmStatus = (user: UserAccount) => setStatusDialog({ title: 'Xác nhận đổi trạng thái', message: `Bạn muốn bật/tắt tài khoản ${user.username}?`, confirmLabel: 'Xác nhận', onConfirm: async () => { await apiRequest(`/users/${user.id}/status`, { method: 'PATCH' }); await loadUsers(); } });
   const confirmDelete = (user: UserAccount) => setConfirmDialog({ title: 'Xóa nhân sự', message: `Chỉ DIRECTOR được xóa nhân sự. Xác nhận xóa ${user.username}?`, confirmLabel: 'Xóa', danger: true, onConfirm: async () => { await apiRequest(`/users/${user.id}`, { method: 'DELETE' }); await loadUsers(); } });

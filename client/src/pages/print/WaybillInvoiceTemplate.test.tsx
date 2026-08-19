@@ -37,6 +37,7 @@ const printData: WaybillPrintData = {
   tongPhaiThuPhat: '0',
   dichVu: 'TIÊU CHUẨN 72H',
   dvGtgt: 'Tiêu chuẩn',
+  maNhanVienNhan: 'Lê Nam Sơn',
   maNhanVienPhat: 'NVPHAT01',
   codStamp: false,
   showPricing: false,
@@ -87,6 +88,8 @@ describe('waybill invoice layout', () => {
     expect(html).toContain('Quý khách vui lòng kiểm tra số lượng hàng hoá trước khi ký nhận.');
     expect(html).toContain('Vui lòng quét mã QR để xem chính sách đền bù và điều kiện chuyển phát');
     expect(html).toContain('Mã nhân viên phát');
+    expect(html).toContain('Mã nhân viên nhận');
+    expect(html).toContain('<strong class="eco-footer-staff-code">Lê Nam Sơn</strong>');
     expect(html).toContain('<strong class="eco-footer-staff-code">NVPHAT01</strong>');
     expect(html).toContain('/eco-policy-qr.jpg');
     expect(html).not.toContain('api.qrserver.com');

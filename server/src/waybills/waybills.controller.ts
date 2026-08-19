@@ -222,6 +222,13 @@ export class WaybillsController {
     return this.waybillsService.savePackageSplits(id, dto, currentUser);
   }
 
+  @Delete(':id/splits/unassigned')
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Release legacy truck allocations that were not attached to a trip' })
+  releaseUnassignedPackageSplits(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.releaseUnassignedPackageSplits(id, currentUser);
+  }
+
   @Get(':id/cash-vouchers')
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List payment history for a waybill' })

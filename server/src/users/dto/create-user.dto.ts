@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsInt, IsNotEmpty, IsOptional, IsPhoneNumber, IsString, MaxLength, MinLength } from 'class-validator';
+import { ArrayUnique, IsArray, IsEmail, IsInt, IsNotEmpty, IsOptional, IsPhoneNumber, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'staff@eco.test' })
@@ -32,4 +32,11 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   hub_id?: string;
+
+  @ApiPropertyOptional({ example: ['1', '2'], description: 'Danh sách bưu cục được phép thao tác; phần tử đầu là bưu cục mặc định' })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  hub_ids?: string[];
 }

@@ -10,6 +10,7 @@ import { ManifestEntity } from '../manifests/manifest.entity';
 import { clampPaginationLimit } from '../common/pagination';
 import { extractVietnamAddressParts } from '../common/vietnam-address';
 import { Roles, hasRole, isManager } from '../common/roles';
+import { getAssignedHubIds } from '../common/user-hub-scope';
 import { UserEntity } from '../users/user.entity';
 import { WaybillEntity } from './waybill.entity';
 import { WaybillChangeLogEntity, WaybillFieldChange } from './waybill-change-log.entity';
@@ -315,8 +316,9 @@ export class WaybillsService {
 
     this.applyFilters(qb, { ...query, status: undefined });
     this.applyHubScope(qb, currentUser);
-    if (!isManager(currentUser.role_mask) && currentUser.hub_id) {
-      qb.andWhere('waybill.dest_hub_id = :deliveryHubId', { deliveryHubId: currentUser.hub_id });
+    const assignedDeliveryHubIds = getAssignedHubIds(currentUser);
+    if (!isManager(currentUser.role_mask) && !hasRole(currentUser.role_mask, Roles.ACCOUNTANT) && assignedDeliveryHubIds.length) {
+      qb.andWhere('waybill.dest_hub_id IN (:...deliveryHubIds)', { deliveryHubIds: assignedDeliveryHubIds });
     }
 
     const waybills = await qb
@@ -564,15 +566,28 @@ export class WaybillsService {
   }
 
   async getDeliveryResources(requestedHubId: string | undefined, currentUser: UserEntity) {
-    const hubId = isManager(currentUser.role_mask) ? requestedHubId || currentUser.hub_id : currentUser.hub_id;
-    const drivers = await this.usersRepository.find({
-      where: {
-        is_active: true,
-        ...(hubId ? { hub_id: String(hubId) } : {}),
-      } as any,
-      order: { full_name: 'ASC' },
-    });
-    const eligibleDrivers = drivers.filter((driver) => (driver.role_mask & Roles.DRIVER) !== 0);
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    const hubId = isManager(currentUser.role_mask)
+      ? requestedHubId || assignedHubIds[0]
+      : requestedHubId || assignedHubIds[0];
+    if (hubId && !isManager(currentUser.role_mask) && !assignedHubIds.includes(String(hubId))) {
+      throw new ForbiddenException('User is not assigned to this hub');
+    }
+    const driversQb = this.usersRepository
+      .createQueryBuilder('driver')
+      .leftJoin('driver.user_hubs', 'driver_hubs')
+      .where('driver.is_active = true')
+      .andWhere('(driver.role_mask & :driverRole) <> 0', { driverRole: Roles.DRIVER })
+      .distinct(true)
+      .orderBy('driver.full_name', 'ASC');
+    if (hubId) {
+      driversQb.andWhere(
+        new Brackets((builder) => builder
+          .where('driver.hub_id = :hubId', { hubId: String(hubId) })
+          .orWhere('driver_hubs.hub_id = :hubId', { hubId: String(hubId) })),
+      );
+    }
+    const drivers = await driversQb.getMany();
     const trucks = await this.trucksRepository.find({
       where: { status: In([TruckStatus.AVAILABLE, TruckStatus.ASSIGNED]) } as any,
       relations: ['driver'],
@@ -583,7 +598,7 @@ export class WaybillsService {
       order: { name: 'ASC' },
     });
     return {
-      drivers: eligibleDrivers.map((driver) => ({ id: driver.id, name: driver.full_name, username: driver.username, phone: driver.phone, hub_id: driver.hub_id })),
+      drivers: drivers.map((driver) => ({ id: driver.id, name: driver.full_name, username: driver.username, phone: driver.phone, hub_id: driver.hub_id })),
       trucks: trucks.map((truck) => ({ id: truck.id, license_plate: truck.license_plate, bks: truck.bks, loai_xe: truck.loai_xe, vendor_id: truck.vendor_id, driver_id: truck.driver_id, driver_name: truck.driver?.full_name ?? truck.ten_lai_xe })),
       vendors: vendors.map((vendor) => ({ id: vendor.id, code: vendor.code, name: vendor.name, phone: vendor.phone, service_type: vendor.service_type })),
     };
@@ -592,7 +607,7 @@ export class WaybillsService {
   async findOne(id: string, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.waybillsRepository.findOne({
       where: { id, deleted_at: IsNull() } as any,
-      relations: ['origin_hub', 'dest_hub', 'current_hub', 'last_mile_driver'],
+      relations: ['origin_hub', 'dest_hub', 'current_hub', 'last_mile_driver', 'creator'],
     }) as WaybillRecord | null;
     if (!waybill) throw new NotFoundException('Waybill not found');
     this.assertWaybillAccess(waybill, currentUser);
@@ -735,7 +750,7 @@ export class WaybillsService {
   async receive(id: string, dto: ReceiveWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findMutable(id, currentUser);
     if (this.getStatus(waybill) !== WaybillStatus.RECEIVED) throw new BadRequestException('Chỉ đơn cần lấy mới được xác nhận nhập kho');
-    const receiveHubId = currentUser.hub_id ?? waybill.origin_hub_id;
+    const receiveHubId = String(waybill.current_hub_id ?? waybill.origin_hub_id);
     await this.assertHubAccess(receiveHubId, currentUser);
 
     let truck: TruckEntity | null = null;
@@ -960,7 +975,7 @@ export class WaybillsService {
       if (!fundId) throw new BadRequestException('Vui lòng chọn sổ quỹ nhận tiền');
       const fund = await cashFundsRepository.findOne({ where: { id: fundId, is_active: true }, relations: ['hub'] });
       if (!fund) throw new NotFoundException('Sổ quỹ không tồn tại hoặc đã ngừng sử dụng');
-      if (!isManager(currentUser.role_mask) && fund.hub_id && String(fund.hub_id) !== String(currentUser.hub_id)) {
+      if (!isManager(currentUser.role_mask) && fund.hub_id && !getAssignedHubIds(currentUser).includes(String(fund.hub_id))) {
         throw new ForbiddenException('Không được ghi nhận tiền vào sổ quỹ của bưu cục khác');
       }
 
@@ -1293,7 +1308,8 @@ export class WaybillsService {
   }
 
   getIncoming(query: QueryWaybillsDto, currentUser: UserEntity) {
-    return this.findAll({ ...query, dest_hub_id: query.dest_hub_id ?? currentUser.hub_id ?? undefined }, currentUser);
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    return this.findAll({ ...query, dest_hub_id: query.dest_hub_id ?? (assignedHubIds.length ? assignedHubIds.join(',') : undefined) }, currentUser);
   }
 
   getOverdue(query: QueryWaybillsDto, currentUser: UserEntity) {
@@ -1660,6 +1676,20 @@ export class WaybillsService {
     if (rows.length) await this.splitsRepository.save(rows);
 
     return this.getPackageSplits(id, currentUser);
+  }
+
+  async releaseUnassignedPackageSplits(id: string, currentUser: UserEntity) {
+    await this.findMutable(id, currentUser);
+    const unassignedSplits = await this.splitsRepository.find({
+      where: { waybill_id: id, trip_id: IsNull() } as any,
+    });
+    if (!unassignedSplits.length) {
+      throw new BadRequestException('Vận đơn không có phân xe rời để nhả');
+    }
+    await this.splitsRepository.delete({
+      id: In(unassignedSplits.map((split) => split.id)),
+    });
+    return { released_count: unassignedSplits.length };
   }
 
   async bulkStackOntoTruck(dto: BulkStackOntoTruckDto, currentUser: UserEntity) {
@@ -2641,10 +2671,13 @@ export class WaybillsService {
     if (assignmentType === 'INTERNAL') {
       const driverId = String(dto.driver_id || ((currentUser.role_mask & Roles.DRIVER) !== 0 ? currentUser.id : '')).trim();
       const driver = driverId
-        ? await this.usersRepository.findOne({ where: { id: driverId, is_active: true } as any })
+        ? await this.usersRepository.findOne({
+          where: { id: driverId, is_active: true } as any,
+          relations: ['user_hubs', 'user_hubs.hub'],
+        })
         : null;
       if (driverId && (!driver || (driver.role_mask & Roles.DRIVER) === 0)) throw new BadRequestException('Tài xế nội bộ không hợp lệ');
-      if (driver?.hub_id && String(driver.hub_id) !== String(waybill.dest_hub_id)) {
+      if (driver && getAssignedHubIds(driver).length && !getAssignedHubIds(driver).includes(String(waybill.dest_hub_id))) {
         throw new BadRequestException('Tài xế không thuộc HUB đến của vận đơn');
       }
       const driverName = manualDriverName || driver?.full_name?.trim() || '';
@@ -3270,12 +3303,17 @@ export class WaybillsService {
     if (query.origin_hub_id?.trim()) {
       return query.origin_hub_id;
     }
-    return currentUser.hub_id ?? undefined;
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    return assignedHubIds.length === 1 ? assignedHubIds[0] : undefined;
   }
 
   private applyHubScope(qb: any, currentUser: UserEntity) {
-    if (isManager(currentUser.role_mask) || hasRole(currentUser.role_mask, Roles.ACCOUNTANT) || !currentUser.hub_id) return;
-    qb.andWhere(new Brackets((builder) => builder.where('waybill.origin_hub_id = :hubId', { hubId: currentUser.hub_id }).orWhere('waybill.dest_hub_id = :hubId', { hubId: currentUser.hub_id }).orWhere('waybill.current_hub_id = :hubId', { hubId: currentUser.hub_id })));
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (isManager(currentUser.role_mask) || hasRole(currentUser.role_mask, Roles.ACCOUNTANT) || !assignedHubIds.length) return;
+    qb.andWhere(new Brackets((builder) => builder
+      .where('waybill.origin_hub_id IN (:...assignedHubIds)', { assignedHubIds })
+      .orWhere('waybill.dest_hub_id IN (:...assignedHubIds)', { assignedHubIds })
+      .orWhere('waybill.current_hub_id IN (:...assignedHubIds)', { assignedHubIds })));
   }
 
   private async assertActiveHub(hubId: string) {
@@ -3290,16 +3328,22 @@ export class WaybillsService {
 
   private async assertHubAccess(hubId: string, currentUser: UserEntity) {
     if (isManager(currentUser.role_mask)) return;
-    if (currentUser.hub_id !== hubId) throw new ForbiddenException('User is not assigned to this hub');
+    if (!getAssignedHubIds(currentUser).includes(String(hubId))) throw new ForbiddenException('User is not assigned to this hub');
   }
 
   private assertWaybillAccess(waybill: WaybillRecord, currentUser: UserEntity) {
-    if (isManager(currentUser.role_mask) || hasRole(currentUser.role_mask, Roles.ACCOUNTANT) || !currentUser.hub_id) return;
-    if (![waybill.origin_hub_id, waybill.dest_hub_id, waybill.current_hub_id].includes(currentUser.hub_id)) throw new ForbiddenException('User cannot access this waybill outside assigned hub');
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (isManager(currentUser.role_mask) || hasRole(currentUser.role_mask, Roles.ACCOUNTANT) || !assignedHubIds.length) return;
+    const waybillHubIds = [waybill.origin_hub_id, waybill.dest_hub_id, waybill.current_hub_id]
+      .filter((hubId): hubId is string => hubId != null)
+      .map(String);
+    if (!waybillHubIds.some((hubId) => assignedHubIds.includes(hubId))) {
+      throw new ForbiddenException('User cannot access this waybill outside assigned hub');
+    }
   }
 
   async previewNextWaybillCode(originHubId: string | undefined, currentUser: UserEntity): Promise<{ waybill_code: string }> {
-    const hubId = originHubId?.trim() || currentUser.hub_id;
+    const hubId = originHubId?.trim() || getAssignedHubIds(currentUser)[0];
     if (!hubId) throw new BadRequestException('origin_hub_id is required');
     await this.assertHubAccess(hubId, currentUser);
     const hub = await this.getActiveHub(hubId);
@@ -3699,6 +3743,15 @@ export class WaybillsService {
         name: waybill.last_mile_driver.full_name,
         phone: waybill.last_mile_driver.phone,
         hub_id: waybill.last_mile_driver.hub_id,
+      };
+    }
+    if (waybill.creator) {
+      result.creator = {
+        id: waybill.creator.id,
+        username: waybill.creator.username,
+        name: waybill.creator.full_name,
+        full_name: waybill.creator.full_name,
+        hub_id: waybill.creator.hub_id,
       };
     }
     if (waybill.last_mile_truck) {

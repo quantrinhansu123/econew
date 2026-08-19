@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Hash, Layers, Loader2, MoreHorizontal, Package, PackageCheck, Pencil, Printer, ReceiptText, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Truck, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Hash, Layers, Loader2, MoreHorizontal, Package, PackageCheck, Pencil, Printer, ReceiptText, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Truck, Unlink, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
@@ -8,9 +8,9 @@ import { formatMoney } from '../lib/formatMoney';
 import { DayPicker } from '../components/ui/DayPicker';
 import { DateRangePicker } from '../components/ui/DateRangePicker';
 import { FilterSelect } from '../components/ui/FilterSelect';
+import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
 import { ImagePreviewModal } from '../components/ImagePreviewModal';
 import type { AuthUserProfile } from './login/types';
-import WaybillPackageSplitDialog from './warehouse/inventory/dialogs/WaybillPackageSplitDialog';
 import WaybillInventoryDetailDialog from './warehouse/inventory/dialogs/WaybillInventoryDetailDialog';
 import WaybillPriorityControl from './warehouse/inventory/WaybillPriorityControl';
 import WaybillRouteControl from './warehouse/inventory/WaybillRouteControl';
@@ -49,7 +49,7 @@ import {
   resolveBillingUnit,
   resolveUnitPrice,
   resolveTransitFee,
-  resolveTripStatusLabel,
+  resolveInventoryTripStatusLabel,
   resolveDeliveryStaff,
   resolveDeliveryProcessingPresentation,
   resolvePaymentMethod,
@@ -144,6 +144,7 @@ const getStoredUser = (): AuthUserProfile | null => {
 };
 
 const hasManagerAccess = (roleMask: number) => (roleMask & (MANAGER | DIRECTOR)) !== 0;
+const canViewInventory = (roleMask: number) => (roleMask & (DISPATCHER | MANAGER | DIRECTOR)) !== 0;
 const canEditWaybill = (roleMask: number) => (roleMask & (WAREHOUSE | MANAGER | DIRECTOR)) !== 0;
 const canMutateInventory = (roleMask: number) => (roleMask & (DISPATCHER | MANAGER | DIRECTOR)) !== 0;
 const normalizeList = (response: InventoryListResponse | WaybillInventoryItem[]) => Array.isArray(response) ? response : response.data || response.items || response.waybills || [];
@@ -234,11 +235,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDetailClosing, setIsDetailClosing] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
-  const [isSplitOpen, setIsSplitOpen] = useState(false);
-  const [isSplitClosing, setIsSplitClosing] = useState(false);
   const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [isBoardClosing, setIsBoardClosing] = useState(false);
-  const [splitWaybill, setSplitWaybill] = useState<WaybillInventoryItem | null>(null);
   const [actionError, setActionError] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [isColumnPickerOpen, setIsColumnPickerOpen] = useState(false);
@@ -252,6 +250,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [customerPaymentNote, setCustomerPaymentNote] = useState('');
   const [isStackOpen, setIsStackOpen] = useState(false);
   const [isStackClosing, setIsStackClosing] = useState(false);
+  const [releaseConfirm, setReleaseConfirm] = useState<ConfirmDialogState>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
   const [columnFilters, setColumnFilters] = useState<AllOrdersColumnFilters>({});
   const [customerCodeOptions, setCustomerCodeOptions] = useState<AllOrdersColumnFilterOption[]>([]);
@@ -273,7 +272,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const canViewPricing = hasManagerAccess(user?.role_mask ?? 0);
   const canViewPage = isAllOrders
     ? canEditWaybill(user?.role_mask ?? 0) || ((user?.role_mask ?? 0) & ACCOUNTANT) !== 0
-    : canViewPricing;
+    : canViewInventory(user?.role_mask ?? 0);
   const canUpdate = canMutateInventory(user?.role_mask ?? 0);
   const canUpdateCustomerPayment = ((user?.role_mask ?? 0) & (ACCOUNTANT | MANAGER | DIRECTOR)) !== 0;
   const selectionEnabled = (!isAllOrders && canUpdate) || (isAllOrders && canUpdateCustomerPayment);
@@ -560,16 +559,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   };
 
   const closeDetail = () => { setIsDetailClosing(true); window.setTimeout(() => { setIsDetailOpen(false); setIsDetailClosing(false); setDetailWaybill(null); }, 180); };
-  const openSplit = (waybill: WaybillInventoryItem | null = null) => {
-    if (waybill) {
-      setSplitWaybill(waybill);
-      setIsSplitOpen(true);
-      return;
-    }
-    setSplitWaybill(null);
-    setIsBoardOpen(true);
-  };
-  const closeSplit = () => { setIsSplitClosing(true); window.setTimeout(() => { setIsSplitOpen(false); setIsSplitClosing(false); setSplitWaybill(null); }, 180); };
+  const openSplit = () => setIsBoardOpen(true);
   const closeBoard = () => { setIsBoardClosing(true); window.setTimeout(() => { setIsBoardOpen(false); setIsBoardClosing(false); }, 180); };
 
   const openCashVoucher = (waybill: WaybillInventoryItem) => {
@@ -580,6 +570,24 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     setIsCashVoucherClosing(false);
     setCashVoucherWaybill(waybill);
     setIsCashVoucherOpen(true);
+  };
+
+  const confirmReleaseUnscheduledSplit = (waybill: WaybillInventoryItem) => {
+    setReleaseConfirm({
+      title: 'Nhả xe đã phân',
+      message: `Nhả toàn bộ phân xe chưa tạo chuyến của bill ${displayCode(waybill)}? Đơn sẽ quay lại danh sách Đơn tồn để xếp xe lại.`,
+      confirmLabel: 'Nhả xe',
+      danger: true,
+      onConfirm: async () => {
+        setActionError('');
+        try {
+          await apiRequest(`/waybills/${waybill.id}/splits/unassigned`, { method: 'DELETE' });
+          await loadInventory();
+        } catch (err) {
+          setActionError(err instanceof ApiError ? err.message : 'Không nhả được phân xe của vận đơn.');
+        }
+      },
+    });
   };
   const closeCashVoucher = () => {
     if (cashVoucherCloseTimerRef.current != null) window.clearTimeout(cashVoucherCloseTimerRef.current);
@@ -682,7 +690,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       <StateCard
         icon={<ShieldAlert size={24} />}
         title="Không có quyền truy cập"
-        description={isAllOrders ? 'Trang danh sách đơn yêu cầu quyền WAREHOUSE trở lên.' : 'Trang danh sách đơn tồn kho chỉ hiển thị cho MANAGER hoặc DIRECTOR.'}
+        description={isAllOrders ? 'Trang danh sách đơn yêu cầu quyền WAREHOUSE trở lên.' : 'Trang danh sách đơn tồn kho yêu cầu quyền DISPATCHER, MANAGER hoặc DIRECTOR.'}
       />
     );
   }
@@ -844,7 +852,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             <button
               type="button"
               title="Bảng kê phát hàng — xe & vị trí"
-              onClick={() => openSplit(null)}
+              onClick={openSplit}
               className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-[13px] font-bold text-violet-800 hover:bg-violet-100"
             >
               <Layers size={16} />
@@ -986,8 +994,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       onDetail={openDetail}
                       onEdit={openEdit}
                       onReceive={(item) => navigate(`/warehouse/orders/${encodeURIComponent(String(item.id))}/receive`)}
-                      onSplit={openSplit}
                       onCashVoucher={openCashVoucher}
+                      onReleaseUnscheduledSplit={confirmReleaseUnscheduledSplit}
                       onCustomerLedger={openCustomerLedger}
                       onOpenTripManifest={(trip) => {
                         if (trip.manifest_id) navigate(`/warehouse/manifests?openManifestId=${trip.manifest_id}&openExpense=1`);
@@ -1021,13 +1029,15 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                   canViewPricing={canViewPricing}
                   canEdit={canEdit}
                   canPay={canUpdateCustomerPayment}
+                  canRelease={canUpdate}
                   onDetail={openDetail}
                   onEdit={openEdit}
                   onPayment={openCashVoucher}
+                  onRelease={confirmReleaseUnscheduledSplit}
                   onCustomerLedger={openCustomerLedger}
                 />
               ) : (
-                <div className="grid gap-3 p-3 md:hidden">{displayedWaybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} hubs={hubs} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onReceive={(item) => navigate(`/warehouse/orders/${encodeURIComponent(String(item.id))}/receive`)} onSplit={openSplit} onCashVoucher={openCashVoucher} onCustomerLedger={openCustomerLedger} />)}</div>
+                <div className="grid gap-3 p-3 md:hidden">{displayedWaybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} hubs={hubs} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onReceive={(item) => navigate(`/warehouse/orders/${encodeURIComponent(String(item.id))}/receive`)} onCashVoucher={openCashVoucher} onReleaseUnscheduledSplit={confirmReleaseUnscheduledSplit} onCustomerLedger={openCustomerLedger} />)}</div>
               )}
             </>
           )}
@@ -1054,16 +1064,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
 
       {!isAllOrders && <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />}
       <WaybillInventoryDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} canViewPricing={canViewPricing} waybill={detailWaybill} statusConfig={statusConfig} paymentConfig={paymentConfig} priorityConfig={priorityConfig} onClose={closeDetail} />
-      {splitWaybill && (
-        <WaybillPackageSplitDialog
-          isOpen={isSplitOpen}
-          isClosing={isSplitClosing}
-          waybill={splitWaybill}
-          onClose={closeSplit}
-          onSaved={() => void loadInventory()}
-        />
-      )}
       <SplitOrderDialog isOpen={isBoardOpen} isClosing={isBoardClosing} waybill={null} onClose={closeBoard} />
+      <ConfirmDialog dialog={releaseConfirm} onClose={() => setReleaseConfirm(null)} />
       <InventoryColumnPicker
         isOpen={isColumnPickerOpen}
         visibleIds={visibleColumnIds}
@@ -1185,8 +1187,8 @@ function InventoryRow({
   onDetail,
   onEdit,
   onReceive,
-  onSplit,
   onCashVoucher,
+  onReleaseUnscheduledSplit,
   onCustomerLedger,
   onOpenTripManifest,
 }: InventoryItemProps & {
@@ -1276,13 +1278,18 @@ function InventoryRow({
               <div className="space-y-1.5">
                 {waybill.trip_history.map((trip, index) => {
                   const normalizedStatus = String(trip.status || '').toUpperCase();
+                  const hasTripTarget = Boolean(trip.manifest_id || trip.trip_id);
                   return (
                     <button
                       type="button"
                       key={`${trip.split_id ?? trip.trip_id ?? index}`}
-                      onClick={() => onOpenTripManifest?.(trip)}
-                      className="block w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-left text-[11px] leading-4 transition-colors hover:border-primary/40 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                      title={trip.manifest_id ? 'Mở bảng kê của chuyến' : 'Mở chi tiết chuyến'}
+                      disabled={!hasTripTarget}
+                      onClick={() => hasTripTarget && onOpenTripManifest?.(trip)}
+                      className={clsx(
+                        'block w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-left text-[11px] leading-4 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20',
+                        hasTripTarget ? 'hover:border-primary/40 hover:bg-blue-50' : 'cursor-default',
+                      )}
+                      title={trip.manifest_id ? 'Mở bảng kê của chuyến' : trip.trip_id ? 'Mở chi tiết chuyến' : 'Phân xe rời — dùng nút Nhả xe tại cột Thao tác'}
                     >
                       <p className="font-bold text-slate-800">
                         {Number(trip.package_count || 0).toLocaleString('vi-VN')} kiện
@@ -1298,7 +1305,7 @@ function InventoryRow({
                         normalizedStatus === 'CANCELLED' && 'border-red-200 bg-red-50 text-red-700',
                         (!normalizedStatus || normalizedStatus === 'PLANNED') && 'border-amber-200 bg-amber-50 text-amber-700',
                       )}>
-                        {resolveTripStatusLabel(trip.status)}
+                        {resolveInventoryTripStatusLabel(trip)}
                       </span>
                     </button>
                   );
@@ -1565,9 +1572,11 @@ function InventoryRow({
                 waybill={waybill}
                 canEdit={canEdit}
                 canPay={canPay}
+                canRelease={canUpdate}
                 onDetail={onDetail}
                 onEdit={onEdit}
                 onPayment={onCashVoucher}
+                onRelease={onReleaseUnscheduledSplit}
               />
             ) : (
               <Actions
@@ -1580,7 +1589,6 @@ function InventoryRow({
                 onDetail={onDetail}
                 onEdit={onEdit}
                 onReceive={onReceive}
-                onSplit={onSplit}
                 onCashVoucher={onCashVoucher}
               />
             )}
@@ -1621,20 +1629,27 @@ function AllOrdersActions({
   waybill,
   canEdit,
   canPay,
+  canRelease,
   onDetail,
   onEdit,
   onPayment,
+  onRelease,
 }: {
   waybill: WaybillInventoryItem;
   canEdit: boolean;
   canPay: boolean;
+  canRelease: boolean;
   onDetail: (waybill: WaybillInventoryItem) => void;
   onEdit: (waybill: WaybillInventoryItem) => void;
   onPayment: (waybill: WaybillInventoryItem) => void;
+  onRelease: (waybill: WaybillInventoryItem) => void;
 }) {
+  const hasUnscheduledSplit = Boolean(waybill.trip_history?.some(
+    (trip) => trip.split_id && !trip.trip_id && !trip.manifest_id,
+  ));
 
   return (
-    <div className="flex items-center justify-center gap-1">
+    <div className="flex flex-wrap items-center justify-center gap-1">
       <button
         type="button"
         title="Xem đơn"
@@ -1672,6 +1687,21 @@ function AllOrdersActions({
       >
         <HandCoins size={14} />
       </button>
+      {hasUnscheduledSplit && (
+        <button
+          type="button"
+          title={canRelease ? 'Nhả phân xe rời để đơn quay lại Đơn tồn' : 'Cần quyền kho hoặc điều phối'}
+          disabled={!canRelease}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!canRelease) return;
+            onRelease(waybill);
+          }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          <Unlink size={14} />
+        </button>
+      )}
     </div>
   );
 }
@@ -1725,18 +1755,22 @@ function AllOrdersCompactTable({
   canViewPricing,
   canEdit,
   canPay,
+  canRelease,
   onDetail,
   onEdit,
   onPayment,
+  onRelease,
   onCustomerLedger,
 }: {
   waybills: WaybillInventoryItem[];
   canViewPricing: boolean;
   canEdit: boolean;
   canPay: boolean;
+  canRelease: boolean;
   onDetail: (waybill: WaybillInventoryItem) => void;
   onEdit: (waybill: WaybillInventoryItem) => void;
   onPayment: (waybill: WaybillInventoryItem) => void;
+  onRelease: (waybill: WaybillInventoryItem) => void;
   onCustomerLedger: (code: string) => void;
 }) {
   const headerClass = 'sticky top-0 z-10 border-b border-r border-slate-300 bg-slate-100 px-1.5 py-1.5 text-[9px] font-extrabold uppercase text-slate-600 whitespace-nowrap';
@@ -1797,9 +1831,11 @@ function AllOrdersCompactTable({
                     waybill={waybill}
                     canEdit={canEdit}
                     canPay={canPay}
+                    canRelease={canRelease}
                     onDetail={onDetail}
                     onEdit={onEdit}
                     onPayment={onPayment}
+                    onRelease={onRelease}
                   />
                 </td>
               </tr>
@@ -1811,7 +1847,7 @@ function AllOrdersCompactTable({
   );
 }
 
-function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openActionMenuId, onToggleActionMenu, onCloseActionMenu, onDetail, onEdit, onReceive, onSplit, onCashVoucher }: InventoryItemProps & { hubs: HubSummary[]; isAllOrders: boolean }) {
+function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openActionMenuId, onToggleActionMenu, onCloseActionMenu, onDetail, onEdit, onReceive, onCashVoucher, onReleaseUnscheduledSplit }: InventoryItemProps & { hubs: HubSummary[]; isAllOrders: boolean }) {
   return (
     <article className="rounded-2xl border border-border bg-white p-4 shadow-sm">
       <div className="flex items-start gap-3">
@@ -1870,7 +1906,7 @@ function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openAct
 
       <div className="mt-3 border-t border-border pt-3">
         {isAllOrders ? (
-          <AllOrdersActions waybill={waybill} canEdit={canEdit} canPay={false} onDetail={onDetail} onEdit={onEdit} onPayment={onCashVoucher} />
+          <AllOrdersActions waybill={waybill} canEdit={canEdit} canPay={false} canRelease={canUpdate} onDetail={onDetail} onEdit={onEdit} onPayment={onCashVoucher} onRelease={onReleaseUnscheduledSplit} />
         ) : (
           <Actions
             waybill={waybill}
@@ -1882,7 +1918,6 @@ function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openAct
             onDetail={onDetail}
             onEdit={onEdit}
             onReceive={onReceive}
-            onSplit={onSplit}
             onCashVoucher={onCashVoucher}
           />
         )}
@@ -1901,8 +1936,8 @@ interface InventoryItemProps {
   onDetail: (waybill: WaybillInventoryItem) => void;
   onEdit: (waybill: WaybillInventoryItem) => void;
   onReceive: (waybill: WaybillInventoryItem) => void;
-  onSplit: (waybill: WaybillInventoryItem) => void;
   onCashVoucher: (waybill: WaybillInventoryItem) => void;
+  onReleaseUnscheduledSplit: (waybill: WaybillInventoryItem) => void;
   onCustomerLedger: (code: string) => void;
   onOpenTripManifest?: (trip: NonNullable<WaybillInventoryItem['trip_history']>[number]) => void;
 }
@@ -1917,9 +1952,8 @@ function Actions({
   onDetail,
   onEdit,
   onReceive,
-  onSplit,
   onCashVoucher,
-}: Pick<InventoryItemProps, 'waybill' | 'canEdit' | 'onDetail' | 'onEdit' | 'onReceive' | 'onSplit' | 'onCashVoucher'> & { isMutable: boolean; isOpen: boolean; onToggle: () => void; onClose: () => void }) {
+}: Pick<InventoryItemProps, 'waybill' | 'canEdit' | 'onDetail' | 'onEdit' | 'onReceive' | 'onCashVoucher'> & { isMutable: boolean; isOpen: boolean; onToggle: () => void; onClose: () => void }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const editDisabled = !canEdit || !isMutable;
   useEffect(() => {
@@ -1964,7 +1998,6 @@ function Actions({
         {canCollectCashPayment(waybill.payment_type) && (
           <MenuAction icon={<HandCoins size={14} />} label="Thu chi" onClick={() => runAction(() => onCashVoucher(waybill))} tone="teal" />
         )}
-        <MenuAction icon={<Layers size={14} />} label="Chia đơn" onClick={() => runAction(() => onSplit(waybill))} tone="violet" />
         <MenuAction
           icon={<Pencil size={14} />}
           label="Sửa"

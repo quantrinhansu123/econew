@@ -10,6 +10,7 @@ type ApiUser = {
   role_mask?: number;
   is_active?: boolean;
   status?: string | boolean | null;
+  hub_ids?: Array<string | number>;
   hub?: UserAccount['hub'];
   hubs?: UserAccount['hubs'];
 };
@@ -23,6 +24,7 @@ export const normalizeUserAccount = (raw: ApiUser): UserAccount => {
     phone: String(raw.phone ?? ''),
     role_mask: Number(raw.role_mask ?? 0),
     status: raw.status !== undefined && raw.status !== null ? raw.status : raw.is_active,
+    hub_ids: raw.hub_ids,
     hub,
     hubs: raw.hubs?.length ? raw.hubs : hub ? [hub] : null,
   };

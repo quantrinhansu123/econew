@@ -41,11 +41,13 @@ describe('AuthService', () => {
     phone: '+84901234567',
     role_mask: Roles.DRIVER,
     hub_id: '1',
+    hub_ids: ['1'],
+    hubs: [],
     is_active: true,
     last_login_at: null,
-    created_at: expect.any(Date),
-    updated_at: expect.any(Date),
-  } as UserEntity;
+    created_at: new Date(),
+    updated_at: new Date(),
+  } as unknown as SafeUserProfile;
 
   beforeEach(() => {
     usersService = {
