@@ -11,7 +11,7 @@ import type { FilterOption, HubSummary, ListResponse, SearchWaybillRow, WaybillD
 
 const SEARCH_DEBOUNCE_MS = 500;
 const statusOptions: FilterOption[] = [
-  { value: 'RECEIVED', label: 'Đã tiếp nhận' }, { value: 'IN_WAREHOUSE', label: 'Trong kho' }, { value: 'MANIFEST_CLOSED', label: 'Đã đóng bảng kê' },
+  { value: 'RECEIVED', label: 'Đơn cần lấy' }, { value: 'IN_WAREHOUSE', label: 'Đã nhập kho' }, { value: 'MANIFEST_CLOSED', label: 'Đã đóng bảng kê' },
   { value: 'IN_TRANSIT', label: 'Đang vận chuyển' }, { value: 'AT_DEST_HUB', label: 'Đến bưu cục đích' }, { value: 'OUT_FOR_DELIVERY', label: 'Đang phát' },
   { value: 'DELIVERED', label: 'Đã giao' }, { value: 'RETURNED', label: 'Hoàn' },
 ];

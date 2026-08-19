@@ -98,6 +98,15 @@ export interface WaybillInventoryItem {
   sent_date?: string | null;
   created_at?: string | null;
   received_by?: UserSummary | null;
+  warehouse_intake_method?: 'INTERNAL' | 'VENDOR' | 'CUSTOMER_DROPOFF' | null;
+  warehouse_intake_truck_id?: string | number | null;
+  warehouse_intake_vendor_id?: string | number | null;
+  warehouse_intake_driver_id?: string | number | null;
+  warehouse_intake_license_plate?: string | null;
+  warehouse_intake_driver_name?: string | null;
+  warehouse_intake_vendor_name?: string | null;
+  warehouse_intake_note?: string | null;
+  xe_lay?: string | null;
   route_code?: string | null;
   delivery_route?: string | null;
   note?: string | null;

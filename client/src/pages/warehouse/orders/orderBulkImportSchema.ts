@@ -33,7 +33,13 @@ export type OrderBulkFieldKey =
   | 'anh1'
   | 'anh2'
   | 'anh3'
-  | 'anh4';
+  | 'anh4'
+  | 'anh5'
+  | 'anh6'
+  | 'anh7'
+  | 'anh8'
+  | 'anh9'
+  | 'anh10';
 
 export interface OrderBulkColumn {
   key: OrderBulkFieldKey;
@@ -97,6 +103,12 @@ export const ORDER_BULK_COLUMNS: OrderBulkColumn[] = [
   { key: 'anh2', label: 'URL ảnh 2', required: false, sample: '' },
   { key: 'anh3', label: 'URL ảnh 3', required: false, sample: '' },
   { key: 'anh4', label: 'URL ảnh 4', required: false, sample: '' },
+  { key: 'anh5', label: 'URL ảnh 5', required: false, sample: '' },
+  { key: 'anh6', label: 'URL ảnh 6', required: false, sample: '' },
+  { key: 'anh7', label: 'URL ảnh 7', required: false, sample: '' },
+  { key: 'anh8', label: 'URL ảnh 8', required: false, sample: '' },
+  { key: 'anh9', label: 'URL ảnh 9', required: false, sample: '' },
+  { key: 'anh10', label: 'URL ảnh 10', required: false, sample: '' },
 ];
 
 export const ORDER_BULK_INSTRUCTIONS = [
@@ -110,7 +122,7 @@ export const ORDER_BULK_INSTRUCTIONS = [
   'Cần có ít nhất một trong: Trọng lượng thực (kg), trọng lượng quy đổi (kg), bộ Dài/Rộng/Cao (cm), hoặc Số khối (m³).',
   'Nếu tính cước theo Kg: ưu tiên Trọng lượng quy đổi; nếu để trống thì dùng Trọng lượng thực để tính cước.',
   'Nếu nhập ĐT người nhận thì phải đúng định dạng SĐT Việt Nam; có thể viết liền, cách hoặc có dấu chấm/gạch.',
-  'Ảnh bill/hàng hóa: nhập tối đa 4 URL ảnh công khai vào các cột URL ảnh 1–4.',
+  'Ảnh bill/hàng hóa: nhập tối đa 10 URL ảnh công khai vào các cột URL ảnh 1–10.',
   'Dòng mẫu được hệ thống tự bỏ qua; nhập dữ liệu thật từ dòng kế tiếp.',
 ];
 

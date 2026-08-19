@@ -63,7 +63,7 @@ export class WaybillsController {
   }
 
   @Get('delivery-resources')
-  @RequireRoles(Roles.WAREHOUSE, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List drivers, internal trucks and partners available for last-mile assignment' })
   getDeliveryResources(@Query('hub_id') hubId: string | undefined, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.getDeliveryResources(hubId, currentUser);
@@ -262,14 +262,14 @@ export class WaybillsController {
 
   @Patch(':id/photos')
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Replace up to 4 bill/goods photos without changing logistics state' })
+  @ApiOperation({ summary: 'Replace up to 10 bill/goods photos without changing logistics state' })
   updatePhotos(@Param('id') id: string, @Body() dto: UpdateWaybillPhotosDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.updatePhotos(id, dto, currentUser);
   }
 
   @Put(':id/receive')
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Receive a waybill into warehouse' })
+  @ApiOperation({ summary: 'Confirm physical warehouse intake and record pickup method' })
   receive(@Param('id') id: string, @Body() dto: ReceiveWaybillDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.receive(id, dto, currentUser);
   }

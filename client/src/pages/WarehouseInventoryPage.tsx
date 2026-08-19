@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Hash, Layers, Loader2, MoreHorizontal, Package, Pencil, Printer, ReceiptText, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Truck, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Hash, Layers, Loader2, MoreHorizontal, Package, PackageCheck, Pencil, Printer, ReceiptText, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
@@ -65,6 +65,7 @@ import {
   resolveTotalAmount,
   resolveBillingQtyDetail,
   resolveOrderStatusBadge,
+  resolveWarehouseIntakePresentation,
   resolveUserNote,
   saveVisibleColumnIds,
   saveAllOrdersVisibleColumnIds,
@@ -108,8 +109,8 @@ const customerPaymentStatusText: Record<string, string> = {
 export type InventoryPageVariant = 'split-pending' | 'all-orders';
 
 const statusConfig: Record<string, BadgeConfig> = {
-  RECEIVED: { label: 'Đã tạo đơn', className: 'bg-blue-50 text-blue-700 border-blue-200' },
-  IN_WAREHOUSE: { label: 'Trong kho', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  RECEIVED: { label: 'Đơn cần lấy', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  IN_WAREHOUSE: { label: 'Đã nhập kho', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   MANIFEST_CLOSED: { label: 'Chờ bốc', className: 'bg-slate-100 text-slate-700 border-slate-200' },
   LOADED: { label: 'Đã bốc', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   AT_DEST_HUB: { label: 'Tới hub đích', className: 'bg-violet-50 text-violet-700 border-violet-200' },
@@ -983,6 +984,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       onCloseActionMenu={() => setOpenActionMenuId(null)}
                       onDetail={openDetail}
                       onEdit={openEdit}
+                      onReceive={(item) => navigate(`/warehouse/orders/${encodeURIComponent(String(item.id))}/receive`)}
                       onSplit={openSplit}
                       onCashVoucher={openCashVoucher}
                       onCustomerLedger={openCustomerLedger}
@@ -1022,7 +1024,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                   onCustomerLedger={openCustomerLedger}
                 />
               ) : (
-                <div className="grid gap-3 p-3 md:hidden">{displayedWaybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} hubs={hubs} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onSplit={openSplit} onCashVoucher={openCashVoucher} onCustomerLedger={openCustomerLedger} />)}</div>
+                <div className="grid gap-3 p-3 md:hidden">{displayedWaybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} hubs={hubs} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onReceive={(item) => navigate(`/warehouse/orders/${encodeURIComponent(String(item.id))}/receive`)} onSplit={openSplit} onCashVoucher={openCashVoucher} onCustomerLedger={openCustomerLedger} />)}</div>
               )}
             </>
           )}
@@ -1179,6 +1181,7 @@ function InventoryRow({
   onToggleSelect,
   onDetail,
   onEdit,
+  onReceive,
   onSplit,
   onCashVoucher,
   onCustomerLedger,
@@ -1513,6 +1516,26 @@ function InventoryRow({
           </td>
         );
       }
+      case 'warehouse_intake': {
+        const intake = resolveWarehouseIntakePresentation(waybill);
+        const toneClass = intake.tone === 'emerald'
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          : intake.tone === 'blue'
+            ? 'border-blue-200 bg-blue-50 text-blue-700'
+            : 'border-slate-200 bg-slate-50 text-slate-600';
+        return (
+          <td className="border-r border-border px-2 py-2 align-top text-[12px]" onClick={(event) => event.stopPropagation()}>
+            <span className={clsx('inline-flex rounded-full border px-2 py-0.5 text-[11px] font-extrabold', toneClass)}>{intake.title}</span>
+            {intake.detail && <p className="mt-1 whitespace-normal text-[11px] font-semibold text-slate-700">{intake.detail}</p>}
+            {intake.note && <p className="mt-1 whitespace-normal text-[11px] text-muted-foreground">Ghi chú: {intake.note}</p>}
+            {intake.canConfirm && canEdit && (
+              <button type="button" onClick={() => onReceive(waybill)} className="mt-1.5 inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm hover:brightness-105">
+                <PackageCheck size={13} /> Đã nhập kho
+              </button>
+            )}
+          </td>
+        );
+      }
       case 'priority':
         return (
           <td className="overflow-visible px-4 py-3 border-r border-border">
@@ -1553,6 +1576,7 @@ function InventoryRow({
                 onClose={onCloseActionMenu}
                 onDetail={onDetail}
                 onEdit={onEdit}
+                onReceive={onReceive}
                 onSplit={onSplit}
                 onCashVoucher={onCashVoucher}
               />
@@ -1784,7 +1808,7 @@ function AllOrdersCompactTable({
   );
 }
 
-function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openActionMenuId, onToggleActionMenu, onCloseActionMenu, onDetail, onEdit, onSplit, onCashVoucher }: InventoryItemProps & { hubs: HubSummary[]; isAllOrders: boolean }) {
+function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openActionMenuId, onToggleActionMenu, onCloseActionMenu, onDetail, onEdit, onReceive, onSplit, onCashVoucher }: InventoryItemProps & { hubs: HubSummary[]; isAllOrders: boolean }) {
   return (
     <article className="rounded-2xl border border-border bg-white p-4 shadow-sm">
       <div className="flex items-start gap-3">
@@ -1828,6 +1852,7 @@ function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openAct
         } />
         <MobileInfo label="COD" value={displayValue(waybill.allocated_cod ?? waybill.cod_amount, ' đ')} />
         <MobileInfo label="Trạng thái thu COD" value={waybill.cod_collection_status === 'COLLECTED' ? 'Đã thu COD' : waybill.cod_collection_status === 'PENDING' ? 'Chờ thu COD' : 'Không thu'} />
+        <MobileInfo label="Nhập kho" value={resolveWarehouseIntakePresentation(waybill).detail || resolveWarehouseIntakePresentation(waybill).title} />
         <MobileInfo label="Số kiện" value={
           waybill.remaining_packages != null
             ? `${waybill.remaining_packages} / ${waybill.order_total_packages ?? waybill.package_count ?? waybill.remaining_packages} (còn chia)`
@@ -1853,6 +1878,7 @@ function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openAct
             onClose={onCloseActionMenu}
             onDetail={onDetail}
             onEdit={onEdit}
+            onReceive={onReceive}
             onSplit={onSplit}
             onCashVoucher={onCashVoucher}
           />
@@ -1871,6 +1897,7 @@ interface InventoryItemProps {
   onCloseActionMenu: () => void;
   onDetail: (waybill: WaybillInventoryItem) => void;
   onEdit: (waybill: WaybillInventoryItem) => void;
+  onReceive: (waybill: WaybillInventoryItem) => void;
   onSplit: (waybill: WaybillInventoryItem) => void;
   onCashVoucher: (waybill: WaybillInventoryItem) => void;
   onCustomerLedger: (code: string) => void;
@@ -1886,9 +1913,10 @@ function Actions({
   onClose,
   onDetail,
   onEdit,
+  onReceive,
   onSplit,
   onCashVoucher,
-}: Pick<InventoryItemProps, 'waybill' | 'canEdit' | 'onDetail' | 'onEdit' | 'onSplit' | 'onCashVoucher'> & { isMutable: boolean; isOpen: boolean; onToggle: () => void; onClose: () => void }) {
+}: Pick<InventoryItemProps, 'waybill' | 'canEdit' | 'onDetail' | 'onEdit' | 'onReceive' | 'onSplit' | 'onCashVoucher'> & { isMutable: boolean; isOpen: boolean; onToggle: () => void; onClose: () => void }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const editDisabled = !canEdit || !isMutable;
   useEffect(() => {
@@ -1927,6 +1955,9 @@ function Actions({
       </button>
       {isOpen && <div className="absolute right-0 z-30 mt-2 w-44 overflow-hidden rounded-xl border border-border bg-white p-1.5 shadow-xl shadow-slate-900/10">
         <MenuAction icon={<Eye size={14} />} label="Xem" onClick={() => runAction(() => onDetail(waybill))} />
+        {normalizeStatus(waybill) === 'RECEIVED' && canEdit && (
+          <MenuAction icon={<PackageCheck size={14} />} label="Đã nhập kho" onClick={() => runAction(() => onReceive(waybill))} tone="teal" />
+        )}
         {canCollectCashPayment(waybill.payment_type) && (
           <MenuAction icon={<HandCoins size={14} />} label="Thu chi" onClick={() => runAction(() => onCashVoucher(waybill))} tone="teal" />
         )}

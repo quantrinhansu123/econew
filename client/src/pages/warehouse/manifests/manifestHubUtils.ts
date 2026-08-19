@@ -1,4 +1,5 @@
 import type { AuthUserProfile } from '../../login/types';
+import { MAX_WAYBILL_IMAGES } from '../../../lib/waybillImages';
 import type { HubSummary, LoadPlanningManifest } from './types';
 
 export type HubViewCode = 'HAN' | 'HCM';
@@ -226,11 +227,11 @@ export function arrivedColumnTitle(hub: HubViewCode): string {
 
 export function parseDeliveryPhotos(url?: string | null): string[] {
   if (!url?.trim()) return [];
-  return url.split(/[|\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 4);
+  return url.split(/[|\n]/).map((item) => item.trim()).filter(Boolean).slice(0, MAX_WAYBILL_IMAGES);
 }
 
 export function joinDeliveryPhotos(urls: string[]): string {
-  return urls.filter(Boolean).slice(0, 4).join('|');
+  return urls.filter(Boolean).slice(0, MAX_WAYBILL_IMAGES).join('|');
 }
 
 export function hubDeliveryLabelFromWaybill(waybill: { current_state?: string | null; dispatch_fields?: Record<string, string | number | null | undefined> | null }): string {

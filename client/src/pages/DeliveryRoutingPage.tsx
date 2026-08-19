@@ -18,12 +18,12 @@ const DISPATCHER = 8;
 const MANAGER = 32;
 const DIRECTOR = 64;
 const defaultFilters: RoutingFilters = { keyword: '', statuses: [], originHubIds: [], destHubIds: [], paymentTypes: [], page: 1, limit: 10 };
-const routeableStates = ['RECEIVED', 'IN_WAREHOUSE', 'AT_DEST_HUB'];
+const routeableStates = ['IN_WAREHOUSE', 'AT_DEST_HUB'];
 
 const statusConfig: Record<string, BadgeConfig> = {
   IN_WAREHOUSE: { label: 'Trong kho', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   AT_DEST_HUB: { label: 'Tới hub đích', className: 'bg-violet-50 text-violet-700 border-violet-200' },
-  RECEIVED: { label: 'Đã tạo đơn', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  RECEIVED: { label: 'Đơn cần lấy', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   MANIFEST_CLOSED: { label: 'Chờ bốc', className: 'bg-slate-100 text-slate-700 border-slate-200' },
   LOADED: { label: 'Đã bốc', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   IN_TRANSIT: { label: 'Đang vận chuyển', className: 'bg-sky-50 text-sky-700 border-sky-200' },

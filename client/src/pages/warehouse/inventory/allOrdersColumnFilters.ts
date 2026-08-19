@@ -10,6 +10,7 @@ import {
   resolveMaKh,
   resolveNoiDen,
   resolveOrderStatusBadge,
+  resolveWarehouseIntakePresentation,
   resolveInventoryTripHistoryText,
   resolvePackageCountSl,
   resolvePaymentMethod,
@@ -47,6 +48,7 @@ export const ALL_ORDERS_FILTERABLE_COLUMN_IDS: InventoryColumnId[] = [
   'noi_den',
   'receiver_address',
   'order_status',
+  'warehouse_intake',
   'delivery_processing',
   'package_count',
   'billing_unit',
@@ -110,6 +112,10 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
       return resolveReceiverAddress(waybill) || EMPTY_VALUE;
     case 'order_status':
       return resolveOrderStatusBadge(waybill).label || EMPTY_VALUE;
+    case 'warehouse_intake': {
+      const intake = resolveWarehouseIntakePresentation(waybill);
+      return [intake.title, intake.detail, intake.note].filter(Boolean).join(' · ') || EMPTY_VALUE;
+    }
     case 'delivery_processing':
       return resolveDeliveryProcessingSummary(waybill) || EMPTY_VALUE;
     case 'package_count':

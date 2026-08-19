@@ -38,7 +38,7 @@ const EXPANDED_BILL_LIST_LIMIT = 100;
 type NextWaybillCodeResponse = { waybill_code?: string; code?: string };
 
 const statusConfig: Record<string, BadgeConfig> = {
-  RECEIVED: { label: 'Đã tạo đơn', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  RECEIVED: { label: 'Đơn cần lấy', className: 'bg-blue-50 text-blue-700 border-blue-200' },
 };
 
 const paymentConfig: Record<string, BadgeConfig> = {

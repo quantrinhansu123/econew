@@ -14,6 +14,11 @@ interface Props {
 }
 
 const displayCode = (waybill: WaybillDetail | null) => waybill?.waybill_code || waybill?.code || `#${waybill?.id ?? ''}`;
+const intakeMethodLabels = {
+  INTERNAL: 'Xe nội bộ',
+  VENDOR: 'Xe nhà cung cấp',
+  CUSTOMER_DROPOFF: 'Khách mang đến',
+} as const;
 
 export default function WaybillReceiveConfirmDialog({ isOpen, isClosing, isSubmitting, waybill, formState, onClose, onConfirm }: Props) {
   if (!isOpen && !isClosing) return null;
@@ -27,8 +32,8 @@ export default function WaybillReceiveConfirmDialog({ isOpen, isClosing, isSubmi
               <PackageCheck size={20} />
             </div>
             <div>
-              <h2 className="text-lg font-black text-foreground">Xác nhận tiếp nhận đơn</h2>
-              <p className="mt-1 text-[13px] text-muted-foreground">Kiểm tra thông tin trước khi chuyển vận đơn vào kho.</p>
+              <h2 className="text-lg font-black text-foreground">Xác nhận đã nhập kho</h2>
+              <p className="mt-1 text-[13px] text-muted-foreground">Sau thao tác này đơn được ghi nhận là đã có mặt thực tế tại kho.</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="rounded-xl p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label="Đóng">
@@ -42,14 +47,18 @@ export default function WaybillReceiveConfirmDialog({ isOpen, isClosing, isSubmi
             <p className="mt-1 text-xl font-black text-foreground">{displayCode(waybill)}</p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Info label="Ảnh tiếp nhận" value={formState.deliveryPhotoUrl || '—'} />
+            <Info label="Hình thức nhập kho" value={formState.intakeMethod ? intakeMethodLabels[formState.intakeMethod] : '—'} />
+            {formState.intakeMethod === 'INTERNAL' && <Info label="Xe / tài xế" value={[formState.licensePlate ? `BKS ${formState.licensePlate}` : '', formState.driverName].filter(Boolean).join(' · ') || 'Không ghi nhận'} />}
+            {formState.intakeMethod === 'VENDOR' && <Info label="Xe / tài xế NCC" value={[formState.licensePlate ? `BKS ${formState.licensePlate}` : '', formState.driverName].filter(Boolean).join(' · ') || 'Không ghi nhận'} />}
+            <Info label="Ghi chú" value={formState.intakeNote || '—'} />
+            <Info label="Ảnh bổ sung" value={formState.deliveryPhotoUrl || 'Không thêm ảnh'} />
           </div>
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t border-border p-5 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted">Hủy</button>
           <button type="button" onClick={onConfirm} disabled={isSubmitting} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-bold text-white shadow-sm shadow-primary/20 transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60">
-            <CheckCircle2 size={16} /> {isSubmitting ? 'Đang tiếp nhận...' : 'Xác nhận nhận hàng'}
+            <CheckCircle2 size={16} /> {isSubmitting ? 'Đang nhập kho...' : 'Xác nhận đã nhập kho'}
           </button>
         </div>
       </div>

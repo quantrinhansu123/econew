@@ -987,7 +987,6 @@ export class ManifestsService {
   private assertWaybillCanBeAdded(manifest: ManifestRecord, waybill: WaybillRecord) {
     const status = this.getWaybillStatus(waybill);
     const allowedStatuses = [
-      WaybillState.RECEIVED,
       WaybillState.IN_WAREHOUSE,
       WaybillState.MANIFEST_CLOSED,
       WaybillState.LOADED,

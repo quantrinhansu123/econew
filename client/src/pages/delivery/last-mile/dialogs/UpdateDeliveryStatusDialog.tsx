@@ -3,6 +3,7 @@ import { ImagePlus, Loader2, Trash2, X } from 'lucide-react';
 import { ApiError } from '../../../../lib/api';
 import { formatAmountInput, formatAmountInputFromNumber, parseAmountInput } from '../../../../lib/formatMoney';
 import { IMAGE_UPLOAD_ACCEPT, uploadWaybillImage } from '../../../../lib/uploadImage';
+import { MAX_WAYBILL_IMAGES } from '../../../../lib/waybillImages';
 import type { DeliveryResources, LastMileWaybill } from '../types';
 import type { DeliveryRouteOption } from '../../../../hooks/useDeliveryRoutes';
 
@@ -70,13 +71,13 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
   };
 
   const handleFiles = async (files: FileList | null) => {
-    const selected = Array.from(files || []).slice(0, Math.max(0, 4 - photos.length));
+    const selected = Array.from(files || []).slice(0, Math.max(0, MAX_WAYBILL_IMAGES - photos.length));
     if (!selected.length) return;
     setIsUploading(true);
     setUploadError('');
     try {
       const urls = await Promise.all(selected.map(uploadWaybillImage));
-      setPhotos((current) => [...current, ...urls].slice(0, 4));
+      setPhotos((current) => [...current, ...urls].slice(0, MAX_WAYBILL_IMAGES));
     } catch (uploadFailure) {
       setUploadError(uploadFailure instanceof ApiError ? uploadFailure.message : 'Không upload được ảnh giao hàng.');
     } finally {
@@ -189,7 +190,7 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
             <div className="rounded-xl border border-border bg-slate-50 p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-black text-foreground">Ảnh giao hàng</p>
-                <span className="text-[11px] font-bold">{photos.length}/4 ảnh</span>
+                <span className="text-[11px] font-bold">{photos.length}/{MAX_WAYBILL_IMAGES} ảnh</span>
               </div>
               {photos.length > 0 && (
                 <div className="mt-2 grid grid-cols-4 gap-2">
@@ -203,7 +204,7 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
                   ))}
                 </div>
               )}
-              {photos.length < 4 && (
+              {photos.length < MAX_WAYBILL_IMAGES && (
                 <label className="mt-2 inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-primary/40 bg-white px-3 font-bold text-primary hover:bg-primary/5">
                   {isUploading ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />}
                   {isUploading ? 'Đang tải ảnh...' : 'Thêm ảnh'}

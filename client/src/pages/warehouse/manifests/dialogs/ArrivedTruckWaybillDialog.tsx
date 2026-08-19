@@ -4,6 +4,7 @@ import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../../../../lib/api';
 import { ImagePreviewModal } from '../../../../components/ImagePreviewModal';
 import { uploadWaybillImage } from '../../../../lib/uploadImage';
+import { MAX_WAYBILL_IMAGES } from '../../../../lib/waybillImages';
 import type { LoadPlanningManifest, ManifestWaybill } from '../types';
 import {
   HUB_DELIVERY_STATUS_OPTIONS,
@@ -87,15 +88,15 @@ export default function ArrivedTruckWaybillDialog({
     if (!file) return;
     const key = String(waybillId);
     const row = getRow(waybills.find((item) => String(item.id) === key)!);
-    if (row.photos.length >= 4) {
-      setError('Tối đa 4 ảnh cho mỗi vận đơn.');
+    if (row.photos.length >= MAX_WAYBILL_IMAGES) {
+      setError(`Tối đa ${MAX_WAYBILL_IMAGES} ảnh cho mỗi vận đơn.`);
       return;
     }
     setUploadingId(key);
     setError('');
     try {
       const url = await uploadWaybillImage(file);
-      patchRow(key, { photos: [...row.photos, url].slice(0, 4) });
+      patchRow(key, { photos: [...row.photos, url].slice(0, MAX_WAYBILL_IMAGES) });
     } catch (uploadError) {
       setError(uploadError instanceof ApiError ? uploadError.message : 'Không upload được ảnh bill.');
     } finally {
@@ -259,7 +260,7 @@ export default function ArrivedTruckWaybillDialog({
                                   )}
                                 </span>
                               ))}
-                              {canManage && row.photos.length < 4 && (
+                              {canManage && row.photos.length < MAX_WAYBILL_IMAGES && (
                                 <label className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100">
                                   {isUploading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
                                   <input

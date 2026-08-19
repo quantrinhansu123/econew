@@ -3,7 +3,7 @@ import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateWaybillPhotosDto {
   @ApiPropertyOptional({
-    description: 'Tối đa 4 URL ảnh bill/hàng hóa, phân cách bằng dấu |',
+    description: 'Tối đa 10 URL ảnh bill/hàng hóa, phân cách bằng dấu |',
   })
   @IsOptional()
   @IsString()

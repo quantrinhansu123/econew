@@ -14,6 +14,7 @@ import { WaybillCashVoucherEntity } from './waybill-cash-voucher.entity';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
 import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
 import { CashFundEntity } from '../finance/cash-fund.entity';
+import { WarehouseIntakeMethod } from './dto/receive-waybill.dto';
 
 const manager = { id: 'u1', role_mask: Roles.MANAGER, hub_id: '1' } as any;
 const warehouse = { id: 'u2', role_mask: Roles.WAREHOUSE, hub_id: '1' } as any;
@@ -694,6 +695,8 @@ describe('WaybillsService', () => {
       w1: makeWaybill({
         id: 'w1',
         waybill_code: 'ECOHAN1',
+        current_state: WaybillStatus.IN_WAREHOUSE,
+        status: WaybillStatus.IN_WAREHOUSE,
         dest_hub_id: '2',
         origin_hub: { id: '1', code: 'HAN' },
         dest_hub: { id: '2', code: 'HCM' },
@@ -701,6 +704,8 @@ describe('WaybillsService', () => {
       w2: makeWaybill({
         id: 'w2',
         waybill_code: 'ECOHAN2',
+        current_state: WaybillStatus.IN_WAREHOUSE,
+        status: WaybillStatus.IN_WAREHOUSE,
         package_count: 3,
         dest_hub_id: '3',
         origin_hub: { id: '1', code: 'HAN' },
@@ -924,7 +929,7 @@ describe('WaybillsService', () => {
     vendorsService.findOne.mockResolvedValue({ id: 'vendor-1', name: 'NCC mới', status: 'ACTIVE' });
     waybillsRepository.findOne
       .mockReset()
-      .mockResolvedValueOnce(makeWaybill({ id: 'w1', waybill_code: 'ECOHAN1' }))
+      .mockResolvedValueOnce(makeWaybill({ id: 'w1', waybill_code: 'ECOHAN1', current_state: WaybillStatus.IN_WAREHOUSE, status: WaybillStatus.IN_WAREHOUSE }))
       .mockResolvedValueOnce(null);
 
     await expect(service.bulkStackOntoTruck({
@@ -1251,21 +1256,52 @@ describe('WaybillsService', () => {
 
   it('receive transitions RECEIVED to IN_WAREHOUSE', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
-    const result = await service.receive('1', { delivery_photo_url: 'https://example.com/receive.jpg' }, warehouse);
+    trucksRepository.findOne.mockResolvedValue({
+      id: 'truck-1',
+      bks: '29H-123.45',
+      license_plate: '29H-123.45',
+      vendor_id: null,
+      driver_id: 'driver-1',
+      driver: { id: 'driver-1', full_name: 'Toàn', role_mask: Roles.DRIVER, is_active: true },
+    });
+    const result = await service.receive('1', {
+      intake_method: WarehouseIntakeMethod.INTERNAL,
+      truck_id: 'truck-1',
+      note: 'Hàng nguyên đai',
+    }, warehouse);
     expect(result.status).toBe(WaybillStatus.IN_WAREHOUSE);
     expect(result.received_by).toBe(warehouse.id);
-    expect(result.delivery_photo_url).toBe('https://example.com/receive.jpg');
+    expect(result).toMatchObject({
+      warehouse_intake_method: WarehouseIntakeMethod.INTERNAL,
+      warehouse_intake_license_plate: '29H-123.45',
+      warehouse_intake_driver_name: 'Toàn',
+      warehouse_intake_note: 'Hàng nguyên đai',
+      xe_lay: 'Xe nội bộ - BKS 29H-123.45 - lái xe Toàn',
+    });
+    expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ action: 'WAREHOUSE_RECEIVED' }));
+  });
+
+  it('receive accepts customer drop-off without a photo or vehicle', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ delivery_photo_url: 'https://example.com/bill.jpg' }));
+    const result = await service.receive('1', {
+      intake_method: WarehouseIntakeMethod.CUSTOMER_DROPOFF,
+    }, warehouse);
+    expect(result).toMatchObject({
+      status: WaybillStatus.IN_WAREHOUSE,
+      warehouse_intake_method: WarehouseIntakeMethod.CUSTOMER_DROPOFF,
+      delivery_photo_url: 'https://example.com/bill.jpg',
+      xe_lay: 'Khách mang đến',
+    });
   });
 
   it('receive blocks wrong status', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.IN_WAREHOUSE, current_state: WaybillStatus.IN_WAREHOUSE }));
-    await expect(service.receive('1', { delivery_photo_url: 'https://example.com/receive.jpg' }, warehouse)).rejects.toThrow(BadRequestException);
+    await expect(service.receive('1', { intake_method: WarehouseIntakeMethod.INTERNAL }, warehouse)).rejects.toThrow(BadRequestException);
   });
 
-  it('updateStatus accepts valid state machine transition', async () => {
+  it('updateStatus cannot bypass warehouse intake details', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
-    const result = await service.updateStatus('1', { status: WaybillStatus.IN_WAREHOUSE }, warehouse);
-    expect(result.status).toBe(WaybillStatus.IN_WAREHOUSE);
+    await expect(service.updateStatus('1', { status: WaybillStatus.IN_WAREHOUSE }, warehouse)).rejects.toThrow(BadRequestException);
   });
 
   it('updateStatus blocks skipped transition', async () => {
@@ -1293,9 +1329,9 @@ describe('WaybillsService', () => {
     await expect(service.assignPriority('1', { priority: WaybillPriority.URGENT }, manager)).rejects.toThrow(BadRequestException);
   });
 
-  it('assignRoute allows RECEIVED and IN_WAREHOUSE', async () => {
+  it('assignRoute requires the waybill to be physically received first', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.RECEIVED }));
-    await expect(service.assignRoute('1', { route_code: 'R1' }, manager)).resolves.toMatchObject({ route_code: 'R1', status: WaybillStatus.IN_WAREHOUSE });
+    await expect(service.assignRoute('1', { route_code: 'R1' }, manager)).rejects.toThrow(BadRequestException);
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.IN_WAREHOUSE, current_state: WaybillStatus.IN_WAREHOUSE }));
     await expect(service.assignRoute('1', { route_code: 'R2' }, manager)).resolves.toMatchObject({ route_code: 'R2' });
   });

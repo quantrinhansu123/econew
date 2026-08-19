@@ -117,6 +117,7 @@ export const INVENTORY_PRINT_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, nu
   received_at: 5,
   noi_den: 4,
   order_status: 5.5,
+  warehouse_intake: 8,
   billing_unit: 3.5,
   billing_qty_detail: 7.5,
   unit_price: 5.5,
@@ -170,6 +171,7 @@ export type InventoryColumnId =
   | 'received_at'
   | 'noi_den'
   | 'order_status'
+  | 'warehouse_intake'
   | 'delivery_processing'
   | 'billing_unit'
   | 'billing_qty_detail'
@@ -228,6 +230,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'received_at', label: 'Ngày nhận đơn', defaultVisible: false },
   { id: 'noi_den', label: 'Tỉnh đến', defaultVisible: true },
   { id: 'order_status', label: 'Trạng thái đơn', defaultVisible: false },
+  { id: 'warehouse_intake', label: 'Trạng thái nhập kho', defaultVisible: true },
   { id: 'delivery_processing', label: 'Trạng thái xử lý giao', defaultVisible: false },
   { id: 'billing_unit', label: 'ĐVT cước', defaultVisible: false },
   { id: 'billing_qty_detail', label: 'Kg / khối', defaultVisible: false, align: 'right' },
@@ -264,7 +267,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'actions', label: 'Thao tác', defaultVisible: true },
 ];
 
-export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v9';
+export const INVENTORY_COLUMN_STORAGE_KEY = 'eco_inventory_visible_columns_v10';
 
 /** Các cột hiện mặc định lần đầu; người dùng có thể bỏ chọn và lưu lại. */
 export const INVENTORY_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
@@ -276,6 +279,7 @@ export const INVENTORY_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
   'dest_hub',
   'package_count',
   'cod_amount',
+  'warehouse_intake',
   'cod_collection_status',
   'waybill_code',
   'user_note',
@@ -310,6 +314,7 @@ export const ALL_ORDERS_SENDER_COLUMN_IDS: InventoryColumnId[] = [
   'receiver_address',
   'bill_images',
   'order_status',
+  'warehouse_intake',
   'delivery_processing',
   'trip_label',
   'delivery_staff',
@@ -363,6 +368,7 @@ export const ALL_ORDERS_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>
   receiver_address: 250,
   bill_images: 90,
   order_status: 115,
+  warehouse_intake: 230,
   delivery_processing: 260,
   trip_label: 340,
   delivery_staff: 150,
@@ -431,6 +437,7 @@ export const ALL_ORDERS_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
   'receiver_address',
   'bill_images',
   'order_status',
+  'warehouse_intake',
   'delivery_processing',
   'trip_label',
   'delivery_staff',
@@ -469,6 +476,7 @@ const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   receiver_district: 'Quận/Huyện',
   receiver_ward: 'Phường/Xã',
   order_status: 'Trạng thái',
+  warehouse_intake: 'Trạng thái nhập kho',
   delivery_processing: 'Xử lý giao hàng',
   billing_qty_detail: 'Kg / khối',
   surcharge: 'Dịch vụ cộng thêm',
@@ -526,8 +534,8 @@ export function getAllOrdersDefaultVisibleColumnIds(): InventoryColumnId[] {
   return [...ALL_ORDERS_DEFAULT_COLUMN_IDS];
 }
 
-export const ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v3';
-const LEGACY_ALL_ORDERS_COLUMN_STORAGE_KEYS = ['eco_all_orders_visible_columns_v2', 'eco_all_orders_visible_columns_v1'];
+export const ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v4';
+const LEGACY_ALL_ORDERS_COLUMN_STORAGE_KEYS = ['eco_all_orders_visible_columns_v3', 'eco_all_orders_visible_columns_v2', 'eco_all_orders_visible_columns_v1'];
 
 export function normalizeAllOrdersVisibleColumnIds(ids: InventoryColumnId[]): InventoryColumnId[] {
   const selected = new Set(ids.filter((id) => ALL_ORDERS_SELECTABLE_COLUMN_IDS.includes(id)));
@@ -551,6 +559,7 @@ export function loadAllOrdersVisibleColumnIds(): InventoryColumnId[] {
       const migrated = normalizeAllOrdersVisibleColumnIds([
         ...(JSON.parse(legacyRaw) as InventoryColumnId[]),
         'delivery_staff',
+        'warehouse_intake',
         'delivery_processing',
       ]);
       localStorage.setItem(ALL_ORDERS_COLUMN_STORAGE_KEY, JSON.stringify(migrated));
@@ -768,7 +777,53 @@ export function resolveBillingQtyDetail(waybill: WaybillInventoryItem): string {
 }
 
 export function resolveOrderStatusBadge(waybill: WaybillInventoryItem) {
+  const status = String(waybill.current_state || waybill.status || '').toUpperCase();
+  if (status === 'RECEIVED') {
+    return { label: 'Đơn cần lấy', className: 'bg-blue-50 text-blue-800 border-blue-200' };
+  }
+  if (status === 'IN_WAREHOUSE') {
+    return { label: 'Đã nhập kho', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
+  }
   return orderStatusGroupConfig[resolveOrderStatusGroup(waybill)];
+}
+
+export function resolveWarehouseIntakePresentation(waybill: WaybillInventoryItem): {
+  title: string;
+  detail: string;
+  note: string;
+  tone: 'blue' | 'emerald' | 'slate';
+  canConfirm: boolean;
+} {
+  const status = String(waybill.current_state || waybill.status || '').toUpperCase();
+  if (status === 'RECEIVED') {
+    return { title: 'Đơn cần lấy', detail: '', note: '', tone: 'blue', canConfirm: true };
+  }
+  if (status === 'CANCELLED') {
+    return { title: 'Đã hủy', detail: '', note: '', tone: 'slate', canConfirm: false };
+  }
+
+  const method = waybill.warehouse_intake_method;
+  const methodLabel = method === 'INTERNAL'
+    ? 'Xe nội bộ'
+    : method === 'VENDOR'
+      ? 'Xe NCC'
+      : method === 'CUSTOMER_DROPOFF'
+        ? 'Khách mang đến'
+        : '';
+  const detail = [
+    methodLabel,
+    method === 'VENDOR' ? waybill.warehouse_intake_vendor_name?.trim() : '',
+    waybill.warehouse_intake_license_plate?.trim() ? `BKS ${waybill.warehouse_intake_license_plate.trim()}` : '',
+    waybill.warehouse_intake_driver_name?.trim() ? `lái xe ${waybill.warehouse_intake_driver_name.trim()}` : '',
+  ].filter(Boolean).join(' - ') || waybill.xe_lay?.trim() || '';
+
+  return {
+    title: 'Đã nhập kho',
+    detail,
+    note: waybill.warehouse_intake_note?.trim() || '',
+    tone: 'emerald',
+    canConfirm: false,
+  };
 }
 
 export function resolveRoute(waybill: WaybillInventoryItem): string {

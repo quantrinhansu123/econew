@@ -1,10 +1,10 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useState } from 'react';
-import { CalendarClock, Eye, History, Images, Loader2, MapPin, Package, Printer, Route, Scale, User, X } from 'lucide-react';
+import { CalendarClock, Eye, History, Images, Loader2, MapPin, Package, PackageCheck, Printer, Route, Scale, User, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { BadgeConfig, WaybillInventoryDetail } from '../types';
-import { resolveUserNote } from '../inventoryColumns';
-import { parseWaybillImages } from '../../../../lib/waybillImages';
+import { resolveUserNote, resolveWarehouseIntakePresentation } from '../inventoryColumns';
+import { MAX_WAYBILL_IMAGES, parseWaybillImages } from '../../../../lib/waybillImages';
 import { ImagePreviewModal } from '../../../../components/ImagePreviewModal';
 import { ApiError, apiRequest } from '../../../../lib/api';
 import {
@@ -79,6 +79,7 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
   const paymentBadge = paymentConfig[String(waybill?.payment_type || '')] || { label: waybill?.payment_type || '—', className: 'bg-muted text-muted-foreground border-border' };
   const priorityBadge = priorityConfig[String(waybill?.priority || 'NORMAL').toUpperCase()] || priorityConfig.NORMAL;
   const billImages = parseWaybillImages(waybill?.delivery_photo_url);
+  const warehouseIntake = waybill ? resolveWarehouseIntakePresentation(waybill) : null;
   const printDisabled = isLoading || !waybill?.id;
 
   const closeDialog = () => {
@@ -136,7 +137,13 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
                 <Info label="Hub hiện tại" value={formatHub(waybill.current_hub || waybill.origin_hub, waybill.current_hub_id || waybill.origin_hub_id)} icon={MapPin} />
                 <Info label="Hub đến" value={formatHub(waybill.dest_hub, waybill.dest_hub_id)} icon={MapPin} />
                 <Info label="Tuyến giao" value={waybill.route_code || waybill.delivery_route || 'Chưa gán'} icon={Route} />
-                <Info label="Ngày nhận kho" value={formatDate(waybill.received_at || waybill.created_at)} icon={CalendarClock} />
+                <Info label="Ngày nhận kho" value={formatDate(waybill.received_at)} icon={CalendarClock} />
+              </Section>
+
+              <Section title="Xử lý nhập kho" icon={PackageCheck}>
+                <Info label="Trạng thái nhập kho" value={warehouseIntake?.title || '—'} />
+                <Info label="Xe / người đưa hàng" value={warehouseIntake?.detail || '—'} />
+                <Info label="Ghi chú nhập kho" value={warehouseIntake?.note || '—'} className="sm:col-span-2" />
               </Section>
 
               <Section title="Kích thước & ghi chú" icon={Scale}>
@@ -145,7 +152,7 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
                 <Info label="Ghi chú" value={resolveUserNote(waybill) || '—'} className="sm:col-span-2" />
               </Section>
 
-              <Section title={`Ảnh bill / hàng hóa (${billImages.length}/4)`} icon={Images}>
+              <Section title={`Ảnh bill / hàng hóa (${billImages.length}/${MAX_WAYBILL_IMAGES})`} icon={Images}>
                 <div className="sm:col-span-2">
                   {billImages.length ? (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

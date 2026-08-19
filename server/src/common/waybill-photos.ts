@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 
-export const MAX_WAYBILL_PHOTOS = 4;
+export const MAX_WAYBILL_PHOTOS = 10;
 
 export function parseWaybillPhotos(value?: string | null): string[] {
   if (!value?.trim()) return [];

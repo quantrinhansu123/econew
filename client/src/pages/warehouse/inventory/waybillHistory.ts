@@ -21,6 +21,7 @@ const ACTION_LABELS: Record<string, string> = {
   UPDATED: 'Chỉnh sửa vận đơn',
   COD_FEE_UPDATED: 'Cập nhật COD / cước',
   PHOTOS_UPDATED: 'Cập nhật ảnh bill',
+  WAREHOUSE_RECEIVED: 'Xác nhận đã nhập kho',
   LEGACY_UPDATE: 'Đã cập nhật trước khi bật lịch sử',
   DELIVERY_PREPARATION_READY: 'Khách xác nhận sẵn sàng giao',
   DELIVERY_PREPARATION_SCHEDULED: 'Lưu kho và hẹn ngày giao',
@@ -66,6 +67,14 @@ const FIELD_LABELS: Record<string, string> = {
   phuong_thuc: 'Phương thức',
   so_anh: 'Số ảnh bill',
   current_state: 'Trạng thái vận đơn',
+  warehouse_intake_method: 'Hình thức nhập kho',
+  warehouse_intake_truck_id: 'Xe lấy hàng',
+  warehouse_intake_vendor_id: 'NCC lấy hàng',
+  warehouse_intake_driver_id: 'Tài xế lấy hàng',
+  warehouse_intake_license_plate: 'BKS xe lấy',
+  warehouse_intake_driver_name: 'Tên tài xế lấy',
+  warehouse_intake_vendor_name: 'Tên NCC lấy',
+  warehouse_intake_note: 'Ghi chú nhập kho',
   route_code: 'Tuyến giao',
   delivery_assignment_type: 'Hình thức giao',
   last_mile_driver_id: 'Tài xế giao',
@@ -98,6 +107,13 @@ export function formatWaybillHistoryValue(field: string, value: unknown): string
       PARTNER: 'Xe đối tác',
       TECHNOLOGY: 'Xe công nghệ',
       CUSTOMER_PICKUP: 'Khách tới HUB lấy',
+    } as Record<string, string>)[String(value)] || String(value);
+  }
+  if (field === 'warehouse_intake_method') {
+    return ({
+      INTERNAL: 'Xe nội bộ',
+      VENDOR: 'Xe nhà cung cấp',
+      CUSTOMER_DROPOFF: 'Khách mang đến',
     } as Record<string, string>)[String(value)] || String(value);
   }
   if (field === 'tinh_chat_hang_hoa') return specialGoodsLabels(value).join(', ') || '—';

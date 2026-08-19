@@ -1,5 +1,6 @@
 export type WaybillStatus = 'RECEIVED' | 'IN_WAREHOUSE' | 'MANIFEST_CLOSED' | 'IN_TRANSIT' | 'AT_DEST_HUB' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED' | 'CANCELLED' | string;
 export type PaymentType = 'PP' | 'CC' | 'COD';
+export type WarehouseIntakeMethod = 'INTERNAL' | 'VENDOR' | 'CUSTOMER_DROPOFF';
 
 export interface HubSummary {
   id: string | number;
@@ -79,15 +80,60 @@ export interface WaybillDetail {
   created_at?: string | null;
   sent_date?: string | null;
   received_by?: UserSummary | null;
+  warehouse_intake_method?: WarehouseIntakeMethod | null;
+  warehouse_intake_truck_id?: string | number | null;
+  warehouse_intake_vendor_id?: string | number | null;
+  warehouse_intake_driver_id?: string | number | null;
+  warehouse_intake_license_plate?: string | null;
+  warehouse_intake_driver_name?: string | null;
+  warehouse_intake_vendor_name?: string | null;
+  warehouse_intake_note?: string | null;
 }
 
 export interface ReceiveFormState {
   waybillCode: string;
   deliveryPhotoUrl: string;
+  intakeMethod: WarehouseIntakeMethod | '';
+  truckId: string;
+  vendorId: string;
+  driverId: string;
+  licensePlate: string;
+  driverName: string;
+  intakeNote: string;
 }
 
 export interface ReceiveWaybillPayload {
-  delivery_photo_url: string;
+  intake_method: WarehouseIntakeMethod;
+  delivery_photo_url?: string;
+  truck_id?: string;
+  vendor_id?: string;
+  driver_id?: string;
+  license_plate?: string;
+  driver_name?: string;
+  note?: string;
+}
+
+export interface DeliveryResourceTruck {
+  id: string | number;
+  license_plate?: string | null;
+  bks?: string | null;
+  loai_xe?: string | null;
+  vendor_id?: string | number | null;
+  driver_id?: string | number | null;
+  driver_name?: string | null;
+}
+
+export interface DeliveryResourceVendor {
+  id: string | number;
+  code?: string | null;
+  name?: string | null;
+  phone?: string | null;
+}
+
+export interface DeliveryResources {
+  drivers: UserSummary[];
+  trucks: DeliveryResourceTruck[];
+  vendors: DeliveryResourceVendor[];
 }
 
 export interface CreateWaybillFormState {

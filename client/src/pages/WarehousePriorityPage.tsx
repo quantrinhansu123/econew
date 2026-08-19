@@ -15,7 +15,7 @@ const BOARD_COLUMNS = ['DEPARTED', 'EXPECTED_ARRIVAL'] as const;
 const statusConfig: Record<string, BadgeConfig> = {
   DEPARTED: { label: 'Xe đã khởi hành', className: 'bg-sky-50 text-sky-700 border-sky-200' },
   EXPECTED_ARRIVAL: { label: 'Dự kiến đến', className: 'bg-violet-50 text-violet-700 border-violet-200' },
-  RECEIVED: { label: 'Đã tạo đơn', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  RECEIVED: { label: 'Đơn cần lấy', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   MANIFEST_CLOSED: { label: 'Chờ bốc', className: 'bg-slate-100 text-slate-700 border-slate-200' },
   LOADED: { label: 'Đã bốc', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   IN_TRANSIT: { label: 'Đang vận chuyển', className: 'bg-sky-50 text-sky-700 border-sky-200' },

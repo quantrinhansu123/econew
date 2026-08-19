@@ -25,6 +25,7 @@ import {
   resolveMaKh,
   resolveNoiDen,
   resolveOrderStatusBadge,
+  resolveWarehouseIntakePresentation,
   resolvePackageCountSl,
   resolvePaymentMethod,
   resolvePrintColumnIds,
@@ -106,6 +107,7 @@ const EXCEL_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>> = {
   trip_label: 20,
   delivery_staff: 22,
   delivery_processing: 34,
+  warehouse_intake: 30,
   loaded_at: 14,
   received_at: 14,
   noi_den: 14,
@@ -428,6 +430,10 @@ function inventoryExcelCellValue(
       return resolveReceiverPhone(waybill).replace(/^—$/, '');
     case 'order_status':
       return resolveOrderStatusBadge(waybill).label;
+    case 'warehouse_intake': {
+      const intake = resolveWarehouseIntakePresentation(waybill);
+      return [intake.title, intake.detail, intake.note].filter(Boolean).join(' · ');
+    }
     case 'delivery_staff':
       return resolveDeliveryStaff(waybill).replace(/^—$/, '');
     case 'package_count':

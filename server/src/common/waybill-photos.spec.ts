@@ -6,7 +6,7 @@ import {
 } from './waybill-photos';
 
 describe('waybill photos', () => {
-  it('chuẩn hóa, loại URL trùng và giữ tối đa bốn ảnh', () => {
+  it('chuẩn hóa, loại URL trùng và giữ tối đa mười ảnh', () => {
     expect(normalizeWaybillPhotos(' https://a.test/1.jpg |https://a.test/2.jpg\nhttps://a.test/1.jpg '))
       .toBe('https://a.test/1.jpg|https://a.test/2.jpg');
   });

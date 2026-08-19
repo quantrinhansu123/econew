@@ -1,24 +1,33 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardCheck, Layers, Loader2, Package, PackageCheck, RotateCcw, Search, ShieldAlert, Warehouse } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ClipboardCheck, Layers, Loader2, Package, PackageCheck, RotateCcw, Search, ShieldAlert, Truck, UserRound, Warehouse } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { clsx } from 'clsx';
 
 import { ApiError, apiRequest } from '../lib/api';
 import WaybillReceiveConfirmDialog from './warehouse/orders/dialogs/WaybillReceiveConfirmDialog';
 import WaybillPackageSplitEditor from './warehouse/inventory/WaybillPackageSplitEditor';
-import type { BadgeConfig, HubSummary, ReceiveFormState, ReceiveWaybillPayload, UserSummary, WaybillDetail } from './warehouse/orders/types';
+import type { BadgeConfig, DeliveryResources, HubSummary, ReceiveFormState, ReceiveWaybillPayload, UserSummary, WaybillDetail } from './warehouse/orders/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const RECEIVABLE_ROLES = 1 | 2 | 32 | 64;
 const initialFormState: ReceiveFormState = {
   waybillCode: '',
   deliveryPhotoUrl: '',
+  intakeMethod: '',
+  truckId: '',
+  vendorId: '',
+  driverId: '',
+  licensePlate: '',
+  driverName: '',
+  intakeNote: '',
 };
 
+const emptyResources: DeliveryResources = { drivers: [], trucks: [], vendors: [] };
+
 const statusConfig: Record<string, BadgeConfig> = {
-  RECEIVED: { label: 'Đã tạo đơn', className: 'bg-blue-50 text-blue-700 border-blue-200' },
-  IN_WAREHOUSE: { label: 'Trong kho', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  RECEIVED: { label: 'Đơn cần lấy', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  IN_WAREHOUSE: { label: 'Đã nhập kho', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   MANIFEST_CLOSED: { label: 'Đã đóng bảng kê', className: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
   IN_TRANSIT: { label: 'Đang vận chuyển', className: 'bg-amber-50 text-amber-700 border-amber-200' },
   AT_DEST_HUB: { label: 'Tới hub đích', className: 'bg-violet-50 text-violet-700 border-violet-200' },
@@ -83,6 +92,8 @@ export default function WarehouseOrderReceivePage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isConfirmClosing, setIsConfirmClosing] = useState(false);
+  const [resources, setResources] = useState<DeliveryResources>(emptyResources);
+  const [isResourcesLoading, setIsResourcesLoading] = useState(false);
 
   const roleMask = user?.role_mask ?? 0;
   const canSeeRestrictedMoney = isManager(roleMask);
@@ -94,12 +105,14 @@ export default function WarehouseOrderReceivePage() {
   const isTerminal = isFinalized;
   const hubAllowed = userHubIds.size === 0 || userHubIds.has(normalizeId(waybill?.current_hub_id)) || userHubIds.has(normalizeId(waybill?.origin_hub_id));
   const hasManifestOrTrip = Boolean(waybill?.manifest_id || waybill?.trip_id);
-  const splitDisabled = !waybill || isFinalized || hasManifestOrTrip || !hubAllowed;
+  const splitDisabled = !waybill || isReceived || isFinalized || hasManifestOrTrip || !hubAllowed;
   const splitDisabledReason = !waybill
     ? undefined
     : isFinalized
       ? 'Vận đơn đã kết thúc, không thể tách hàng.'
-      : hasManifestOrTrip
+      : isReceived
+        ? 'Phải xác nhận đã nhập kho trước khi tách hàng hoặc phân xe.'
+        : hasManifestOrTrip
         ? 'Vận đơn đã gắn manifest/chuyến — không thể tách tại đây.'
         : !hubAllowed
           ? 'Vận đơn không thuộc hub được phân quyền.'
@@ -121,12 +134,13 @@ export default function WarehouseOrderReceivePage() {
 
   const infoMessages = useMemo(() => {
     if (waybill && alreadyInWarehouse && !isTerminal) {
-      return ['Vận đơn đã trong kho (IN_WAREHOUSE). Không cần tiếp nhận lại — có thể phân xe bên dưới.'];
+      return ['Vận đơn đã được xác nhận nhập kho. Không cần tiếp nhận lại — có thể phân xe bên dưới.'];
     }
     return [];
   }, [alreadyInWarehouse, isTerminal, waybill]);
 
   const setFormField = <K extends keyof ReceiveFormState>(key: K, value: ReceiveFormState[K]) => setFormState(prev => ({ ...prev, [key]: value }));
+  const internalTrucks = useMemo(() => resources.trucks.filter((truck) => !truck.vendor_id), [resources.trucks]);
 
   const loadWaybill = async (waybillId: string) => {
     setError('');
@@ -135,8 +149,25 @@ export default function WarehouseOrderReceivePage() {
     setFormState(prev => ({
       ...prev,
       waybillCode: displayCode(response),
+      intakeMethod: response.warehouse_intake_method || prev.intakeMethod,
+      truckId: normalizeId(response.warehouse_intake_truck_id) || prev.truckId,
+      vendorId: normalizeId(response.warehouse_intake_vendor_id) || prev.vendorId,
+      driverId: normalizeId(response.warehouse_intake_driver_id) || prev.driverId,
+      licensePlate: response.warehouse_intake_license_plate || prev.licensePlate,
+      driverName: response.warehouse_intake_driver_name || prev.driverName,
+      intakeNote: response.warehouse_intake_note || prev.intakeNote,
     }));
   };
+
+  useEffect(() => {
+    let ignore = false;
+    setIsResourcesLoading(true);
+    apiRequest<DeliveryResources>('/waybills/delivery-resources')
+      .then((response) => { if (!ignore) setResources(response); })
+      .catch(() => { if (!ignore) setResources(emptyResources); })
+      .finally(() => { if (!ignore) setIsResourcesLoading(false); });
+    return () => { ignore = true; };
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -182,7 +213,7 @@ export default function WarehouseOrderReceivePage() {
   };
 
   const validateReceive = () => {
-    if (!formState.deliveryPhotoUrl.trim()) return 'Vui lòng upload ảnh tiếp nhận trước khi xác nhận.';
+    if (!formState.intakeMethod) return 'Vui lòng chọn hình thức đưa hàng vào kho.';
     if (warnings.length > 0) return warnings[0];
     return '';
   };
@@ -209,15 +240,23 @@ export default function WarehouseOrderReceivePage() {
 
   const submitReceive = async () => {
     if (!waybill) return;
+    if (!formState.intakeMethod) return;
     const payload: ReceiveWaybillPayload = {
-      delivery_photo_url: formState.deliveryPhotoUrl.trim(),
+      intake_method: formState.intakeMethod,
+      delivery_photo_url: formState.deliveryPhotoUrl.trim() || undefined,
+      truck_id: formState.intakeMethod === 'INTERNAL' ? formState.truckId || undefined : undefined,
+      vendor_id: formState.intakeMethod === 'VENDOR' ? formState.vendorId || undefined : undefined,
+      driver_id: formState.intakeMethod !== 'CUSTOMER_DROPOFF' ? formState.driverId || undefined : undefined,
+      license_plate: formState.intakeMethod !== 'CUSTOMER_DROPOFF' ? formState.licensePlate.trim() || undefined : undefined,
+      driver_name: formState.intakeMethod !== 'CUSTOMER_DROPOFF' ? formState.driverName.trim() || undefined : undefined,
+      note: formState.intakeNote.trim() || undefined,
     };
     setIsSubmitting(true);
     setError('');
     try {
       const response = await apiRequest<WaybillDetail>(`/waybills/${waybill.id}/receive`, { method: 'PUT', body: payload });
       setWaybill(response || { ...waybill, current_state: 'IN_WAREHOUSE', received_at: new Date().toISOString(), delivery_photo_url: payload.delivery_photo_url });
-      setSuccessMessage('Tiếp nhận thành công. Vận đơn đã chuyển sang IN_WAREHOUSE.');
+      setSuccessMessage('Đã nhập kho thành công và lưu thông tin xe/tài xế lấy hàng.');
       closeConfirm();
     } catch (submitError) {
       setError(submitError instanceof ApiError ? submitError.message : 'Không thể tiếp nhận vận đơn.');
@@ -241,7 +280,7 @@ export default function WarehouseOrderReceivePage() {
             <Warehouse size={14} /> Module 1 · Kho & Bưu cục
           </div>
           <h1 className="text-2xl font-black tracking-tight text-foreground">Tiếp nhận đơn tại kho</h1>
-          <p className="mt-2 max-w-2xl text-[13px] text-muted-foreground">Quét mã vận đơn, tách hàng phân xe, upload ảnh và xác nhận chuyển trạng thái RECEIVED → IN_WAREHOUSE.</p>
+          <p className="mt-2 max-w-2xl text-[13px] text-muted-foreground">Đơn mới ở trạng thái “Đơn cần lấy”. Chọn nguồn đưa hàng và xác nhận khi hàng thực tế đã có mặt tại kho.</p>
         </div>
         <button type="button" onClick={() => navigate('/warehouse/inventory')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted">
           <ArrowLeft size={16} /> Về danh sách tồn kho
@@ -281,8 +320,74 @@ export default function WarehouseOrderReceivePage() {
                 <Field label="Mã vận đơn">
                   <input value={formState.waybillCode} onChange={(event) => setFormField('waybillCode', event.target.value)} className="h-10 w-full rounded-xl border border-border bg-card px-4 text-[13px] font-bold uppercase outline-none transition-all placeholder:font-medium placeholder:normal-case placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="WB000001" />
                 </Field>
-                <Field label="URL ảnh upload">
-                  <input value={formState.deliveryPhotoUrl} onChange={(event) => setFormField('deliveryPhotoUrl', event.target.value)} className="h-10 w-full rounded-xl border border-border bg-card px-4 text-[13px] font-medium outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="https://.../receive-photo.jpg" />
+                <Field label="Hình thức đưa hàng vào kho">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <IntakeMethodButton icon={<Truck size={16} />} label="Xe nội bộ" active={formState.intakeMethod === 'INTERNAL'} onClick={() => setFormState(prev => ({ ...prev, intakeMethod: 'INTERNAL', vendorId: '' }))} />
+                    <IntakeMethodButton icon={<Building2 size={16} />} label="Xe NCC" active={formState.intakeMethod === 'VENDOR'} onClick={() => setFormState(prev => ({ ...prev, intakeMethod: 'VENDOR', truckId: '' }))} />
+                    <IntakeMethodButton icon={<UserRound size={16} />} label="Khách mang đến" active={formState.intakeMethod === 'CUSTOMER_DROPOFF'} onClick={() => setFormState(prev => ({ ...prev, intakeMethod: 'CUSTOMER_DROPOFF', truckId: '', vendorId: '', driverId: '', licensePlate: '', driverName: '' }))} />
+                  </div>
+                </Field>
+                {formState.intakeMethod === 'INTERNAL' && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="BKS xe nội bộ (không bắt buộc)">
+                      <select
+                        value={formState.truckId}
+                        disabled={isResourcesLoading}
+                        onChange={(event) => {
+                          const truckId = event.target.value;
+                          const truck = internalTrucks.find((item) => normalizeId(item.id) === truckId);
+                          setFormState(prev => ({
+                            ...prev,
+                            truckId,
+                            licensePlate: truck ? String(truck.bks || truck.license_plate || '') : '',
+                            driverId: truck?.driver_id ? String(truck.driver_id) : prev.driverId,
+                            driverName: truck?.driver_name || prev.driverName,
+                          }));
+                        }}
+                        className="h-10 w-full rounded-xl border border-border bg-card px-3 text-[13px] font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="">Không chọn xe</option>
+                        {internalTrucks.map((truck) => <option key={String(truck.id)} value={String(truck.id)}>{truck.bks || truck.license_plate}{truck.driver_name ? ` · ${truck.driver_name}` : ''}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Tài xế lấy (không bắt buộc)">
+                      <select
+                        value={formState.driverId}
+                        disabled={isResourcesLoading}
+                        onChange={(event) => {
+                          const driverId = event.target.value;
+                          const driver = resources.drivers.find((item) => normalizeId(item.id) === driverId);
+                          setFormState(prev => ({ ...prev, driverId, driverName: driver ? String(driver.full_name || driver.name || driver.username || '') : '' }));
+                        }}
+                        className="h-10 w-full rounded-xl border border-border bg-card px-3 text-[13px] font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="">Không chọn tài xế</option>
+                        {resources.drivers.map((driver) => <option key={String(driver.id)} value={String(driver.id)}>{driver.full_name || driver.name || driver.username}</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                )}
+                {formState.intakeMethod === 'VENDOR' && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Nhà cung cấp (không bắt buộc)">
+                      <select value={formState.vendorId} disabled={isResourcesLoading} onChange={(event) => setFormField('vendorId', event.target.value)} className="h-10 w-full rounded-xl border border-border bg-card px-3 text-[13px] font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+                        <option value="">Chưa xác định NCC</option>
+                        {resources.vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{vendor.name || vendor.code}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="BKS xe NCC (không bắt buộc)">
+                      <input value={formState.licensePlate} onChange={(event) => setFormField('licensePlate', event.target.value.toUpperCase())} maxLength={32} className="h-10 w-full rounded-xl border border-border bg-card px-3 text-[13px] font-bold uppercase outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="VD: 51H-123.45" />
+                    </Field>
+                    <Field label="Tài xế lấy (không bắt buộc)" className="sm:col-span-2">
+                      <input value={formState.driverName} onChange={(event) => setFormField('driverName', event.target.value)} maxLength={255} className="h-10 w-full rounded-xl border border-border bg-card px-3 text-[13px] font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Nhập tên tài xế NCC" />
+                    </Field>
+                  </div>
+                )}
+                <Field label="Ghi chú nhập kho">
+                  <textarea value={formState.intakeNote} onChange={(event) => setFormField('intakeNote', event.target.value)} maxLength={500} className="min-h-[78px] w-full rounded-xl border border-border bg-card px-3 py-2 text-[13px] font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Ghi chú tình trạng hàng, giờ lấy hoặc thông tin cần lưu..." />
+                </Field>
+                <Field label="URL ảnh tiếp nhận bổ sung (không bắt buộc)">
+                  <input value={formState.deliveryPhotoUrl} onChange={(event) => setFormField('deliveryPhotoUrl', event.target.value)} className="h-10 w-full rounded-xl border border-border bg-card px-4 text-[13px] font-medium outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Để trống nếu bill đã có ảnh" />
                 </Field>
               </div>
 
@@ -305,7 +410,7 @@ export default function WarehouseOrderReceivePage() {
 
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
                 <button type="button" onClick={resetForNextScan} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted"><RotateCcw size={16} /> Quét đơn khác</button>
-                <button type="submit" disabled={receiveDisabled} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-bold text-white shadow-sm shadow-primary/20 transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"><PackageCheck size={16} /> Xác nhận tiếp nhận</button>
+                <button type="submit" disabled={receiveDisabled} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-bold text-white shadow-sm shadow-primary/20 transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"><PackageCheck size={16} /> Đã nhập kho</button>
               </div>
             </form>
 
@@ -370,6 +475,14 @@ export default function WarehouseOrderReceivePage() {
 
 function Field({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
   return <div className={className}><label className="mb-2 block text-[13px] font-bold text-foreground">{label}</label>{children}</div>;
+}
+
+function IntakeMethodButton({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className={clsx('inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-3 text-[13px] font-bold transition-colors', active ? 'border-primary bg-blue-50 text-primary ring-2 ring-primary/10' : 'border-border bg-white text-muted-foreground hover:bg-muted')}>
+      {icon}{label}
+    </button>
+  );
 }
 
 function Info({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) {

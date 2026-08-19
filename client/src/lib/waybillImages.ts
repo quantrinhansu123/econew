@@ -1,4 +1,4 @@
-export const MAX_WAYBILL_IMAGES = 4;
+export const MAX_WAYBILL_IMAGES = 10;
 
 export function parseWaybillImages(value?: string | null): string[] {
   if (!value?.trim()) return [];

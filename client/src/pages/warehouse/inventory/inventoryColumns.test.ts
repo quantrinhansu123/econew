@@ -12,6 +12,7 @@ import {
   resolveNoiDen,
   resolveTotalAmount,
   resolveUserNote,
+  resolveWarehouseIntakePresentation,
   resolveVisibleColumnViews,
   type InventoryColumnId,
 } from './inventoryColumns';
@@ -26,6 +27,7 @@ const EXPECTED_DEFAULT_COLUMN_IDS: InventoryColumnId[] = [
   'dest_hub',
   'package_count',
   'cod_amount',
+  'warehouse_intake',
   'cod_collection_status',
   'waybill_code',
   'user_note',
@@ -113,12 +115,15 @@ describe('inventory visible columns', () => {
 });
 
 describe('all orders visible columns', () => {
-  it('moves package count next to content and shows delivery processing before the carrying trip', () => {
+  it('moves package count next to content and shows warehouse/delivery processing before the carrying trip', () => {
     expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('package_count')).toBe(
       ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('cong_sg') + 1,
     );
-    expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('delivery_processing')).toBe(
+    expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('warehouse_intake')).toBe(
       ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('order_status') + 1,
+    );
+    expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('delivery_processing')).toBe(
+      ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('warehouse_intake') + 1,
     );
     expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('trip_label')).toBe(
       ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('delivery_processing') + 1,
@@ -126,6 +131,24 @@ describe('all orders visible columns', () => {
     expect(ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('delivery_staff')).toBe(
       ALL_ORDERS_DEFAULT_COLUMN_IDS.indexOf('trip_label') + 1,
     );
+  });
+
+  it('shows pickup-needed and received warehouse details', () => {
+    expect(resolveWarehouseIntakePresentation({ id: '1', current_state: 'RECEIVED' })).toMatchObject({
+      title: 'Đơn cần lấy',
+      canConfirm: true,
+    });
+    expect(resolveWarehouseIntakePresentation({
+      id: '2',
+      current_state: 'IN_WAREHOUSE',
+      warehouse_intake_method: 'INTERNAL',
+      warehouse_intake_license_plate: '29H-123.45',
+      warehouse_intake_driver_name: 'Toàn',
+    })).toMatchObject({
+      title: 'Đã nhập kho',
+      detail: 'Xe nội bộ - BKS 29H-123.45 - lái xe Toàn',
+      canConfirm: false,
+    });
   });
 
   it('keeps required columns and preserves the canonical order for selected details', () => {

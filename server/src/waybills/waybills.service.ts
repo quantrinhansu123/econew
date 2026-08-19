@@ -22,7 +22,7 @@ import { CreateBulkWaybillPaymentDto } from './dto/create-bulk-waybill-payment.d
 import { QueryWaybillCashVouchersDto } from './dto/query-waybill-cash-vouchers.dto';
 import { QueryReceiverContactsDto } from './dto/query-receiver-contacts.dto';
 import { QueryWaybillsDto } from './dto/query-waybills.dto';
-import { ReceiveWaybillDto } from './dto/receive-waybill.dto';
+import { ReceiveWaybillDto, WarehouseIntakeMethod } from './dto/receive-waybill.dto';
 import { UpdateCodFeeDto } from './dto/update-cod-fee.dto';
 import { UpdateCodReconciliationDto } from './dto/update-cod-reconciliation.dto';
 import { CorrectWaybillStatusDto, UpdateLastMileCostDto, UpdateWaybillStatusDto } from './dto/update-waybill-status.dto';
@@ -76,7 +76,7 @@ const ALL_ORDER_LIST_STATUSES = [
   WaybillStatus.CANCELLED,
 ];
 const MUTABLE_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE];
-const ROUTE_ASSIGNABLE_STATUSES = [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE, WaybillStatus.AT_DEST_HUB];
+const ROUTE_ASSIGNABLE_STATUSES = [WaybillStatus.IN_WAREHOUSE, WaybillStatus.AT_DEST_HUB];
 
 const currentVietnamDate = (date = new Date()) => {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -113,7 +113,7 @@ const plainGoodsNote = (note: string | null | undefined) => {
 };
 
 const STATE_TRANSITIONS: Record<string, WaybillStatus[]> = {
-  [WaybillStatus.RECEIVED]: [WaybillStatus.IN_WAREHOUSE, WaybillStatus.MANIFEST_CLOSED],
+  [WaybillStatus.RECEIVED]: [],
   [WaybillStatus.IN_WAREHOUSE]: [WaybillStatus.MANIFEST_CLOSED],
   [WaybillStatus.MANIFEST_CLOSED]: [WaybillStatus.LOADED],
   [WaybillStatus.LOADED]: [WaybillStatus.IN_TRANSIT],
@@ -584,7 +584,7 @@ export class WaybillsService {
     });
     return {
       drivers: eligibleDrivers.map((driver) => ({ id: driver.id, name: driver.full_name, username: driver.username, phone: driver.phone, hub_id: driver.hub_id })),
-      trucks: trucks.map((truck) => ({ id: truck.id, license_plate: truck.license_plate, bks: truck.bks, loai_xe: truck.loai_xe, driver_id: truck.driver_id, driver_name: truck.driver?.full_name ?? truck.ten_lai_xe })),
+      trucks: trucks.map((truck) => ({ id: truck.id, license_plate: truck.license_plate, bks: truck.bks, loai_xe: truck.loai_xe, vendor_id: truck.vendor_id, driver_id: truck.driver_id, driver_name: truck.driver?.full_name ?? truck.ten_lai_xe })),
       vendors: vendors.map((vendor) => ({ id: vendor.id, code: vendor.code, name: vendor.name, phone: vendor.phone, service_type: vendor.service_type })),
     };
   }
@@ -734,12 +734,70 @@ export class WaybillsService {
 
   async receive(id: string, dto: ReceiveWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findMutable(id, currentUser);
-    if (this.getStatus(waybill) !== WaybillStatus.RECEIVED) throw new BadRequestException('Only RECEIVED waybills can be received');
+    if (this.getStatus(waybill) !== WaybillStatus.RECEIVED) throw new BadRequestException('Chỉ đơn cần lấy mới được xác nhận nhập kho');
     const receiveHubId = currentUser.hub_id ?? waybill.origin_hub_id;
     await this.assertHubAccess(receiveHubId, currentUser);
+
+    let truck: TruckEntity | null = null;
+    let vendor: VendorEntity | null = null;
+    let driver: UserEntity | null = null;
+    if (dto.intake_method === WarehouseIntakeMethod.INTERNAL && dto.truck_id) {
+      truck = await this.trucksRepository.findOne({ where: { id: String(dto.truck_id) } as any, relations: ['driver'] });
+      if (!truck) throw new NotFoundException('Không tìm thấy xe nội bộ đã chọn');
+      if (truck.vendor_id) throw new BadRequestException('Xe đã chọn thuộc nhà cung cấp, không phải xe nội bộ');
+    }
+    if (dto.intake_method === WarehouseIntakeMethod.VENDOR && dto.vendor_id) {
+      vendor = await this.vendorsRepository.findOne({ where: { id: String(dto.vendor_id), status: 'ACTIVE' } as any });
+      if (!vendor) throw new NotFoundException('Không tìm thấy nhà cung cấp đang hoạt động');
+    }
+    if (dto.intake_method !== WarehouseIntakeMethod.CUSTOMER_DROPOFF && dto.driver_id) {
+      driver = await this.usersRepository.findOne({ where: { id: String(dto.driver_id), is_active: true } as any });
+      if (!driver || !hasRole(driver.role_mask, Roles.DRIVER)) throw new BadRequestException('Tài xế lấy hàng không hợp lệ hoặc đã ngừng hoạt động');
+    } else if (truck?.driver) {
+      driver = truck.driver;
+    }
+
+    const before = this.buildAuditSnapshot(waybill);
+    const licensePlate = dto.intake_method === WarehouseIntakeMethod.CUSTOMER_DROPOFF
+      ? null
+      : dto.license_plate?.trim().toUpperCase() || truck?.bks?.trim() || truck?.license_plate?.trim() || null;
+    const driverName = dto.intake_method === WarehouseIntakeMethod.CUSTOMER_DROPOFF
+      ? null
+      : dto.driver_name?.trim() || driver?.full_name?.trim() || truck?.ten_lai_xe?.trim() || null;
+    const vendorName = dto.intake_method === WarehouseIntakeMethod.VENDOR
+      ? vendor?.name?.trim() || null
+      : null;
+    const intakeSummary = dto.intake_method === WarehouseIntakeMethod.INTERNAL
+      ? ['Xe nội bộ', licensePlate ? `BKS ${licensePlate}` : null, driverName ? `lái xe ${driverName}` : null].filter(Boolean).join(' - ')
+      : dto.intake_method === WarehouseIntakeMethod.VENDOR
+        ? ['Xe NCC', vendorName, licensePlate ? `BKS ${licensePlate}` : null, driverName ? `lái xe ${driverName}` : null].filter(Boolean).join(' - ')
+        : 'Khách mang đến';
+
     this.setStatus(waybill, WaybillStatus.IN_WAREHOUSE);
-    Object.assign(waybill, { current_hub_id: receiveHubId, delivery_photo_url: normalizeWaybillPhotos(dto.delivery_photo_url), received_at: new Date(), received_by: currentUser.id, updated_by: currentUser.id });
-    return this.saveWithAudit(waybill, currentUser, 'RECEIVE');
+    Object.assign(waybill, {
+      current_hub_id: receiveHubId,
+      delivery_photo_url: dto.delivery_photo_url?.trim()
+        ? normalizeWaybillPhotos(dto.delivery_photo_url)
+        : waybill.delivery_photo_url,
+      received_at: new Date(),
+      received_by: currentUser.id,
+      warehouse_intake_method: dto.intake_method,
+      warehouse_intake_truck_id: dto.intake_method === WarehouseIntakeMethod.INTERNAL && truck ? String(truck.id) : null,
+      warehouse_intake_vendor_id: dto.intake_method === WarehouseIntakeMethod.VENDOR && vendor ? String(vendor.id) : null,
+      warehouse_intake_driver_id: driver ? String(driver.id) : null,
+      warehouse_intake_license_plate: licensePlate,
+      warehouse_intake_driver_name: driverName,
+      warehouse_intake_vendor_name: vendorName,
+      warehouse_intake_note: dto.note?.trim() || null,
+      xe_lay: intakeSummary,
+      updated_by: currentUser.id,
+      last_audit_action: 'WAREHOUSE_RECEIVED',
+      last_audit_user_id: currentUser.id,
+      last_audit_at: new Date(),
+    });
+    const saved = await this.waybillsRepository.save(waybill);
+    await this.recordWaybillChange(String(saved.id), 'WAREHOUSE_RECEIVED', currentUser, before, saved);
+    return this.sanitize(saved, currentUser);
   }
 
   async updateStatus(id: string, dto: UpdateWaybillStatusDto, currentUser: UserEntity): Promise<WaybillRecord> {
@@ -845,14 +903,6 @@ export class WaybillsService {
       throw new BadRequestException('Route can only be assigned in warehouse or destination hub');
     }
     if (!dto.route_code?.trim()) throw new BadRequestException('Route code is required');
-    if (currentStatus === WaybillStatus.RECEIVED) {
-      this.setStatus(waybill, WaybillStatus.IN_WAREHOUSE);
-      Object.assign(waybill, {
-        current_hub_id: waybill.current_hub_id ?? waybill.origin_hub_id,
-        received_at: waybill.received_at ?? new Date(),
-        received_by: waybill.received_by ?? currentUser.id,
-      });
-    }
     Object.assign(waybill, { route_code: dto.route_code.trim(), note: dto.note ?? waybill.note, updated_by: currentUser.id });
     const saved = await this.waybillsRepository.save(waybill);
     await this.recordWaybillChange(String(saved.id), 'DELIVERY_ROUTE_ASSIGNED', currentUser, auditBefore, saved);
@@ -1549,6 +1599,9 @@ export class WaybillsService {
 
   async savePackageSplits(id: string, dto: SaveWaybillSplitsDto, currentUser: UserEntity) {
     const waybill = await this.findMutable(id, currentUser);
+    if (this.getStatus(waybill) === WaybillStatus.RECEIVED) {
+      throw new BadRequestException('Phải xác nhận đã nhập kho trước khi chia đơn hoặc phân xe');
+    }
     if (FINAL_STATUSES.includes(this.getStatus(waybill))) {
       throw new BadRequestException('Cannot split a finalized waybill');
     }
@@ -1701,6 +1754,9 @@ export class WaybillsService {
       }) as WaybillRecord | null;
       if (!waybill) throw new NotFoundException(`Waybill ${line.waybill_id} not found`);
       this.assertWaybillAccess(waybill, currentUser);
+      if (this.getStatus(waybill) === WaybillStatus.RECEIVED) {
+        throw new BadRequestException(`Vận đơn ${waybill.waybill_code} chưa được xác nhận nhập kho`);
+      }
       if (FINAL_STATUSES.includes(this.getStatus(waybill))) {
         throw new BadRequestException(`Waybill ${waybill.waybill_code} cannot be stacked`);
       }
@@ -2118,8 +2174,8 @@ export class WaybillsService {
   async getLoadPlanningBoard(query: QueryLoadPlanningBoardDto, currentUser: UserEntity) {
     const splitLoadStatuses = this.parseList(query.load_status);
     const waybillLoadStatuses = splitLoadStatuses.includes(WaybillSplitLoadStatus.IN_TRANSIT)
-      ? [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE, WaybillStatus.IN_TRANSIT]
-      : [WaybillStatus.RECEIVED, WaybillStatus.IN_WAREHOUSE];
+      ? [WaybillStatus.IN_WAREHOUSE, WaybillStatus.IN_TRANSIT]
+      : [WaybillStatus.IN_WAREHOUSE];
     const qb = this.splitsRepository.createQueryBuilder('split')
       .innerJoinAndSelect('split.waybill', 'waybill')
       .leftJoinAndSelect('split.truck', 'truck')
@@ -3438,6 +3494,14 @@ export class WaybillsService {
       current_state: this.auditText(this.getStatus(waybill)),
       route_code: this.auditText(waybill.route_code),
       delivery_assignment_type: this.auditText(waybill.delivery_assignment_type),
+      warehouse_intake_method: this.auditText(waybill.warehouse_intake_method),
+      warehouse_intake_truck_id: this.auditText(waybill.warehouse_intake_truck_id),
+      warehouse_intake_vendor_id: this.auditText(waybill.warehouse_intake_vendor_id),
+      warehouse_intake_driver_id: this.auditText(waybill.warehouse_intake_driver_id),
+      warehouse_intake_license_plate: this.auditText(waybill.warehouse_intake_license_plate),
+      warehouse_intake_driver_name: this.auditText(waybill.warehouse_intake_driver_name),
+      warehouse_intake_vendor_name: this.auditText(waybill.warehouse_intake_vendor_name),
+      warehouse_intake_note: this.auditText(waybill.warehouse_intake_note),
       last_mile_driver_id: this.auditText(waybill.last_mile_driver_id),
       last_mile_truck_id: this.auditText(waybill.last_mile_truck_id),
       last_mile_vendor_id: this.auditText(waybill.last_mile_vendor_id),

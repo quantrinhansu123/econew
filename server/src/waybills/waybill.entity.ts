@@ -193,6 +193,30 @@ export class WaybillEntity {
   @Column({ type: 'bigint', nullable: true })
   received_by: string | null;
 
+  @Column({ type: 'varchar', length: 24, nullable: true })
+  warehouse_intake_method: 'INTERNAL' | 'VENDOR' | 'CUSTOMER_DROPOFF' | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  warehouse_intake_truck_id: string | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  warehouse_intake_vendor_id: string | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  warehouse_intake_driver_id: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  warehouse_intake_license_plate: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  warehouse_intake_driver_name: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  warehouse_intake_vendor_name: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  warehouse_intake_note: string | null;
+
   @Column({ type: 'timestamp', nullable: true })
   delivered_at: Date | null;
 

@@ -43,7 +43,7 @@ export class CreateWaybillDto {
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) freight_amount?: number;
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) cc_amount?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() note?: string;
-  @ApiPropertyOptional({ description: 'Tối đa 4 URL ảnh bill/hàng hóa, phân cách bằng dấu |' })
+  @ApiPropertyOptional({ description: 'Tối đa 10 URL ảnh bill/hàng hóa, phân cách bằng dấu |' })
   @IsOptional()
   @IsString()
   @MaxLength(12000)

@@ -25,6 +25,7 @@ import {
   resolveReceiverWard,
   resolvePrintColumnIds,
   resolveOrderStatusBadge,
+  resolveWarehouseIntakePresentation,
   resolveInventoryTripHistoryText,
   resolveSurcharge,
   resolveUserNote,
@@ -109,6 +110,10 @@ export function inventoryPrintCellValue(
       return resolveNoiDen(waybill);
     case 'order_status':
       return resolveOrderStatusBadge(waybill).label;
+    case 'warehouse_intake': {
+      const intake = resolveWarehouseIntakePresentation(waybill);
+      return [intake.title, intake.detail, intake.note].filter(Boolean).join(' · ');
+    }
     case 'billing_unit':
       return resolveBillingUnit(waybill);
     case 'billing_qty_detail':

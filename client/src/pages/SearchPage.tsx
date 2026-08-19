@@ -21,7 +21,7 @@ const typeOptions: FilterOption[] = [
 ];
 
 const statusOptions: FilterOption[] = [
-  { value: 'RECEIVED', label: 'Đã tiếp nhận' },
+  { value: 'RECEIVED', label: 'Đơn cần lấy' },
   { value: 'IN_WAREHOUSE', label: 'Trong kho' },
   { value: 'MANIFEST_CLOSED', label: 'Đã đóng bảng kê' },
   { value: 'IN_TRANSIT', label: 'Đang vận chuyển' },

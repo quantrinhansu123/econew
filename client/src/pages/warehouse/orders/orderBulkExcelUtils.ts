@@ -304,7 +304,7 @@ export function validateOrderBulkRow(
   }
   if (!values.phuongThuc.trim()) errors.push('Thiếu phương thức thanh toán.');
 
-  [values.anh1, values.anh2, values.anh3, values.anh4].filter(Boolean).forEach((url, index) => {
+  [values.anh1, values.anh2, values.anh3, values.anh4, values.anh5, values.anh6, values.anh7, values.anh8, values.anh9, values.anh10].filter(Boolean).forEach((url, index) => {
     if (!isPublicImageUrl(url)) errors.push(`URL ảnh ${index + 1} không hợp lệ.`);
   });
 
@@ -353,7 +353,7 @@ export function bulkRowToOrderForm(
     nvgn: values.nvgn || defaults.nvgn || 'ADMIN',
     noiDung: values.noiDung,
     ghiChu: values.ghiChu,
-    billImages: [values.anh1, values.anh2, values.anh3, values.anh4].filter(Boolean),
+    billImages: [values.anh1, values.anh2, values.anh3, values.anh4, values.anh5, values.anh6, values.anh7, values.anh8, values.anh9, values.anh10].filter(Boolean),
     phuongThuc: values.phuongThuc || defaults.phuongThuc || 'Công nợ tháng',
     donGia: values.donGia || '0',
     cod: values.cod || '0',
