@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsNotEmpty, IsString, ValidateIf } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 
 export class UpdateCodReconciliationDto {
   @ApiProperty({ description: 'Đánh dấu khoản phải thu khi phát đã được bưu cục xác nhận' })
@@ -11,4 +11,10 @@ export class UpdateCodReconciliationDto {
   @IsString()
   @IsNotEmpty()
   fund_id?: string;
+
+  @ApiPropertyOptional({ description: 'Ghi chú cho lần xác nhận tiền về sổ quỹ', maxLength: 1024 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1024)
+  note?: string;
 }

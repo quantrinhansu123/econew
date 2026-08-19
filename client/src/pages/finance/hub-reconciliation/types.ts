@@ -66,6 +66,7 @@ export interface CodReconciliationWaybill {
   dest_hub_id?: string | number | null;
   current_state?: string | null;
   payment_type?: string | null;
+  payment_method?: string | null;
   cod_amount?: string | number | null;
   cc_amount?: string | number | null;
   freight_amount?: string | number | null;
@@ -87,6 +88,7 @@ export interface CodReconciliationWaybill {
   cod_collection_status?: 'PENDING' | 'COLLECTED' | string | null;
   cod_reconciled_at?: string | null;
   cod_reconciled_by?: string | number | null;
+  cod_collection_note?: string | null;
 }
 
 export interface CashFund {

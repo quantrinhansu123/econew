@@ -26,6 +26,16 @@ type Scope = { hubId?: string; canViewSystem: boolean; canViewProfit: boolean };
 type Paginated<T> = { items: T[]; meta: { total: number; page: number; limit: number; total_pages: number } };
 type RawFinance = { hub_id?: string; reconciliation_date?: string; remittance_status?: string; cod?: string; cc?: string; remitted?: string; total?: string; amount?: string; remaining?: string };
 
+const resolveWaybillPaymentMethod = (note: unknown, paymentType: unknown): string => {
+  const method = String(note || '').match(/(?:^|\|)\s*phuong_thuc=([^|]+)/i)?.[1]?.trim();
+  if (method) return method;
+  const normalizedType = String(paymentType || '').trim().toUpperCase();
+  if (normalizedType === PaymentType.COD) return 'COD';
+  if (normalizedType === PaymentType.CC) return 'Người nhận thanh toán';
+  if (normalizedType === PaymentType.PP) return 'Công nợ';
+  return normalizedType;
+};
+
 @Injectable()
 export class FinanceService {
   constructor(
@@ -197,6 +207,7 @@ export class FinanceService {
       .addSelect('dest_hub.code', 'dest_hub_code')
       .addSelect('waybill.current_state', 'current_state')
       .addSelect('waybill.payment_type', 'payment_type')
+      .addSelect('waybill.note', 'payment_note_source')
       .addSelect('COALESCE(waybill.sent_date, waybill.created_at::date)', 'sent_date')
       .addSelect('COALESCE(waybill.delivered_at, waybill.delivery_time)', 'delivered_at')
       .addSelect('waybill.freight_amount', 'freight_amount')
@@ -213,6 +224,14 @@ export class FinanceService {
       .addSelect('fund.id', 'fund_id')
       .addSelect('fund.code', 'fund_code')
       .addSelect('fund.name', 'fund_name')
+      .addSelect(`(
+        SELECT cod_voucher.note
+        FROM waybill_cash_vouchers cod_voucher
+        WHERE cod_voucher.waybill_id = waybill.id
+          AND cod_voucher.source_type = 'COD_COLLECTION'
+        ORDER BY cod_voucher.updated_at DESC, cod_voucher.id DESC
+        LIMIT 1
+      )`, 'cod_collection_note')
       .orderBy('waybill.cod_reconciled_at', 'ASC', 'NULLS FIRST')
       .addOrderBy('COALESCE(waybill.sent_date, waybill.created_at::date)', 'DESC')
       .addOrderBy('waybill.id', 'DESC')
@@ -220,15 +239,19 @@ export class FinanceService {
       .limit(limit)
       .getRawMany<Record<string, unknown>>();
 
-    return this.paginate(rawItems.map((item) => ({
-      ...item,
-      freight_amount: Number(item.freight_amount ?? 0),
-      cod_amount: Number(item.cod_amount ?? 0),
-      cc_amount: Number(item.cc_amount ?? 0),
-      collect_amount: Number(item.collect_amount ?? 0),
-      cod_collected_amount: Number(item.cod_collected_amount ?? 0),
-      cod_collection_status: item.cod_reconciled_at ? 'COLLECTED' : 'PENDING',
-    })), total, page, limit);
+    return this.paginate(rawItems.map((rawItem) => {
+      const { payment_note_source: paymentNoteSource, ...item } = rawItem;
+      return {
+        ...item,
+        payment_method: resolveWaybillPaymentMethod(paymentNoteSource, item.payment_type),
+        freight_amount: Number(item.freight_amount ?? 0),
+        cod_amount: Number(item.cod_amount ?? 0),
+        cc_amount: Number(item.cc_amount ?? 0),
+        collect_amount: Number(item.collect_amount ?? 0),
+        cod_collected_amount: Number(item.cod_collected_amount ?? 0),
+        cod_collection_status: item.cod_reconciled_at ? 'COLLECTED' : 'PENDING',
+      };
+    }), total, page, limit);
   }
 
   async createReconciliation(dto: CreateReconciliationDto, currentUser: UserEntity): Promise<Record<string, unknown>> {

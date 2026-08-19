@@ -1351,7 +1351,11 @@ describe('WaybillsService', () => {
     cashFundsRepository.findOne.mockResolvedValue({ id: 'fund-1', code: 'QUY_HAN', name: 'Quỹ Hà Nội', is_active: true, hub_id: '1' });
     cashVouchersRepository.findOne.mockResolvedValue(null);
 
-    const result = await service.updateCodReconciliation('1', { confirmed: true, fund_id: 'fund-1' }, accountant);
+    const result = await service.updateCodReconciliation('1', {
+      confirmed: true,
+      fund_id: 'fund-1',
+      note: 'Đã đối chiếu tiền mặt với lái xe',
+    }, accountant);
 
     expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
       cod_reconciled_at: expect.any(Date),
@@ -1366,6 +1370,7 @@ describe('WaybillsService', () => {
       source_type: 'COD_COLLECTION',
       fund_id: 'fund-1',
       amount: '620000',
+      note: 'Đã đối chiếu tiền mặt với lái xe',
     }));
     expect(result.cod_reconciled_at).toEqual(expect.any(Date));
   });

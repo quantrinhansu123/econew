@@ -979,7 +979,7 @@ export class WaybillsService {
       Object.assign(voucher, {
         amount: String(collectAmount),
         fund_id: String(fund.id),
-        note: `Phiếu thu tiền COD · ${fund.code} - ${fund.name}`,
+        note: dto.note?.trim() || null,
       });
       await cashVouchersRepository.save(voucher);
 

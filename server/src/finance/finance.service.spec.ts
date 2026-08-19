@@ -198,6 +198,8 @@ describe('FinanceService', () => {
         freight_amount: '120000',
         collect_amount: '620000',
         cod_collected_amount: '0',
+        payment_type: 'PP',
+        payment_note_source: 'ma_kh=KH01|phuong_thuc=Công nợ tháng|unit_price=1500',
         trip_id: '78',
         manifest_code: 'BK-260814-8838',
         cod_reconciled_at: null,
@@ -220,8 +222,10 @@ describe('FinanceService', () => {
       cod_amount: 500000,
       cc_amount: 120000,
       collect_amount: 620000,
+      payment_method: 'Công nợ tháng',
       cod_collection_status: 'PENDING',
     });
+    expect(result.items[0]).not.toHaveProperty('payment_note_source');
   });
 
   it('approveInternalTripCost blocks missing trip', async () => {

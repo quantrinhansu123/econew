@@ -79,6 +79,7 @@ export default function FinanceHubReconciliationPage() {
   const [fundManagerOpen, setFundManagerOpen] = useState(false);
   const [confirmWaybill, setConfirmWaybill] = useState<CodReconciliationWaybill | null>(null);
   const [confirmFundId, setConfirmFundId] = useState('');
+  const [confirmNote, setConfirmNote] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState('');
 
@@ -132,6 +133,13 @@ export default function FinanceHubReconciliationPage() {
   const openConfirm = (waybill: CodReconciliationWaybill) => {
     setConfirmWaybill(waybill);
     setConfirmFundId('');
+    setConfirmNote('');
+    setConfirmError('');
+  };
+  const closeConfirm = () => {
+    setConfirmWaybill(null);
+    setConfirmFundId('');
+    setConfirmNote('');
     setConfirmError('');
   };
   const confirmCollection = async () => {
@@ -141,9 +149,9 @@ export default function FinanceHubReconciliationPage() {
     try {
       await apiRequest(`/waybills/${confirmWaybill.id}/cod-reconciliation`, {
         method: 'PATCH',
-        body: { confirmed: true, fund_id: confirmFundId },
+        body: { confirmed: true, fund_id: confirmFundId, note: confirmNote.trim() || undefined },
       });
-      setConfirmWaybill(null);
+      closeConfirm();
       await Promise.all([loadWaybills(), loadFunds()]);
     } catch (requestError) {
       setConfirmError(getErrorMessage(requestError));
@@ -201,7 +209,7 @@ export default function FinanceHubReconciliationPage() {
       </div>
 
       <FilterPanel open={filterOpen} activeCount={activeFilterCount} groups={filterGroups} onClose={() => setFilterOpen(false)} onApply={() => setFilterOpen(false)} onClear={clearFilters} />
-      <ConfirmCodCollectionDialog waybill={confirmWaybill} funds={funds} fundId={confirmFundId} submitting={confirming} error={confirmError} onFundChange={setConfirmFundId} onClose={() => setConfirmWaybill(null)} onSubmit={() => void confirmCollection()} onManageFunds={() => setFundManagerOpen(true)} />
+      <ConfirmCodCollectionDialog waybill={confirmWaybill} funds={funds} fundId={confirmFundId} note={confirmNote} submitting={confirming} error={confirmError} onFundChange={setConfirmFundId} onNoteChange={setConfirmNote} onClose={closeConfirm} onSubmit={() => void confirmCollection()} onManageFunds={() => setFundManagerOpen(true)} />
       <CashFundManagerDialog open={fundManagerOpen} funds={funds} hubs={hubs} onClose={() => setFundManagerOpen(false)} onChanged={loadFunds} />
     </div>
   );
@@ -209,12 +217,19 @@ export default function FinanceHubReconciliationPage() {
 
 function CodTableRow({ waybill, onBill, onManifest, onConfirm }: { waybill: CodReconciliationWaybill; onBill: () => void; onManifest: () => void; onConfirm: () => void }) {
   const collected = Boolean(waybill.cod_reconciled_at);
-  return <tr className="border-b border-border hover:bg-muted/20 text-[12px]"><td className="border-r border-border px-3 py-2.5"><button type="button" onClick={onBill} className="font-extrabold text-primary hover:underline">{waybill.waybill_code || `#${waybill.id}`}</button></td><td className="border-r border-border px-3 py-2.5 font-bold">{waybill.ma_kh || '—'}</td><td className="border-r border-border px-3 py-2.5">{waybill.trip_id ? `Chuyến #${waybill.trip_id}` : '—'}</td><td className="border-r border-border px-3 py-2.5 font-bold">{waybill.manifest_id ? <button type="button" onClick={onManifest} className="text-primary hover:underline">{waybill.manifest_code || `#${waybill.manifest_id}`}</button> : '—'}</td><td className="border-r border-border px-3 py-2.5">{displayDate(waybill.sent_date)}</td><td className="border-r border-border px-3 py-2.5">{displayDate(waybill.delivered_at)}</td><MoneyCell value={waybill.freight_amount} /><MoneyCell value={waybill.cc_amount} /><MoneyCell value={waybill.cod_amount} tone="amber" /><MoneyCell value={waybill.collect_amount} tone="strong" /><td className="border-r border-border px-3 py-2.5 font-extrabold">{paymentTypeLabels[String(waybill.payment_type || '').toUpperCase()] || waybill.payment_type || '—'}</td><td className="border-r border-border px-3 py-2.5"><OrderStatus value={waybill.current_state} /></td><td className="border-r border-border px-3 py-2.5">{collected ? <div><StatusBadge collected /><p className="mt-1 text-[10px] text-muted-foreground">{displayDateTime(waybill.cod_reconciled_at)}</p></div> : <StatusBadge />}</td><td className="border-r border-border px-3 py-2.5 font-bold">{collected ? [waybill.fund_code, waybill.fund_name].filter(Boolean).join(' · ') || '—' : '—'}</td><td className="px-3 py-2.5">{collected ? <span className="text-[11px] font-bold text-emerald-700">Đã xác nhận</span> : <button type="button" onClick={onConfirm} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 font-extrabold text-white"><CheckCircle2 size={13} />Xác nhận</button>}</td></tr>;
+  return <tr className="border-b border-border hover:bg-muted/20 text-[12px]"><td className="border-r border-border px-3 py-2.5"><button type="button" onClick={onBill} className="font-extrabold text-primary hover:underline">{waybill.waybill_code || `#${waybill.id}`}</button></td><td className="border-r border-border px-3 py-2.5 font-bold">{waybill.ma_kh || '—'}</td><td className="border-r border-border px-3 py-2.5">{waybill.trip_id ? `Chuyến #${waybill.trip_id}` : '—'}</td><td className="border-r border-border px-3 py-2.5 font-bold">{waybill.manifest_id ? <button type="button" onClick={onManifest} className="text-primary hover:underline">{waybill.manifest_code || `#${waybill.manifest_id}`}</button> : '—'}</td><td className="border-r border-border px-3 py-2.5">{displayDate(waybill.sent_date)}</td><td className="border-r border-border px-3 py-2.5">{displayDate(waybill.delivered_at)}</td><MoneyCell value={waybill.freight_amount} /><MoneyCell value={waybill.cc_amount} /><MoneyCell value={waybill.cod_amount} tone="amber" /><MoneyCell value={waybill.collect_amount} tone="strong" /><td className="border-r border-border px-3 py-2.5 font-extrabold">{displayPaymentMethod(waybill)}</td><td className="border-r border-border px-3 py-2.5"><OrderStatus value={waybill.current_state} /></td><td className="border-r border-border px-3 py-2.5">{collected ? <div><StatusBadge collected /><p className="mt-1 text-[10px] text-muted-foreground">{displayDateTime(waybill.cod_reconciled_at)}</p></div> : <StatusBadge />}</td><td className="border-r border-border px-3 py-2.5 font-bold">{collected ? <div>{[waybill.fund_code, waybill.fund_name].filter(Boolean).join(' · ') || '—'}{waybill.cod_collection_note?.trim() && <p className="mt-1 max-w-[180px] whitespace-normal text-[10px] font-medium text-muted-foreground" title={waybill.cod_collection_note}>{waybill.cod_collection_note}</p>}</div> : '—'}</td><td className="px-3 py-2.5">{collected ? <span className="text-[11px] font-bold text-emerald-700">Đã xác nhận</span> : <button type="button" onClick={onConfirm} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 font-extrabold text-white"><CheckCircle2 size={13} />Xác nhận</button>}</td></tr>;
 }
 
 function CodMobileCard({ waybill, onConfirm }: { waybill: CodReconciliationWaybill; onConfirm: () => void }) {
   const collected = Boolean(waybill.cod_reconciled_at);
-  return <article className="rounded-2xl border border-border bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-[15px] font-extrabold text-primary">{waybill.waybill_code || `#${waybill.id}`}</p><p className="mt-1 text-[11px] font-bold text-muted-foreground">{waybill.ma_kh || 'Không có mã KH'} · {waybill.trip_id ? `Chuyến #${waybill.trip_id}` : 'Chưa phân chuyến'}</p></div><StatusBadge collected={collected} /></div><div className="mt-3 grid grid-cols-2 gap-2 text-[12px]"><Info label="Mã BK" value={waybill.manifest_code || '—'} /><Info label="Hình thức TT" value={paymentTypeLabels[String(waybill.payment_type || '').toUpperCase()] || waybill.payment_type || '—'} /><Info label="Tình trạng đơn" value={orderStatusLabels[String(waybill.current_state || '')] || waybill.current_state || '—'} /><Info label="Ngày gửi" value={displayDate(waybill.sent_date)} /><Info label="Ngày giao" value={displayDate(waybill.delivered_at)} /><Info label="Cước" value={formatMoney(waybill.freight_amount)} /><Info label="COD" value={formatMoney(waybill.cod_amount)} /><Info label="Cước thu ĐN" value={formatMoney(waybill.cc_amount)} /><Info label="Phải xác nhận" value={formatMoney(waybill.collect_amount)} /></div><div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3"><span className="text-[11px] font-bold text-muted-foreground">{collected ? `${waybill.fund_code || 'Quỹ'} · ${displayDateTime(waybill.cod_reconciled_at)}` : 'Chưa xác nhận tiền về quỹ'}</span>{!collected && <button type="button" onClick={onConfirm} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-[12px] font-extrabold text-white"><CheckCircle2 size={14} />Xác nhận</button>}</div></article>;
+  return <article className="rounded-2xl border border-border bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-[15px] font-extrabold text-primary">{waybill.waybill_code || `#${waybill.id}`}</p><p className="mt-1 text-[11px] font-bold text-muted-foreground">{waybill.ma_kh || 'Không có mã KH'} · {waybill.trip_id ? `Chuyến #${waybill.trip_id}` : 'Chưa phân chuyến'}</p></div><StatusBadge collected={collected} /></div><div className="mt-3 grid grid-cols-2 gap-2 text-[12px]"><Info label="Mã BK" value={waybill.manifest_code || '—'} /><Info label="Hình thức TT" value={displayPaymentMethod(waybill)} /><Info label="Tình trạng đơn" value={orderStatusLabels[String(waybill.current_state || '')] || waybill.current_state || '—'} /><Info label="Ngày gửi" value={displayDate(waybill.sent_date)} /><Info label="Ngày giao" value={displayDate(waybill.delivered_at)} /><Info label="Cước" value={formatMoney(waybill.freight_amount)} /><Info label="COD" value={formatMoney(waybill.cod_amount)} /><Info label="Cước thu ĐN" value={formatMoney(waybill.cc_amount)} /><Info label="Phải xác nhận" value={formatMoney(waybill.collect_amount)} />{waybill.cod_collection_note?.trim() && <Info label="Ghi chú xác nhận" value={waybill.cod_collection_note} />}</div><div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3"><span className="text-[11px] font-bold text-muted-foreground">{collected ? `${waybill.fund_code || 'Quỹ'} · ${displayDateTime(waybill.cod_reconciled_at)}` : 'Chưa xác nhận tiền về quỹ'}</span>{!collected && <button type="button" onClick={onConfirm} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-[12px] font-extrabold text-white"><CheckCircle2 size={14} />Xác nhận</button>}</div></article>;
+}
+
+function displayPaymentMethod(waybill: CodReconciliationWaybill): string {
+  return waybill.payment_method?.trim()
+    || paymentTypeLabels[String(waybill.payment_type || '').toUpperCase()]
+    || waybill.payment_type
+    || '—';
 }
 
 function MoneyCell({ value, tone }: { value?: string | number | null; tone?: 'amber' | 'strong' }) {

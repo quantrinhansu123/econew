@@ -6,9 +6,11 @@ interface Props {
   waybill: CodReconciliationWaybill | null;
   funds: CashFund[];
   fundId: string;
+  note: string;
   submitting: boolean;
   error: string;
   onFundChange: (fundId: string) => void;
+  onNoteChange: (note: string) => void;
   onClose: () => void;
   onSubmit: () => void;
   onManageFunds: () => void;
@@ -18,9 +20,11 @@ export default function ConfirmCodCollectionDialog({
   waybill,
   funds,
   fundId,
+  note,
   submitting,
   error,
   onFundChange,
+  onNoteChange,
   onClose,
   onSubmit,
   onManageFunds,
@@ -49,6 +53,11 @@ export default function ConfirmCodCollectionDialog({
             <Metric label="Tổng xác nhận" value={formatMoney(waybill.collect_amount)} accent />
           </div>
 
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-[12px]">
+            <span className="font-bold text-muted-foreground">Hình thức TT</span>
+            <span className="text-right font-extrabold text-foreground">{waybill.payment_method || waybill.payment_type || '—'}</span>
+          </div>
+
           <label className="block">
             <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Tiền về sổ quỹ</span>
             <select
@@ -61,6 +70,19 @@ export default function ConfirmCodCollectionDialog({
                 <option key={String(fund.id)} value={String(fund.id)}>{fund.code} · {fund.name}</option>
               ))}
             </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Ghi chú</span>
+            <textarea
+              value={note}
+              onChange={(event) => onNoteChange(event.target.value)}
+              maxLength={1024}
+              rows={3}
+              disabled={submitting}
+              placeholder="Nhập nội dung cần ghi chú cho lần xác nhận..."
+              className="w-full resize-none rounded-xl border border-border bg-white px-3 py-2.5 text-[13px] font-medium outline-none focus:border-primary disabled:opacity-60"
+            />
           </label>
 
           {!activeFunds.length && (
