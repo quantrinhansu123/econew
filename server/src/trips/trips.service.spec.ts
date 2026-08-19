@@ -156,6 +156,124 @@ describe('TripsService', () => {
   });
 
   describe('findAll', () => {
+    it('keeps a multi-HUB trip in transit until the final stop time', async () => {
+      const now = Date.now();
+      const intermediateArrival = new Date(now - 60_000);
+      const finalArrival = new Date(now + 60_000);
+      const trip = {
+        id: '88',
+        status: TripStatus.IN_TRANSIT,
+        expected_arrival_time: intermediateArrival,
+        start_hub_id: '1',
+        start_hub: { id: '1', code: 'HAN' },
+      };
+      const splits = [
+        { trip_id: '88', expected_arrival_at: intermediateArrival, waybill: { dest_hub_id: '2', dest_hub: { id: '2', code: 'QUANGNAM' } } },
+        { trip_id: '88', expected_arrival_at: finalArrival, waybill: { dest_hub_id: '3', dest_hub: { id: '3', code: 'HCM' } } },
+      ];
+      const qb = new MockQb();
+      trips.find.mockResolvedValue([trip]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+      qb.getManyAndCount.mockResolvedValue([[trip], 1]);
+      waybillSplits.find.mockResolvedValue(splits);
+
+      const result = await service.findAll({ status: TripStatus.IN_TRANSIT }, manager);
+
+      expect(result.data[0].status).toBe(TripStatus.IN_TRANSIT);
+      expect(result.data[0].expected_arrival_time).toEqual(finalArrival);
+      expect(trips.save).toHaveBeenCalledWith(expect.objectContaining({
+        id: '88',
+        status: TripStatus.IN_TRANSIT,
+        expected_arrival_time: finalArrival,
+      }));
+      expect(waybillSplits.update).not.toHaveBeenCalled();
+    });
+
+    it('restores a legacy trip that was marked arrived at an intermediate HUB', async () => {
+      const intermediateArrival = new Date(Date.now() - 60_000);
+      const finalArrival = new Date(Date.now() + 60_000);
+      const trip = {
+        id: 'legacy-88',
+        status: TripStatus.ARRIVED,
+        expected_arrival_time: intermediateArrival,
+        arrival_time: intermediateArrival,
+        start_hub_id: '1',
+        start_hub: { id: '1', code: 'HAN' },
+        manifest_id: null,
+      };
+      const qb = new MockQb();
+      trips.find.mockResolvedValue([trip]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+      qb.getManyAndCount.mockResolvedValue([[trip], 1]);
+      waybillSplits.find.mockResolvedValue([
+        { trip_id: 'legacy-88', expected_arrival_at: intermediateArrival, waybill: { dest_hub_id: '2', dest_hub: { id: '2', code: 'QUANGNAM' } } },
+        { trip_id: 'legacy-88', expected_arrival_at: finalArrival, waybill: { dest_hub_id: '3', dest_hub: { id: '3', code: 'HCM' } } },
+      ]);
+
+      const result = await service.findAll({}, manager);
+
+      expect(result.data[0]).toMatchObject({
+        status: TripStatus.IN_TRANSIT,
+        expected_arrival_time: finalArrival,
+        arrival_time: finalArrival,
+      });
+      expect(waybillSplits.update).toHaveBeenCalledWith(
+        { trip_id: 'legacy-88', load_status: 'ARRIVED' },
+        { load_status: 'IN_TRANSIT' },
+      );
+      expect(waybillsService.reconcileTransportStatesForTrips).toHaveBeenCalledWith(['legacy-88']);
+    });
+
+    it('moves a multi-HUB trip to arrived after the final stop time', async () => {
+      const trip = {
+        id: '89',
+        status: TripStatus.IN_TRANSIT,
+        expected_arrival_time: new Date(Date.now() - 120_000),
+        start_hub_id: '1',
+        start_hub: { id: '1', code: 'HAN' },
+        manifest_id: null,
+      };
+      const finalArrival = new Date(Date.now() - 60_000);
+      const qb = new MockQb();
+      trips.find.mockResolvedValue([trip]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+      qb.getManyAndCount.mockResolvedValue([[trip], 1]);
+      waybillSplits.find.mockResolvedValue([
+        { trip_id: '89', expected_arrival_at: finalArrival, waybill: { dest_hub_id: '3', dest_hub: { id: '3', code: 'HCM' } } },
+      ]);
+
+      const result = await service.findAll({}, manager);
+
+      expect(result.data[0].status).toBe(TripStatus.ARRIVED);
+      expect(waybillSplits.update).toHaveBeenCalledWith(
+        expect.objectContaining({ trip_id: '89' }),
+        { load_status: 'ARRIVED' },
+      );
+    });
+
+    it('does not reprocess a trip that already arrived at its final HUB', async () => {
+      const finalArrival = new Date(Date.now() - 60_000);
+      const trip = {
+        id: 'already-arrived',
+        status: TripStatus.ARRIVED,
+        expected_arrival_time: finalArrival,
+        start_hub_id: '1',
+        start_hub: { id: '1', code: 'HAN' },
+      };
+      const qb = new MockQb();
+      trips.find.mockResolvedValue([trip]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+      qb.getManyAndCount.mockResolvedValue([[trip], 1]);
+      waybillSplits.find.mockResolvedValue([
+        { trip_id: 'already-arrived', expected_arrival_at: finalArrival, waybill: { dest_hub_id: '3', dest_hub: { id: '3', code: 'HCM' } } },
+      ]);
+
+      await service.findAll({}, manager);
+
+      expect(trips.save).not.toHaveBeenCalled();
+      expect(waybillSplits.update).not.toHaveBeenCalled();
+    });
+
     it('returns one ordered route with the expected arrival time of every HUB stop', async () => {
       const qb = new MockQb();
       const trip = { id: '41', start_hub_id: '1', start_hub: { id: '1', code: 'HAN' } };

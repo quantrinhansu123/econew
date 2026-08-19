@@ -252,6 +252,8 @@ describe('inventory grand totals', () => {
         weight: 535,
         volumetric_weight: 1_236,
         the_tich_m3: 12.88,
+        cost_amount: 3_513_600,
+        note: 'thanh_toan=3513600',
       },
       {
         id: 2,
@@ -261,14 +263,18 @@ describe('inventory grand totals', () => {
         weight: 633,
         volumetric_weight: 5_386,
         the_tich_m3: 4.42,
+        cost_amount: 5_674_500,
+        note: 'thanh_toan=5674500',
       },
-    ], false);
+    ], true);
 
     expect(totals).toMatchObject({
       package_count: 99,
       weight_kg: 1_168,
       volumetric_weight_kg: 6_622,
       volume_m3: 17.3,
+      total_amount: 9_188_100,
+      freight: 9_188_100,
     });
   });
 });

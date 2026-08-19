@@ -55,6 +55,7 @@ export interface InventoryPrintPayload {
     weight_kg: string;
     volumetric_weight_kg: string;
     volume_m3: string;
+    total_amount: string;
     freight: string;
   };
 }
@@ -241,7 +242,7 @@ export function mapWaybillsToPrintRows(
     return row;
   });
 
-  const totalsRaw = computeGrandTotals(waybills, false);
+  const totalsRaw = computeGrandTotals(waybills, showPricing);
 
   return {
     printedAt: new Date().toLocaleString('vi-VN'),
@@ -256,7 +257,8 @@ export function mapWaybillsToPrintRows(
         ? totalsRaw.volumetric_weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 2 })
         : '0',
       volume_m3: totalsRaw.volume_m3 ? totalsRaw.volume_m3.toFixed(2) : '0',
-      freight: '',
+      total_amount: showPricing ? formatMoney(totalsRaw.total_amount) : '',
+      freight: showPricing ? formatMoney(totalsRaw.freight) : '',
     },
   };
 }
@@ -371,6 +373,8 @@ export function reconcilePrintPayload(payload: InventoryPrintPayload): Inventory
     totals: {
       ...payload.totals,
       volumetric_weight_kg: payload.totals.volumetric_weight_kg ?? '0',
+      total_amount: payload.totals.total_amount ?? '',
+      freight: payload.totals.freight ?? '',
     },
   };
 }

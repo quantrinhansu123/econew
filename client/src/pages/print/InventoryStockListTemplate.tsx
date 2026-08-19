@@ -14,13 +14,15 @@ export default function InventoryStockListTemplate({ data }: Props) {
     columns.find((col) => col.id === 'customer_name')?.id
     ?? columns.find((col) => col.id === 'order_code')?.id
     ?? columns.find((col) => col.id === 'waybill_code')?.id
-    ?? columns.find((col) => col.id !== 'stack_position')?.id;
+    ?? columns.find((col) => col.id !== 'stack_position' && !numericCols.has(col.id))?.id;
 
   const footerParts: string[] = [];
   if (visibleIds.has('package_count')) footerParts.push(`Tổng kiện: ${totals.package_count}`);
   if (visibleIds.has('weight')) footerParts.push(`Tổng cân: ${totals.weight_kg} kg`);
   if (visibleIds.has('volumetric_weight')) footerParts.push(`Tổng quy đổi: ${totals.volumetric_weight_kg} kg`);
   if (visibleIds.has('volume')) footerParts.push(`Tổng CBM: ${totals.volume_m3}`);
+  if (data.showPricing && visibleIds.has('total_amount')) footerParts.push(`Tổng thành tiền: ${totals.total_amount}`);
+  if (data.showPricing && visibleIds.has('freight')) footerParts.push(`Tổng cước phí: ${totals.freight}`);
 
   return (
     <div className="inventory-stock-sheet">
@@ -99,6 +101,20 @@ export default function InventoryStockListTemplate({ data }: Props) {
                 return (
                   <td key={col.id} className="col-right font-bold">
                     {totals.volume_m3}
+                  </td>
+                );
+              }
+              if (col.id === 'total_amount' && data.showPricing) {
+                return (
+                  <td key={col.id} className="col-right font-bold">
+                    {totals.total_amount}
+                  </td>
+                );
+              }
+              if (col.id === 'freight' && data.showPricing) {
+                return (
+                  <td key={col.id} className="col-right font-bold">
+                    {totals.freight}
                   </td>
                 );
               }

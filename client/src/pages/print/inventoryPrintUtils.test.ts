@@ -95,6 +95,7 @@ describe('inventory stock-list print columns', () => {
         weight_kg: '50',
         volumetric_weight_kg: '65',
         volume_m3: '1.20',
+        total_amount: '',
         freight: '',
       },
     };
@@ -132,6 +133,16 @@ describe('inventory stock-list print columns', () => {
 
     expect(payload.rows[0].cod_amount).toBe('125.000');
     expect(excelRows[4][0]).toBe(125_000);
+  });
+
+  it('adds filtered freight and total amount to the printable totals', () => {
+    const payload = mapWaybillsToPrintRows([
+      { id: 1, cost_amount: 3_513_600, note: 'thanh_toan=3513600' },
+      { id: 2, cost_amount: 5_674_500, note: 'thanh_toan=5674500' },
+    ], true, ['total_amount', 'freight']);
+
+    expect(payload.totals.total_amount).toBe('9.188.100');
+    expect(payload.totals.freight).toBe('9.188.100');
   });
 
   it('preserves view-specific labels supplied by the source list', () => {

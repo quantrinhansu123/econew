@@ -1007,6 +1007,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                         {col.id === 'weight' ? `${grandTotals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg` : ''}
                         {col.id === 'volumetric_weight' ? `${grandTotals.volumetric_weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg` : ''}
                         {col.id === 'volume' ? `${grandTotals.volume_m3.toFixed(2)} CBM` : ''}
+                        {col.id === 'total_amount' && canViewPricing ? formatMoney(grandTotals.total_amount) : ''}
+                        {col.id === 'freight' && canViewPricing ? formatMoney(grandTotals.freight) : ''}
                       </td>
                     ))}
                   </tr>

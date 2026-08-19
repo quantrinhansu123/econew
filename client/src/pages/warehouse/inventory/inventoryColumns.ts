@@ -893,6 +893,7 @@ export interface InventoryGrandTotals {
   weight_kg: number;
   volumetric_weight_kg: number;
   volume_m3: number;
+  total_amount: number;
   freight: number;
 }
 
@@ -940,10 +941,11 @@ export function computeGrandTotals(waybills: WaybillInventoryItem[], includeFrei
         weight_kg: acc.weight_kg + resolveWeightKg(w),
         volumetric_weight_kg: acc.volumetric_weight_kg + resolveVolumetricWeightKg(w),
         volume_m3: acc.volume_m3 + resolveVolumeM3(w),
+        total_amount: acc.total_amount + (includeFreight ? resolveTotalAmount(w) : 0),
         freight: acc.freight + (includeFreight ? (Number(w.allocated_freight ?? resolveFreight(w)) || 0) : 0),
       };
     },
-    { package_count: 0, weight_kg: 0, volumetric_weight_kg: 0, volume_m3: 0, freight: 0 },
+    { package_count: 0, weight_kg: 0, volumetric_weight_kg: 0, volume_m3: 0, total_amount: 0, freight: 0 },
   );
 }
 

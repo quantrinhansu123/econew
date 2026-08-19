@@ -1141,11 +1141,60 @@ export class TripsService {
   /** Chốt chuyến đã quá giờ dự kiến; nút Đến hub chỉ còn dùng cho xe đến sớm. */
   private async processScheduledArrivals(): Promise<void> {
     const now = new Date();
-    const trips = (await this.tripsRepository.find({ where: { status: TripStatus.IN_TRANSIT } as any })) ?? [];
+    const trips = (await this.tripsRepository.find({
+      where: { status: In([TripStatus.IN_TRANSIT, TripStatus.ARRIVED]) } as any,
+    })) ?? [];
+    if (!trips.length) return;
+
+    // Chuyến nhiều HUB chỉ được xem là đã đến khi qua thời gian của điểm dừng cuối.
+    // Dữ liệu cũ có thể vẫn giữ expected_arrival_time của HUB đầu tiên trên bản ghi trip,
+    // nên luôn ưu tiên mốc lớn nhất đã lưu trên các split của chuyến.
+    const tripIds = trips.map((trip) => String(trip.id));
+    const splits = (await this.waybillSplitsRepository.find({
+      where: { trip_id: In(tripIds) } as any,
+    })) ?? [];
+    const finalExpectedByTrip = new Map<string, Date>();
+    splits.forEach((split) => {
+      if (!split.expected_arrival_at) return;
+      const expected = new Date(split.expected_arrival_at);
+      if (Number.isNaN(expected.getTime())) return;
+      const tripId = String(split.trip_id || '');
+      const current = finalExpectedByTrip.get(tripId);
+      if (!current || expected > current) finalExpectedByTrip.set(tripId, expected);
+    });
+
     for (const trip of trips) {
-      if (!trip.expected_arrival_time) continue;
-      const expected = new Date(trip.expected_arrival_time);
-      if (Number.isNaN(expected.getTime()) || expected > now) continue;
+      const finalStopExpected = finalExpectedByTrip.get(String(trip.id));
+      const expected = finalStopExpected
+        ?? (trip.expected_arrival_time ? new Date(trip.expected_arrival_time) : null);
+      if (!expected || Number.isNaN(expected.getTime())) continue;
+
+      const storedExpected = trip.expected_arrival_time ? new Date(trip.expected_arrival_time) : null;
+      const shouldSyncFinalStop = Boolean(finalStopExpected)
+        && (!storedExpected || Number.isNaN(storedExpected.getTime()) || storedExpected.getTime() !== expected.getTime());
+      if (shouldSyncFinalStop) trip.expected_arrival_time = expected;
+      if (expected > now) {
+        // Tự sửa các chuyến cũ đã bị chốt ở giờ HUB trung gian. Trường hợp bấm
+        // "Đến hub" sớm vẫn được giữ nguyên vì expected_arrival_time đã là HUB cuối.
+        if (trip.status === TripStatus.ARRIVED && shouldSyncFinalStop) {
+          trip.status = TripStatus.IN_TRANSIT;
+          trip.arrival_time = expected;
+          if (trip.manifest_id) {
+            await this.moveManifestWaybills(String(trip.manifest_id), WaybillState.AT_DEST_HUB, WaybillState.IN_TRANSIT);
+          }
+          await this.waybillSplitsRepository.update(
+            { trip_id: String(trip.id), load_status: WaybillSplitLoadStatus.ARRIVED } as any,
+            { load_status: WaybillSplitLoadStatus.IN_TRANSIT },
+          );
+          await this.waybillsService.reconcileTransportStatesForTrips([trip.id]);
+        }
+        if (shouldSyncFinalStop) await this.tripsRepository.save(trip);
+        continue;
+      }
+      if (trip.status === TripStatus.ARRIVED) {
+        if (shouldSyncFinalStop) await this.tripsRepository.save(trip);
+        continue;
+      }
       trip.status = TripStatus.ARRIVED;
       trip.arrival_time = trip.arrival_time ?? now;
       if (trip.manifest_id) {
