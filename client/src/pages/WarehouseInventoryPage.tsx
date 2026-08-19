@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, CreditC
 import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
+import { formatMoney } from '../lib/formatMoney';
 import { DayPicker } from '../components/ui/DayPicker';
 import { DateRangePicker } from '../components/ui/DateRangePicker';
 import { FilterSelect } from '../components/ui/FilterSelect';
@@ -1402,25 +1403,25 @@ function InventoryRow({
           </td>
         );
       case 'unit_price':
-        return <td className={`${cellClass} font-bold text-right tabular-nums`}>{displayValue(resolveUnitPrice(waybill) || null, ' đ')}</td>;
+        return <td className={`${cellClass} font-bold text-right tabular-nums`}>{formatMoney(resolveUnitPrice(waybill) || null)}</td>;
       case 'transit_fee':
-        return <td className={`${cellClass} font-bold text-right`}>{displayValue(resolveTransitFee(waybill), ' đ')}</td>;
+        return <td className={`${cellClass} font-bold text-right tabular-nums`}>{formatMoney(resolveTransitFee(waybill))}</td>;
       case 'surcharge':
         return (
           <td className={clsx(cellClass, 'font-bold text-right tabular-nums', isAllOrders && 'bg-orange-50/70 text-orange-900')}>
-            {canViewPricing ? displayValue(resolveSurcharge(waybill), ' đ') : '—'}
+            {canViewPricing ? formatMoney(resolveSurcharge(waybill)) : '—'}
           </td>
         );
       case 'total_amount': {
         const totalAmount = resolveTotalAmount(waybill);
         return (
-          <td className={clsx(cellClass, 'font-bold text-right', isAllOrders && 'bg-emerald-50/80 text-emerald-800')}>
-            {canViewPricing ? displayValue(totalAmount, ' đ') : '—'}
+          <td className={clsx(cellClass, 'font-bold text-right tabular-nums', isAllOrders && 'bg-emerald-50/80 text-emerald-800')}>
+            {canViewPricing ? formatMoney(totalAmount) : '—'}
           </td>
         );
       }
       case 'thu_ho_khach':
-        return <td className={`${cellClass} font-bold text-right`}>{displayValue(waybill.allocated_cod ?? waybill.cod_amount, ' đ')}</td>;
+        return <td className={`${cellClass} font-bold text-right tabular-nums`}>{formatMoney(waybill.allocated_cod ?? waybill.cod_amount)}</td>;
       case 'payment_method':
         return <td className={cellClass}>{resolvePaymentMethod(waybill)}</td>;
       case 'customer_payment_status': {
@@ -1483,8 +1484,8 @@ function InventoryRow({
         return <td className={clsx(cellClass, isPartialLine ? 'bg-amber-50 font-black text-slate-950' : 'font-medium')}>{resolveVolumeM3(waybill) ? `${resolveVolumeM3(waybill).toFixed(2)} CBM` : '—'}</td>;
       case 'freight':
         return (
-          <td className={`${cellClass} font-bold`}>
-            {canViewPricing ? displayValue(waybill.allocated_freight ?? resolveFreight(waybill), ' đ') : '—'}
+          <td className={`${cellClass} font-bold text-right tabular-nums`}>
+            {canViewPricing ? formatMoney(waybill.allocated_freight ?? resolveFreight(waybill)) : '—'}
           </td>
         );
       case 'sender_info':
@@ -1498,7 +1499,7 @@ function InventoryRow({
       case 'payment_type':
         return <td className="px-4 py-3 border-r border-border"><Badge config={paymentConfig[String(waybill.payment_type || '')]} fallback={waybill.payment_type || '—'} /></td>;
       case 'cod_amount':
-        return <td className={`${cellClass} font-bold`}>{displayValue(waybill.allocated_cod ?? waybill.cod_amount, ' đ')}</td>;
+        return <td className={`${cellClass} font-bold text-right tabular-nums`}>{formatMoney(waybill.allocated_cod ?? waybill.cod_amount)}</td>;
       case 'cod_collection_status': {
         const collectStatus = String(waybill.cod_collection_status || 'NOT_APPLICABLE');
         const collected = collectStatus === 'COLLECTED';
@@ -1783,7 +1784,7 @@ function AllOrdersCompactTable({
                 <td className={`${cellClass} text-right font-bold`}>{resolvePackageCountSl(waybill)}</td>
                 <td className={cellClass}>{resolveBillingUnit(waybill)}</td>
                 <td className={`${cellClass} text-right font-bold tabular-nums text-emerald-800`}>
-                  {canViewPricing ? displayValue(totalAmount, ' đ') : '—'}
+                  {canViewPricing ? formatMoney(totalAmount) : '—'}
                 </td>
                 <td className={cellClass} title={resolvePaymentMethod(waybill)}>{resolvePaymentMethod(waybill)}</td>
                 <td className={`${cellClass} font-bold text-slate-700`} title={processing.title}>
@@ -1850,7 +1851,7 @@ function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openAct
             compact
           />
         } />
-        <MobileInfo label="COD" value={displayValue(waybill.allocated_cod ?? waybill.cod_amount, ' đ')} />
+        <MobileInfo label="COD" value={formatMoney(waybill.allocated_cod ?? waybill.cod_amount)} />
         <MobileInfo label="Trạng thái thu COD" value={waybill.cod_collection_status === 'COLLECTED' ? 'Đã thu COD' : waybill.cod_collection_status === 'PENDING' ? 'Chờ thu COD' : 'Không thu'} />
         <MobileInfo label="Nhập kho" value={resolveWarehouseIntakePresentation(waybill).detail || resolveWarehouseIntakePresentation(waybill).title} />
         <MobileInfo label="Số kiện" value={
