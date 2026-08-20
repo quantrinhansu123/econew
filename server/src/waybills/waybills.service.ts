@@ -1379,6 +1379,7 @@ export class WaybillsService {
     await this.findOne(waybillId, currentUser);
     return this.cashVouchersRepository.find({
       where: { waybill_id: waybillId },
+      relations: ['fund'],
       order: { created_at: 'DESC' },
     });
   }
@@ -1402,6 +1403,7 @@ export class WaybillsService {
     return this.dataSource.transaction(async (manager) => {
       const cashVouchersRepository = manager.getRepository(WaybillCashVoucherEntity);
       const waybillsRepository = manager.getRepository(WaybillEntity);
+      const fund = await this.findActiveCashFund(manager, dto.fund_id, currentUser);
       const paymentSummary = await cashVouchersRepository.createQueryBuilder('voucher')
         .select(
           `COALESCE(SUM(CASE WHEN LOWER(voucher.voucher_type) = 'thu' THEN voucher.amount ELSE -voucher.amount END), 0)`,
@@ -1411,7 +1413,9 @@ export class WaybillsService {
         .getRawOne<{ net_paid: string }>();
       const paidBefore = Number(paymentSummary?.net_paid) || 0;
       const totalDue = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
-      const remainingBefore = Math.max(0, totalDue - paidBefore);
+      const collectAmount = this.getCollectOnDeliveryAmount(waybill);
+      const maximumReceivable = Math.max(totalDue, collectAmount);
+      const remainingBefore = Math.max(0, maximumReceivable - paidBefore);
       const customerCreditBefore = Math.max(0, paidBefore - totalDue);
       if (dto.source_type === 'CUSTOMER_PAYOUT') {
         if (dto.voucher_type !== 'Chi') {
@@ -1425,11 +1429,11 @@ export class WaybillsService {
           );
         }
       }
-      if (dto.voucher_type === 'Thu' && (totalDue <= 0 || dto.amount > remainingBefore)) {
+      if (dto.voucher_type === 'Thu' && (maximumReceivable <= 0 || dto.amount > remainingBefore)) {
         throw new BadRequestException(
-          totalDue <= 0
+          maximumReceivable <= 0
             ? `Bill ${waybill.waybill_code} chưa có số tiền cần thanh toán`
-            : `Số tiền vượt quá số còn lại của bill ${waybill.waybill_code}`,
+            : `Số tiền vượt quá số còn lại cần thu của bill ${waybill.waybill_code}`,
         );
       }
 
@@ -1439,6 +1443,7 @@ export class WaybillsService {
         voucher_type: dto.voucher_type,
         source_type: dto.source_type ?? 'MANUAL',
         amount: String(dto.amount),
+        fund_id: String(fund.id),
         note: dto.note?.trim() || null,
         image_url: dto.image_url?.trim() || null,
         created_by_id: currentUser.id,
@@ -1452,10 +1457,28 @@ export class WaybillsService {
           ? null
           : waybill.customer_payment_status ?? null;
 
-      if (nextPaymentStatus !== (waybill.customer_payment_status ?? null)) {
+      let waybillChanged = nextPaymentStatus !== (waybill.customer_payment_status ?? null);
+      if (waybillChanged) {
         waybill.customer_payment_status = nextPaymentStatus;
-        await waybillsRepository.save(waybill);
       }
+
+      if (dto.voucher_type === 'Thu') {
+        if (collectAmount > 0 && !waybill.cod_reconciled_at) {
+          const fundSummary = await cashVouchersRepository.createQueryBuilder('voucher')
+            .select(`COALESCE(SUM(CASE WHEN LOWER(voucher.voucher_type) = 'thu' THEN voucher.amount ELSE -voucher.amount END), 0)`, 'net_paid')
+            .where('voucher.waybill_id = :waybillId', { waybillId: String(waybill.id) })
+            .andWhere('voucher.fund_id IS NOT NULL')
+            .getRawOne<{ net_paid: string }>();
+          if ((Number(fundSummary?.net_paid) || 0) >= collectAmount) {
+            waybill.cod_reconciled_at = new Date();
+            waybill.cod_reconciled_by = currentUser.id;
+            waybill.cod_fund_id = String(fund.id);
+            waybill.cod_collected_amount = String(collectAmount);
+            waybillChanged = true;
+          }
+        }
+      }
+      if (waybillChanged) await waybillsRepository.save(waybill);
 
       return {
         ...saved,
@@ -1473,6 +1496,7 @@ export class WaybillsService {
     return this.dataSource.transaction(async (manager) => {
       const cashVouchersRepository = manager.getRepository(WaybillCashVoucherEntity);
       const waybillsRepository = manager.getRepository(WaybillEntity);
+      const fund = await this.findActiveCashFund(manager, dto.fund_id, currentUser);
       const waybills = await waybillsRepository.find({
         where: { id: In(waybillIds), deleted_at: IsNull() } as any,
       }) as WaybillRecord[];
@@ -1483,6 +1507,14 @@ export class WaybillsService {
         where: { waybill_id: In(waybillIds) },
       });
       const paidByWaybillId = existingVouchers.reduce<Map<string, number>>((totals, voucher) => {
+        const waybillId = String(voucher.waybill_id);
+        const amount = Number(voucher.amount) || 0;
+        const delta = String(voucher.voucher_type).toLowerCase() === 'thu' ? amount : -amount;
+        totals.set(waybillId, (totals.get(waybillId) ?? 0) + delta);
+        return totals;
+      }, new Map());
+      const fundPaidByWaybillId = existingVouchers.reduce<Map<string, number>>((totals, voucher) => {
+        if (!voucher.fund_id) return totals;
         const waybillId = String(voucher.waybill_id);
         const amount = Number(voucher.amount) || 0;
         const delta = String(voucher.voucher_type).toLowerCase() === 'thu' ? amount : -amount;
@@ -1511,12 +1543,15 @@ export class WaybillsService {
           );
         }
         paidByWaybillId.set(String(waybill.id), paidBefore + item.amount);
+        fundPaidByWaybillId.set(String(waybill.id), (fundPaidByWaybillId.get(String(waybill.id)) ?? 0) + item.amount);
 
         return cashVouchersRepository.create({
           waybill_id: String(waybill.id),
           waybill_code: waybill.waybill_code,
           voucher_type: 'Thu',
+          source_type: 'MANUAL',
           amount: String(item.amount),
+          fund_id: String(fund.id),
           note: dto.note?.trim() || null,
           image_url: null,
           created_by_id: currentUser.id,
@@ -1533,9 +1568,17 @@ export class WaybillsService {
           : waybill.customer_payment_status === CustomerPaymentStatus.PAID
             ? null
             : waybill.customer_payment_status ?? null;
-        if (nextStatus === (waybill.customer_payment_status ?? null)) return false;
-        waybill.customer_payment_status = nextStatus;
-        return true;
+        let changed = nextStatus !== (waybill.customer_payment_status ?? null);
+        if (changed) waybill.customer_payment_status = nextStatus;
+        const collectAmount = this.getCollectOnDeliveryAmount(waybill);
+        if (collectAmount > 0 && !waybill.cod_reconciled_at && (fundPaidByWaybillId.get(String(waybill.id)) ?? 0) >= collectAmount) {
+          waybill.cod_reconciled_at = new Date();
+          waybill.cod_reconciled_by = currentUser.id;
+          waybill.cod_fund_id = String(fund.id);
+          waybill.cod_collected_amount = String(collectAmount);
+          changed = true;
+        }
+        return changed;
       });
       if (changedWaybills.length) await waybillsRepository.save(changedWaybills);
 
@@ -1552,6 +1595,7 @@ export class WaybillsService {
 
     const qb = this.cashVouchersRepository.createQueryBuilder('voucher')
       .innerJoinAndSelect('voucher.waybill', 'waybill')
+      .leftJoinAndSelect('voucher.fund', 'fund')
       .where('waybill.deleted_at IS NULL');
 
     this.applyHubScope(qb, currentUser);
@@ -3650,6 +3694,18 @@ export class WaybillsService {
         ? Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0
         : 0;
     return Math.max(0, cod + cc);
+  }
+
+  private async findActiveCashFund(manager: EntityManager, fundId: string, currentUser: UserEntity) {
+    const fund = await manager.getRepository(CashFundEntity).findOne({
+      where: { id: fundId, is_active: true },
+      relations: ['hub'],
+    });
+    if (!fund) throw new NotFoundException('Sổ quỹ không tồn tại hoặc đã ngừng sử dụng');
+    if (!isManager(currentUser.role_mask) && fund.hub_id && !getAssignedHubIds(currentUser).includes(String(fund.hub_id))) {
+      throw new ForbiddenException('Không được ghi nhận tiền vào sổ quỹ của bưu cục khác');
+    }
+    return fund;
   }
 
   private async applyCustomerPaymentStatus(manager: EntityManager, waybill: WaybillRecord): Promise<void> {

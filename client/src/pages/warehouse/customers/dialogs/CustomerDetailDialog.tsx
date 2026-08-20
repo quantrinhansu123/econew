@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Building2, Edit, ExternalLink, Loader2, Package, Printer, Receipt, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
+import CashFundSelect from '../../../../components/finance/CashFundSelect';
 import { ApiError, apiRequest } from '../../../../lib/api';
 import { formatAmountInput, formatAmountInputFromNumber, formatMoney, parseAmountInput } from '../../../../lib/formatMoney';
 import { specialGoodsLabels } from '../../../../lib/waybillSpecialGoods';
@@ -211,6 +212,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   const [collectWaybillIds, setCollectWaybillIds] = useState<string[]>([]);
   const [collectAmounts, setCollectAmounts] = useState<Record<string, string>>({});
   const [collectNote, setCollectNote] = useState('');
+  const [collectFundId, setCollectFundId] = useState('');
   const [collectSubmitting, setCollectSubmitting] = useState(false);
   const [collectError, setCollectError] = useState('');
   const [isStatementOpen, setIsStatementOpen] = useState(false);
@@ -410,6 +412,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
     setCollectWaybillIds([]);
     setCollectAmounts({});
     setCollectNote('');
+    setCollectFundId('');
     setCollectError('');
     setIsCollectOpen(true);
   };
@@ -444,6 +447,10 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       setCollectError('Chọn ít nhất một bill cần thanh toán.');
       return;
     }
+    if (!collectFundId) {
+      setCollectError('Vui lòng chọn sổ quỹ nhận tiền.');
+      return;
+    }
     const paymentItems = selectedCollectBills.map(({ item, remaining }) => ({
       item,
       remaining,
@@ -470,6 +477,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
             waybill_code: item.waybill_code || item.code || String(item.id),
             amount,
           })),
+          fund_id: collectFundId,
           note: collectNote.trim() || `Thanh toán khách hàng ${maKh || customer?.name || ''}`.trim(),
         },
       });
@@ -1098,6 +1106,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                 </div>
                 <p className="mt-1 text-[11px] font-medium text-emerald-700">Mỗi bill được ghi đúng số tiền thanh toán đã nhập cho bill đó.</p>
               </div>
+
+              <CashFundSelect value={collectFundId} onChange={(value) => { setCollectFundId(value); setCollectError(''); }} className="mb-3" />
 
               <label className="mb-3 block">
                 <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Ghi chú</span>

@@ -3,7 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, Repository } from 'typeorm';
 import { clampPaginationLimit } from '../common/pagination';
 import { TripStatus, VendorTripPaymentStatus } from '../common/enums';
-import { Roles } from '../common/roles';
+import { Roles, isManager } from '../common/roles';
+import { getAssignedHubIds } from '../common/user-hub-scope';
+import { CashFundEntity } from '../finance/cash-fund.entity';
 import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
 import { ExpenseEntity } from '../expenses/expense.entity';
 import { TripEntity } from '../trips/trip.entity';
@@ -280,14 +282,36 @@ export class VendorsService {
       }
     }
 
+    const fund = dto.fund_id ? await this.findActiveCashFund(dto.fund_id, currentUser) : null;
+    const changedVendorIds = new Set<string>();
     for (const trip of trips) {
       const payable = this.tripCost(trip);
+      const currentPaid = Number(trip.vendor_paid_amount ?? 0) || 0;
       let paid = dto.paid_amount;
       if (paid == null) {
         if (dto.payment_status === VendorTripPaymentStatus.UNPAID) paid = 0;
         else paid = Number(trip.vendor_paid_amount ?? 0);
       }
       if (paid > payable && payable > 0) paid = payable;
+      const paymentIncrease = paid - currentPaid;
+      if (paymentIncrease < 0) {
+        throw new BadRequestException(`Không thể giảm số tiền đã chi của chuyến #${trip.id}; hãy xóa phiếu chi liên quan trước`);
+      }
+      if (paymentIncrease > 0) {
+        if (!fund) throw new BadRequestException('Vui lòng chọn sổ quỹ chi tiền');
+        if (!trip.vendor_id) throw new BadRequestException(`Chuyến #${trip.id} chưa gán nhà cung cấp`);
+        await this.paymentsRepository.save(this.paymentsRepository.create({
+          vendor_id: String(trip.vendor_id),
+          amount: String(paymentIncrease),
+          payment_date: new Date(),
+          fund_id: String(fund.id),
+          cost_category: dto.cost_category?.trim() || 'Thanh toán cước chuyến',
+          description: dto.payment_note?.trim() || `Thanh toán cước chuyến #${trip.id}`,
+          created_by: currentUser.id,
+          trips: [trip],
+        }));
+        changedVendorIds.add(String(trip.vendor_id));
+      }
       trip.vendor_paid_amount = String(paid);
       trip.vendor_payment_status = this.resolveVendorPaymentStatus(paid, payable, dto.payment_status);
       if (dto.payment_status === VendorTripPaymentStatus.PAID && dto.proof_image_url?.trim()) {
@@ -301,6 +325,8 @@ export class VendorsService {
       await this.tripsRepository.save(trip);
     }
 
+    for (const vendorId of changedVendorIds) await this.refreshPayableBalance(vendorId);
+
     return { updated_count: trips.length, trip_ids: tripIds };
   }
 
@@ -308,7 +334,7 @@ export class VendorsService {
     await this.findOne(vendorId);
     return this.paymentsRepository.find({
       where: { vendor_id: vendorId },
-      relations: ['trips', 'creator'],
+      relations: ['trips', 'creator', 'fund'],
       order: { payment_date: 'DESC' },
     });
   }
@@ -320,6 +346,7 @@ export class VendorsService {
     const qb = this.paymentsRepository.createQueryBuilder('payment')
       .leftJoinAndSelect('payment.vendor', 'vendor')
       .leftJoinAndSelect('payment.creator', 'creator')
+      .leftJoinAndSelect('payment.fund', 'fund')
       .leftJoinAndSelect('payment.trips', 'trips');
 
     if (query.vendor_id?.trim()) {
@@ -369,6 +396,7 @@ export class VendorsService {
     this.assertRole(currentUser, [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR]);
     const vendor = await this.findOne(vendorId);
     if (dto.amount <= 0) throw new BadRequestException('Payment amount must be positive');
+    const fund = await this.findActiveCashFund(dto.fund_id, currentUser);
 
     let linkedTrips: TripEntity[] = [];
     if (dto.trip_ids?.length) {
@@ -380,6 +408,8 @@ export class VendorsService {
         vendor_id: vendorId,
         amount: String(dto.amount),
         payment_date: dto.payment_date,
+        fund_id: String(fund.id),
+        cost_category: dto.cost_category.trim(),
         description: dto.description?.trim() || null,
         created_by: currentUser.id,
         trips: linkedTrips,
@@ -404,7 +434,7 @@ export class VendorsService {
 
     return this.paymentsRepository.findOne({
       where: { id: payment.id },
-      relations: ['trips', 'creator'],
+      relations: ['trips', 'creator', 'fund'],
     });
   }
 
@@ -761,6 +791,18 @@ export class VendorsService {
     const values = Object.fromEntries(mutableFields.filter((field) => dto[field] !== undefined).map((field) => [field, dto[field]]));
     if (dto.opening_debt !== undefined) values.opening_debt = String(dto.opening_debt);
     return values;
+  }
+
+  private async findActiveCashFund(fundId: string, currentUser: UserEntity) {
+    const fund = await this.paymentsRepository.manager.getRepository(CashFundEntity).findOne({
+      where: { id: fundId, is_active: true },
+      relations: ['hub'],
+    });
+    if (!fund) throw new NotFoundException('Sổ quỹ không tồn tại hoặc đã ngừng sử dụng');
+    if (!isManager(currentUser.role_mask) && fund.hub_id && !getAssignedHubIds(currentUser).includes(String(fund.hub_id))) {
+      throw new ForbiddenException('Không được ghi nhận vào sổ quỹ của bưu cục khác');
+    }
+    return fund;
   }
 
   private async assertUniqueCode(code: string, currentId?: string) {

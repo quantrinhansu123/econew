@@ -40,6 +40,12 @@ export class CreateBulkWaybillPaymentDto {
   @Type(() => BulkWaybillPaymentItemDto)
   items: BulkWaybillPaymentItemDto[];
 
+  @ApiProperty({ description: 'Sổ quỹ nhận tiền' })
+  @Transform(({ value }) => String(value))
+  @IsString()
+  @IsNotEmpty()
+  fund_id: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

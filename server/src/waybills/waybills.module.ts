@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CustomerEntity } from '../customers/customer.entity';
+import { CashFundEntity } from '../finance/cash-fund.entity';
 import { HubEntity } from '../hubs/hub.entity';
 import { OrdersModule } from '../orders/orders.module';
 import { VendorsModule } from '../vendors/vendors.module';
@@ -20,7 +21,7 @@ import { GeminiWaybillRecognitionService } from './gemini-waybill-recognition.se
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([WaybillEntity, WaybillChangeLogEntity, WaybillSplitEntity, WaybillCashVoucherEntity, HubEntity, TripEntity, TruckEntity, UserEntity, VendorEntity, ManifestEntity, ManifestWaybillEntity, CustomerEntity]),
+    TypeOrmModule.forFeature([WaybillEntity, WaybillChangeLogEntity, WaybillSplitEntity, WaybillCashVoucherEntity, HubEntity, TripEntity, TruckEntity, UserEntity, VendorEntity, ManifestEntity, ManifestWaybillEntity, CustomerEntity, CashFundEntity]),
     OrdersModule,
     VendorsModule,
   ],

@@ -1,5 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { UserEntity } from '../users/user.entity';
+import { CashFundEntity } from '../finance/cash-fund.entity';
 import { WaybillEntity } from './waybill.entity';
 
 @Entity('waybill_cash_vouchers')
@@ -44,6 +45,10 @@ export class WaybillCashVoucherEntity {
   @ManyToOne(() => UserEntity, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'created_by_id' })
   created_by: UserEntity | null;
+
+  @ManyToOne(() => CashFundEntity, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'fund_id' })
+  fund: CashFundEntity | null;
 
   @CreateDateColumn({ type: 'timestamp' })
   created_at: Date;

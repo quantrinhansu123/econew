@@ -6,6 +6,7 @@ import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../../../lib/api';
 import { FilterSelect } from '../../../components/ui/FilterSelect';
+import CashFundSelect from '../../../components/finance/CashFundSelect';
 import type { AuthUserProfile } from '../../login/types';
 import LoadPlanningTruckBoard from './LoadPlanningTruckBoard';
 import BulkSplitLoadStatusControl from '../splits/BulkSplitLoadStatusControl';
@@ -530,6 +531,7 @@ function ArrivalTruckDetailDialog({
   const [isSpendOpen, setIsSpendOpen] = useState(false);
   const [isStatementOpen, setIsStatementOpen] = useState(false);
   const [spendAmount, setSpendAmount] = useState('');
+  const [spendFundId, setSpendFundId] = useState('');
   const [spendDate, setSpendDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [spendType, setSpendType] = useState(vendorExpenseTypes[0]);
   const [spendNote, setSpendNote] = useState('');
@@ -569,6 +571,7 @@ function ArrivalTruckDetailDialog({
 
   const openSpendDialog = () => {
     setSpendAmount('');
+    setSpendFundId('');
     setSpendDate(new Date().toISOString().slice(0, 10));
     setSpendType(vendorExpenseTypes[0]);
     setSpendNote(`Chi theo bảng kê ${truck.manifest_code || truckLabel}`);
@@ -586,6 +589,10 @@ function ArrivalTruckDetailDialog({
       setSpendError('Nhập số tiền chi lớn hơn 0.');
       return;
     }
+    if (!spendFundId) {
+      setSpendError('Vui lòng chọn sổ quỹ chi tiền.');
+      return;
+    }
     setIsSubmittingSpend(true);
     setSpendError('');
     try {
@@ -594,6 +601,8 @@ function ArrivalTruckDetailDialog({
         body: {
           payment_date: new Date(`${spendDate || new Date().toISOString().slice(0, 10)}T12:00:00`).toISOString(),
           amount,
+          fund_id: spendFundId,
+          cost_category: spendType,
           description: `[${spendType}] ${spendNote.trim() || `Chi theo bảng kê ${truck.manifest_code || truckLabel}`}`,
         },
       });
@@ -670,9 +679,10 @@ function ArrivalTruckDetailDialog({
         </div>
         {isSpendOpen && (
           <div className="border-b border-border bg-emerald-50/60 px-5 py-4">
-            <div className="grid gap-3 md:grid-cols-[160px_180px_1fr_160px]">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[150px_190px_220px_1fr_160px]">
               <label className="text-[12px] font-bold text-muted-foreground">Ngày chi<input type="date" value={spendDate} onChange={(event) => setSpendDate(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none" /></label>
               <label className="text-[12px] font-bold text-muted-foreground">Loại chi<select value={spendType} onChange={(event) => setSpendType(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none">{vendorExpenseTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+              <CashFundSelect value={spendFundId} onChange={(value) => { setSpendFundId(value); setSpendError(''); }} label="Sổ quỹ chi tiền" />
               <label className="text-[12px] font-bold text-muted-foreground">Ghi chú<input value={spendNote} onChange={(event) => setSpendNote(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold text-foreground outline-none" /></label>
               <label className="text-[12px] font-bold text-muted-foreground">Số tiền<input inputMode="numeric" value={spendAmount} onChange={(event) => setSpendAmount(formatDonGia(event.target.value))} placeholder="VD: 500.000" className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-right text-[13px] font-bold text-foreground outline-none" /></label>
             </div>

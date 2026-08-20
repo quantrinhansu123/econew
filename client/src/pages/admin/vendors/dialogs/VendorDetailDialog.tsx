@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Building2, Edit, ExternalLink, Loader2, Printer, Receipt, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
+import CashFundSelect from '../../../../components/finance/CashFundSelect';
 import { apiRequest } from '../../../../lib/api';
 import { formatAmountInput, formatMoney, parseAmountInput } from '../../../../lib/formatMoney';
 import type { AuthUserProfile } from '../../../login/types';
@@ -155,6 +156,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
   const [spendAmount, setSpendAmount] = useState('');
   const [spendDate, setSpendDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [spendType, setSpendType] = useState(vendorExpenseTypes[0]);
+  const [spendFundId, setSpendFundId] = useState('');
   const [spendNote, setSpendNote] = useState('');
   const [spendSubmitting, setSpendSubmitting] = useState(false);
   const [spendError, setSpendError] = useState('');
@@ -369,6 +371,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
     setSpendAmount('');
     setSpendDate(new Date().toISOString().slice(0, 10));
     setSpendType(vendorExpenseTypes[0]);
+    setSpendFundId('');
     setSpendNote('');
     setSpendError('');
     setIsSpendOpen(true);
@@ -380,6 +383,10 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
       setSpendError('Nhập số tiền chi lớn hơn 0.');
       return;
     }
+    if (!spendFundId) {
+      setSpendError('Vui lòng chọn sổ quỹ chi tiền.');
+      return;
+    }
     setSpendSubmitting(true);
     setSpendError('');
     try {
@@ -388,6 +395,8 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
         body: {
           payment_date: new Date(`${spendDate || new Date().toISOString().slice(0, 10)}T12:00:00`).toISOString(),
           amount,
+          fund_id: spendFundId,
+          cost_category: spendType,
           description: `[${spendType}] ${spendNote.trim() || `Chi thanh toán NCC ${vendor?.code || vendor?.name || vendorId}`}`,
         },
       });
@@ -675,9 +684,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
               </div>
               {vendor.qr_image_url && <img src={vendor.qr_image_url} alt="QR nhận tiền NCC" className="h-[150px] w-[150px] border border-slate-300 object-contain p-1" />}
             </div>
-            <div className="mt-4 grid grid-cols-4 gap-2">
-              <PrintMetric label="Số chuyến" value={debtTrips.length.toLocaleString('vi-VN')} />
-              <PrintMetric label="Tổng cước chuyến" value={formatMoney(statementData.totalFreight)} />
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <PrintMetric label="Tổng phát sinh" value={formatMoney(statementData.totalIncurred)} />
               <PrintMetric label="Còn phải trả" value={formatMoney(statementData.remaining)} />
             </div>
@@ -787,6 +794,8 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
                   className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold outline-none focus:ring-2 focus:ring-primary/15"
                 />
               </label>
+
+              <CashFundSelect value={spendFundId} onChange={(value) => { setSpendFundId(value); setSpendError(''); }} label="Sổ quỹ chi tiền" className="mb-3" />
 
               <label className="mb-3 block">
                 <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Loại chi</span>

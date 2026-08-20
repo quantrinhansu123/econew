@@ -1,5 +1,5 @@
-import { Type } from 'class-transformer';
-import { IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsDateString, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateCashJournalEntryDto {
   @IsDateString()
@@ -7,11 +7,22 @@ export class CreateCashJournalEntryDto {
 
   @IsString()
   @IsNotEmpty()
+  @IsIn(['Thu', 'Chi'])
   voucher_type: string;
 
   @IsString()
   @IsNotEmpty()
   source: string;
+
+  @Transform(({ value }) => String(value))
+  @IsString()
+  @IsNotEmpty()
+  fund_id: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value == null ? undefined : String(value))
+  @IsString()
+  vendor_id?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -23,6 +34,7 @@ export class CreateCashJournalEntryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   note?: string;
 
   @IsString()

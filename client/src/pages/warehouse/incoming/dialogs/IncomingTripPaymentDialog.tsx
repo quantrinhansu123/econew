@@ -1,5 +1,6 @@
 import { Banknote, ImagePlus, Loader2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import CashFundSelect from '../../../../components/finance/CashFundSelect';
 import {
   formatAmountInput,
   formatAmountInputFromNumber,
@@ -32,6 +33,8 @@ export function IncomingTripPaymentDialog({
   onConfirm: (payload: {
     payment_status: IncomingVendorPaymentStatus;
     paid_amount?: number;
+    fund_id?: string;
+    cost_category?: string;
     proofFile?: File;
     payment_note?: string;
   }) => void;
@@ -39,6 +42,8 @@ export function IncomingTripPaymentDialog({
   const [paymentStatus, setPaymentStatus] = useState<IncomingVendorPaymentStatus>('UNPAID');
   const [paidAmount, setPaidAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [fundId, setFundId] = useState('');
+  const [costCategory, setCostCategory] = useState('Thanh toán cước chuyến');
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState('');
   const [localError, setLocalError] = useState('');
@@ -48,6 +53,8 @@ export function IncomingTripPaymentDialog({
     setPaymentStatus(normalizeVendorPaymentStatus(trip.vendor_payment_status));
     setPaidAmount(formatAmountInputFromNumber(trip.vendor_paid_amount));
     setPaymentNote(getPaymentNote(trip));
+    setFundId('');
+    setCostCategory('Thanh toán cước chuyến');
     setProofFile(null);
     setProofPreview(trip.vendor_payment_proof_url?.trim() || '');
     setLocalError('');
@@ -84,7 +91,11 @@ export function IncomingTripPaymentDialog({
         setLocalError('Đề xuất thanh toán phải nhập số tiền lớn hơn 0.');
         return;
       }
-      onConfirm({ payment_status: paymentStatus, paid_amount: amount, payment_note: note });
+      if (!fundId) {
+        setLocalError('Vui lòng chọn sổ quỹ chi tiền.');
+        return;
+      }
+      onConfirm({ payment_status: paymentStatus, paid_amount: amount, fund_id: fundId, cost_category: costCategory, payment_note: note });
       return;
     }
     if (paymentStatus === 'PAID') {
@@ -97,9 +108,15 @@ export function IncomingTripPaymentDialog({
         setLocalError('Đã thanh toán phải upload ảnh chứng từ.');
         return;
       }
+      if (!fundId) {
+        setLocalError('Vui lòng chọn sổ quỹ chi tiền.');
+        return;
+      }
       onConfirm({
         payment_status: paymentStatus,
         paid_amount: amount,
+        fund_id: fundId,
+        cost_category: costCategory,
         proofFile: proofFile ?? undefined,
         payment_note: note,
       });
@@ -159,6 +176,15 @@ export function IncomingTripPaymentDialog({
                 placeholder="Nhập số tiền (vd: 1.500.000)"
                 className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold tabular-nums outline-none focus:border-primary"
               />
+            </label>
+          )}
+          {needsAmount && <CashFundSelect value={fundId} onChange={(value) => { setFundId(value); setLocalError(''); }} label="Sổ quỹ chi tiền" />}
+          {needsAmount && (
+            <label className="block space-y-1">
+              <span className="text-[11px] font-extrabold uppercase text-muted-foreground">Loại chi phí</span>
+              <select value={costCategory} onChange={(event) => setCostCategory(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold outline-none focus:border-primary">
+                {['Thanh toán cước chuyến', 'Chi phí vận chuyển', 'Tạm ứng NCC', 'Hoàn ứng', 'Chi khác'].map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
             </label>
           )}
           <label className="block space-y-1">

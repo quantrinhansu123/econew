@@ -24,6 +24,7 @@ import {
   isDateInRange,
 } from './warehouse/customers/utils/customerFinanceUtils';
 import type { CashVoucherFilters } from './warehouse/customers/panels/CustomerCashVouchersPanel';
+import DailyCashJournalPage from './finance/cash-journal/DailyCashJournalPage';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const DISPATCHER = 8;
@@ -156,7 +157,7 @@ function StateBlock({ icon, title, description }: { icon: ReactNode; title: stri
   );
 }
 
-export default function FinanceCashJournalPage({
+function LinkedPaymentsJournal({
   defaultTab = 'bill',
   pageTitle = 'Nhật ký thu chi',
   pageSubtitle = 'Tổng hợp phiếu thu/chi bill và phiếu chi NCC',
@@ -534,6 +535,11 @@ export default function FinanceCashJournalPage({
       </div>
     </div>
   );
+}
+
+export default function FinanceCashJournalPage(props: FinanceCashJournalPageProps = {}) {
+  if ((props.accessMode ?? 'both') === 'both') return <DailyCashJournalPage />;
+  return <LinkedPaymentsJournal {...props} />;
 }
 
 function TabButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: ReactNode; children: ReactNode }) {

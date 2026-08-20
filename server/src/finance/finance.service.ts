@@ -68,15 +68,28 @@ export class FinanceService {
 
     const funds = await qb.getMany();
     if (!funds.length) return [];
-    const balances = await this.waybillsRepository.createQueryBuilder('waybill')
-      .select('waybill.cod_fund_id', 'fund_id')
-      .addSelect('COALESCE(SUM(waybill.cod_collected_amount), 0)', 'balance')
-      .addSelect('COUNT(*)', 'collection_count')
-      .where('waybill.cod_reconciled_at IS NOT NULL')
-      .andWhere('waybill.cod_fund_id IN (:...fundIds)', { fundIds: funds.map((fund) => fund.id) })
-      .andWhere('waybill.deleted_at IS NULL')
-      .groupBy('waybill.cod_fund_id')
-      .getRawMany<{ fund_id: string; balance: string; collection_count: string }>();
+    const balances = await this.cashFundsRepository.query(`
+      SELECT movement.fund_id, COALESCE(SUM(movement.amount), 0) AS balance, COUNT(*)::int AS collection_count
+      FROM (
+        SELECT voucher.fund_id,
+          CASE WHEN LOWER(voucher.voucher_type) = 'thu' THEN voucher.amount ELSE -voucher.amount END AS amount
+        FROM waybill_cash_vouchers voucher
+        WHERE voucher.fund_id = ANY($1::bigint[])
+
+        UNION ALL
+
+        SELECT payment.fund_id, -payment.amount AS amount
+        FROM vendor_payments payment
+        WHERE payment.fund_id = ANY($1::bigint[])
+
+        UNION ALL
+
+        SELECT journal.fund_id, journal.income_amount - journal.expense_amount AS amount
+        FROM cash_journal_entries journal
+        WHERE journal.fund_id = ANY($1::bigint[])
+      ) movement
+      GROUP BY movement.fund_id
+    `, [funds.map((fund) => String(fund.id))]) as Array<{ fund_id: string; balance: string; collection_count: string }>;
     const balanceByFund = new Map(balances.map((row) => [String(row.fund_id), row]));
     return funds.map((fund) => {
       const balance = balanceByFund.get(String(fund.id));

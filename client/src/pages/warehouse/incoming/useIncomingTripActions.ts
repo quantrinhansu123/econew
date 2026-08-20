@@ -82,6 +82,8 @@ export function useIncomingTripActions(refresh: (showLoading?: boolean) => Promi
   const confirmPayment = useCallback(async (payload: {
     payment_status: 'UNPAID' | 'PARTIAL' | 'PAID';
     paid_amount?: number;
+    fund_id?: string;
+    cost_category?: string;
     proofFile?: File;
     payment_note?: string;
   }) => {
@@ -104,6 +106,8 @@ export function useIncomingTripActions(refresh: (showLoading?: boolean) => Promi
           trip_ids: [Number(paymentTrip.id)],
           payment_status: payload.payment_status,
           paid_amount: payload.paid_amount,
+          fund_id: payload.fund_id,
+          cost_category: payload.cost_category,
           proof_image_url,
           payment_note: payload.payment_note?.trim() || undefined,
         },

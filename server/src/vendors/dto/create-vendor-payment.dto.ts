@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { ArrayUnique, IsArray, IsDate, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { ArrayUnique, IsArray, IsDate, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateVendorPaymentDto {
   @ApiProperty({ type: String, format: 'date-time' })
@@ -13,6 +13,16 @@ export class CreateVendorPaymentDto {
   @IsNumber()
   @Min(0.01)
   amount: number;
+
+  @Transform(({ value }) => String(value))
+  @IsString()
+  @IsNotEmpty()
+  fund_id: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  cost_category: string;
 
   @ApiPropertyOptional({ example: 'Thanh toán cước xe tháng 5 cho nhà xe Chiến' })
   @IsOptional()

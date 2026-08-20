@@ -54,7 +54,11 @@ const normalizeTotal = <T,>(response: ListResponse<T> | T[], fallback: number) =
 const getErrorMessage = (error: unknown) => error instanceof ApiError ? error.message : error instanceof Error ? error.message : 'Không tải được dữ liệu.';
 const displayDate = (value?: string | null) => value ? new Date(value).toLocaleDateString('vi-VN') : '—';
 const displayDateTime = (value?: string | null) => value ? new Date(value).toLocaleString('vi-VN') : '—';
-const paymentTypeLabels: Record<string, string> = { PP: 'PP', CC: 'CC', COD: 'COD' };
+const paymentTypeLabels: Record<string, string> = {
+  PP: 'Công nợ / người gửi trả',
+  CC: 'Người nhận trả cước',
+  COD: 'Thu hộ COD',
+};
 
 function buildQuery(filters: Filters) {
   const params = new URLSearchParams({ page: String(filters.page), limit: String(filters.limit) });
@@ -186,7 +190,7 @@ export default function FinanceHubReconciliationPage() {
             <FilterSelect placeholder="Bưu cục" icon={Building2} value={filters.hub_id} options={[{ value: '', label: 'Tất cả bưu cục' }, ...hubOptions]} onValueChange={(value: string) => updateFilters({ hub_id: value, page: 1 })} />
             <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[12px] font-bold text-muted-foreground"><CalendarDays size={15} /><input type="date" value={filters.date_from} onChange={(event) => updateFilters({ date_from: event.target.value, page: 1 })} className="bg-transparent outline-none" /><span>→</span><input type="date" value={filters.date_to} onChange={(event) => updateFilters({ date_to: event.target.value, page: 1 })} className="bg-transparent outline-none" /></div>
           </div>
-          <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border/70 pt-2 text-[12px] font-bold text-muted-foreground"><span>Chờ xác nhận: <b className="text-amber-700">{pendingOnPage}</b></span><span>Đã thu: <b className="text-emerald-700">{collectedOnPage}</b></span><span>Tiền đã xác nhận trên trang: <b className="text-foreground">{formatMoney(collectedAmountOnPage)}</b></span></div>
+          <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-border/70 pt-2 text-[12px] font-bold text-muted-foreground"><span>Chờ xác nhận: <b className="text-amber-700">{pendingOnPage}</b></span><span>Đã thu: <b className="text-emerald-700">{collectedOnPage}</b></span><span>Tiền đã xác nhận trên trang: <b className="text-foreground">{formatMoney(collectedAmountOnPage)}</b></span><span className="basis-full text-[11px] font-medium"><b>PP:</b> Công nợ/người gửi trả · <b>CC:</b> Người nhận trả cước · <b>COD:</b> Thu hộ tiền hàng</span></div>
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">

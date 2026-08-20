@@ -13,7 +13,9 @@ import {
   X,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import CashFundSelect from '../components/finance/CashFundSelect';
 import { ApiError, apiRequest } from '../lib/api';
+import { formatAmountInput, formatMoney, parseAmountInput } from '../lib/formatMoney';
 
 interface VendorOption {
   id: string | number;
@@ -84,8 +86,8 @@ interface LedgerData {
   entries: LedgerEntry[];
 }
 
-const formatMoney = (n: number) => `${n.toLocaleString('vi-VN')} đ`;
 const formatDate = (v?: string | null) => (v ? new Date(v).toLocaleString('vi-VN') : '—');
+const expenseCategories = ['Thanh toán cước chuyến', 'Chi phí vận chuyển', 'Chi phí bốc xếp', 'Tạm ứng NCC', 'Hoàn ứng', 'Chi khác'];
 
 function monthBounds(ym: string): { from: string; to: string } {
   const [y, m] = ym.split('-').map(Number);
@@ -115,6 +117,8 @@ export default function FinanceVendorDebtPage() {
   const [paymentForm, setPaymentForm] = useState({
     payment_date: new Date().toISOString().slice(0, 10),
     amount: '',
+    fund_id: '',
+    cost_category: expenseCategories[0],
     description: '',
     trip_ids: [] as string[],
   });
@@ -178,6 +182,11 @@ export default function FinanceVendorDebtPage() {
 
   async function submitPayment() {
     if (!selectedVendorId || !paymentForm.amount) return;
+    const amount = parseAmountInput(paymentForm.amount);
+    if (amount <= 0 || !paymentForm.fund_id) {
+      setError(amount <= 0 ? 'Nhập số tiền chi lớn hơn 0.' : 'Vui lòng chọn sổ quỹ chi tiền.');
+      return;
+    }
     setIsSubmitting(true);
     setError('');
     try {
@@ -185,13 +194,15 @@ export default function FinanceVendorDebtPage() {
         method: 'POST',
         body: {
           payment_date: new Date(paymentForm.payment_date).toISOString(),
-          amount: Number(paymentForm.amount),
+          amount,
+          fund_id: paymentForm.fund_id,
+          cost_category: paymentForm.cost_category,
           description: paymentForm.description.trim() || undefined,
           trip_ids: paymentForm.trip_ids.length ? paymentForm.trip_ids.map(Number) : undefined,
         },
       });
       setPaymentOpen(false);
-      setPaymentForm({ payment_date: new Date().toISOString().slice(0, 10), amount: '', description: '', trip_ids: [] });
+      setPaymentForm({ payment_date: new Date().toISOString().slice(0, 10), amount: '', fund_id: '', cost_category: expenseCategories[0], description: '', trip_ids: [] });
       await Promise.all([loadReport(), loadVendorDetail(selectedVendorId)]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không ghi nhận được phiếu chi.');
@@ -491,13 +502,20 @@ export default function FinanceVendorDebtPage() {
               <div>
                 <label className="text-[11px] font-bold uppercase text-muted-foreground">Số tiền (VNĐ)</label>
                 <input
-                  type="number"
-                  min={1}
-                  placeholder="25000000"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="25.000.000"
                   value={paymentForm.amount}
-                  onChange={(e) => setPaymentForm((p) => ({ ...p, amount: e.target.value }))}
+                  onChange={(e) => setPaymentForm((p) => ({ ...p, amount: formatAmountInput(e.target.value) }))}
                   className="mt-1 w-full h-10 rounded-lg border border-border px-3 text-[13px] font-bold"
                 />
+              </div>
+              <CashFundSelect value={paymentForm.fund_id} onChange={(value) => setPaymentForm((current) => ({ ...current, fund_id: value }))} label="Sổ quỹ chi tiền" />
+              <div>
+                <label className="text-[11px] font-bold uppercase text-muted-foreground">Loại chi phí</label>
+                <select value={paymentForm.cost_category} onChange={(event) => setPaymentForm((current) => ({ ...current, cost_category: event.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold">
+                  {expenseCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+                </select>
               </div>
               <div>
                 <label className="text-[11px] font-bold uppercase text-muted-foreground">Ghi chú / Giải trình</label>

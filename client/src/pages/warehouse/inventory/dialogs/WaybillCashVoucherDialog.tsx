@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ImagePlus, Loader2, Receipt, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ProofImageButton } from '../../../../components/ImagePreviewModal';
+import CashFundSelect from '../../../../components/finance/CashFundSelect';
 import { ApiError, apiRequest } from '../../../../lib/api';
 import {
   formatAmountInput,
@@ -24,6 +25,7 @@ export interface WaybillCashVoucher {
   amount?: number | string | null;
   source_type?: 'MANUAL' | 'COD_COLLECTION' | 'CUSTOMER_PAYOUT' | string | null;
   fund_id?: string | number | null;
+  fund?: { id?: string | number; code?: string | null; name?: string | null } | null;
   note?: string | null;
   image_url?: string | null;
   created_by_name?: string | null;
@@ -61,6 +63,7 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
   const [paymentMode, setPaymentMode] = useState<'FULL' | 'CUSTOM'>('FULL');
   const [amountInput, setAmountInput] = useState('');
   const [note, setNote] = useState('');
+  const [fundId, setFundId] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [imageName, setImageName] = useState('');
   const [vouchers, setVouchers] = useState<WaybillCashVoucher[]>([]);
@@ -68,9 +71,17 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const voucherRequestIdRef = useRef(0);
-  const totalDue = normalizeMoney(
+  const freightDue = normalizeMoney(
     waybill?.customer_payment_due_amount ?? waybill?.freight_amount ?? waybill?.cost_amount,
   );
+  const codDue = normalizeMoney(waybill?.cod_amount);
+  const storedCcDue = normalizeMoney(waybill?.cc_amount);
+  const ccDue = storedCcDue > 0
+    ? storedCcDue
+    : String(waybill?.payment_type || '').toUpperCase() === 'CC'
+      ? freightDue
+      : 0;
+  const totalDue = Math.max(freightDue, codDue + ccDue);
   const paidAmount = useMemo(() => vouchers.reduce((sum, voucher) => {
     const amount = normalizeMoney(voucher.amount);
     return sum + (String(voucher.voucher_type).toLowerCase() === 'thu' ? amount : -amount);
@@ -81,6 +92,7 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
     setPaymentMode('FULL');
     setAmountInput('');
     setNote('');
+    setFundId('');
     setImageUrl('');
     setImageName('');
     setVouchers([]);
@@ -157,6 +169,10 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
       setError(`Số tiền không được vượt quá số còn lại ${formatMoney(remainingAmount)}.`);
       return;
     }
+    if (!fundId) {
+      setError('Vui lòng chọn sổ quỹ nhận tiền.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -169,6 +185,7 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
             waybill_code: waybillCode,
             voucher_type: 'Thu',
             amount,
+            fund_id: fundId,
             note: note.trim() || undefined,
             image_url: imageUrl.trim() || undefined,
           },
@@ -217,9 +234,9 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
               Đang ghi nhận cho bill <span className="font-black">{displayCode(waybill)}</span>. Khoản tiền chỉ được cộng vào bill này.
             </div>
             <div className="mb-3 grid grid-cols-3 gap-2 rounded-xl border border-border bg-muted/10 p-3 text-[12px]">
-              <div><p className="font-bold text-muted-foreground">Cước</p><p className="mt-1 font-black">{formatMoney(totalDue)}</p></div>
-              <div><p className="font-bold text-muted-foreground">Đã TT</p><p className="mt-1 font-black text-emerald-700">{formatMoney(paidAmount)}</p></div>
-              <div><p className="font-bold text-muted-foreground">Còn lại</p><p className="mt-1 font-black text-amber-700">{formatMoney(remainingAmount)}</p></div>
+              <div><p className="font-bold text-muted-foreground">Phải thu</p><p className="mt-1 font-black">{formatMoney(totalDue)}</p></div>
+              <div><p className="font-bold text-muted-foreground">Đã vào quỹ</p><p className="mt-1 font-black text-emerald-700">{formatMoney(paidAmount)}</p></div>
+              <div><p className="font-bold text-muted-foreground">Còn phải thu</p><p className="mt-1 font-black text-amber-700">{formatMoney(remainingAmount)}</p></div>
             </div>
             <div className="mb-3 grid grid-cols-2 gap-2">
               {([
@@ -258,6 +275,8 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
                 )}
               />
             </label>
+
+            <CashFundSelect value={fundId} onChange={(value) => { setFundId(value); setError(''); }} className="mb-3" />
 
             <label className="mb-3 block">
               <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Ghi chú</span>
@@ -337,6 +356,11 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
                         <p className="mt-2 text-[12px] text-foreground">
                           <span className="font-bold text-muted-foreground">Ghi chú: </span>
                           {voucher.note}
+                        </p>
+                      )}
+                      {voucher.fund && (
+                        <p className="mt-1 text-[11px] font-bold text-muted-foreground">
+                          Sổ quỹ: {[voucher.fund.code, voucher.fund.name].filter(Boolean).join(' · ')}
                         </p>
                       )}
                       {voucher.image_url && (

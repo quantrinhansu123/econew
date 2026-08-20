@@ -1,5 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, JoinTable, ManyToMany, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { TripEntity } from '../trips/trip.entity';
+import { CashFundEntity } from '../finance/cash-fund.entity';
 import { UserEntity } from '../users/user.entity';
 import { VendorEntity } from './vendor.entity';
 
@@ -17,6 +18,12 @@ export class VendorPaymentEntity {
   @Column({ type: 'timestamp' })
   payment_date: Date;
 
+  @Column({ type: 'bigint', nullable: true })
+  fund_id: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  cost_category: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   description: string | null;
 
@@ -33,6 +40,10 @@ export class VendorPaymentEntity {
   @ManyToOne(() => UserEntity, { nullable: true })
   @JoinColumn({ name: 'created_by' })
   creator: UserEntity | null;
+
+  @ManyToOne(() => CashFundEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'fund_id' })
+  fund: CashFundEntity | null;
 
   @ManyToMany(() => TripEntity)
   @JoinTable({

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { HandCoins, Loader2, X } from 'lucide-react';
 import { ApiError, apiRequest } from '../../../../lib/api';
+import CashFundSelect from '../../../../components/finance/CashFundSelect';
 import { formatAmountInput, formatAmountInputFromNumber, formatMoney, parseAmountInput } from '../../../../lib/formatMoney';
 import type { WaybillInventoryItem } from '../../inventory/types';
 
@@ -31,6 +32,7 @@ export default function CustomerPayoutDialog({
   const [waybillId, setWaybillId] = useState('');
   const [amountInput, setAmountInput] = useState('');
   const [note, setNote] = useState('');
+  const [fundId, setFundId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -48,6 +50,7 @@ export default function CustomerPayoutDialog({
       setWaybillId(first ? String(first.item.id) : '');
       setAmountInput(firstMaximum > 0 ? formatAmountInputFromNumber(firstMaximum) : '');
       setNote('');
+      setFundId('');
       setError('');
     });
   }, [accountCredit, bills, open]);
@@ -71,6 +74,10 @@ export default function CustomerPayoutDialog({
       setError(`Số tiền chi phải từ 1 đ đến ${formatMoney(maxPayout)}.`);
       return;
     }
+    if (!fundId) {
+      setError('Vui lòng chọn sổ quỹ chi tiền.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -82,6 +89,7 @@ export default function CustomerPayoutDialog({
           voucher_type: 'Chi',
           source_type: 'CUSTOMER_PAYOUT',
           amount,
+          fund_id: fundId,
           note: note.trim() || `Chi trả tiền dư cho khách ${customerCode}`,
         },
       });
@@ -124,6 +132,8 @@ export default function CustomerPayoutDialog({
               })}
             </select>
           </label>
+
+          <CashFundSelect value={fundId} onChange={(value) => { setFundId(value); setError(''); }} label="Sổ quỹ chi tiền" />
 
           <label className="block">
             <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Số tiền chi</span>

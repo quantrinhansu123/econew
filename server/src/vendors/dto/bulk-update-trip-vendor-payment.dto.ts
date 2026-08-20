@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ArrayMinSize, IsArray, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUrl, MaxLength, Min } from 'class-validator';
 import { VendorTripPaymentStatus } from '../../common/enums';
 
@@ -21,6 +21,18 @@ export class BulkUpdateTripVendorPaymentDto {
   @IsNumber()
   @Min(0)
   paid_amount?: number;
+
+  @ApiPropertyOptional({ description: 'Sổ quỹ chi tiền; bắt buộc khi số tiền đã chi tăng' })
+  @IsOptional()
+  @Transform(({ value }) => value == null || value === '' ? undefined : String(value))
+  @IsString()
+  fund_id?: string;
+
+  @ApiPropertyOptional({ description: 'Loại chi phí để phân bổ trong nhật ký thu chi' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  cost_category?: string;
 
   @ApiPropertyOptional({ description: 'URL ảnh chứng từ — bắt buộc khi PAID' })
   @IsOptional()

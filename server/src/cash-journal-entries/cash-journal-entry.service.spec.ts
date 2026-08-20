@@ -1,44 +1,92 @@
+import { Roles } from '../common/roles';
+import { CashFundEntity } from '../finance/cash-fund.entity';
+import { VendorEntity } from '../vendors/vendor.entity';
 import { CashJournalEntryService } from './cash-journal-entry.service';
 
-const createQueryBuilder = () => ({
-  orderBy: jest.fn().mockReturnThis(),
-  skip: jest.fn().mockReturnThis(),
-  take: jest.fn().mockReturnThis(),
-  andWhere: jest.fn().mockReturnThis(),
-  where: jest.fn().mockReturnThis(),
-  getManyAndCount: jest.fn(async () => [[{ id: '1', voucher_type: 'Sample' }], 1]),
-  getOne: jest.fn(async () => null),
-});
+const currentUser = {
+  id: '9',
+  username: 'accountant',
+  full_name: 'Kế toán',
+  role_mask: Roles.MANAGER,
+} as any;
+
+const persistedEntry = {
+  id: '1',
+  entry_date: '2026-08-20',
+  voucher_type: 'Chi',
+  source: 'Nội bộ',
+  fund_id: 'fund-1',
+  vendor_id: null,
+  cost_category: 'Chi phí văn phòng',
+  detail: 'Phòng kế toán',
+  content: 'Mua văn phòng phẩm',
+  note: null,
+  income_amount: '0',
+  expense_amount: '1000',
+  fund: { id: 'fund-1', hub_id: null },
+};
 
 const createRepository = () => {
-  const qb = createQueryBuilder();
+  const fundRepository = {
+    findOne: jest.fn(async () => ({ id: 'fund-1', code: 'TM-HAN', is_active: true, hub_id: null })),
+  };
+  const vendorRepository = { findOne: jest.fn(async () => null) };
   return {
+    query: jest.fn()
+      .mockResolvedValueOnce([{ total: 1, total_income: '850000', total_expense: '1000' }])
+      .mockResolvedValueOnce([{ ...persistedEntry, editable: true }]),
     create: jest.fn((payload) => payload),
     save: jest.fn(async (payload) => ({ id: '1', ...payload })),
-    findOne: jest.fn(async ({ where }: any) => (where.id === 'missing' ? null : { id: where.id, voucher_type: 'Sample' })),
-    delete: jest.fn(async () => ({ affected: 1 })),
-    createQueryBuilder: jest.fn(() => qb),
+    findOne: jest.fn(async ({ where }: any) => (where.id === 'missing' ? null : persistedEntry)),
+    remove: jest.fn(async () => persistedEntry),
+    manager: {
+      getRepository: jest.fn((entity) => {
+        if (entity === CashFundEntity) return fundRepository;
+        if (entity === VendorEntity) return vendorRepository;
+        throw new Error(`Unexpected repository: ${String(entity)}`);
+      }),
+    },
   };
 };
 
 describe('CashJournalEntryService', () => {
   let service: CashJournalEntryService;
-  let cashJournalEntryRepository: ReturnType<typeof createRepository>;
+  let repository: ReturnType<typeof createRepository>;
 
   beforeEach(() => {
-    cashJournalEntryRepository = createRepository();
-    service = new CashJournalEntryService(cashJournalEntryRepository as any);
-    jest.clearAllMocks();
+    repository = createRepository();
+    service = new CashJournalEntryService(repository as any);
   });
 
-  it('lists records with paging metadata', async () => {
-    await expect(service.list({ page: 1, limit: 20 })).resolves.toMatchObject({ total: 1, page: 1, limit: 20 });
+  it('lists the unified journal with income, expense, and balance metadata', async () => {
+    await expect(service.list({ page: 1, limit: 20 }, currentUser)).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: '1', expense_amount: 1000 })],
+      meta: {
+        total: 1,
+        page: 1,
+        limit: 20,
+        total_income: 850000,
+        total_expense: 1000,
+        balance: 849000,
+      },
+    });
   });
 
-  it('creates, updates, finds, and removes records', async () => {
-    await expect(service.create({ voucher_type: 'Sample' } as any)).resolves.toMatchObject({ id: '1' });
-    await expect(service.update('1', { voucher_type: 'Updated' } as any)).resolves.toMatchObject({ id: '1' });
-    await expect(service.findOne('1')).resolves.toMatchObject({ id: '1' });
-    await expect(service.remove('1')).resolves.toBeUndefined();
+  it('creates, updates, finds, and removes a fund-linked manual expense', async () => {
+    await expect(service.create({
+      entry_date: '2026-08-20',
+      voucher_type: 'Chi',
+      source: 'Nội bộ',
+      fund_id: 'fund-1',
+      cost_category: 'Chi phí văn phòng',
+      detail: 'Phòng kế toán',
+      content: 'Mua văn phòng phẩm',
+      income_amount: 0,
+      expense_amount: 1000,
+    }, currentUser)).resolves.toMatchObject({ id: '1', fund_id: 'fund-1', expense_amount: '1000' });
+    await expect(service.update('1', { content: 'Đã cập nhật' }, currentUser)).resolves.toMatchObject({ id: '1', content: 'Đã cập nhật' });
+    await expect(service.findOne('1', currentUser)).resolves.toMatchObject({ id: '1' });
+    await expect(service.remove('1', currentUser)).resolves.toBeUndefined();
+    expect(repository.remove).toHaveBeenCalledWith(persistedEntry);
   });
 });

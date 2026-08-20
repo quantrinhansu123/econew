@@ -167,7 +167,7 @@ describe('WaybillsService', () => {
       delete: jest.fn().mockResolvedValue(undefined),
     };
     cashFundsRepository = {
-      findOne: jest.fn(),
+      findOne: jest.fn().mockResolvedValue({ id: 'fund-1', code: 'QUY_HAN', name: 'Quỹ Hà Nội', is_active: true, hub_id: '1' }),
     };
     transactionOrderRepository = {
       update: jest.fn().mockResolvedValue(undefined),
@@ -1786,6 +1786,7 @@ describe('WaybillsService', () => {
       waybill_code: 'ECOHAN109092',
       voucher_type: 'Thu',
       amount: 8_400_000,
+      fund_id: 'fund-1',
     }, manager)).rejects.toThrow(ConflictException);
 
     expect(dataSource.transaction).not.toHaveBeenCalled();
@@ -1809,6 +1810,7 @@ describe('WaybillsService', () => {
       waybill_code: 'ECOHAN109076',
       voucher_type: 'Thu',
       amount: 8_400_000,
+      fund_id: 'fund-1',
       note: 'CK TK cty ECO ngày 11/8',
     }, manager);
 
@@ -1847,6 +1849,7 @@ describe('WaybillsService', () => {
       voucher_type: 'Chi',
       source_type: 'CUSTOMER_PAYOUT',
       amount: 600000,
+      fund_id: 'fund-1',
     }, accountant)).resolves.toEqual(expect.objectContaining({
       source_type: 'CUSTOMER_PAYOUT',
       amount: '600000',
@@ -1857,6 +1860,7 @@ describe('WaybillsService', () => {
       voucher_type: 'Chi',
       source_type: 'CUSTOMER_PAYOUT',
       amount: 600001,
+      fund_id: 'fund-1',
     }, accountant)).rejects.toThrow(BadRequestException);
   });
 
@@ -1881,6 +1885,7 @@ describe('WaybillsService', () => {
         { waybill_id: '76', waybill_code: 'ECOHAN109076', amount: 8_400_000 },
         { waybill_id: '92', waybill_code: 'ECOHAN109092', amount: 11_592_000 },
       ],
+      fund_id: 'fund-1',
       note: 'Thanh toán khách hàng FUHUA',
     }, manager);
 
