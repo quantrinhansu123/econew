@@ -155,6 +155,10 @@ export class StorageService {
     return this.uploadImage(file, 'vendor-payments');
   }
 
+  uploadExpenseReceipt(file: Express.Multer.File): Promise<string> {
+    return this.uploadImage(file, 'expense-receipts');
+  }
+
   uploadWaybillImage(file: Express.Multer.File): Promise<string> {
     return this.uploadImage(file, 'waybills');
   }

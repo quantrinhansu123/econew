@@ -255,6 +255,10 @@ export function uploadPaymentProof(file: File): Promise<string> {
   return uploadImage(file, '/uploads/payment-proofs');
 }
 
+export function uploadExpenseReceipt(file: File): Promise<string> {
+  return uploadImage(file, '/uploads/expense-receipts');
+}
+
 export function uploadWaybillImage(file: File): Promise<string> {
   return uploadImage(file, '/uploads/waybill-images');
 }

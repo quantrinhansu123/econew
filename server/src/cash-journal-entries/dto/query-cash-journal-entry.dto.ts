@@ -29,6 +29,10 @@ export class QueryCashJournalEntryDto {
 
   @IsOptional()
   @IsString()
+  hub_id?: string;
+
+  @IsOptional()
+  @IsString()
   cost_category?: string;
 
   @IsOptional()

@@ -37,6 +37,21 @@ export class UploadsController {
     return this.storageService.uploadPaymentProof(file).then((url) => ({ url }));
   }
 
+  @Post('expense-receipts')
+  @HttpCode(HttpStatus.OK)
+  @RequireRoles(Roles.WAREHOUSE, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Upload ảnh chứng từ hoặc biên lai khoản chi' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  uploadExpenseReceipt(@UploadedFile() file: Express.Multer.File) {
+    return this.storageService.uploadExpenseReceipt(file).then((url) => ({ url }));
+  }
+
   @Post('waybill-images')
   @HttpCode(HttpStatus.OK)
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)

@@ -17,6 +17,7 @@ interface Props {
   canManage: boolean;
   canManageExpenses?: boolean;
   canDeleteExpenses?: boolean;
+  canCreateVendors?: boolean;
   openExpenseFormOnMount?: boolean;
   showHubDeliveryStatus?: boolean;
   onClose: () => void;
@@ -52,7 +53,7 @@ const deliveryCompletion = (waybill: ManifestWaybill) => {
   return { label: 'Chưa giao', date: null, className: 'border-amber-200 bg-amber-50 text-amber-800' };
 };
 
-export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isSubmitting = false, manifest, statusConfig, canManage, canManageExpenses = false, canDeleteExpenses = false, openExpenseFormOnMount = false, showHubDeliveryStatus = false, onClose, onRemoveWaybill, onUpdateDispatchFields, onUpdateExpectedArrival }: Props) {
+export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isSubmitting = false, manifest, statusConfig, canManage, canManageExpenses = false, canDeleteExpenses = false, canCreateVendors = false, openExpenseFormOnMount = false, showHubDeliveryStatus = false, onClose, onRemoveWaybill, onUpdateDispatchFields, onUpdateExpectedArrival }: Props) {
   if (!isOpen) return null;
   const waybills = extractWaybills(manifest);
   const mayRemoveWaybill = canManage && canRemoveWaybillsFromManifest(manifest);
@@ -85,6 +86,7 @@ export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isS
             manifest={manifest}
             canManage={canManageExpenses}
             canDelete={canDeleteExpenses}
+            canCreateVendor={canCreateVendors}
             openFormOnMount={openExpenseFormOnMount}
           />
 

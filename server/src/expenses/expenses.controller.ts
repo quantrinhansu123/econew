@@ -38,6 +38,20 @@ export class ExpensesController {
     return this.expensesService.findByTrip(tripId, currentUser);
   }
 
+  @Get('categories')
+  @RequireRoles(Roles.WAREHOUSE, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'List reusable trip expense categories' })
+  findCategories(@CurrentUser() currentUser: UserEntity) {
+    return this.expensesService.findCategories(currentUser);
+  }
+
+  @Get('cash-funds')
+  @RequireRoles(Roles.WAREHOUSE, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'List active cash funds available for trip expenses' })
+  findCashFunds(@CurrentUser() currentUser: UserEntity) {
+    return this.expensesService.findCashFunds(currentUser);
+  }
+
   @Get(':id')
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.ACCOUNTANT, Roles.DISPATCHER, Roles.DRIVER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Get expense detail' })

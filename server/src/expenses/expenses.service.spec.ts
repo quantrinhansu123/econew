@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { TripStatus } from '../common/enums';
 import { Roles } from '../common/roles';
+import { CashFundEntity } from '../finance/cash-fund.entity';
 import { TripEntity } from '../trips/trip.entity';
 import { VendorsService } from '../vendors/vendors.service';
 import { ExpenseEntity } from './expense.entity';
@@ -14,6 +15,7 @@ const dispatcher = { id: '3', role_mask: Roles.DISPATCHER, hub_id: '10' } as any
 const driver = { id: '4', role_mask: Roles.DRIVER, hub_id: '10' } as any;
 
 class MockQb {
+  select = jest.fn().mockReturnThis();
   where = jest.fn().mockReturnThis();
   andWhere = jest.fn().mockReturnThis();
   leftJoinAndSelect = jest.fn().mockReturnThis();
@@ -23,6 +25,7 @@ class MockQb {
   getOne = jest.fn();
   getMany = jest.fn();
   getManyAndCount = jest.fn();
+  getRawMany = jest.fn();
 }
 
 const repo = () => ({
@@ -37,6 +40,7 @@ describe('ExpensesService', () => {
   let service: ExpensesService;
   let expenses: any;
   let trips: any;
+  let cashFunds: any;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
@@ -44,6 +48,7 @@ describe('ExpensesService', () => {
         ExpensesService,
         { provide: getRepositoryToken(ExpenseEntity), useFactory: repo },
         { provide: getRepositoryToken(TripEntity), useFactory: repo },
+        { provide: getRepositoryToken(CashFundEntity), useFactory: repo },
         { provide: VendorsService, useValue: { findOne: jest.fn(), refreshPayableBalance: jest.fn() } },
       ],
     }).compile();
@@ -51,6 +56,7 @@ describe('ExpensesService', () => {
     service = module.get(ExpensesService);
     expenses = module.get(getRepositoryToken(ExpenseEntity));
     trips = module.get(getRepositoryToken(TripEntity));
+    cashFunds = module.get(getRepositoryToken(CashFundEntity));
   });
 
   describe('create', () => {
@@ -81,6 +87,36 @@ describe('ExpensesService', () => {
 
     it('DRIVER tạo expense → ForbiddenException', async () => {
       await expect(service.create({ trip_id: 1 }, driver)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('cho phép lưu loại chi phí tự nhập', async () => {
+      trips.findOne.mockResolvedValue({ id: '1', status: TripStatus.IN_TRANSIT });
+      await expect(service.create({ trip_id: 1, category: 'Chi nâng hạ container' }, accountant))
+        .resolves.toMatchObject({ category: 'Chi nâng hạ container' });
+    });
+
+    it('lưu sổ quỹ và nhiều ảnh chứng từ cho khoản đã chi', async () => {
+      trips.findOne.mockResolvedValue({ id: '1', status: TripStatus.IN_TRANSIT, start_hub_id: '10' });
+      cashFunds.findOne.mockResolvedValue({ id: '5', code: 'TM-HAN', is_active: true, hub_id: '10' });
+      await expect(service.create({
+        trip_id: 1,
+        fund_id: 5,
+        amount: 65000,
+        receipt_urls: ['https://example.com/toll-1.jpg', 'https://example.com/toll-2.jpg'],
+      }, accountant)).resolves.toMatchObject({
+        fund_id: '5',
+        hub_id: '10',
+        receipt_urls: ['https://example.com/toll-1.jpg', 'https://example.com/toll-2.jpg'],
+      });
+    });
+  });
+
+  describe('findCategories', () => {
+    it('trả về cả loại mặc định và loại đã tự nhập', async () => {
+      const qb = new MockQb();
+      qb.getRawMany.mockResolvedValue([{ category: 'Chi nâng hạ container' }]);
+      expenses.createQueryBuilder.mockReturnValue(qb);
+      await expect(service.findCategories(accountant)).resolves.toEqual(expect.arrayContaining(['FUEL', 'Chi nâng hạ container']));
     });
   });
 

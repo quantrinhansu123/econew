@@ -4,6 +4,8 @@ import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../../../lib/api';
 import { formatAmountInput, formatMoney, parseAmountInput } from '../../../lib/formatMoney';
+import { CreatableSearchableSelect } from '../../../components/ui/CreatableSearchableSelect';
+import { ReceiptImageLinks, ReceiptImagePicker } from '../../../components/finance/ReceiptImagePicker';
 
 type VoucherType = 'Thu' | 'Chi';
 
@@ -13,7 +15,14 @@ interface CashFund {
   name?: string | null;
   balance_amount?: number | string | null;
   is_active?: boolean;
-  hub?: { code?: string | null; name?: string | null } | null;
+  hub_id?: string | number | null;
+  hub?: { id?: string | number | null; code?: string | null; name?: string | null } | null;
+}
+
+interface Hub {
+  id: string | number;
+  code?: string | null;
+  name?: string | null;
 }
 
 interface Vendor {
@@ -42,7 +51,11 @@ interface JournalEntry {
   vendor_id?: string | number | null;
   vendor_code?: string | null;
   vendor_name?: string | null;
+  hub_id?: string | number | null;
+  hub_code?: string | null;
+  hub_name?: string | null;
   created_by_name?: string | null;
+  attachment_urls?: string[] | null;
 }
 
 interface JournalResponse {
@@ -65,6 +78,7 @@ interface Filters {
   voucher_type: '' | VoucherType;
   fund_id: string;
   vendor_id: string;
+  hub_id: string;
   cost_category: string;
   page: number;
   limit: number;
@@ -75,26 +89,28 @@ interface EntryForm {
   entry_date: string;
   fund_id: string;
   vendor_id: string;
+  hub_id: string;
   source: string;
   cost_category: string;
   detail: string;
   content: string;
   note: string;
   amount: string;
+  attachment_urls: string[];
 }
 
 const incomeCategories = ['Thu cước vận đơn', 'Thu COD/CC', 'Thu hoàn ứng', 'Thu khác'];
 const expenseCategories = ['Thanh toán cước chuyến', 'Chi phí vận chuyển', 'Chi phí nhiên liệu', 'Chi phí bốc xếp', 'Chi phí văn phòng', 'Lương và phụ cấp', 'Tạm ứng NCC', 'Hoàn ứng', 'Chi khác'];
 const sourceOptions = ['Khách hàng', 'Nhà cung cấp', 'Nội bộ', 'Khác'];
 const today = () => new Date().toISOString().slice(0, 10);
-const defaultFilters: Filters = { q: '', date_from: '', date_to: '', voucher_type: '', fund_id: '', vendor_id: '', cost_category: '', page: 1, limit: 20 };
-const newForm = (): EntryForm => ({ voucher_type: 'Chi', entry_date: today(), fund_id: '', vendor_id: '', source: 'Nội bộ', cost_category: expenseCategories[0], detail: '', content: '', note: '', amount: '' });
+const defaultFilters: Filters = { q: '', date_from: '', date_to: '', voucher_type: '', fund_id: '', vendor_id: '', hub_id: '', cost_category: '', page: 1, limit: 20 };
+const newForm = (): EntryForm => ({ voucher_type: 'Chi', entry_date: today(), fund_id: '', vendor_id: '', hub_id: '', source: 'Nội bộ', cost_category: expenseCategories[0], detail: '', content: '', note: '', amount: '', attachment_urls: [] });
 const normalizeList = <T,>(response: T[] | { items?: T[]; data?: T[] }) => Array.isArray(response) ? response : response.items || response.data || [];
 const errorMessage = (error: unknown) => error instanceof ApiError ? error.message : error instanceof Error ? error.message : 'Không xử lý được dữ liệu.';
 
 function buildQuery(filters: Filters) {
   const params = new URLSearchParams({ page: String(filters.page), limit: String(filters.limit) });
-  for (const key of ['q', 'date_from', 'date_to', 'voucher_type', 'fund_id', 'vendor_id', 'cost_category'] as const) {
+  for (const key of ['q', 'date_from', 'date_to', 'voucher_type', 'fund_id', 'vendor_id', 'hub_id', 'cost_category'] as const) {
     const value = filters[key];
     if (String(value).trim()) params.set(key, String(value).trim());
   }
@@ -107,6 +123,8 @@ export default function DailyCashJournalPage() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [funds, setFunds] = useState<CashFund[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [hubs, setHubs] = useState<Hub[]>([]);
+  const [savedExpenseCategories, setSavedExpenseCategories] = useState<string[]>([]);
   const [meta, setMeta] = useState<JournalResponse['meta']>({ total: 0, page: 1, limit: 20, total_pages: 1, total_income: 0, total_expense: 0, balance: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -115,14 +133,19 @@ export default function DailyCashJournalPage() {
   const [form, setForm] = useState<EntryForm>(newForm);
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
 
   const loadReferences = useCallback(async () => {
-    const [fundResponse, vendorResponse] = await Promise.all([
+    const [fundResponse, vendorResponse, hubResponse, categoryResponse] = await Promise.all([
       apiRequest<CashFund[] | { items?: CashFund[]; data?: CashFund[] }>('/finance/cash-funds'),
       apiRequest<Vendor[] | { items?: Vendor[]; data?: Vendor[] }>('/vendors?status=ACTIVE&limit=500'),
+      apiRequest<Hub[] | { items?: Hub[]; data?: Hub[] }>('/hubs/active'),
+      apiRequest<string[]>('/expenses/categories'),
     ]);
     setFunds(normalizeList(fundResponse).filter((fund) => fund.is_active !== false));
     setVendors(normalizeList(vendorResponse));
+    setHubs(normalizeList(hubResponse));
+    setSavedExpenseCategories(Array.isArray(categoryResponse) ? categoryResponse : []);
   }, []);
 
   const loadEntries = useCallback(async () => {
@@ -147,14 +170,18 @@ export default function DailyCashJournalPage() {
   }, [loadReferences]);
   useEffect(() => { queueMicrotask(() => void loadEntries()); }, [loadEntries]);
 
-  const categoryOptions = useMemo(() => form.voucher_type === 'Thu' ? incomeCategories : expenseCategories, [form.voucher_type]);
-  const allCategories = useMemo(() => [...new Set([...incomeCategories, ...expenseCategories])], []);
+  const categoryOptions = useMemo(() => form.voucher_type === 'Thu'
+    ? incomeCategories
+    : [...new Set([...expenseCategories, ...savedExpenseCategories, ...entries.filter((entry) => entry.voucher_type === 'Chi').map((entry) => entry.cost_category).filter(Boolean)])],
+  [entries, form.voucher_type, savedExpenseCategories]);
+  const allCategories = useMemo(() => [...new Set([...incomeCategories, ...expenseCategories, ...savedExpenseCategories, ...entries.map((entry) => entry.cost_category).filter(Boolean)])], [entries, savedExpenseCategories]);
   const updateFilters = (patch: Partial<Filters>) => setFilters((current) => ({ ...current, ...patch }));
   const updateForm = (patch: Partial<EntryForm>) => setForm((current) => ({ ...current, ...patch }));
 
   const openCreate = () => {
     setEditingId('');
     setForm(newForm());
+    setUploadingReceipt(false);
     setFormError('');
     setFormOpen(true);
   };
@@ -166,14 +193,17 @@ export default function DailyCashJournalPage() {
       entry_date: entry.entry_date,
       fund_id: String(entry.fund_id || ''),
       vendor_id: String(entry.vendor_id || ''),
+      hub_id: String(entry.hub_id || ''),
       source: entry.source || 'Khác',
       cost_category: entry.cost_category,
       detail: entry.detail,
       content: entry.content,
       note: entry.note || '',
       amount: formatAmountInput(String(entry.voucher_type === 'Thu' ? entry.income_amount : entry.expense_amount)),
+      attachment_urls: Array.isArray(entry.attachment_urls) ? entry.attachment_urls : [],
     });
     setFormError('');
+    setUploadingReceipt(false);
     setFormOpen(true);
   };
 
@@ -187,8 +217,16 @@ export default function DailyCashJournalPage() {
 
   const submit = async () => {
     const amount = parseAmountInput(form.amount);
-    if (!form.fund_id || !form.detail.trim() || !form.content.trim() || amount <= 0) {
-      setFormError(!form.fund_id ? 'Vui lòng chọn sổ quỹ.' : amount <= 0 ? 'Nhập số tiền lớn hơn 0.' : 'Nhập đối tượng và nội dung giao dịch.');
+    if (!form.fund_id || !form.cost_category.trim() || (form.voucher_type === 'Chi' && !form.hub_id) || !form.detail.trim() || !form.content.trim() || amount <= 0) {
+      setFormError(!form.fund_id
+        ? 'Vui lòng chọn sổ quỹ.'
+        : !form.cost_category.trim()
+          ? 'Vui lòng chọn hoặc nhập loại thu/chi.'
+        : form.voucher_type === 'Chi' && !form.hub_id
+          ? 'Vui lòng chọn bưu cục nhận khoản chi.'
+          : amount <= 0
+            ? 'Nhập số tiền lớn hơn 0.'
+            : 'Nhập đối tượng và nội dung giao dịch.');
       return;
     }
     setSubmitting(true);
@@ -202,12 +240,14 @@ export default function DailyCashJournalPage() {
           source: form.source,
           fund_id: form.fund_id,
           vendor_id: form.vendor_id,
+          hub_id: form.hub_id || undefined,
           cost_category: form.cost_category,
           detail: form.detail.trim(),
           content: form.content.trim(),
           note: form.note.trim(),
           income_amount: form.voucher_type === 'Thu' ? amount : 0,
           expense_amount: form.voucher_type === 'Chi' ? amount : 0,
+          attachment_urls: form.attachment_urls,
         },
       });
       setFormOpen(false);
@@ -229,7 +269,7 @@ export default function DailyCashJournalPage() {
     }
   };
 
-  const activeFilterCount = ['q', 'date_from', 'date_to', 'voucher_type', 'fund_id', 'vendor_id', 'cost_category'].filter((key) => Boolean(String(filters[key as keyof Filters]).trim())).length;
+  const activeFilterCount = ['q', 'date_from', 'date_to', 'voucher_type', 'fund_id', 'vendor_id', 'hub_id', 'cost_category'].filter((key) => Boolean(String(filters[key as keyof Filters]).trim())).length;
   const pageCount = Math.max(1, meta.total_pages || Math.ceil(meta.total / filters.limit));
 
   return (
@@ -256,14 +296,15 @@ export default function DailyCashJournalPage() {
         <Select value={filters.voucher_type} onChange={(value) => updateFilters({ voucher_type: value as Filters['voucher_type'], page: 1 })} options={[['', 'Tất cả Thu/Chi'], ['Thu', 'Thu'], ['Chi', 'Chi']]} />
         <Select value={filters.fund_id} onChange={(value) => updateFilters({ fund_id: value, page: 1 })} options={[['', 'Tất cả sổ quỹ'], ...funds.map((fund) => [String(fund.id), [fund.code, fund.name].filter(Boolean).join(' · ')])]} />
         <Select value={filters.vendor_id} onChange={(value) => updateFilters({ vendor_id: value, page: 1 })} options={[['', 'Tất cả NCC'], ...vendors.map((vendor) => [String(vendor.id), [vendor.code, vendor.name].filter(Boolean).join(' · ')])]} />
+        <Select value={filters.hub_id} onChange={(value) => updateFilters({ hub_id: value, page: 1 })} options={[['', 'Tất cả HUB'], ...hubs.map((hub) => [String(hub.id), [hub.code, hub.name].filter(Boolean).join(' · ')])]} />
         <Select value={filters.cost_category} onChange={(value) => updateFilters({ cost_category: value, page: 1 })} options={[['', 'Tất cả loại chi phí'], ...allCategories.map((category) => [category, category])]} />
         {activeFilterCount > 0 && <button type="button" onClick={() => setFilters((current) => ({ ...defaultFilters, limit: current.limit }))} className="h-10 rounded-lg border border-red-200 bg-red-50 px-3 text-[12px] font-bold text-red-600">Xóa {activeFilterCount} lọc</button>}
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-white custom-scrollbar">
         {loading ? <State icon={<Loader2 className="animate-spin" />} title="Đang tải nhật ký" /> : error ? <State icon={<AlertTriangle />} title={error} /> : entries.length === 0 ? <State icon={<Receipt />} title="Chưa có giao dịch phù hợp" /> : <>
-          <table className="hidden min-w-[1380px] w-full border-collapse text-left md:table">
-            <thead className="sticky top-0 z-10 bg-slate-100 text-[10px] uppercase text-slate-600"><tr>{['Ngày', 'Loại', 'Nguồn', 'Đối tượng', 'NCC', 'Phân loại', 'Sổ quỹ', 'Nội dung', 'Thu', 'Chi', 'Người lập', ''].map((header) => <th key={header} className="border-b border-r border-border px-3 py-2.5 font-extrabold last:border-r-0">{header}</th>)}</tr></thead>
+          <table className="hidden min-w-[1600px] w-full border-collapse text-left md:table">
+            <thead className="sticky top-0 z-10 bg-slate-100 text-[10px] uppercase text-slate-600"><tr>{['Ngày', 'Loại', 'Nguồn', 'HUB', 'Đối tượng', 'NCC', 'Phân loại', 'Sổ quỹ', 'Nội dung', 'Chứng từ', 'Thu', 'Chi', 'Người lập', ''].map((header) => <th key={header} className="border-b border-r border-border px-3 py-2.5 font-extrabold last:border-r-0">{header}</th>)}</tr></thead>
             <tbody>{entries.map((entry) => <JournalRow key={entry.id} entry={entry} onEdit={() => openEdit(entry)} onRemove={() => void remove(entry)} />)}</tbody>
           </table>
           <div className="grid gap-2 p-3 md:hidden">{entries.map((entry) => <JournalCard key={entry.id} entry={entry} onEdit={() => openEdit(entry)} onRemove={() => void remove(entry)} />)}</div>
@@ -275,20 +316,20 @@ export default function DailyCashJournalPage() {
         <div className="flex items-center gap-2"><select value={filters.limit} onChange={(event) => updateFilters({ limit: Number(event.target.value), page: 1 })} className="h-8 rounded-lg border border-border px-2">{[20, 50, 100].map((limit) => <option key={limit} value={limit}>{limit}</option>)}</select><button type="button" disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border disabled:opacity-40"><ChevronLeft size={14} /></button><b>{filters.page}/{pageCount}</b><button type="button" disabled={filters.page >= pageCount} onClick={() => updateFilters({ page: filters.page + 1 })} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border disabled:opacity-40"><ChevronRight size={14} /></button></div>
       </div>
 
-      {formOpen && <EntryDialog form={form} editing={Boolean(editingId)} categories={categoryOptions} funds={funds} vendors={vendors} submitting={submitting} error={formError} onChange={updateForm} onTypeChange={changeVoucherType} onClose={() => setFormOpen(false)} onSubmit={() => void submit()} />}
+      {formOpen && <EntryDialog form={form} editing={Boolean(editingId)} categories={categoryOptions} funds={funds} hubs={hubs} vendors={vendors} submitting={submitting} uploadingReceipt={uploadingReceipt} error={formError} onChange={updateForm} onUploadingReceiptChange={setUploadingReceipt} onTypeChange={changeVoucherType} onClose={() => setFormOpen(false)} onSubmit={() => void submit()} />}
     </div>
   );
 }
 
 function JournalRow({ entry, onEdit, onRemove }: { entry: JournalEntry; onEdit: () => void; onRemove: () => void }) {
-  return <tr className="border-b border-border text-[12px] hover:bg-muted/20"><td className="border-r border-border px-3 py-2.5 font-bold">{new Date(entry.entry_date).toLocaleDateString('vi-VN')}</td><td className="border-r border-border px-3 py-2.5"><TypeBadge value={entry.voucher_type} /></td><td className="border-r border-border px-3 py-2.5">{entry.source}</td><td className="border-r border-border px-3 py-2.5 font-bold">{entry.detail}</td><td className="border-r border-border px-3 py-2.5">{[entry.vendor_code, entry.vendor_name].filter(Boolean).join(' · ') || '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.cost_category}</td><td className="border-r border-border px-3 py-2.5 font-bold">{[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || '—'}</td><td className="max-w-[280px] border-r border-border px-3 py-2.5"><p className="truncate" title={entry.content}>{entry.content}</p>{entry.note && <p className="mt-0.5 truncate text-[10px] text-muted-foreground" title={entry.note}>{entry.note}</p>}</td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-emerald-700">{entry.income_amount > 0 ? formatMoney(entry.income_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-red-600">{entry.expense_amount > 0 ? formatMoney(entry.expense_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.created_by_name || '—'}</td><td className="px-2 py-2.5">{entry.editable && <div className="flex gap-1"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary hover:bg-blue-50"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50"><Trash2 size={14} /></button></div>}</td></tr>;
+  return <tr className="border-b border-border text-[12px] hover:bg-muted/20"><td className="border-r border-border px-3 py-2.5 font-bold">{new Date(entry.entry_date).toLocaleDateString('vi-VN')}</td><td className="border-r border-border px-3 py-2.5"><TypeBadge value={entry.voucher_type} /></td><td className="border-r border-border px-3 py-2.5">{entry.source}</td><td className="border-r border-border px-3 py-2.5 font-bold">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || '—'}</td><td className="border-r border-border px-3 py-2.5 font-bold">{entry.detail}</td><td className="border-r border-border px-3 py-2.5">{[entry.vendor_code, entry.vendor_name].filter(Boolean).join(' · ') || '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.cost_category}</td><td className="border-r border-border px-3 py-2.5 font-bold">{[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</td><td className="max-w-[280px] border-r border-border px-3 py-2.5"><p className="truncate" title={entry.content}>{entry.content}</p>{entry.note && <p className="mt-0.5 truncate text-[10px] text-muted-foreground" title={entry.note}>{entry.note}</p>}</td><td className="border-r border-border px-3 py-2.5"><ReceiptImageLinks images={entry.attachment_urls} /></td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-emerald-700">{entry.income_amount > 0 ? formatMoney(entry.income_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-red-600">{entry.expense_amount > 0 ? formatMoney(entry.expense_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.created_by_name || '—'}</td><td className="px-2 py-2.5">{entry.editable && <div className="flex gap-1"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary hover:bg-blue-50"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50"><Trash2 size={14} /></button></div>}</td></tr>;
 }
 
 function JournalCard({ entry, onEdit, onRemove }: { entry: JournalEntry; onEdit: () => void; onRemove: () => void }) {
-  return <article className="rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-2"><div><TypeBadge value={entry.voucher_type} /><p className="mt-2 text-[14px] font-extrabold">{entry.detail}</p><p className="text-[11px] text-muted-foreground">{new Date(entry.entry_date).toLocaleDateString('vi-VN')} · {[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ')}</p></div><p className={clsx('text-[15px] font-black', entry.voucher_type === 'Thu' ? 'text-emerald-700' : 'text-red-600')}>{formatMoney(entry.voucher_type === 'Thu' ? entry.income_amount : entry.expense_amount)}</p></div><p className="mt-2 text-[12px]">{entry.content}</p><p className="mt-1 text-[11px] font-bold text-muted-foreground">{entry.cost_category}{entry.vendor_name ? ` · ${entry.vendor_name}` : ''}</p>{entry.editable && <div className="mt-3 flex justify-end gap-1 border-t border-border pt-2"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600"><Trash2 size={14} /></button></div>}</article>;
+  return <article className="rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-2"><div><TypeBadge value={entry.voucher_type} /><p className="mt-2 text-[14px] font-extrabold">{entry.detail}</p><p className="text-[11px] text-muted-foreground">{new Date(entry.entry_date).toLocaleDateString('vi-VN')} · {[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</p><p className="text-[11px] font-bold text-primary">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || 'Chưa gắn HUB'}</p></div><p className={clsx('text-[15px] font-black', entry.voucher_type === 'Thu' ? 'text-emerald-700' : 'text-red-600')}>{formatMoney(entry.voucher_type === 'Thu' ? entry.income_amount : entry.expense_amount)}</p></div><p className="mt-2 text-[12px]">{entry.content}</p><p className="mt-1 text-[11px] font-bold text-muted-foreground">{entry.cost_category}{entry.vendor_name ? ` · ${entry.vendor_name}` : ''}</p><div className="mt-2"><ReceiptImageLinks images={entry.attachment_urls} /></div>{entry.editable && <div className="mt-3 flex justify-end gap-1 border-t border-border pt-2"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600"><Trash2 size={14} /></button></div>}</article>;
 }
 
-function EntryDialog({ form, editing, categories, funds, vendors, submitting, error, onChange, onTypeChange, onClose, onSubmit }: { form: EntryForm; editing: boolean; categories: string[]; funds: CashFund[]; vendors: Vendor[]; submitting: boolean; error: string; onChange: (patch: Partial<EntryForm>) => void; onTypeChange: (value: VoucherType) => void; onClose: () => void; onSubmit: () => void }) {
+function EntryDialog({ form, editing, categories, funds, hubs, vendors, submitting, uploadingReceipt, error, onChange, onUploadingReceiptChange, onTypeChange, onClose, onSubmit }: { form: EntryForm; editing: boolean; categories: string[]; funds: CashFund[]; hubs: Hub[]; vendors: Vendor[]; submitting: boolean; uploadingReceipt: boolean; error: string; onChange: (patch: Partial<EntryForm>) => void; onUploadingReceiptChange: (uploading: boolean) => void; onTypeChange: (value: VoucherType) => void; onClose: () => void; onSubmit: () => void }) {
   const inputClass = 'h-11 w-full rounded-lg border border-border bg-white px-3 text-[13px] outline-none focus:border-primary';
   return (
     <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-slate-900/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
@@ -309,19 +350,21 @@ function EntryDialog({ form, editing, categories, funds, vendors, submitting, er
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Ngày"><input type="date" value={form.entry_date} onChange={(event) => onChange({ entry_date: event.target.value })} className={inputClass} /></Field>
             <Field label="Số tiền"><input type="text" inputMode="numeric" value={form.amount} onChange={(event) => onChange({ amount: formatAmountInput(event.target.value) })} placeholder="1.000.000" className={`${inputClass} text-right font-extrabold`} /></Field>
-            <Field label="Sổ quỹ *"><select value={form.fund_id} onChange={(event) => onChange({ fund_id: event.target.value })} className={`${inputClass} font-bold`}><option value="">Chọn sổ quỹ</option>{funds.map((fund) => <option key={String(fund.id)} value={String(fund.id)}>{[fund.code, fund.name, fund.hub?.code].filter(Boolean).join(' · ')} · {formatMoney(fund.balance_amount, { empty: '0 đ' })}</option>)}</select></Field>
+            <Field label="Sổ quỹ *"><select value={form.fund_id} onChange={(event) => { const value = event.target.value; const fund = funds.find((item) => String(item.id) === value); const hubId = fund?.hub_id ?? fund?.hub?.id; onChange({ fund_id: value, ...(hubId ? { hub_id: String(hubId) } : {}) }); }} className={`${inputClass} font-bold`}><option value="">Chọn sổ quỹ</option>{funds.map((fund) => <option key={String(fund.id)} value={String(fund.id)}>{[fund.code, fund.name, fund.hub?.code].filter(Boolean).join(' · ')} · {formatMoney(fund.balance_amount, { empty: '0 đ' })}</option>)}</select></Field>
             <Field label="Nguồn"><select value={form.source} onChange={(event) => onChange({ source: event.target.value })} className={`${inputClass} font-bold`}>{sourceOptions.map((source) => <option key={source} value={source}>{source}</option>)}</select></Field>
-            <Field label="Loại thu/chi"><select value={form.cost_category} onChange={(event) => onChange({ cost_category: event.target.value })} className={`${inputClass} font-bold`}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></Field>
+            <Field label={form.voucher_type === 'Chi' ? 'Chi cho bưu cục (HUB) *' : 'Bưu cục ghi nhận'}><select value={form.hub_id} onChange={(event) => onChange({ hub_id: event.target.value })} className={`${inputClass} font-bold`}><option value="">Chọn bưu cục</option>{hubs.map((hub) => <option key={String(hub.id)} value={String(hub.id)}>{[hub.code, hub.name].filter(Boolean).join(' · ')}</option>)}</select></Field>
+            <Field label="Loại thu/chi"><CreatableSearchableSelect value={form.cost_category} onValueChange={(value) => onChange({ cost_category: value })} options={categories.map((category) => ({ value: category, label: category }))} placeholder="Chọn hoặc nhập loại mới" searchPlaceholder="Tìm hoặc gõ loại thu/chi..." createLabel="Thêm loại" disabled={submitting} className="h-11 rounded-lg bg-white px-3 font-bold" /></Field>
             <Field label="Nhà cung cấp (nếu có)"><select value={form.vendor_id} onChange={(event) => onChange({ vendor_id: event.target.value })} className={`${inputClass} font-bold`}><option value="">Không gắn NCC</option>{vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{[vendor.code, vendor.name].filter(Boolean).join(' · ')}</option>)}</select></Field>
             <Field label="Đối tượng / chi tiết"><input value={form.detail} onChange={(event) => onChange({ detail: event.target.value })} placeholder="Người nộp, người nhận, bộ phận..." className={inputClass} /></Field>
             <Field label="Nội dung"><input value={form.content} onChange={(event) => onChange({ content: event.target.value })} placeholder="Nội dung thu hoặc chi..." className={inputClass} /></Field>
           </div>
           <Field label="Ghi chú" className="mt-3"><textarea value={form.note} onChange={(event) => onChange({ note: event.target.value })} rows={3} className="w-full rounded-lg border border-border px-3 py-2 text-[13px] outline-none focus:border-primary" /></Field>
+          <div className="mt-3"><Field label="Chứng từ / biên lai"><ReceiptImagePicker images={form.attachment_urls} onChange={(attachmentUrls) => onChange({ attachment_urls: attachmentUrls })} disabled={submitting} onUploadingChange={onUploadingReceiptChange} /></Field></div>
           {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-bold text-red-700">{error}</p>}
         </div>
         <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
           <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-[13px] font-bold">Hủy</button>
-          <button type="button" disabled={submitting} onClick={onSubmit} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-extrabold text-white disabled:opacity-50">{submitting ? <Loader2 className="animate-spin" size={15} /> : <Receipt size={15} />}{editing ? 'Lưu thay đổi' : `Lưu phiếu ${form.voucher_type.toLowerCase()}`}</button>
+          <button type="button" disabled={submitting || uploadingReceipt} onClick={onSubmit} className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-extrabold text-white disabled:opacity-50">{submitting || uploadingReceipt ? <Loader2 className="animate-spin" size={15} /> : <Receipt size={15} />}{uploadingReceipt ? 'Đang tải chứng từ' : editing ? 'Lưu thay đổi' : `Lưu phiếu ${form.voucher_type.toLowerCase()}`}</button>
         </div>
       </div>
     </div>

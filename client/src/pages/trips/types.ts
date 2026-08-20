@@ -195,6 +195,9 @@ export interface TripExpense {
   hub_id?: string | number | null;
   vendor_id?: string | number | null;
   vendor?: VendorSummary | null;
+  fund_id?: string | number | null;
+  fund?: { id?: string | number | null; code?: string | null; name?: string | null; hub?: HubSummary | null } | null;
+  receipt_urls?: string[] | null;
   created_at?: string | null;
   [key: string]: unknown;
 }

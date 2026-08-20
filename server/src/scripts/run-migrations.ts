@@ -116,6 +116,7 @@ const ensureCodCashFundSchema = async (dataSource: DataSource) => {
 const ensureUniversalCashJournalSchema = async (dataSource: DataSource) => {
   await dataSource.query(`ALTER TABLE "cash_journal_entries" ADD COLUMN IF NOT EXISTS "fund_id" bigint`);
   await dataSource.query(`ALTER TABLE "cash_journal_entries" ADD COLUMN IF NOT EXISTS "vendor_id" bigint`);
+  await dataSource.query(`ALTER TABLE "cash_journal_entries" ADD COLUMN IF NOT EXISTS "hub_id" bigint`);
   await dataSource.query(`ALTER TABLE "cash_journal_entries" ADD COLUMN IF NOT EXISTS "created_by_id" bigint`);
   await dataSource.query(`ALTER TABLE "cash_journal_entries" ADD COLUMN IF NOT EXISTS "created_by_name" varchar(255)`);
   await dataSource.query(`ALTER TABLE "vendor_payments" ADD COLUMN IF NOT EXISTS "fund_id" bigint`);
@@ -128,6 +129,9 @@ const ensureUniversalCashJournalSchema = async (dataSource: DataSource) => {
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_cash_journal_vendor') THEN
         ALTER TABLE "cash_journal_entries" ADD CONSTRAINT "FK_cash_journal_vendor" FOREIGN KEY ("vendor_id") REFERENCES "vendors"("id") ON DELETE SET NULL;
       END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_cash_journal_hub') THEN
+        ALTER TABLE "cash_journal_entries" ADD CONSTRAINT "FK_cash_journal_hub" FOREIGN KEY ("hub_id") REFERENCES "hubs"("id") ON DELETE SET NULL;
+      END IF;
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_cash_journal_creator') THEN
         ALTER TABLE "cash_journal_entries" ADD CONSTRAINT "FK_cash_journal_creator" FOREIGN KEY ("created_by_id") REFERENCES "users"("id") ON DELETE SET NULL;
       END IF;
@@ -138,7 +142,30 @@ const ensureUniversalCashJournalSchema = async (dataSource: DataSource) => {
   `);
   await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_cash_journal_fund_date" ON "cash_journal_entries" ("fund_id", "entry_date" DESC)`);
   await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_cash_journal_vendor" ON "cash_journal_entries" ("vendor_id")`);
+  await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_cash_journal_hub_date" ON "cash_journal_entries" ("hub_id", "entry_date" DESC)`);
   await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_vendor_payments_fund" ON "vendor_payments" ("fund_id")`);
+  await dataSource.query(`
+    UPDATE "cash_journal_entries" journal
+    SET "hub_id" = fund."hub_id"
+    FROM "cash_funds" fund
+    WHERE journal."fund_id" = fund."id"
+      AND journal."hub_id" IS NULL
+      AND fund."hub_id" IS NOT NULL
+  `);
+};
+
+const ensureExpenseReceiptSchema = async (dataSource: DataSource) => {
+  await dataSource.query(`ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "fund_id" bigint`);
+  await dataSource.query(`ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "receipt_urls" jsonb NOT NULL DEFAULT '[]'::jsonb`);
+  await dataSource.query(`ALTER TABLE "cash_journal_entries" ADD COLUMN IF NOT EXISTS "attachment_urls" jsonb NOT NULL DEFAULT '[]'::jsonb`);
+  await dataSource.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_expenses_fund') THEN
+        ALTER TABLE "expenses" ADD CONSTRAINT "FK_expenses_fund" FOREIGN KEY ("fund_id") REFERENCES "cash_funds"("id") ON DELETE SET NULL;
+      END IF;
+    END $$
+  `);
+  await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_expenses_fund_created" ON "expenses" ("fund_id", "created_at" DESC)`);
 };
 
 const baselineLegacyDatabase = async (dataSource: DataSource): Promise<boolean> => {
@@ -209,6 +236,7 @@ async function main() {
     await ensureVendorPaymentProfileSchema(dataSource);
     await ensureCodCashFundSchema(dataSource);
     await ensureUniversalCashJournalSchema(dataSource);
+    await ensureExpenseReceiptSchema(dataSource);
     await ensureInternalFleetAndPayrollSchema(dataSource);
     if (wasBaselined) return;
     const executed = await dataSource.runMigrations({ transaction: 'each' });

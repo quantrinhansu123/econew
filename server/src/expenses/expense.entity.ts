@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { CashFundEntity } from '../finance/cash-fund.entity';
 import { HubEntity } from '../hubs/hub.entity';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
@@ -28,6 +29,12 @@ export class ExpenseEntity {
   hub_id: string | null;
 
   @Column({ type: 'bigint', nullable: true })
+  fund_id: string | null;
+
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  receipt_urls: string[];
+
+  @Column({ type: 'bigint', nullable: true })
   created_by: string | null;
 
   @CreateDateColumn({ type: 'timestamp' })
@@ -40,6 +47,10 @@ export class ExpenseEntity {
   @ManyToOne(() => HubEntity, { nullable: true })
   @JoinColumn({ name: 'hub_id' })
   hub: HubEntity | null;
+
+  @ManyToOne(() => CashFundEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'fund_id' })
+  fund: CashFundEntity | null;
 
   @ManyToOne(() => UserEntity, { nullable: true })
   @JoinColumn({ name: 'created_by' })

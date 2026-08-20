@@ -1,5 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { CashFundEntity } from '../finance/cash-fund.entity';
+import { HubEntity } from '../hubs/hub.entity';
 import { UserEntity } from '../users/user.entity';
 import { VendorEntity } from '../vendors/vendor.entity';
 
@@ -23,6 +24,9 @@ export class CashJournalEntryEntity {
   @Column({ type: 'bigint', nullable: true })
   vendor_id: string | null;
 
+  @Column({ type: 'bigint', nullable: true })
+  hub_id: string | null;
+
   @Column({ type: 'varchar' })
   cost_category: string;
 
@@ -41,6 +45,9 @@ export class CashJournalEntryEntity {
   @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
   expense_amount: string;
 
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  attachment_urls: string[];
+
   @Column({ type: 'bigint', nullable: true })
   created_by_id: string | null;
 
@@ -54,6 +61,10 @@ export class CashJournalEntryEntity {
   @ManyToOne(() => VendorEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'vendor_id' })
   vendor: VendorEntity | null;
+
+  @ManyToOne(() => HubEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'hub_id' })
+  hub: HubEntity | null;
 
   @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'created_by_id' })

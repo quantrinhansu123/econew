@@ -42,6 +42,7 @@ const createRepository = () => ({
   save: jest.fn(async (value) => ({ id: value.id ?? '1', remitted_at: value.remitted_at ?? null, ...value })),
   findOne: jest.fn(),
   createQueryBuilder: jest.fn(),
+  query: jest.fn(),
 });
 
 const accountant = { id: '10', role_mask: Roles.ACCOUNTANT, hub_id: '1' } as UserEntity;
@@ -102,6 +103,15 @@ describe('FinanceService', () => {
     }).compile();
 
     service = moduleRef.get(FinanceService);
+  });
+
+  it('trừ khoản chi chuyến đã gắn sổ quỹ khỏi số dư quỹ', async () => {
+    cashFundsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ many: [{ id: '3', code: 'TM-HAN', is_active: true }] }));
+    cashFundsRepository.query.mockResolvedValue([{ fund_id: '3', balance: '935000', collection_count: '2' }]);
+    await expect(service.findCashFunds({}, manager)).resolves.toEqual([
+      expect.objectContaining({ id: '3', balance_amount: 935000 }),
+    ]);
+    expect(cashFundsRepository.query.mock.calls[0][0]).toContain('FROM expenses expense');
   });
 
   it('createReconciliation succeeds', async () => {

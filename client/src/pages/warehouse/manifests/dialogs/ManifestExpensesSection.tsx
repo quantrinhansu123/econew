@@ -1,6 +1,7 @@
 import { Banknote, Check, Edit3, Loader2, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ApiError, apiRequest } from '../../../../lib/api';
+import { CreatableSearchableSelect } from '../../../../components/ui/CreatableSearchableSelect';
 import {
   formatAmountInput,
   formatAmountInputFromNumber,
@@ -9,6 +10,10 @@ import {
 } from '../../../../lib/formatMoney';
 import { manifestTrip } from '../manifestHubUtils';
 import type { LoadPlanningManifest } from '../types';
+import { vendorFormFields } from '../../../admin/vendors/data';
+import AddEditVendorDialog from '../../../admin/vendors/dialogs/AddEditVendorDialog';
+import type { VendorFormState } from '../../../admin/vendors/types';
+import { ReceiptImageLinks, ReceiptImagePicker } from '../../../../components/finance/ReceiptImagePicker';
 
 interface ManifestExpense {
   id: string | number;
@@ -18,6 +23,9 @@ interface ManifestExpense {
   category?: string | null;
   amount?: string | number | null;
   description?: string | null;
+  fund_id?: string | number | null;
+  fund?: CashFundSummary | null;
+  receipt_urls?: string[] | null;
   created_at?: string | null;
 }
 
@@ -25,6 +33,14 @@ interface VendorSummary {
   id: string | number;
   code?: string | null;
   name?: string | null;
+}
+
+interface CashFundSummary {
+  id: string | number;
+  code?: string | null;
+  name?: string | null;
+  hub_id?: string | number | null;
+  hub?: { code?: string | null; name?: string | null } | null;
 }
 
 interface ListResponse<T> {
@@ -37,6 +53,8 @@ interface ExpenseFormState {
   category: string;
   amount: string;
   description: string;
+  fund_id: string;
+  receipt_urls: string[];
 }
 
 const EXPENSE_CATEGORIES = [
@@ -66,7 +84,23 @@ const CLOSED_MANIFEST_STATUSES = new Set([
   'COMPLETED',
 ]);
 
-const emptyForm = (): ExpenseFormState => ({ vendor_id: '', category: 'OTHER', amount: '', description: '' });
+const emptyForm = (): ExpenseFormState => ({ vendor_id: '', category: 'OTHER', amount: '', description: '', fund_id: '', receipt_urls: [] });
+const emptyVendorForm = (): VendorFormState => ({
+  code: '',
+  name: '',
+  service_type: '',
+  contact_name: '',
+  phone: '',
+  email: '',
+  opening_debt: '',
+  bank_name: '',
+  bank_account: '',
+  bank_account_holder: '',
+  qr_image_url: '',
+  province: '',
+  contract_type: '',
+  status: 'ACTIVE',
+});
 const normalizeList = <T,>(response: ListResponse<T> | T[]) => Array.isArray(response) ? response : response.items || response.data || [];
 
 const formatDateTime = (value?: string | null) => {
@@ -87,11 +121,13 @@ export default function ManifestExpensesSection({
   manifest,
   canManage,
   canDelete,
+  canCreateVendor = false,
   openFormOnMount = false,
 }: {
   manifest: LoadPlanningManifest;
   canManage: boolean;
   canDelete: boolean;
+  canCreateVendor?: boolean;
   openFormOnMount?: boolean;
 }) {
   const trip = manifestTrip(manifest);
@@ -101,12 +137,19 @@ export default function ManifestExpensesSection({
   const isClosed = CLOSED_MANIFEST_STATUSES.has(manifestStatus);
   const [expenses, setExpenses] = useState<ManifestExpense[]>([]);
   const [vendors, setVendors] = useState<VendorSummary[]>([]);
+  const [funds, setFunds] = useState<CashFundSummary[]>([]);
+  const [categoryValues, setCategoryValues] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(Boolean(tripId));
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
   const [error, setError] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(openFormOnMount && canManage && isClosed && Boolean(tripId));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ExpenseFormState>(emptyForm);
+  const [isVendorFormOpen, setIsVendorFormOpen] = useState(false);
+  const [isVendorSaving, setIsVendorSaving] = useState(false);
+  const [vendorError, setVendorError] = useState('');
+  const [vendorForm, setVendorForm] = useState<VendorFormState>(emptyVendorForm);
 
   useEffect(() => {
     if (!tripId) return undefined;
@@ -114,11 +157,15 @@ export default function ManifestExpensesSection({
     void Promise.all([
       apiRequest<ManifestExpense[]>(`/trips/${tripId}/expenses`),
       apiRequest<ListResponse<VendorSummary> | VendorSummary[]>('/vendors/active?limit=100'),
+      canManage ? apiRequest<string[]>('/expenses/categories') : Promise.resolve([]),
+      canManage ? apiRequest<CashFundSummary[]>('/expenses/cash-funds') : Promise.resolve([]),
     ])
-      .then(([expenseResponse, vendorResponse]) => {
+      .then(([expenseResponse, vendorResponse, categoryResponse, fundResponse]) => {
         if (!cancelled) {
           setExpenses(Array.isArray(expenseResponse) ? expenseResponse : []);
           setVendors(normalizeList(vendorResponse));
+          setCategoryValues(Array.isArray(categoryResponse) ? categoryResponse : []);
+          setFunds(Array.isArray(fundResponse) ? fundResponse : []);
         }
       })
       .catch((requestError) => {
@@ -128,7 +175,16 @@ export default function ManifestExpensesSection({
         if (!cancelled) setIsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [tripId]);
+  }, [canManage, tripId]);
+
+  const categoryOptions = useMemo(() => {
+    const values = [...new Set([
+      ...EXPENSE_CATEGORIES.map((category) => category.value),
+      ...categoryValues,
+      ...expenses.map((expense) => expense.category || '').filter(Boolean),
+    ])];
+    return values.map((value) => ({ value, label: CATEGORY_LABELS[value] || value }));
+  }, [categoryValues, expenses]);
 
   const expenseTotal = useMemo(
     () => expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0),
@@ -152,6 +208,35 @@ export default function ManifestExpensesSection({
     setExpenses(Array.isArray(response) ? response : []);
   };
 
+  const openVendorCreate = () => {
+    setVendorForm(emptyVendorForm());
+    setVendorError('');
+    setIsVendorFormOpen(true);
+  };
+
+  const submitVendor = async () => {
+    if (!vendorForm.code.trim() || !vendorForm.name.trim()) {
+      setVendorError('Nhập mã NCC và tên NCC.');
+      return;
+    }
+    setIsVendorSaving(true);
+    setVendorError('');
+    try {
+      const payload: Record<string, string | number> = { opening_debt: parseAmountInput(vendorForm.opening_debt) };
+      Object.entries(vendorForm).forEach(([key, value]) => {
+        if (key !== 'opening_debt' && value.trim()) payload[key] = value.trim();
+      });
+      const created = await apiRequest<VendorSummary>('/vendors', { method: 'POST', body: payload });
+      setVendors((current) => [...current.filter((vendor) => String(vendor.id) !== String(created.id)), created]);
+      setForm((current) => ({ ...current, vendor_id: String(created.id) }));
+      setIsVendorFormOpen(false);
+    } catch (requestError) {
+      setVendorError(requestError instanceof ApiError ? requestError.message : 'Không tạo được NCC.');
+    } finally {
+      setIsVendorSaving(false);
+    }
+  };
+
   const closeForm = () => {
     setIsFormOpen(false);
     setEditingId(null);
@@ -173,6 +258,8 @@ export default function ManifestExpensesSection({
       category: expense.category || 'OTHER',
       amount: formatAmountInputFromNumber(expense.amount),
       description: expense.description || '',
+      fund_id: String(expense.fund_id || expense.fund?.id || ''),
+      receipt_urls: Array.isArray(expense.receipt_urls) ? expense.receipt_urls : [],
     });
     setError('');
     setIsFormOpen(true);
@@ -188,15 +275,22 @@ export default function ManifestExpensesSection({
       setError('Số tiền chi phí phải lớn hơn 0.');
       return;
     }
+    if (!form.category.trim()) {
+      setError('Vui lòng chọn hoặc nhập loại chi phí.');
+      return;
+    }
 
     setIsSaving(true);
     setError('');
     try {
       const body = {
-        ...(form.vendor_id ? { vendor_id: Number(form.vendor_id) } : {}),
-        category: form.category,
+        ...(editingId
+          ? { vendor_id: form.vendor_id ? Number(form.vendor_id) : null, fund_id: form.fund_id ? Number(form.fund_id) : null }
+          : { ...(form.vendor_id ? { vendor_id: Number(form.vendor_id) } : {}), ...(form.fund_id ? { fund_id: Number(form.fund_id) } : {}) }),
+        category: form.category.trim(),
         amount,
         description: form.description.trim() || undefined,
+        receipt_urls: form.receipt_urls,
       };
       if (editingId) {
         await apiRequest(`/expenses/${editingId}`, { method: 'PATCH', body });
@@ -272,28 +366,55 @@ export default function ManifestExpensesSection({
 
       {isFormOpen && (
         <div className="border-b border-emerald-100 bg-emerald-50/40 p-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[220px_190px_180px_1fr_auto] xl:items-end">
-            <label className="text-[12px] font-bold text-slate-600">
-              Nhà cung cấp (NCC)
-              <select
-                value={form.vendor_id}
-                onChange={(event) => setForm((previous) => ({ ...previous, vendor_id: event.target.value }))}
-                disabled={isSaving}
-                className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-800 outline-none focus:border-emerald-500"
-              >
-                <option value="">Không gắn NCC</option>
-                {vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{vendor.code ? `${vendor.code} · ` : ''}{vendor.name || `NCC #${vendor.id}`}</option>)}
-              </select>
-            </label>
-            <label className="text-[12px] font-bold text-slate-600">
-              Loại chi phí
-              <select
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[220px_190px_220px_180px_1fr_auto] xl:items-end">
+            <div className="text-[12px] font-bold text-slate-600">
+              <span>Nhà cung cấp (NCC)</span>
+              <span className="mt-1 flex gap-2">
+                <select
+                  value={form.vendor_id}
+                  onChange={(event) => setForm((previous) => ({ ...previous, vendor_id: event.target.value }))}
+                  disabled={isSaving}
+                  className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-800 outline-none focus:border-emerald-500"
+                >
+                  <option value="">Không gắn NCC</option>
+                  {vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{vendor.code ? `${vendor.code} · ` : ''}{vendor.name || `NCC #${vendor.id}`}</option>)}
+                </select>
+                {canCreateVendor && (
+                  <button
+                    type="button"
+                    title="Thêm NCC mới"
+                    onClick={openVendorCreate}
+                    disabled={isSaving}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+                  >
+                    <Plus size={16} />
+                  </button>
+                )}
+              </span>
+            </div>
+            <div className="text-[12px] font-bold text-slate-600">
+              <span>Loại chi phí</span>
+              <CreatableSearchableSelect
                 value={form.category}
-                onChange={(event) => setForm((previous) => ({ ...previous, category: event.target.value }))}
+                options={categoryOptions}
+                onValueChange={(value) => setForm((previous) => ({ ...previous, category: value }))}
+                placeholder="Chọn hoặc nhập loại mới"
+                searchPlaceholder="Tìm hoặc gõ loại chi phí..."
+                createLabel="Thêm loại chi phí"
+                disabled={isSaving || isUploadingReceipt}
+                className="mt-1 border-slate-200 bg-white font-bold text-slate-800 focus:border-emerald-500"
+              />
+            </div>
+            <label className="text-[12px] font-bold text-slate-600">
+              Sổ quỹ (nếu đã chi)
+              <select
+                value={form.fund_id}
+                onChange={(event) => setForm((previous) => ({ ...previous, fund_id: event.target.value }))}
                 disabled={isSaving}
                 className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-800 outline-none focus:border-emerald-500"
               >
-                {EXPENSE_CATEGORIES.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
+                <option value="">Chưa chi quỹ / ghi công nợ</option>
+                {funds.map((fund) => <option key={String(fund.id)} value={String(fund.id)}>{[fund.code, fund.name, fund.hub?.code].filter(Boolean).join(' · ')}</option>)}
               </select>
             </label>
             <label className="text-[12px] font-bold text-slate-600">
@@ -302,7 +423,7 @@ export default function ManifestExpensesSection({
                 inputMode="numeric"
                 value={form.amount}
                 onChange={(event) => setForm((previous) => ({ ...previous, amount: formatAmountInput(event.target.value) }))}
-                disabled={isSaving}
+                disabled={isSaving || isUploadingReceipt}
                 placeholder="VD: 500.000"
                 className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-right text-[13px] font-black text-slate-900 outline-none focus:border-emerald-500"
               />
@@ -312,7 +433,7 @@ export default function ManifestExpensesSection({
               <input
                 value={form.description}
                 onChange={(event) => setForm((previous) => ({ ...previous, description: event.target.value }))}
-                disabled={isSaving}
+                disabled={isSaving || isUploadingReceipt}
                 maxLength={500}
                 placeholder="VD: Phí cầu đường chuyến HAN → HCM"
                 className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-800 outline-none focus:border-emerald-500"
@@ -322,7 +443,7 @@ export default function ManifestExpensesSection({
               <button
                 type="button"
                 onClick={() => void submitExpense()}
-                disabled={isSaving}
+                disabled={isSaving || isUploadingReceipt}
                 className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-[12px] font-black text-white hover:bg-emerald-700 disabled:opacity-60"
               >
                 {isSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}{editingId ? 'Cập nhật' : 'Lưu'}
@@ -337,6 +458,15 @@ export default function ManifestExpensesSection({
               </button>
             </div>
           </div>
+          <div className="mt-3 border-t border-emerald-100 pt-3">
+            <p className="mb-2 text-[12px] font-bold text-slate-600">Chứng từ / biên lai đính kèm</p>
+            <ReceiptImagePicker
+              images={form.receipt_urls}
+              onChange={(receiptUrls) => setForm((previous) => ({ ...previous, receipt_urls: receiptUrls }))}
+              disabled={isSaving}
+              onUploadingChange={setIsUploadingReceipt}
+            />
+          </div>
         </div>
       )}
 
@@ -349,16 +479,18 @@ export default function ManifestExpensesSection({
           ) : expenses.length === 0 ? (
             <div className="flex min-h-24 items-center justify-center px-4 text-center text-[12px] font-semibold text-slate-500">Chưa nhập khoản chi phí nào cho bảng kê này.</div>
           ) : (
-            <table className="w-full min-w-[720px] text-left text-[12px]">
+            <table className="w-full min-w-[980px] text-left text-[12px]">
               <thead className="bg-slate-50 text-[11px] font-black uppercase tracking-wide text-slate-500">
-                <tr><th className="px-4 py-3">NCC</th><th className="px-4 py-3">Loại chi</th><th className="px-4 py-3">Nội dung</th><th className="px-4 py-3">Ngày nhập</th><th className="px-4 py-3 text-right">Số tiền</th><th className="w-24 px-4 py-3 text-center">Thao tác</th></tr>
+                <tr><th className="px-4 py-3">NCC</th><th className="px-4 py-3">Loại chi</th><th className="px-4 py-3">Sổ quỹ</th><th className="px-4 py-3">Nội dung</th><th className="px-4 py-3">Chứng từ</th><th className="px-4 py-3">Ngày nhập</th><th className="px-4 py-3 text-right">Số tiền</th><th className="w-24 px-4 py-3 text-center">Thao tác</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {expenses.map((expense) => (
                   <tr key={expense.id} className="hover:bg-slate-50/70">
                     <td className="px-4 py-3 font-black text-primary">{expense.vendor?.code || expense.vendor?.name || '—'}</td>
                     <td className="px-4 py-3 font-black text-slate-800">{CATEGORY_LABELS[String(expense.category || '')] || expense.category || 'Khác'}</td>
+                    <td className="px-4 py-3 font-bold text-slate-700">{[expense.fund?.code, expense.fund?.name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</td>
                     <td className="max-w-[360px] px-4 py-3 font-semibold text-slate-600">{expense.description || '—'}</td>
+                    <td className="px-4 py-3"><ReceiptImageLinks images={expense.receipt_urls} /></td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-500">{formatDateTime(expense.created_at)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-right font-black text-emerald-700">{formatMoney(expense.amount)}</td>
                     <td className="px-4 py-3">
@@ -378,6 +510,18 @@ export default function ManifestExpensesSection({
           )}
         </div>
       )}
+      <AddEditVendorDialog
+        isOpen={isVendorFormOpen}
+        isClosing={false}
+        isEditMode={false}
+        isSubmitting={isVendorSaving}
+        fields={[...vendorFormFields]}
+        formState={vendorForm}
+        error={vendorError}
+        onClose={() => { if (!isVendorSaving) setIsVendorFormOpen(false); }}
+        onSubmit={() => void submitVendor()}
+        onChange={(key, value) => setVendorForm((current) => ({ ...current, [key]: value }))}
+      />
     </section>
   );
 }

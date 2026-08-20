@@ -1,9 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
-import { ExpenseCategory } from './expense.enums';
-
-const CATEGORIES = Object.values(ExpenseCategory);
+import { ArrayMaxSize, IsArray, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class UpdateExpenseDto {
   @ApiPropertyOptional()
@@ -12,10 +9,10 @@ export class UpdateExpenseDto {
   @IsInt()
   trip_id?: number;
 
-  @ApiPropertyOptional({ enum: CATEGORIES })
+  @ApiPropertyOptional({ description: 'Mã hoặc tên loại chi phí; cho phép nhập loại mới' })
   @IsOptional()
   @IsString()
-  @IsIn(CATEGORIES)
+  @MaxLength(100)
   category?: string;
 
   @ApiPropertyOptional()
@@ -41,5 +38,19 @@ export class UpdateExpenseDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  vendor_id?: number;
+  vendor_id?: number | null;
+
+  @ApiPropertyOptional({ description: 'Sổ quỹ đã chi tiền; để trống nếu mới ghi nhận công nợ' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  fund_id?: number | null;
+
+  @ApiPropertyOptional({ type: [String], description: 'Tối đa 6 ảnh chứng từ hoặc biên lai' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @IsString({ each: true })
+  @MaxLength(1000, { each: true })
+  receipt_urls?: string[];
 }

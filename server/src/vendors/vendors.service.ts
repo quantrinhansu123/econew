@@ -610,7 +610,7 @@ export class VendorsService {
       const trips = await this.queryVendorTrips(vendorId);
       const tripIncurred = trips.reduce((sum, t) => sum + this.tripCost(t), 0);
       const [vendorExpenses, lastMileCosts] = await Promise.all([
-        this.expensesRepository.find({ where: { vendor_id: vendorId } }),
+        this.expensesRepository.find({ where: { vendor_id: vendorId, fund_id: IsNull() } }),
         this.waybillsRepository.find({ where: { last_mile_vendor_id: vendorId } as any }),
       ]);
       const expenseIncurred = vendorExpenses.reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
@@ -674,7 +674,7 @@ export class VendorsService {
 
     const [vendorExpenses, lastMileCosts] = await Promise.all([
       this.expensesRepository.find({
-        where: { vendor_id: vendorId },
+        where: { vendor_id: vendorId, fund_id: IsNull() },
         relations: ['trip'],
         order: { created_at: 'ASC' },
       }),

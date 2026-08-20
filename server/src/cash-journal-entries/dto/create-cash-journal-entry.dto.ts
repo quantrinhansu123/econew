@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsDateString, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsDateString, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateCashJournalEntryDto {
   @IsDateString()
@@ -23,6 +23,11 @@ export class CreateCashJournalEntryDto {
   @Transform(({ value }) => value == null ? undefined : String(value))
   @IsString()
   vendor_id?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value == null ? undefined : String(value))
+  @IsString()
+  hub_id?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -50,5 +55,12 @@ export class CreateCashJournalEntryDto {
   @IsNumber()
   @Min(0)
   expense_amount: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @IsString({ each: true })
+  @MaxLength(1000, { each: true })
+  attachment_urls?: string[];
 
 }

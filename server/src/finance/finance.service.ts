@@ -87,6 +87,12 @@ export class FinanceService {
         SELECT journal.fund_id, journal.income_amount - journal.expense_amount AS amount
         FROM cash_journal_entries journal
         WHERE journal.fund_id = ANY($1::bigint[])
+
+        UNION ALL
+
+        SELECT expense.fund_id, -expense.amount AS amount
+        FROM expenses expense
+        WHERE expense.fund_id = ANY($1::bigint[])
       ) movement
       GROUP BY movement.fund_id
     `, [funds.map((fund) => String(fund.id))]) as Array<{ fund_id: string; balance: string; collection_count: string }>;
