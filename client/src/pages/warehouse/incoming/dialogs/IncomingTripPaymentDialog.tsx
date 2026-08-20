@@ -7,6 +7,7 @@ import {
   parseAmountInput,
 } from '../../../../lib/formatMoney';
 import type { IncomingTrip } from '../types';
+import { defaultExpenseCategoryNames, loadExpenseCategoryNames } from '../../../../lib/expenseCategories';
 import {
   formatCollectAmount,
   getManifestCode,
@@ -43,7 +44,8 @@ export function IncomingTripPaymentDialog({
   const [paidAmount, setPaidAmount] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [fundId, setFundId] = useState('');
-  const [costCategory, setCostCategory] = useState('Thanh toán cước chuyến');
+  const [costCategories, setCostCategories] = useState<string[]>(defaultExpenseCategoryNames);
+  const [costCategory, setCostCategory] = useState(defaultExpenseCategoryNames[0]);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState('');
   const [localError, setLocalError] = useState('');
@@ -54,11 +56,15 @@ export function IncomingTripPaymentDialog({
     setPaidAmount(formatAmountInputFromNumber(trip.vendor_paid_amount));
     setPaymentNote(getPaymentNote(trip));
     setFundId('');
-    setCostCategory('Thanh toán cước chuyến');
+    setCostCategory((current) => costCategories.includes(current) ? current : costCategories[0] || '');
     setProofFile(null);
     setProofPreview(trip.vendor_payment_proof_url?.trim() || '');
     setLocalError('');
-  }, [trip]);
+  }, [costCategories, trip]);
+
+  useEffect(() => {
+    void loadExpenseCategoryNames().then(setCostCategories).catch(() => undefined);
+  }, []);
 
   if (!trip) return null;
 
@@ -183,7 +189,7 @@ export function IncomingTripPaymentDialog({
             <label className="block space-y-1">
               <span className="text-[11px] font-extrabold uppercase text-muted-foreground">Loại chi phí</span>
               <select value={costCategory} onChange={(event) => setCostCategory(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold outline-none focus:border-primary">
-                {['Thanh toán cước chuyến', 'Chi phí vận chuyển', 'Tạm ứng NCC', 'Hoàn ứng', 'Chi khác'].map((category) => <option key={category} value={category}>{category}</option>)}
+                {costCategories.map((category) => <option key={category} value={category}>{category}</option>)}
               </select>
             </label>
           )}

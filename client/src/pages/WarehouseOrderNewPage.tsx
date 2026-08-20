@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, FileSpreadsheet, Loader2, ShieldAlert, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, FileSpreadsheet, Loader2, ShieldAlert, Trash2, X } from 'lucide-react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { getLoginDisplayName, getStoredAuthUser } from '../lib/authUser';
@@ -78,11 +78,22 @@ const hasCreateRole = (roleMask: number) => (roleMask & CREATE_ROLES) !== 0;
 const getHubCode = (hubs: HubSummary[], hubId: string) =>
   hubs.find((hub) => String(hub.id) === String(hubId))?.code?.trim().toUpperCase() || 'HUB';
 
-export default function WarehouseOrderNewPage() {
+interface WarehouseOrderNewPageProps {
+  embeddedWaybillId?: string;
+  onEmbeddedClose?: () => void;
+  onEmbeddedSaved?: (waybillId: string) => void | Promise<void>;
+}
+
+export default function WarehouseOrderNewPage({
+  embeddedWaybillId = '',
+  onEmbeddedClose,
+  onEmbeddedSaved,
+}: WarehouseOrderNewPageProps = {}) {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const editWaybillId = searchParams.get('edit')?.trim() || '';
+  const embedded = Boolean(embeddedWaybillId.trim());
+  const editWaybillId = embeddedWaybillId.trim() || searchParams.get('edit')?.trim() || '';
   const loadedEditIdRef = useRef('');
   const skipNewFormInitRef = useRef(Boolean(editWaybillId));
   const billRequestIdRef = useRef(0);
@@ -183,7 +194,8 @@ export default function WarehouseOrderNewPage() {
         setHubs(activeHubs);
 
         const pendingEditId =
-          searchParams.get('edit')?.trim()
+          embeddedWaybillId.trim()
+          || searchParams.get('edit')?.trim()
           || (location.state as { waybillId?: string } | null)?.waybillId?.trim()
           || '';
         if (pendingEditId || skipNewFormInitRef.current) {
@@ -214,7 +226,7 @@ export default function WarehouseOrderNewPage() {
       }
     };
     void load();
-  }, [loadBills, loadNextWaybillCode, location.state, loginName, searchParams, user?.hub_id]);
+  }, [embeddedWaybillId, loadBills, loadNextWaybillCode, location.state, loginName, searchParams, user?.hub_id]);
 
   useEffect(() => {
     const refreshHubsAfterCatalogEdit = () => {
@@ -241,11 +253,11 @@ export default function WarehouseOrderNewPage() {
           const detail = await apiRequest<WaybillDetail>(`/waybills/${waybillId}`);
           setSelectedBillId(String(waybillId));
           setForm(waybillToOrderForm(detail, hubs));
-          if (editWaybillId) {
+          if (!embedded && editWaybillId) {
             const nextParams = new URLSearchParams(searchParams);
             nextParams.delete('edit');
             setSearchParams(nextParams, { replace: true });
-          } else {
+          } else if (!embedded) {
             navigate(location.pathname, { replace: true, state: null });
           }
         } catch {
@@ -297,7 +309,7 @@ export default function WarehouseOrderNewPage() {
         }),
       );
     })();
-  }, [editWaybillId, location.state, isLoading, hubs, navigate, location.pathname, searchParams, setSearchParams]);
+  }, [editWaybillId, embedded, location.state, isLoading, hubs, navigate, location.pathname, searchParams, setSearchParams]);
 
   const setField = <K extends keyof NewOrderFormState>(key: K, value: NewOrderFormState[K]) => {
     if (key === 'maKh') {
@@ -432,7 +444,8 @@ export default function WarehouseOrderNewPage() {
       const body = buildCreatePayload(form, volumetricWeight);
       if (selectedBillId) {
         await apiRequest(`/waybills/${selectedBillId}`, { method: 'PATCH', body });
-        await loadBills(billFilterDate, billListLimitRef.current);
+        if (embedded) await onEmbeddedSaved?.(selectedBillId);
+        else await loadBills(billFilterDate, billListLimitRef.current);
         setActionError('');
       } else {
         const response = await apiRequest<CreatedWaybill>('/waybills', { method: 'POST', body });
@@ -578,16 +591,17 @@ export default function WarehouseOrderNewPage() {
       <div className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 shadow-sm">
         <button
           type="button"
-          onClick={() => navigate('/orders')}
+          onClick={() => embedded ? onEmbeddedClose?.() : navigate('/orders')}
+          title={embedded ? 'Đóng cửa sổ sửa' : 'Quay lại danh sách đơn'}
           className="flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-muted"
         >
-          <ArrowLeft size={15} />
+          {embedded ? <X size={16} /> : <ArrowLeft size={15} />}
         </button>
         <div className="min-w-0 flex-1">
-          <h1 className="text-[15px] font-extrabold text-foreground">Nhập đơn mới</h1>
-          <p className="text-[12px] font-medium text-muted-foreground">Thông tin đơn hàng</p>
+          <h1 className="text-[15px] font-extrabold text-foreground">{embedded ? 'Sửa vận đơn' : 'Nhập đơn mới'}</h1>
+          <p className="text-[12px] font-medium text-muted-foreground">{embedded ? form.soBill || `#${editWaybillId}` : 'Thông tin đơn hàng'}</p>
         </div>
-        {checkedBillIds.length > 0 && (
+        {!embedded && checkedBillIds.length > 0 && (
           <button
             type="button"
             onClick={() => void handleDeleteCheckedBills()}
@@ -599,14 +613,16 @@ export default function WarehouseOrderNewPage() {
             <span>Xóa ({checkedBillIds.length})</span>
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => setIsBulkImportOpen(true)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-[12px] font-extrabold text-emerald-800 hover:bg-emerald-100"
-        >
-          <FileSpreadsheet size={15} />
-          <span className="hidden sm:inline">Nhập loạt Excel</span>
-        </button>
+        {!embedded && (
+          <button
+            type="button"
+            onClick={() => setIsBulkImportOpen(true)}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-[12px] font-extrabold text-emerald-800 hover:bg-emerald-100"
+          >
+            <FileSpreadsheet size={15} />
+            <span className="hidden sm:inline">Nhập loạt Excel</span>
+          </button>
+        )}
         {isSubmitting && <Loader2 size={18} className="animate-spin text-primary" />}
       </div>
 
@@ -624,6 +640,7 @@ export default function WarehouseOrderNewPage() {
           </div>
         ) : (
           <NewOrderWorkbench
+            embedded={embedded}
             form={form}
             setField={setField}
             onCustomerSelect={handleCustomerSelect}
@@ -659,7 +676,7 @@ export default function WarehouseOrderNewPage() {
         )}
       </div>
 
-      <CreateWaybillSuccessDialog
+      {!embedded && <CreateWaybillSuccessDialog
         isOpen={isSuccessOpen}
         isClosing={isSuccessClosing}
         waybill={createdWaybill}
@@ -671,16 +688,16 @@ export default function WarehouseOrderNewPage() {
           if (!createdId) return;
           navigate(`/print/waybill/${createdId}?${buildPrintQuery({ print: '1' })}`);
         }}
-      />
+      />}
 
-      <OrderBulkImportDialog
+      {!embedded && <OrderBulkImportDialog
         isOpen={isBulkImportOpen}
         onClose={() => setIsBulkImportOpen(false)}
         existingWaybillCodes={bills.map((bill) => bill.waybill_code)}
         defaultNvgn={loginName !== 'bạn' ? loginName : 'ADMIN'}
         hubs={hubs}
         onImported={async () => { await loadBills(billFilterDate, billListLimitRef.current); }}
-      />
+      />}
     </div>
   );
 }

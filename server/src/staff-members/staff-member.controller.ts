@@ -1,12 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequireRoles } from '../auth/decorators/require-roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/roles';
+import { UserEntity } from '../users/user.entity';
 import { CreateStaffMemberDto } from './dto/create-staff-member.dto';
 import { QueryStaffMemberDto } from './dto/query-staff-member.dto';
 import { UpdateStaffMemberDto } from './dto/update-staff-member.dto';
+import { CreateStaffDepartmentDto, UpdateStaffDepartmentDto } from './dto/staff-department.dto';
+import { UpsertStaffAttendanceDto } from './dto/upsert-staff-attendance.dto';
 import { StaffMemberService } from './staff-member.service';
 
 @ApiTags('Staff Members')
@@ -19,22 +23,69 @@ export class StaffMemberController {
   @ApiOperation({ summary: 'List Staff Members' })
   list(@Query() query: QueryStaffMemberDto) { return this.staffMemberService.list(query); }
 
+  @Get('departments/list')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  listDepartments(@Query('include_inactive') includeInactive?: string) {
+    return this.staffMemberService.listDepartments(includeInactive === 'true');
+  }
+
+  @Post('departments')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  createDepartment(@Body() dto: CreateStaffDepartmentDto) {
+    return this.staffMemberService.createDepartment(dto);
+  }
+
+  @Patch('departments/:id')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  updateDepartment(@Param('id') id: string, @Body() dto: UpdateStaffDepartmentDto) {
+    return this.staffMemberService.updateDepartment(id, dto);
+  }
+
+  @Delete('departments/:id')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  removeDepartment(@Param('id') id: string) {
+    return this.staffMemberService.removeDepartment(id);
+  }
+
+  @Get('attendance/monthly')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  listAttendance(@Query('month') month: string) {
+    return this.staffMemberService.listAttendance(month);
+  }
+
+  @Put('attendance/:staffId/:date')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  upsertAttendance(
+    @Param('staffId') staffId: string,
+    @Param('date') date: string,
+    @Body() dto: UpsertStaffAttendanceDto,
+    @CurrentUser() currentUser: UserEntity,
+  ) {
+    return this.staffMemberService.upsertAttendance(staffId, date, dto, currentUser);
+  }
+
+  @Get('payroll/monthly')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  payroll(@Query('month') month: string) {
+    return this.staffMemberService.payroll(month);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get Staff Members record' })
   findOne(@Param('id') id: string) { return this.staffMemberService.findOne(id); }
 
   @Post()
-  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Create Staff Members record' })
   create(@Body() dto: CreateStaffMemberDto) { return this.staffMemberService.create(dto); }
 
   @Patch(':id')
-  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Update Staff Members record' })
   update(@Param('id') id: string, @Body() dto: UpdateStaffMemberDto) { return this.staffMemberService.update(id, dto); }
 
   @Delete(':id')
-  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Delete Staff Members record' })
   async remove(@Param('id') id: string) { await this.staffMemberService.remove(id); return { success: true }; }
 }

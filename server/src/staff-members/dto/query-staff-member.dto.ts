@@ -7,6 +7,14 @@ export class QueryStaffMemberDto {
   q?: string;
 
   @IsOptional()
+  @IsString()
+  department_id?: string;
+
+  @IsOptional()
+  @IsString()
+  employment_status?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -16,6 +24,6 @@ export class QueryStaffMemberDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(500)
   limit?: number = 20;
 }

@@ -12,6 +12,7 @@ import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/Confirm
 import { ImagePreviewModal } from '../components/ImagePreviewModal';
 import type { AuthUserProfile } from './login/types';
 import WaybillInventoryDetailDialog from './warehouse/inventory/dialogs/WaybillInventoryDetailDialog';
+import WaybillEditDialog from './warehouse/inventory/dialogs/WaybillEditDialog';
 import WaybillPriorityControl from './warehouse/inventory/WaybillPriorityControl';
 import WaybillRouteControl from './warehouse/inventory/WaybillRouteControl';
 import SplitOrderDialog from './warehouse/inventory/dialogs/SplitOrderDialog';
@@ -232,6 +233,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ status: true, originHub: true, destHub: true, payment: false, priority: false, received: false });
   const [groupSearch, setGroupSearch] = useState<Record<string, string>>({ status: '', originHub: '', destHub: '', payment: '', priority: '' });
   const [detailWaybill, setDetailWaybill] = useState<WaybillInventoryDetail | null>(null);
+  const [editWaybill, setEditWaybill] = useState<WaybillInventoryItem | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDetailClosing, setIsDetailClosing] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
@@ -601,7 +603,21 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   };
 
   const openEdit = (waybill: WaybillInventoryItem) => {
-    navigate(`/orders/new?edit=${encodeURIComponent(String(waybill.id))}`);
+    setOpenActionMenuId(null);
+    setEditWaybill(waybill);
+  };
+
+  const handleEditSaved = async () => {
+    const scrollTop = tableScrollRef.current?.scrollTop ?? 0;
+    const scrollLeft = tableScrollRef.current?.scrollLeft ?? 0;
+    setEditWaybill(null);
+    await loadInventory();
+    window.requestAnimationFrame(() => {
+      if (!tableScrollRef.current) return;
+      tableScrollRef.current.scrollTop = scrollTop;
+      tableScrollRef.current.scrollLeft = scrollLeft;
+      syncHorizontalRail('table');
+    });
   };
 
   const openCustomerLedger = async (rawCode: string) => {
@@ -1064,6 +1080,11 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
 
       {!isAllOrders && <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />}
       <WaybillInventoryDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} canViewPricing={canViewPricing} waybill={detailWaybill} statusConfig={statusConfig} paymentConfig={paymentConfig} priorityConfig={priorityConfig} onClose={closeDetail} />
+      <WaybillEditDialog
+        waybill={editWaybill}
+        onClose={() => setEditWaybill(null)}
+        onSaved={handleEditSaved}
+      />
       <SplitOrderDialog isOpen={isBoardOpen} isClosing={isBoardClosing} waybill={null} onClose={closeBoard} />
       <ConfirmDialog dialog={releaseConfirm} onClose={() => setReleaseConfirm(null)} />
       <InventoryColumnPicker

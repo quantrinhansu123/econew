@@ -1,7 +1,7 @@
 import { Banknote, Check, Edit3, Loader2, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ApiError, apiRequest } from '../../../../lib/api';
-import { CreatableSearchableSelect } from '../../../../components/ui/CreatableSearchableSelect';
+import { SearchableSelect } from '../../../../components/ui/SearchableSelect';
 import {
   formatAmountInput,
   formatAmountInputFromNumber,
@@ -14,6 +14,7 @@ import { vendorFormFields } from '../../../admin/vendors/data';
 import AddEditVendorDialog from '../../../admin/vendors/dialogs/AddEditVendorDialog';
 import type { VendorFormState } from '../../../admin/vendors/types';
 import { ReceiptImageLinks, ReceiptImagePicker } from '../../../../components/finance/ReceiptImagePicker';
+import { loadExpenseCategoryNames } from '../../../../lib/expenseCategories';
 
 interface ManifestExpense {
   id: string | number;
@@ -157,7 +158,7 @@ export default function ManifestExpensesSection({
     void Promise.all([
       apiRequest<ManifestExpense[]>(`/trips/${tripId}/expenses`),
       apiRequest<ListResponse<VendorSummary> | VendorSummary[]>('/vendors/active?limit=100'),
-      canManage ? apiRequest<string[]>('/expenses/categories') : Promise.resolve([]),
+      canManage ? loadExpenseCategoryNames() : Promise.resolve([]),
       canManage ? apiRequest<CashFundSummary[]>('/expenses/cash-funds') : Promise.resolve([]),
     ])
       .then(([expenseResponse, vendorResponse, categoryResponse, fundResponse]) => {
@@ -394,13 +395,13 @@ export default function ManifestExpensesSection({
             </div>
             <div className="text-[12px] font-bold text-slate-600">
               <span>Loại chi phí</span>
-              <CreatableSearchableSelect
+              <SearchableSelect
                 value={form.category}
                 options={categoryOptions}
                 onValueChange={(value) => setForm((previous) => ({ ...previous, category: value }))}
-                placeholder="Chọn hoặc nhập loại mới"
-                searchPlaceholder="Tìm hoặc gõ loại chi phí..."
-                createLabel="Thêm loại chi phí"
+                placeholder="Chọn loại chi phí"
+                searchPlaceholder="Tìm loại chi phí..."
+                emptyMessage="Chưa có loại chi phí. Tạo tại Tài chính kế toán."
                 disabled={isSaving || isUploadingReceipt}
                 className="mt-1 border-slate-200 bg-white font-bold text-slate-800 focus:border-emerald-500"
               />

@@ -16,6 +16,7 @@ import { clsx } from 'clsx';
 import CashFundSelect from '../components/finance/CashFundSelect';
 import { ApiError, apiRequest } from '../lib/api';
 import { formatAmountInput, formatMoney, parseAmountInput } from '../lib/formatMoney';
+import { defaultExpenseCategoryNames, loadExpenseCategoryNames } from '../lib/expenseCategories';
 
 interface VendorOption {
   id: string | number;
@@ -87,7 +88,7 @@ interface LedgerData {
 }
 
 const formatDate = (v?: string | null) => (v ? new Date(v).toLocaleString('vi-VN') : '—');
-const expenseCategories = ['Thanh toán cước chuyến', 'Chi phí vận chuyển', 'Chi phí bốc xếp', 'Tạm ứng NCC', 'Hoàn ứng', 'Chi khác'];
+const defaultExpenseCategory = defaultExpenseCategoryNames[0];
 
 function monthBounds(ym: string): { from: string; to: string } {
   const [y, m] = ym.split('-').map(Number);
@@ -103,6 +104,7 @@ function currentMonthValue() {
 
 export default function FinanceVendorDebtPage() {
   const [vendors, setVendors] = useState<VendorOption[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<string[]>(defaultExpenseCategoryNames);
   const [report, setReport] = useState<DebtReport | null>(null);
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [keyword, setKeyword] = useState('');
@@ -118,7 +120,7 @@ export default function FinanceVendorDebtPage() {
     payment_date: new Date().toISOString().slice(0, 10),
     amount: '',
     fund_id: '',
-    cost_category: expenseCategories[0],
+    cost_category: defaultExpenseCategory,
     description: '',
     trip_ids: [] as string[],
   });
@@ -175,6 +177,13 @@ export default function FinanceVendorDebtPage() {
   }, [loadReport]);
 
   useEffect(() => {
+    void loadExpenseCategoryNames().then((items) => {
+      setExpenseCategories(items);
+      setPaymentForm((current) => ({ ...current, cost_category: items.includes(current.cost_category) ? current.cost_category : items[0] || '' }));
+    }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     void loadVendorDetail(selectedVendorId);
   }, [selectedVendorId, loadVendorDetail]);
 
@@ -202,7 +211,7 @@ export default function FinanceVendorDebtPage() {
         },
       });
       setPaymentOpen(false);
-      setPaymentForm({ payment_date: new Date().toISOString().slice(0, 10), amount: '', fund_id: '', cost_category: expenseCategories[0], description: '', trip_ids: [] });
+      setPaymentForm({ payment_date: new Date().toISOString().slice(0, 10), amount: '', fund_id: '', cost_category: expenseCategories[0] || '', description: '', trip_ids: [] });
       await Promise.all([loadReport(), loadVendorDetail(selectedVendorId)]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không ghi nhận được phiếu chi.');

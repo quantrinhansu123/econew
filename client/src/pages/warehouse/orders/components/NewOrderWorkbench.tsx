@@ -19,6 +19,7 @@ import ReceiverPhoneCombobox from './ReceiverPhoneCombobox';
 import WaybillImagePicker from './WaybillImagePicker';
 
 interface Props {
+  embedded?: boolean;
   form: NewOrderFormState;
   setField: <K extends keyof NewOrderFormState>(key: K, value: NewOrderFormState[K]) => void;
   onCustomerSelect: (patch: Partial<NewOrderFormState>, customer: CustomerRecord) => void;
@@ -53,6 +54,7 @@ interface Props {
 }
 
 export default function NewOrderWorkbench({
+  embedded = false,
   form,
   setField,
   onCustomerSelect,
@@ -400,8 +402,13 @@ export default function NewOrderWorkbench({
           </FormSection>
 
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2 border-t border-slate-300 pt-3">
-            <ActionButton label={isImageUploading ? 'Đang tải ảnh' : 'Nhập'} onClick={onSave} disabled={!canManage || isBusy} primary />
-            <ActionButton label="Mới" onClick={onNew} disabled={isBusy} />
+            <ActionButton
+              label={isImageUploading ? 'Đang tải ảnh' : embedded ? 'Lưu thay đổi' : 'Nhập'}
+              onClick={onSave}
+              disabled={!canManage || isBusy}
+              primary
+            />
+            {!embedded && <ActionButton label="Mới" onClick={onNew} disabled={isBusy} />}
             <ActionButton label="Xem bản in A4" onClick={onPreviewRegular} disabled={!printableBillId} />
             <ActionButton label="In A4 thường" onClick={onPrintRegular} disabled={!printableBillId} primary />
             {canViewPricing && (
@@ -418,21 +425,23 @@ export default function NewOrderWorkbench({
           </div>
         </div>
 
-        <BillListSidebar
-          bills={bills}
-          selectedId={selectedBillId}
-          onSelect={onSelectBill}
-          checkedBillIds={checkedBillIds}
-          onCheckedBillIdsChange={onCheckedBillIdsChange}
-          disabled={isBusy}
-          filterDate={billFilterDate}
-          onFilterDateChange={onBillFilterDateChange}
-          isLoading={isBillListLoading}
-          canLoadMore={hasMoreBills}
-          onLoadMore={onLoadMoreBills}
-          onBulkPrint={onBulkPrintBills}
-          onPrintBill={onPrintBill}
-        />
+        {!embedded && (
+          <BillListSidebar
+            bills={bills}
+            selectedId={selectedBillId}
+            onSelect={onSelectBill}
+            checkedBillIds={checkedBillIds}
+            onCheckedBillIdsChange={onCheckedBillIdsChange}
+            disabled={isBusy}
+            filterDate={billFilterDate}
+            onFilterDateChange={onBillFilterDateChange}
+            isLoading={isBillListLoading}
+            canLoadMore={hasMoreBills}
+            onLoadMore={onLoadMoreBills}
+            onBulkPrint={onBulkPrintBills}
+            onPrintBill={onPrintBill}
+          />
+        )}
       </div>
     </div>
   );

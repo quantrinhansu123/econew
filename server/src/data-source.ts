@@ -13,6 +13,7 @@ import { CustomerEntity } from './customers/customer.entity';
 import { DashboardKpiEntity } from './dashboard/dashboard-kpi.entity';
 import { getDatabaseUrl } from './database-url';
 import { ExpenseEntity } from './expenses/expense.entity';
+import { ExpenseCategoryEntity } from './expenses/expense-category.entity';
 import { CashFundEntity } from './finance/cash-fund.entity';
 import { FinanceReconciliationEntity } from './finance/reconciliation.entity';
 import { FundBalanceEntity } from './fund-balances/fund-balance.entity';
@@ -24,6 +25,8 @@ import { OrderEntity } from './orders/order.entity';
 import { ReconciliationEntity } from './reconciliations/reconciliation.entity';
 import { DeliveryRouteEntity } from './routes/route.entity';
 import { StaffMemberEntity } from './staff-members/staff-member.entity';
+import { StaffDepartmentEntity } from './staff-members/staff-department.entity';
+import { StaffAttendanceEntity } from './staff-members/staff-attendance.entity';
 import { TripEntity } from './trips/trip.entity';
 import { TruckEntity } from './trucks/truck.entity';
 import { UserEntity } from './users/user.entity';
@@ -67,6 +70,7 @@ export default new DataSource({
     DashboardKpiEntity,
     DeliveryRouteEntity,
     ExpenseEntity,
+    ExpenseCategoryEntity,
     FinanceReconciliationEntity,
     FundBalanceEntity,
     HubEntity,
@@ -76,6 +80,8 @@ export default new DataSource({
     OrderEntity,
     ReconciliationEntity,
     StaffMemberEntity,
+    StaffDepartmentEntity,
+    StaffAttendanceEntity,
     TripEntity,
     TruckEntity,
     UserEntity,

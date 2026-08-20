@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import CashFundSelect from '../../../../components/finance/CashFundSelect';
 import { apiRequest } from '../../../../lib/api';
 import { formatAmountInput, formatMoney, parseAmountInput } from '../../../../lib/formatMoney';
+import { defaultExpenseCategoryNames, loadExpenseCategoryNames } from '../../../../lib/expenseCategories';
 import type { AuthUserProfile } from '../../../login/types';
 import { VENDOR_DETAIL_TABS, type VendorDetailTabId } from '../vendorDetailTabs';
 import {
@@ -41,14 +42,7 @@ const DIRECTOR = 64;
 const ACCOUNTANT = 16;
 const DISPATCHER = 8;
 
-const vendorExpenseTypes = [
-  'Chi phí cố định',
-  'Chi phí phát sinh',
-  'Thanh toán cước chuyến',
-  'Tạm ứng',
-  'Hoàn ứng',
-  'Chi khác',
-];
+const vendorExpenseTypes = defaultExpenseCategoryNames;
 
 function Row({ label, value, className }: { label: string; value?: string | null; className?: string }) {
   return (
@@ -156,6 +150,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
   const [spendAmount, setSpendAmount] = useState('');
   const [spendDate, setSpendDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [spendType, setSpendType] = useState(vendorExpenseTypes[0]);
+  const [expenseCategoryOptions, setExpenseCategoryOptions] = useState<string[]>(vendorExpenseTypes);
   const [spendFundId, setSpendFundId] = useState('');
   const [spendNote, setSpendNote] = useState('');
   const [spendSubmitting, setSpendSubmitting] = useState(false);
@@ -167,6 +162,13 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
     billCode: '',
     paymentType: '',
   });
+
+  useEffect(() => {
+    void loadExpenseCategoryNames().then((items) => {
+      setExpenseCategoryOptions(items);
+      setSpendType((current) => items.includes(current) ? current : items[0] || '');
+    }).catch(() => undefined);
+  }, []);
 
   const canViewCost = useMemo(() => {
     const user = getStoredUser();
@@ -804,7 +806,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
                   onChange={(event) => setSpendType(event.target.value)}
                   className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold outline-none focus:ring-2 focus:ring-primary/15"
                 >
-                  {vendorExpenseTypes.map((type) => (
+                  {expenseCategoryOptions.map((type) => (
                     <option key={type} value={type}>{type}</option>
                   ))}
                 </select>

@@ -4,8 +4,9 @@ import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../../../lib/api';
 import { formatAmountInput, formatMoney, parseAmountInput } from '../../../lib/formatMoney';
-import { CreatableSearchableSelect } from '../../../components/ui/CreatableSearchableSelect';
+import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { ReceiptImageLinks, ReceiptImagePicker } from '../../../components/finance/ReceiptImagePicker';
+import { defaultExpenseCategoryNames, loadExpenseCategoryNames } from '../../../lib/expenseCategories';
 
 type VoucherType = 'Thu' | 'Chi';
 
@@ -100,7 +101,7 @@ interface EntryForm {
 }
 
 const incomeCategories = ['Thu cước vận đơn', 'Thu COD/CC', 'Thu hoàn ứng', 'Thu khác'];
-const expenseCategories = ['Thanh toán cước chuyến', 'Chi phí vận chuyển', 'Chi phí nhiên liệu', 'Chi phí bốc xếp', 'Chi phí văn phòng', 'Lương và phụ cấp', 'Tạm ứng NCC', 'Hoàn ứng', 'Chi khác'];
+const expenseCategories = defaultExpenseCategoryNames;
 const sourceOptions = ['Khách hàng', 'Nhà cung cấp', 'Nội bộ', 'Khác'];
 const today = () => new Date().toISOString().slice(0, 10);
 const defaultFilters: Filters = { q: '', date_from: '', date_to: '', voucher_type: '', fund_id: '', vendor_id: '', hub_id: '', cost_category: '', page: 1, limit: 20 };
@@ -140,7 +141,7 @@ export default function DailyCashJournalPage() {
       apiRequest<CashFund[] | { items?: CashFund[]; data?: CashFund[] }>('/finance/cash-funds'),
       apiRequest<Vendor[] | { items?: Vendor[]; data?: Vendor[] }>('/vendors?status=ACTIVE&limit=500'),
       apiRequest<Hub[] | { items?: Hub[]; data?: Hub[] }>('/hubs/active'),
-      apiRequest<string[]>('/expenses/categories'),
+      loadExpenseCategoryNames(),
     ]);
     setFunds(normalizeList(fundResponse).filter((fund) => fund.is_active !== false));
     setVendors(normalizeList(vendorResponse));
@@ -172,15 +173,15 @@ export default function DailyCashJournalPage() {
 
   const categoryOptions = useMemo(() => form.voucher_type === 'Thu'
     ? incomeCategories
-    : [...new Set([...expenseCategories, ...savedExpenseCategories, ...entries.filter((entry) => entry.voucher_type === 'Chi').map((entry) => entry.cost_category).filter(Boolean)])],
-  [entries, form.voucher_type, savedExpenseCategories]);
+    : [...new Set([...savedExpenseCategories, ...entries.filter((entry) => entry.voucher_type === 'Chi' && entry.record_id === editingId).map((entry) => entry.cost_category).filter(Boolean)])],
+  [editingId, entries, form.voucher_type, savedExpenseCategories]);
   const allCategories = useMemo(() => [...new Set([...incomeCategories, ...expenseCategories, ...savedExpenseCategories, ...entries.map((entry) => entry.cost_category).filter(Boolean)])], [entries, savedExpenseCategories]);
   const updateFilters = (patch: Partial<Filters>) => setFilters((current) => ({ ...current, ...patch }));
   const updateForm = (patch: Partial<EntryForm>) => setForm((current) => ({ ...current, ...patch }));
 
   const openCreate = () => {
     setEditingId('');
-    setForm(newForm());
+    setForm({ ...newForm(), cost_category: savedExpenseCategories[0] || expenseCategories[0] });
     setUploadingReceipt(false);
     setFormError('');
     setFormOpen(true);
@@ -210,7 +211,7 @@ export default function DailyCashJournalPage() {
   const changeVoucherType = (voucherType: VoucherType) => {
     updateForm({
       voucher_type: voucherType,
-      cost_category: voucherType === 'Thu' ? incomeCategories[0] : expenseCategories[0],
+      cost_category: voucherType === 'Thu' ? incomeCategories[0] : savedExpenseCategories[0] || expenseCategories[0],
       source: voucherType === 'Thu' ? 'Khách hàng' : 'Nội bộ',
     });
   };
@@ -221,7 +222,7 @@ export default function DailyCashJournalPage() {
       setFormError(!form.fund_id
         ? 'Vui lòng chọn sổ quỹ.'
         : !form.cost_category.trim()
-          ? 'Vui lòng chọn hoặc nhập loại thu/chi.'
+          ? 'Vui lòng chọn loại thu/chi.'
         : form.voucher_type === 'Chi' && !form.hub_id
           ? 'Vui lòng chọn bưu cục nhận khoản chi.'
           : amount <= 0
@@ -353,7 +354,7 @@ function EntryDialog({ form, editing, categories, funds, hubs, vendors, submitti
             <Field label="Sổ quỹ *"><select value={form.fund_id} onChange={(event) => { const value = event.target.value; const fund = funds.find((item) => String(item.id) === value); const hubId = fund?.hub_id ?? fund?.hub?.id; onChange({ fund_id: value, ...(hubId ? { hub_id: String(hubId) } : {}) }); }} className={`${inputClass} font-bold`}><option value="">Chọn sổ quỹ</option>{funds.map((fund) => <option key={String(fund.id)} value={String(fund.id)}>{[fund.code, fund.name, fund.hub?.code].filter(Boolean).join(' · ')} · {formatMoney(fund.balance_amount, { empty: '0 đ' })}</option>)}</select></Field>
             <Field label="Nguồn"><select value={form.source} onChange={(event) => onChange({ source: event.target.value })} className={`${inputClass} font-bold`}>{sourceOptions.map((source) => <option key={source} value={source}>{source}</option>)}</select></Field>
             <Field label={form.voucher_type === 'Chi' ? 'Chi cho bưu cục (HUB) *' : 'Bưu cục ghi nhận'}><select value={form.hub_id} onChange={(event) => onChange({ hub_id: event.target.value })} className={`${inputClass} font-bold`}><option value="">Chọn bưu cục</option>{hubs.map((hub) => <option key={String(hub.id)} value={String(hub.id)}>{[hub.code, hub.name].filter(Boolean).join(' · ')}</option>)}</select></Field>
-            <Field label="Loại thu/chi"><CreatableSearchableSelect value={form.cost_category} onValueChange={(value) => onChange({ cost_category: value })} options={categories.map((category) => ({ value: category, label: category }))} placeholder="Chọn hoặc nhập loại mới" searchPlaceholder="Tìm hoặc gõ loại thu/chi..." createLabel="Thêm loại" disabled={submitting} className="h-11 rounded-lg bg-white px-3 font-bold" /></Field>
+            <Field label="Loại thu/chi"><SearchableSelect value={form.cost_category} onValueChange={(value) => onChange({ cost_category: value })} options={categories.map((category) => ({ value: category, label: category }))} placeholder="Chọn loại thu/chi" searchPlaceholder="Tìm loại thu/chi..." emptyMessage="Chưa có loại chi phí trong danh mục." disabled={submitting} className="h-11 rounded-lg bg-white px-3 font-bold" /></Field>
             <Field label="Nhà cung cấp (nếu có)"><select value={form.vendor_id} onChange={(event) => onChange({ vendor_id: event.target.value })} className={`${inputClass} font-bold`}><option value="">Không gắn NCC</option>{vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{[vendor.code, vendor.name].filter(Boolean).join(' · ')}</option>)}</select></Field>
             <Field label="Đối tượng / chi tiết"><input value={form.detail} onChange={(event) => onChange({ detail: event.target.value })} placeholder="Người nộp, người nhận, bộ phận..." className={inputClass} /></Field>
             <Field label="Nội dung"><input value={form.content} onChange={(event) => onChange({ content: event.target.value })} placeholder="Nội dung thu hoặc chi..." className={inputClass} /></Field>

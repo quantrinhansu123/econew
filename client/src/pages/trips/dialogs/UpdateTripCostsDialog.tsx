@@ -3,7 +3,8 @@ import { AlertTriangle, Check, Edit3, Loader2, Plus, X } from 'lucide-react';
 import { ApiError, apiRequest } from '../../../lib/api';
 import { formatAmountInput, formatAmountInputFromNumber, formatMoney, parseAmountInput } from '../../../lib/formatMoney';
 import type { ListResponse, Trip, TripExpense, VendorSummary } from '../types';
-import { CreatableSearchableSelect } from '../../../components/ui/CreatableSearchableSelect';
+import { SearchableSelect } from '../../../components/ui/SearchableSelect';
+import { loadExpenseCategoryNames } from '../../../lib/expenseCategories';
 import { ReceiptImageLinks, ReceiptImagePicker } from '../../../components/finance/ReceiptImagePicker';
 
 interface Props {
@@ -65,7 +66,7 @@ export default function UpdateTripCostsDialog({ trip, onClose, onSaved }: Props)
         apiRequest<TripExpense[]>(`/trips/${tripId}/expenses`),
         apiRequest<ListResponse<VendorSummary> | VendorSummary[]>('/vendors/active?limit=100'),
         apiRequest<CashFundSummary[]>('/expenses/cash-funds'),
-        apiRequest<string[]>('/expenses/categories'),
+        loadExpenseCategoryNames(),
       ]);
       setExpenses(Array.isArray(expenseResponse) ? expenseResponse : []);
       setVendors(normalizeList(vendorResponse));
@@ -172,7 +173,7 @@ export default function UpdateTripCostsDialog({ trip, onClose, onSaved }: Props)
             </label>
             <div className="text-[12px] font-bold text-muted-foreground">
               Loại chi phí
-              <CreatableSearchableSelect value={form.category} options={categoryOptions} onValueChange={(value) => setForm((current) => ({ ...current, category: value }))} placeholder="Chọn hoặc nhập loại mới" searchPlaceholder="Tìm hoặc gõ loại chi phí..." createLabel="Thêm loại chi phí" disabled={saving} className="mt-1 border-border bg-white font-bold" />
+              <SearchableSelect value={form.category} options={categoryOptions} onValueChange={(value) => setForm((current) => ({ ...current, category: value }))} placeholder="Chọn loại chi phí" searchPlaceholder="Tìm loại chi phí..." emptyMessage="Chưa có loại chi phí trong danh mục." disabled={saving} className="mt-1 border-border bg-white font-bold" />
             </div>
             <label className="text-[12px] font-bold text-muted-foreground">
               Sổ quỹ (nếu đã chi)
