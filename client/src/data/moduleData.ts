@@ -101,7 +101,7 @@ export const moduleGroups: ModuleGroup[] = [
       { icon: Fuel, title: 'Chi phí phát sinh chuyến', description: 'Ghi nhận dầu và chi phí dọc đường.', colorScheme: 'orange', path: '/trips/expenses', requiredRoleMask: DISPATCHER },
       { icon: BadgeDollarSign, title: 'Lãi/lỗ tạm tính chuyến', description: 'Theo dõi hiệu quả chi phí chuyến xe.', colorScheme: 'purple', path: '/trips/profit', requiredRoleMask: MANAGER, isHidden: true },
       { icon: TruckIcon, title: 'Quản lý xe đường trục', description: 'Quản lý phương tiện chạy tuyến đường trục và trạng thái khai thác.', colorScheme: 'cyan', path: '/trips/trunk-vehicles', requiredRoleMask: DISPATCHER },
-      { icon: TruckIcon, title: 'Quản lý xe nội bộ', description: 'Quản lý đội xe và định mức nhiên liệu.', colorScheme: 'cyan', path: '/trucks', requiredRoleMask: DISPATCHER },
+      { icon: TruckIcon, title: 'Xe nội bộ + tài xế', description: 'Danh sách xe HAN/HCM; tài xế được chọn riêng theo từng chuyến.', colorScheme: 'cyan', path: '/trucks', requiredRoleMask: DISPATCHER },
     ],
   },
   {
@@ -182,7 +182,7 @@ export const moduleGroups: ModuleGroup[] = [
     requiredRoleMask: ACCOUNTANT,
     items: [
       { icon: ClipboardCheck, title: 'Phê duyệt chi phí xe nội bộ', description: 'Duyệt chi phí phát sinh cho xe công ty.', colorScheme: 'blue', path: '/finance/approve/internal', requiredRoleMask: ACCOUNTANT },
-      { icon: CreditCard, title: 'Phê duyệt chi phí NCC đường trục', description: 'Duyệt chi phí nhà cung cấp vận tải.', colorScheme: 'purple', path: '/finance/approve/vendor', requiredRoleMask: ACCOUNTANT },
+      { icon: CreditCard, title: 'Phê duyệt chi phí NCC', description: 'Duyệt chi phí nhà cung cấp vận tải.', colorScheme: 'purple', path: '/finance/approve/vendor', requiredRoleMask: ACCOUNTANT },
       { icon: Building2, title: 'Công nợ & Thanh toán NCC', description: 'Bảng kê chuyến, phiếu chi và sổ cái dư nợ nhà xe.', colorScheme: 'pink', path: '/finance/vendor-debt', requiredRoleMask: ACCOUNTANT },
       { icon: Receipt, title: 'Sổ phải trả NCC & Lãi/lỗ xe', description: 'Theo dõi chi NCC, phải thu và lãi/lỗ từng chuyến đã khởi hành.', colorScheme: 'pink', path: '/finance/vendor-trip-ledger', requiredRoleMask: ACCOUNTANT },
       { icon: Calculator, title: 'Xác nhận thu COD & sổ quỹ', description: 'Xác nhận tiền phải thu khi phát và tự động đối trừ công nợ khách hàng.', colorScheme: 'amber', path: '/finance/hub-reconciliation', requiredRoleMask: ACCOUNTANT },
@@ -213,10 +213,10 @@ export const moduleGroups: ModuleGroup[] = [
     section: 'Dùng chung',
     items: [
       { icon: Building2, title: 'Quản lý bưu cục', description: 'Quản lý bưu cục HAN, HCM và thông tin liên quan.', colorScheme: 'blue', path: '/admin/hubs', requiredRoleMask: DIRECTOR },
-      { icon: TruckIcon, title: 'Quản lý xe & tài xế', description: 'Quản lý phương tiện, tài xế và phân công.', colorScheme: 'teal', path: '/admin/trucks', requiredRoleMask: DIRECTOR },
+      { icon: TruckIcon, title: 'Xe nội bộ + tài xế', description: 'Quản lý xe nội bộ HAN/HCM; không gán cố định tài xế vào xe.', colorScheme: 'teal', path: '/admin/trucks', requiredRoleMask: DIRECTOR },
       { icon: Route, title: 'Danh mục tuyến giao', description: 'Mã tuyến dùng khi gán vận đơn và in tồn kho.', colorScheme: 'cyan', path: '/admin/routes', requiredRoleMask: DISPATCHER | MANAGER_ROLES },
-      { icon: Settings, title: 'Cấu hình NCC đường trục', description: 'Thiết lập nhà cung cấp vận tải đường trục.', colorScheme: 'purple', path: '/admin/vendors', requiredRoleMask: MANAGER_ROLES },
-      { icon: TruckIcon, title: 'Nhà xe', description: 'Gán BKS theo khu vực; nhà xe chọn từ NCC đường trục.', colorScheme: 'cyan', path: '/admin/carriers', requiredRoleMask: MANAGER_ROLES },
+      { icon: Settings, title: 'Nhà cung cấp (NCC)', description: 'Quản lý toàn bộ NCC đường trục, nội thành và công nợ phải trả.', colorScheme: 'purple', path: '/admin/vendors', requiredRoleMask: MANAGER_ROLES },
+      { icon: TruckIcon, title: 'Nhà xe', description: 'Gán BKS theo khu vực và chọn từ danh sách NCC.', colorScheme: 'cyan', path: '/admin/carriers', requiredRoleMask: MANAGER_ROLES },
       { icon: Printer, title: 'In phiếu giao nhận', description: 'Template in phiếu giao nhận riêng.', colorScheme: 'orange', path: '/print/waybill/:id', isPrint: true },
       { icon: IdCard, title: 'Hồ sơ & cài đặt cá nhân', description: 'Quản lý hồ sơ và tuỳ chọn cá nhân.', colorScheme: 'green', path: '/profile' },
     ],

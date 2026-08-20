@@ -259,6 +259,14 @@ export function uploadWaybillImage(file: File): Promise<string> {
   return uploadImage(file, '/uploads/waybill-images');
 }
 
+export function uploadVendorQrImage(file: File, vendorCode: string): Promise<string> {
+  const normalizedVendorCode = vendorCode.trim().toUpperCase();
+  if (!normalizedVendorCode) {
+    throw new ApiError(400, 'Nhập mã NCC trước khi tải ảnh QR.', null);
+  }
+  return uploadImage(file, `/uploads/vendor-qr-images/${encodeURIComponent(normalizedVendorCode)}`);
+}
+
 export async function recognizeWaybillCodeWithGemini(file: File): Promise<string | null> {
   validateImageSource(file);
   const uploadFile = await optimizeMobilePhoto(file, {

@@ -39,7 +39,7 @@ describe('TrucksService canonical schema', () => {
     vendorsService = { resolveDefaultVendorId: jest.fn().mockResolvedValue('vendor-1') };
     usersRepo.findOne.mockResolvedValue({ id: '7', role_mask: Roles.DRIVER });
     tripsRepo.count.mockResolvedValue(0);
-    hubsRepo.findOne.mockResolvedValue({ id: 'hub-1', is_active: true, deleted_at: null });
+    hubsRepo.findOne.mockResolvedValue({ id: 'hub-1', code: 'HAN', is_active: true, deleted_at: null });
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -80,6 +80,43 @@ describe('TrucksService canonical schema', () => {
       bks: '98H-052.18',
       vendor_id: 'vendor-1',
     });
+  });
+
+  it('xe nội bộ thuộc HAN không lưu NCC hoặc tài xế cố định', async () => {
+    mockUniquePlate(null);
+
+    const result = await service.create({
+      license_plate: '29H-88888',
+      payload: 2500,
+      ownership_type: 'INTERNAL',
+      hub_id: 'hub-1',
+      driver_id: '7',
+      vendor_id: 'vendor-1',
+      ten_lai_xe: 'Tài xế cũ',
+      nha_xe: 'NCC cũ',
+    }, manager);
+
+    expect(result).toMatchObject({
+      ownership_type: 'INTERNAL',
+      hub_id: 'hub-1',
+      driver_id: null,
+      vendor_id: null,
+      ten_lai_xe: null,
+      nha_xe: null,
+    });
+    expect(vendorsService.resolveDefaultVendorId).not.toHaveBeenCalled();
+  });
+
+  it('xe nội bộ không được gán ngoài HAN và HCM', async () => {
+    mockUniquePlate(null);
+    hubsRepo.findOne.mockResolvedValue({ id: 'hub-3', code: 'DNG', is_active: true, deleted_at: null });
+
+    await expect(service.create({
+      license_plate: '43C-12345',
+      payload: 2500,
+      ownership_type: 'INTERNAL',
+      hub_id: 'hub-3',
+    }, manager)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('create trùng license_plate bị chặn', async () => {

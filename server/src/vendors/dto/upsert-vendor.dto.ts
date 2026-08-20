@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsObject, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsEmail, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class UpsertVendorDto {
   @ApiPropertyOptional()
@@ -31,6 +32,38 @@ export class UpsertVendorDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  @ApiPropertyOptional({ default: 0, description: 'Công nợ NCC chuyển tiếp từ kỳ cũ' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  opening_debt?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  bank_name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  bank_account?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  bank_account_holder?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  qr_image_url?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -40,6 +40,11 @@ export class QueryTrucksDto {
   @IsString()
   hub_id?: string;
 
+  @ApiPropertyOptional({ description: 'Lọc theo danh sách mã bưu cục, phân cách bằng dấu phẩy' })
+  @IsOptional()
+  @IsString()
+  hub_codes?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)

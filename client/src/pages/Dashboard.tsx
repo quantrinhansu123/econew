@@ -79,7 +79,7 @@ export const dashboardModules = [
   },
   {
     icon: Settings,
-    title: 'Cấu hình NCC',
+    title: 'Nhà cung cấp (NCC)',
     description: 'Danh sách nhà cung cấp vận tải đường trục, tuyến và bảng giá.',
     href: '/admin/vendors',
     colorScheme: 'purple' as const,

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../../lib/api';
+import { formatAmountInputFromNumber, formatMoney, parseAmountInput } from '../../lib/formatMoney';
 import { ConfirmDialog, type ConfirmDialogState } from '../../components/ui/ConfirmDialog';
 import { FilterPanel } from '../../components/ui/FilterPanel';
 import { FilterSelect } from '../../components/ui/FilterSelect';
@@ -37,7 +38,6 @@ import {
   defaultVendorColumnOrder,
   defaultVisibleVendorColumns,
   formatContractType,
-  formatMoney,
   formatProvince,
   formatServiceType,
   formatStatus,
@@ -72,6 +72,11 @@ const emptyForm: VendorFormState = {
   contact_name: '',
   phone: '',
   email: '',
+  opening_debt: '',
+  bank_name: '',
+  bank_account: '',
+  bank_account_holder: '',
+  qr_image_url: '',
   province: '',
   contract_type: '',
   status: 'ACTIVE',
@@ -229,7 +234,7 @@ export default function AdminVendorsPage() {
     setIsSubmitting(true);
     setActionError('');
     try {
-      const payload = stripEmpty(formState);
+      const payload = toVendorPayload(formState, isEditMode);
       if (isEditMode && selectedVendor?.id != null) {
         await apiRequest(`/vendors/${selectedVendor.id}`, { method: 'PATCH', body: payload });
       } else {
@@ -683,14 +688,28 @@ function toFormState(vendor: Vendor): VendorFormState {
     contact_name: vendor.contact_name || '',
     phone: vendor.phone || '',
     email: vendor.email || '',
+    opening_debt: formatAmountInputFromNumber(vendor.opening_debt),
+    bank_name: vendor.bank_name || '',
+    bank_account: vendor.bank_account || '',
+    bank_account_holder: vendor.bank_account_holder || '',
+    qr_image_url: vendor.qr_image_url || '',
     province: vendor.province || '',
     contract_type: vendor.contract_type || '',
     status: vendor.status || 'ACTIVE',
   };
 }
 
-function stripEmpty(payload: VendorFormState) {
-  return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== '' && value != null));
+function toVendorPayload(form: VendorFormState, isEdit: boolean) {
+  const payload: Record<string, string | number | null> = {};
+  Object.entries(form).forEach(([key, value]) => {
+    if (key === 'opening_debt') {
+      payload.opening_debt = parseAmountInput(value);
+      return;
+    }
+    if (value !== '') payload[key] = value;
+    else if (isEdit && ['bank_name', 'bank_account', 'bank_account_holder', 'qr_image_url'].includes(key)) payload[key] = null;
+  });
+  return payload;
 }
 
 function StatusBadge({ status }: { status?: string | null }) {

@@ -10,6 +10,11 @@ export interface Vendor {
   contract_type?: string | null;
   status?: string | null;
   payable_balance?: string | number | null;
+  opening_debt?: string | number | null;
+  bank_name?: string | null;
+  bank_account?: string | null;
+  bank_account_holder?: string | null;
+  qr_image_url?: string | null;
   routes?: Record<string, unknown> | unknown[] | null;
   pricing?: Record<string, unknown> | unknown[] | null;
   metadata?: Record<string, unknown> | null;
@@ -57,6 +62,11 @@ export interface VendorFormState {
   contact_name: string;
   phone: string;
   email: string;
+  opening_debt: string;
+  bank_name: string;
+  bank_account: string;
+  bank_account_holder: string;
+  qr_image_url: string;
   province: string;
   contract_type: string;
   status: string;

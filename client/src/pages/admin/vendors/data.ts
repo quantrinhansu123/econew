@@ -63,6 +63,11 @@ export const vendorFormFields = [
   'contact_name',
   'phone',
   'email',
+  'opening_debt',
+  'bank_name',
+  'bank_account',
+  'bank_account_holder',
+  'qr_image_url',
   'province',
   'contract_type',
   'status',
@@ -105,9 +110,3 @@ export const formatProvince = (value?: string | null) => {
 
 export const formatStatus = (value?: string | null) =>
   statusOptions.find(option => option.value === value)?.label || value || '—';
-
-export const formatMoney = (value?: string | number | null) => {
-  const amount = Number(value ?? 0);
-  if (!Number.isFinite(amount)) return '—';
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(amount);
-};

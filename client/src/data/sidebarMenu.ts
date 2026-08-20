@@ -38,7 +38,7 @@ export const sidebarMenu: SidebarItem[] = [
   { id: 'hr', icon: Users, label: 'Nhân sự', path: '/hr', requiredRoleMask: 32 | 64 },
   { id: 'dashboard', icon: BarChart3, label: 'Dashboard BGĐ', path: '/dashboard', requiredRoleMask: 32 | 64 },
   { id: 'admin', icon: Building2, label: 'Quản trị', path: '/admin', requiredRoleMask: 32 | 64 },
-  { id: 'vendors', icon: Settings, label: 'Cấu hình NCC', path: '/admin/vendors', requiredRoleMask: 32 | 64 },
+  { id: 'vendors', icon: Settings, label: 'Nhà cung cấp (NCC)', path: '/admin/vendors', requiredRoleMask: 32 | 64 },
 ];
 
 export const getVisibleMenu = (roleMask: number): SidebarItem[] =>

@@ -42,10 +42,19 @@ const ensureCustomerOpeningDebtSchema = async (dataSource: DataSource) => {
   await dataSource.query(`ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "opening_debt" numeric(18,2) NOT NULL DEFAULT 0`);
 };
 
+const ensureVendorPaymentProfileSchema = async (dataSource: DataSource) => {
+  await dataSource.query(`ALTER TABLE "vendors" ADD COLUMN IF NOT EXISTS "opening_debt" numeric(18,2) NOT NULL DEFAULT 0`);
+  await dataSource.query(`ALTER TABLE "vendors" ADD COLUMN IF NOT EXISTS "bank_name" varchar(255)`);
+  await dataSource.query(`ALTER TABLE "vendors" ADD COLUMN IF NOT EXISTS "bank_account" varchar(64)`);
+  await dataSource.query(`ALTER TABLE "vendors" ADD COLUMN IF NOT EXISTS "bank_account_holder" varchar(255)`);
+  await dataSource.query(`ALTER TABLE "vendors" ADD COLUMN IF NOT EXISTS "qr_image_url" varchar(1000)`);
+};
+
 const ensureInternalFleetAndPayrollSchema = async (dataSource: DataSource) => {
   await dataSource.query(`ALTER TABLE "trucks" ADD COLUMN IF NOT EXISTS "ownership_type" varchar(16) NOT NULL DEFAULT 'VENDOR'`);
   await dataSource.query(`ALTER TABLE "trucks" ADD COLUMN IF NOT EXISTS "hub_id" bigint NULL`);
   await dataSource.query(`UPDATE "trucks" SET "ownership_type" = 'INTERNAL' WHERE UPPER(COALESCE("loai_xe", '')) IN ('NỘI BỘ', 'NOI BO') AND COALESCE("ownership_type", 'VENDOR') = 'VENDOR'`);
+  await dataSource.query(`UPDATE "trucks" SET "driver_id" = NULL, "ten_lai_xe" = NULL, "vendor_id" = NULL, "nha_xe" = NULL WHERE "ownership_type" = 'INTERNAL'`);
   await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_trucks_ownership_type" ON "trucks" ("ownership_type")`);
   await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_trucks_hub_id" ON "trucks" ("hub_id")`);
   await dataSource.query(`
@@ -169,6 +178,7 @@ async function main() {
     await ensureDeliveryWorkflowSchema(dataSource);
     await ensureHubScheduleSchema(dataSource);
     await ensureCustomerOpeningDebtSchema(dataSource);
+    await ensureVendorPaymentProfileSchema(dataSource);
     await ensureCodCashFundSchema(dataSource);
     await ensureInternalFleetAndPayrollSchema(dataSource);
     if (wasBaselined) return;

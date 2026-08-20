@@ -1,7 +1,10 @@
 import { createPortal } from 'react-dom';
-import type { ReactNode } from 'react';
-import { Briefcase, Building2, Mail, MapPinned, Phone, Save, Tag, User, X } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Banknote, Briefcase, Building2, CreditCard, Image, Landmark, Loader2, Mail, MapPinned, Phone, Save, Tag, Trash2, Upload, User, X } from 'lucide-react';
 import { clsx } from 'clsx';
+import { ApiError } from '../../../../lib/api';
+import { formatAmountInput } from '../../../../lib/formatMoney';
+import { IMAGE_UPLOAD_ACCEPT, uploadVendorQrImage } from '../../../../lib/uploadImage';
 import { CreatableSearchableSelect } from '../../../../components/ui/CreatableSearchableSelect';
 import { SearchableSelect } from '../../../../components/ui/SearchableSelect';
 import ProvinceMultiSelect from '../components/ProvinceMultiSelect';
@@ -44,8 +47,24 @@ export default function AddEditVendorDialog({
   onSubmit,
   onChange,
 }: Props) {
+  const [isUploadingQr, setIsUploadingQr] = useState(false);
+  const [qrError, setQrError] = useState('');
   if (!isOpen && !isClosing) return null;
   const hasField = (field: string) => fields.includes(field);
+
+  const uploadQr = async (file?: File) => {
+    if (!file) return;
+    setIsUploadingQr(true);
+    setQrError('');
+    try {
+      const url = await uploadVendorQrImage(file, formState.code);
+      onChange('qr_image_url', url);
+    } catch (uploadError) {
+      setQrError(uploadError instanceof ApiError ? uploadError.message : 'Không tải được ảnh QR NCC.');
+    } finally {
+      setIsUploadingQr(false);
+    }
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex justify-end">
@@ -68,7 +87,7 @@ export default function AddEditVendorDialog({
               <Building2 size={18} />
             </div>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Cấu hình NCC</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Nhà cung cấp (NCC)</p>
               <h2 className="text-lg font-bold text-foreground">{isEditMode ? 'Chỉnh sửa NCC' : 'Thêm NCC'}</h2>
             </div>
           </div>
@@ -146,6 +165,66 @@ export default function AddEditVendorDialog({
               </div>
             </Section>
 
+            <Section title="Thanh toán & công nợ" icon={<Banknote size={16} />}>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {hasField('opening_debt') && (
+                  <Field label="Công nợ tồn đầu kỳ" icon={<Banknote size={16} />}>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formState.opening_debt || ''}
+                      onChange={event => onChange('opening_debt', formatAmountInput(event.target.value))}
+                      className={`${inputClass} text-right font-extrabold tabular-nums`}
+                      placeholder="0"
+                    />
+                  </Field>
+                )}
+                {hasField('bank_name') && (
+                  <Field label="Ngân hàng nhận tiền" icon={<Landmark size={16} />}>
+                    <input value={formState.bank_name || ''} onChange={event => onChange('bank_name', event.target.value)} className={inputClass} placeholder="Tên ngân hàng" />
+                  </Field>
+                )}
+                {hasField('bank_account') && (
+                  <Field label="Số tài khoản" icon={<CreditCard size={16} />}>
+                    <input value={formState.bank_account || ''} onChange={event => onChange('bank_account', event.target.value)} className={inputClass} placeholder="Số tài khoản nhận tiền" />
+                  </Field>
+                )}
+                {hasField('bank_account_holder') && (
+                  <Field label="Chủ tài khoản" icon={<User size={16} />}>
+                    <input value={formState.bank_account_holder || ''} onChange={event => onChange('bank_account_holder', event.target.value.toUpperCase())} className={inputClass} placeholder="Tên chủ tài khoản" />
+                  </Field>
+                )}
+              </div>
+
+              {hasField('qr_image_url') && (
+                <div className="mt-4 rounded-xl border border-border bg-muted/5 p-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-white">
+                      {formState.qr_image_url ? <img src={formState.qr_image_url} alt="QR nhận tiền NCC" className="h-full w-full object-contain" /> : <Image size={28} className="text-muted-foreground/50" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-bold text-foreground">Ảnh QR nhận tiền</p>
+                      <p className="mt-1 text-[11px] font-medium text-muted-foreground">Ảnh này sẽ xuất hiện trên phiếu kê thanh toán NCC.</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-primary px-3 text-[12px] font-bold text-white hover:bg-primary/90">
+                          {isUploadingQr ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                          {isUploadingQr ? 'Đang tải...' : 'Chọn ảnh QR'}
+                          <input type="file" accept={IMAGE_UPLOAD_ACCEPT} disabled={isUploadingQr} onChange={event => { void uploadQr(event.target.files?.[0]); event.currentTarget.value = ''; }} className="hidden" />
+                        </label>
+                        {formState.qr_image_url && (
+                          <button type="button" onClick={() => onChange('qr_image_url', '')} className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-[12px] font-bold text-red-600 hover:bg-red-100">
+                            <Trash2 size={14} />
+                            Bỏ ảnh
+                          </button>
+                        )}
+                      </div>
+                      {qrError && <p className="mt-2 text-[12px] font-bold text-red-600">{qrError}</p>}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </Section>
+
             <Section title="Dịch vụ & hợp đồng" icon={<Briefcase size={16} />}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {hasField('service_type') && (
@@ -212,7 +291,7 @@ export default function AddEditVendorDialog({
           </button>
           <button
             onClick={onSubmit}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isUploadingQr}
             className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-[13px] font-bold text-white shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:opacity-60"
           >
             <Save size={16} />

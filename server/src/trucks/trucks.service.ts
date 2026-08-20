@@ -17,6 +17,7 @@ import { HubEntity } from '../hubs/hub.entity';
 
 const ACTIVE_TRIP_STATUSES = [TripStatus.PLANNED, 'LOADING', TripStatus.IN_TRANSIT, 'ARRIVED_PENDING_CONFIRM'];
 const TRIP_LOCK_STATUSES = [TripStatus.PLANNED, 'LOADING', TripStatus.IN_TRANSIT, TripStatus.ARRIVED, 'ARRIVED_PENDING_CONFIRM'];
+const INTERNAL_HUB_CODES = new Set(['HAN', 'HCM']);
 
 @Injectable()
 export class TrucksService {
@@ -32,13 +33,13 @@ export class TrucksService {
     this.assertRole(currentUser, [Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR]);
     const licensePlate = this.normalizePlate(dto.license_plate);
     await this.assertUniquePlate(licensePlate);
-    if (dto.driver_id) await this.assertDriverExists(dto.driver_id);
-
     const ownershipType = dto.ownership_type ?? 'VENDOR';
     const hubId = dto.hub_id?.trim() || null;
     if (ownershipType === 'INTERNAL') {
       if (!hubId) throw new BadRequestException('Xe nội bộ phải được gán bưu cục hoạt động');
-      await this.assertActiveHub(hubId);
+      await this.assertInternalHub(hubId);
+    } else if (dto.driver_id) {
+      await this.assertDriverExists(dto.driver_id);
     }
     const vendorId = ownershipType === 'INTERNAL'
       ? null
@@ -46,13 +47,13 @@ export class TrucksService {
     const truck = this.trucksRepository.create({
       license_plate: licensePlate,
       payload: dto.payload,
-      driver_id: dto.driver_id ?? null,
+      driver_id: ownershipType === 'INTERNAL' ? null : dto.driver_id ?? null,
       fuel_consumption_limit: dto.fuel_consumption_limit ?? 0,
       status: dto.status ?? TruckStatus.AVAILABLE,
       ownership_type: ownershipType,
       hub_id: hubId,
-      ten_lai_xe: dto.ten_lai_xe?.trim() || null,
-      nha_xe: dto.nha_xe?.trim() || null,
+      ten_lai_xe: ownershipType === 'INTERNAL' ? null : dto.ten_lai_xe?.trim() || null,
+      nha_xe: ownershipType === 'INTERNAL' ? null : dto.nha_xe?.trim() || null,
       bks: dto.bks?.trim().toUpperCase() || licensePlate,
       loai_xe: dto.loai_xe?.trim() || null,
       khu_vuc: dto.khu_vuc?.trim() || null,
@@ -98,14 +99,14 @@ export class TrucksService {
     const nextHubId = dto.hub_id !== undefined ? dto.hub_id?.trim() || null : truck.hub_id;
     if (nextOwnershipType === 'INTERNAL') {
       if (!nextHubId) throw new BadRequestException('Xe nội bộ phải được gán bưu cục hoạt động');
-      await this.assertActiveHub(nextHubId);
+      await this.assertInternalHub(nextHubId);
     }
     if (dto.license_plate) {
       const licensePlate = this.normalizePlate(dto.license_plate);
       await this.assertUniquePlate(licensePlate, id);
       truck.license_plate = licensePlate;
     }
-    if (dto.driver_id !== undefined) {
+    if (nextOwnershipType !== 'INTERNAL' && dto.driver_id !== undefined) {
       if (dto.driver_id) await this.assertDriverExists(dto.driver_id);
       truck.driver_id = dto.driver_id || null;
     }
@@ -113,8 +114,9 @@ export class TrucksService {
       payload: dto.payload ?? truck.payload,
       fuel_consumption_limit: dto.fuel_consumption_limit ?? truck.fuel_consumption_limit,
       status: dto.status ?? truck.status,
-      ten_lai_xe: dto.ten_lai_xe !== undefined ? dto.ten_lai_xe.trim() || null : truck.ten_lai_xe,
-      nha_xe: dto.nha_xe !== undefined ? dto.nha_xe.trim() || null : truck.nha_xe,
+      driver_id: nextOwnershipType === 'INTERNAL' ? null : truck.driver_id,
+      ten_lai_xe: nextOwnershipType === 'INTERNAL' ? null : dto.ten_lai_xe !== undefined ? dto.ten_lai_xe.trim() || null : truck.ten_lai_xe,
+      nha_xe: nextOwnershipType === 'INTERNAL' ? null : dto.nha_xe !== undefined ? dto.nha_xe.trim() || null : truck.nha_xe,
       bks: dto.bks !== undefined ? dto.bks.trim().toUpperCase() || truck.license_plate : truck.bks,
       loai_xe: dto.loai_xe !== undefined ? dto.loai_xe.trim() || null : truck.loai_xe,
       khu_vuc: dto.khu_vuc !== undefined ? dto.khu_vuc.trim() || null : truck.khu_vuc,
@@ -164,6 +166,8 @@ export class TrucksService {
     if (query.vendor_id) qb.andWhere('truck.vendor_id = :vendorId', { vendorId: query.vendor_id });
     if (query.ownership_type) qb.andWhere('truck.ownership_type = :ownershipType', { ownershipType: query.ownership_type });
     if (query.hub_id) qb.andWhere('truck.hub_id = :hubId', { hubId: query.hub_id });
+    const hubCodes = this.parseList(query.hub_codes).map((code) => code.toUpperCase());
+    if (hubCodes.length) qb.andWhere('UPPER(hub.code) IN (:...hubCodes)', { hubCodes });
   }
 
   private parseList(value?: string): string[] {
@@ -184,9 +188,12 @@ export class TrucksService {
     return driver;
   }
 
-  private async assertActiveHub(hubId: string): Promise<void> {
+  private async assertInternalHub(hubId: string): Promise<void> {
     const hub = await this.hubsRepository.findOne({ where: { id: hubId, is_active: true, deleted_at: null } as any });
     if (!hub) throw new NotFoundException('Bưu cục không tồn tại hoặc đã ngừng hoạt động');
+    if (!INTERNAL_HUB_CODES.has(String(hub.code || '').toUpperCase())) {
+      throw new BadRequestException('Xe nội bộ chỉ được gán bưu cục Hà Nội (HAN) hoặc TP.HCM (HCM)');
+    }
   }
 
   private async assertNoActiveTrips(truckId: string, action: string) {

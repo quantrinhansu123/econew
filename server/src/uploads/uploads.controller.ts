@@ -52,6 +52,24 @@ export class UploadsController {
     return this.storageService.uploadWaybillImage(file).then((url) => ({ url }));
   }
 
+  @Post('vendor-qr-images/:vendorCode')
+  @HttpCode(HttpStatus.OK)
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Upload ảnh QR nhận tiền của NCC lên Supabase Storage' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  uploadVendorQrImage(
+    @Param('vendorCode') vendorCode: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.storageService.uploadVendorQrImage(file, vendorCode).then((url) => ({ url }));
+  }
+
   @Post('customer-price-lists/:customerCode')
   @HttpCode(HttpStatus.OK)
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.MANAGER, Roles.DIRECTOR)

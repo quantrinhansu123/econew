@@ -38,6 +38,21 @@ export class VendorEntity {
   @Column({ type: 'decimal', default: 0 })
   payable_balance: string;
 
+  @Column({ type: 'numeric', precision: 18, scale: 2, default: 0 })
+  opening_debt: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  bank_name: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  bank_account: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  bank_account_holder: string | null;
+
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  qr_image_url: string | null;
+
   @Column({ type: 'jsonb', nullable: true })
   routes: Record<string, unknown> | unknown[] | null;
 

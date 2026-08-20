@@ -159,6 +159,17 @@ export class StorageService {
     return this.uploadImage(file, 'waybills');
   }
 
+  uploadVendorQrImage(file: Express.Multer.File, vendorCode: string): Promise<string> {
+    const normalizedCode = vendorCode?.trim().toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64);
+    if (!normalizedCode) throw new BadRequestException('Nhập mã NCC trước khi tải ảnh QR.');
+    return this.uploadImage(file, `vendor-qr/${normalizedCode}`);
+  }
+
   async uploadCustomerPriceList(file: Express.Multer.File, customerCode: string): Promise<string> {
     if (!file?.buffer?.length) throw new BadRequestException('Thiếu file bảng giá.');
     if (file.size > MAX_PRICE_LIST_BYTES) throw new BadRequestException('File bảng giá tối đa 10 MB.');

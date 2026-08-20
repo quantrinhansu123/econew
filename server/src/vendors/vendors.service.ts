@@ -25,11 +25,11 @@ export const DEFAULT_VENDOR_CODE = 'CONG_LE';
 export const DEFAULT_VENDOR_NAME = 'Công lẻ';
 const DEPARTED_TRIP_STATUSES = [TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED];
 
-const mutableFields: Array<keyof UpsertVendorDto> = ['code', 'name', 'service_type', 'contact_name', 'phone', 'email', 'province', 'contract_type', 'status', 'routes', 'pricing', 'metadata'];
+const mutableFields: Array<keyof UpsertVendorDto> = ['code', 'name', 'service_type', 'contact_name', 'phone', 'email', 'opening_debt', 'bank_name', 'bank_account', 'bank_account_holder', 'qr_image_url', 'province', 'contract_type', 'status', 'routes', 'pricing', 'metadata'];
 
 type LedgerRow = {
   id: string;
-  type: 'TRIP' | 'COST' | 'PAYMENT' | 'DEBT';
+  type: 'OPENING' | 'TRIP' | 'COST' | 'PAYMENT' | 'DEBT';
   date: Date;
   amount: number;
   signed_amount: number;
@@ -37,6 +37,7 @@ type LedgerRow = {
   description: string | null;
   trip_id?: string | null;
   license_plate?: string | null;
+  manifest_code?: string | null;
   payment_id?: string | null;
   linked_trip_ids?: string[];
 };
@@ -58,7 +59,9 @@ export class VendorsService {
     if (dto.code) await this.assertUniqueCode(dto.code);
     const vendor = this.vendorsRepository.create(this.pickMutable(dto));
     vendor.status = vendor.status || 'ACTIVE';
-    return this.vendorsRepository.save(vendor);
+    const saved = await this.vendorsRepository.save(vendor);
+    await this.refreshPayableBalance(saved.id);
+    return this.findOne(saved.id);
   }
 
   async findAll(query: QueryVendorsDto) {
@@ -85,7 +88,9 @@ export class VendorsService {
     const vendor = await this.findOne(id);
     if (dto.code && dto.code !== vendor.code) await this.assertUniqueCode(dto.code, id);
     Object.assign(vendor, this.pickMutable(dto));
-    return this.vendorsRepository.save(vendor);
+    const saved = await this.vendorsRepository.save(vendor);
+    await this.refreshPayableBalance(saved.id);
+    return this.findOne(saved.id);
   }
 
   async updateStatus(id: string, dto: UpdateVendorStatusDto, currentUser: UserEntity) {
@@ -161,7 +166,16 @@ export class VendorsService {
     const periodPaid = paymentsInPeriod.reduce((sum, p) => sum + Number(p.amount), 0);
 
     return {
-      vendor: { id: vendor.id, code: vendor.code, name: vendor.name },
+      vendor: {
+        id: vendor.id,
+        code: vendor.code,
+        name: vendor.name,
+        opening_debt: Number(vendor.opening_debt ?? 0),
+        bank_name: vendor.bank_name,
+        bank_account: vendor.bank_account,
+        bank_account_holder: vendor.bank_account_holder,
+        qr_image_url: vendor.qr_image_url,
+      },
       period: { from: query.from ?? null, to: query.to ?? null },
       summary: {
         trip_count: trips.length,
@@ -201,7 +215,7 @@ export class VendorsService {
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 50);
     const qb = this.tripsRepository.createQueryBuilder('trip')
-      .innerJoinAndSelect('trip.truck', 'truck')
+      .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('trip.vendor', 'trip_vendor')
       .leftJoinAndSelect('truck.vendor', 'truck_vendor')
       .leftJoinAndSelect('trip.manifest', 'manifest')
@@ -463,7 +477,7 @@ export class VendorsService {
 
   private async queryVendorTrips(vendorId: string, from?: Date, to?: Date): Promise<TripEntity[]> {
     const qb = this.tripsRepository.createQueryBuilder('trip')
-      .innerJoinAndSelect('trip.truck', 'truck')
+      .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('trip.vendor', 'trip_vendor')
       .leftJoinAndSelect('truck.vendor', 'truck_vendor')
       .leftJoinAndSelect('trip.manifest', 'manifest')
@@ -562,6 +576,7 @@ export class VendorsService {
     if (!vendorIds.length) return map;
 
     for (const vendorId of vendorIds) {
+      const vendor = await this.vendorsRepository.findOne({ where: { id: vendorId } });
       const trips = await this.queryVendorTrips(vendorId);
       const tripIncurred = trips.reduce((sum, t) => sum + this.tripCost(t), 0);
       const [vendorExpenses, lastMileCosts] = await Promise.all([
@@ -574,7 +589,8 @@ export class VendorsService {
         where: { vendor_id: vendorId, trip_id: IsNull() },
       });
       const stackIncurred = stackDebts.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0);
-      const totalIncurred = tripIncurred + stackIncurred + expenseIncurred + lastMileIncurred;
+      const openingDebt = Number(vendor?.opening_debt ?? 0);
+      const totalIncurred = openingDebt + tripIncurred + stackIncurred + expenseIncurred + lastMileIncurred;
       const payments = await this.paymentsRepository.find({ where: { vendor_id: vendorId } });
       const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
       map.set(vendorId, {
@@ -587,6 +603,7 @@ export class VendorsService {
   }
 
   private async buildLedger(vendorId: string, from?: Date, to?: Date): Promise<LedgerRow[]> {
+    const vendor = await this.findOne(vendorId);
     const trips = await this.queryVendorTrips(vendorId);
     const payments = await this.paymentsRepository.find({
       where: { vendor_id: vendorId },
@@ -596,6 +613,18 @@ export class VendorsService {
 
     type RawEvent = Omit<LedgerRow, 'running_balance'>;
     const events: RawEvent[] = [];
+
+    const openingDebt = Number(vendor.opening_debt ?? 0);
+    if (openingDebt > 0) {
+      events.push({
+        id: `opening-${vendor.id}`,
+        type: 'OPENING',
+        date: vendor.created_at,
+        amount: openingDebt,
+        signed_amount: openingDebt,
+        description: 'Công nợ tồn đầu kỳ',
+      });
+    }
 
     for (const trip of trips) {
       const cost = this.tripCost(trip);
@@ -609,6 +638,7 @@ export class VendorsService {
         description: trip.manifest?.manifest_code ? `Chuyến #${trip.id} · ${trip.manifest.manifest_code}` : `Chi phí chuyến #${trip.id}`,
         trip_id: trip.id,
         license_plate: trip.truck?.bks || trip.truck?.license_plate || null,
+        manifest_code: trip.manifest?.manifest_code ?? null,
       });
     }
 
@@ -728,7 +758,9 @@ export class VendorsService {
   }
 
   private pickMutable(dto: UpsertVendorDto) {
-    return Object.fromEntries(mutableFields.filter((field) => dto[field] !== undefined).map((field) => [field, dto[field]]));
+    const values = Object.fromEntries(mutableFields.filter((field) => dto[field] !== undefined).map((field) => [field, dto[field]]));
+    if (dto.opening_debt !== undefined) values.opening_debt = String(dto.opening_debt);
+    return values;
   }
 
   private async assertUniqueCode(code: string, currentId?: string) {

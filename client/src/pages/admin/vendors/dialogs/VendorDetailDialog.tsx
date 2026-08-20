@@ -1,21 +1,20 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Building2, Check, Edit, ExternalLink, Loader2, Package, Printer, Receipt, Truck, X } from 'lucide-react';
+import { Building2, Edit, ExternalLink, Loader2, Printer, Receipt, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../../../../lib/api';
+import { formatAmountInput, formatMoney, parseAmountInput } from '../../../../lib/formatMoney';
 import type { AuthUserProfile } from '../../../login/types';
 import { VENDOR_DETAIL_TABS, type VendorDetailTabId } from '../vendorDetailTabs';
 import {
   formatContractType,
-  formatMoney as formatVendorMoney,
   formatProvince,
   formatServiceType,
   formatStatus,
 } from '../data';
 import type { Vendor } from '../types';
 import type { InventoryListResponse, WaybillInventoryItem } from '../../../warehouse/inventory/types';
-import { resolveNoiDen } from '../../../warehouse/inventory/inventoryColumns';
 import LoadPlanningTruckBoard from '../../../warehouse/load-planning/LoadPlanningTruckBoard';
 import type { LoadPlanningBoardResponse } from '../../../warehouse/load-planning/types';
 import CustomerBillsPanel from '../../../warehouse/customers/panels/CustomerBillsPanel';
@@ -49,19 +48,6 @@ const vendorExpenseTypes = [
   'Hoàn ứng',
   'Chi khác',
 ];
-
-const statusLabel: Record<string, string> = {
-  RECEIVED: 'Đã tạo đơn',
-  IN_WAREHOUSE: 'Trong kho',
-  MANIFEST_CLOSED: 'Chờ bốc',
-  LOADED: 'Đã bốc',
-  IN_TRANSIT: 'Đang vận chuyển',
-  AT_DEST_HUB: 'Tới hub đích',
-  OUT_FOR_DELIVERY: 'Chờ giao',
-  DELIVERED: 'Đã giao',
-  RETURNED: 'Hoàn hàng',
-  CANCELLED: 'Đã hủy',
-};
 
 function Row({ label, value, className }: { label: string; value?: string | null; className?: string }) {
   return (
@@ -106,18 +92,6 @@ function getStoredUser(): AuthUserProfile | null {
 }
 
 const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString('vi-VN') : '—');
-const formatMoney = (value?: number | string | null) =>
-  value == null || value === '' ? '—' : `${Number(value).toLocaleString('vi-VN')} đ`;
-
-const printMoney = (value?: number | string | null) => `${Number(value || 0).toLocaleString('vi-VN')} đ`;
-
-const parseAmountInput = (value: string) => Number(String(value).replace(/\D/g, '') || 0);
-
-const formatAmountInput = (value: string) => {
-  const digits = String(value).replace(/\D/g, '');
-  return digits ? Number(digits).toLocaleString('vi-VN') : '';
-};
-
 const normalizeInventoryList = (response: InventoryListResponse | WaybillInventoryItem[]) =>
   Array.isArray(response) ? response : response.data || response.items || response.waybills || [];
 
@@ -139,6 +113,20 @@ const formatJson = (value: unknown): string => {
   return String(value);
 };
 
+interface VendorDebtTrip {
+  id: string | number;
+  departure_time?: string | null;
+  status?: string | null;
+  trip_cost?: string | number | null;
+  license_plate?: string | null;
+  manifest_id?: string | number | null;
+  manifest_code?: string | null;
+}
+
+interface VendorDebtDashboardResponse {
+  trips?: VendorDebtTrip[];
+}
+
 export default function VendorDetailDialog({ vendor, loading, canManage, initialTab = 'chi-tiet', onClose, onEdit }: Props) {
   const navigate = useNavigate();
   const vendorId = vendor?.id != null ? String(vendor.id) : '';
@@ -147,10 +135,9 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
   const [inventoryTotal, setInventoryTotal] = useState(0);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [inventoryError, setInventoryError] = useState('');
-  const [editingDeliveryCostId, setEditingDeliveryCostId] = useState<string | null>(null);
-  const [deliveryCostDraft, setDeliveryCostDraft] = useState('');
-  const [deliveryCostSaving, setDeliveryCostSaving] = useState(false);
-  const [deliveryCostError, setDeliveryCostError] = useState('');
+  const [debtTrips, setDebtTrips] = useState<VendorDebtTrip[]>([]);
+  const [debtTripsLoading, setDebtTripsLoading] = useState(false);
+  const [debtTripsError, setDebtTripsError] = useState('');
   const [deliveryBoard, setDeliveryBoard] = useState<LoadPlanningBoardResponse | null>(null);
   const [deliveryTotal, setDeliveryTotal] = useState(0);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
@@ -184,8 +171,6 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
     return ((user?.role_mask ?? 0) & (DISPATCHER | ACCOUNTANT | MANAGER | DIRECTOR)) !== 0;
   }, []);
 
-  const canEditDeliveryCost = canViewCost;
-
   const canViewFinance = useMemo(() => {
     const user = getStoredUser();
     return ((user?.role_mask ?? 0) & (ACCOUNTANT | MANAGER | DIRECTOR)) !== 0;
@@ -198,9 +183,8 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
       setInventoryItems([]);
       setInventoryTotal(0);
       setInventoryError('');
-      setEditingDeliveryCostId(null);
-      setDeliveryCostDraft('');
-      setDeliveryCostError('');
+      setDebtTrips([]);
+      setDebtTripsError('');
       setDeliveryBoard(null);
       setDeliveryTotal(0);
       setDeliveryError('');
@@ -220,7 +204,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
   }, [vendor?.id]);
 
   const statementData = useMemo(() => {
-    const totalFreight = inventoryItems.reduce((sum, item) => sum + Number(item.freight_amount ?? item.cost_amount ?? 0), 0);
+    const totalFreight = debtTrips.reduce((sum, trip) => sum + Number(trip.trip_cost ?? 0), 0);
     const totalIncurred = ledgerBalance.total_incurred ?? ledgerEntries
       .filter((entry) => String(entry.type) !== 'PAYMENT')
       .reduce((sum, entry) => sum + Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0)), 0);
@@ -228,10 +212,10 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
       .filter((entry) => String(entry.type) === 'PAYMENT')
       .reduce((sum, entry) => sum + Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0)), 0);
     return { totalFreight, totalIncurred, totalPaid, remaining: ledgerBalance.remaining ?? totalIncurred - totalPaid };
-  }, [inventoryItems, ledgerBalance, ledgerEntries]);
+  }, [debtTrips, ledgerBalance, ledgerEntries]);
 
   useEffect(() => {
-    const needsInventory = activeTab === 'don-hang' || activeTab === 'bill' || activeTab === 'thanh-toan';
+    const needsInventory = activeTab === 'bill';
     if (!vendorId || !needsInventory) return;
 
     let cancelled = false;
@@ -257,6 +241,33 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
       .finally(() => {
         if (!cancelled) setInventoryLoading(false);
       });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, vendorId]);
+
+  useEffect(() => {
+    const needsDebtTrips = activeTab === 'don-hang' || activeTab === 'thanh-toan';
+    if (!vendorId || !needsDebtTrips) return;
+
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      if (cancelled) return;
+      setDebtTripsLoading(true);
+      setDebtTripsError('');
+      try {
+        const response = await apiRequest<VendorDebtDashboardResponse>(`/vendors/${vendorId}/debt-dashboard`);
+        if (!cancelled) setDebtTrips(response.trips ?? []);
+      } catch {
+        if (!cancelled) {
+          setDebtTrips([]);
+          setDebtTripsError('Không tải được danh sách chuyến phát sinh công nợ NCC.');
+        }
+      } finally {
+        if (!cancelled) setDebtTripsLoading(false);
+      }
+    });
 
     return () => {
       cancelled = true;
@@ -347,24 +358,6 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
     navigate(`/warehouse/load-planning?vendor_id=${encodeURIComponent(vendorId)}`);
   };
 
-  const saveDeliveryCost = async (waybillId: string | number) => {
-    const amount = parseAmountInput(deliveryCostDraft);
-    setDeliveryCostSaving(true);
-    setDeliveryCostError('');
-    try {
-      await apiRequest(`/waybills/${waybillId}/last-mile-cost`, { method: 'PATCH', body: { amount } });
-      setInventoryItems((current) => current.map((item) => String(item.id) === String(waybillId)
-        ? { ...item, last_mile_cost_amount: amount, allocated_freight: amount }
-        : item));
-      setEditingDeliveryCostId(null);
-      setDeliveryCostDraft('');
-    } catch {
-      setDeliveryCostError('Không cập nhật được cước giao chặng cuối.');
-    } finally {
-      setDeliveryCostSaving(false);
-    }
-  };
-
   const reloadLedger = async () => {
     if (!vendorId) return;
     const response = await apiRequest<{ entries?: VendorLedgerEntry[]; balance?: VendorLedgerBalance }>(`/vendors/${vendorId}/ledger`);
@@ -428,7 +421,8 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
               <Row label="Loại dịch vụ" value={formatServiceType(vendor.service_type)} />
               <Row label="Loại hợp đồng" value={formatContractType(vendor.contract_type)} />
               <Row label="Trạng thái" value={formatStatus(vendor.status)} />
-              <Row label="Công nợ phải trả" value={formatVendorMoney(vendor.payable_balance)} />
+              <Row label="Công nợ tồn đầu kỳ" value={formatMoney(vendor.opening_debt)} />
+              <Row label="Công nợ phải trả" value={formatMoney(vendor.payable_balance)} />
             </DetailSection>
 
             <DetailSection title="Liên hệ">
@@ -436,6 +430,17 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
               <Row label="Số điện thoại" value={vendor.phone} />
               <Row label="Email" value={vendor.email} />
               <Row label="Khu vực" value={formatProvince(vendor.province)} />
+            </DetailSection>
+
+            <DetailSection title="Thông tin nhận tiền">
+              <Row label="Ngân hàng" value={vendor.bank_name} />
+              <Row label="Số tài khoản" value={vendor.bank_account} />
+              <Row label="Chủ tài khoản" value={vendor.bank_account_holder} />
+              {vendor.qr_image_url && (
+                <div className="mt-3 flex justify-center rounded-xl border border-border bg-muted/5 p-3">
+                  <img src={vendor.qr_image_url} alt="QR nhận tiền NCC" className="max-h-56 w-auto object-contain" />
+                </div>
+              )}
             </DetailSection>
 
             {(vendor.routes != null || vendor.pricing != null) && (
@@ -465,83 +470,48 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[13px] font-bold text-foreground">
                 NCC: <span className="text-primary">{vendor.code}</span>
-                {inventoryTotal > 0 && (
-                  <span className="ml-2 font-medium text-muted-foreground">({inventoryTotal} đơn)</span>
+                {debtTrips.length > 0 && (
+                  <span className="ml-2 font-medium text-muted-foreground">({debtTrips.length} chuyến phát sinh)</span>
                 )}
               </p>
-              <button
-                type="button"
-                onClick={openLoadPlanning}
-                className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold text-muted-foreground hover:bg-muted"
-              >
-                <ExternalLink size={12} />
-                Phân xe
-              </button>
+              <span className="text-[11px] font-bold text-muted-foreground">1 chuyến = 1 mã bảng kê = 1 cước chuyến</span>
             </div>
 
-            {inventoryLoading ? (
+            {debtTripsLoading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="animate-spin text-primary" size={24} />
               </div>
-            ) : inventoryError ? (
-              <p className="py-8 text-center text-[13px] font-bold text-red-600">{inventoryError}</p>
-            ) : inventoryItems.length === 0 ? (
+            ) : debtTripsError ? (
+              <p className="py-8 text-center text-[13px] font-bold text-red-600">{debtTripsError}</p>
+            ) : debtTrips.length === 0 ? (
               <div className="py-10 text-center">
-                <Package size={28} className="mx-auto mb-2 text-muted-foreground" />
-                <p className="text-[13px] font-medium text-muted-foreground">Chưa có đơn hàng trên xe NCC này.</p>
+                <Truck size={28} className="mx-auto mb-2 text-muted-foreground" />
+                <p className="text-[13px] font-medium text-muted-foreground">Chưa có chuyến nhập cước cho NCC này.</p>
               </div>
             ) : (
               <div className="overflow-x-auto -mx-1">
-                {deliveryCostError && <p className="mx-1 mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-bold text-red-700">{deliveryCostError}</p>}
-                <table className="w-full min-w-[760px] border-collapse text-left text-[12px]">
+                <table className="w-full min-w-[720px] border-collapse text-left text-[12px]">
                   <thead>
                     <tr className="border-b border-border text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                      <th className="px-2 py-2">Mã vận đơn</th>
-                      <th className="px-2 py-2">Ngày</th>
+                      <th className="px-2 py-2">Mã chuyến</th>
+                      <th className="px-2 py-2">Mã bảng kê</th>
+                      <th className="px-2 py-2">Ngày chuyến</th>
+                      <th className="px-2 py-2">BKS</th>
                       <th className="px-2 py-2">Trạng thái</th>
-                      <th className="px-2 py-2">Xe / NCC</th>
-                      <th className="px-2 py-2">Nơi đến</th>
-                      <th className="px-2 py-2 text-right">Kiện</th>
-                      <th className="px-2 py-2">TT</th>
-                      {canViewCost && <th className="px-2 py-2 text-right">Cước</th>}
+                      <th className="px-2 py-2 text-right">Cước chuyến</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {inventoryItems.map((order) => {
-                      const state = String(order.current_state || '').toUpperCase();
-                      const isLastMileOrder = String(order.last_mile_vendor_id || '') === vendorId;
-                      const freight = isLastMileOrder ? order.last_mile_cost_amount : (order.allocated_freight ?? order.freight_amount ?? order.cost_amount);
-                      const isEditingCost = editingDeliveryCostId === String(order.id);
-                      return (
-                        <tr key={`${order.id}-${order.split_id ?? '0'}`} className="border-b border-border/70 hover:bg-muted/20">
-                          <td className="px-2 py-2.5 font-extrabold text-primary">
-                            {order.waybill_code || order.order_code || `#${order.id}`}
-                          </td>
-                          <td className="px-2 py-2.5">{formatDate(order.received_at || order.created_at)}</td>
-                          <td className="px-2 py-2.5">{statusLabel[state] || state || '—'}</td>
-                          <td className="px-2 py-2.5">
-                            {[order.last_mile_license_plate || order.license_plate, order.last_mile_driver_name || order.trip_nha_xe].filter(Boolean).join(' · ') || '—'}
-                          </td>
-                          <td className="px-2 py-2.5">{resolveNoiDen(order)}</td>
-                          <td className="px-2 py-2.5 text-right">{order.trip_package_count ?? order.package_count ?? '—'}</td>
-                          <td className="px-2 py-2.5">{order.payment_type || '—'}</td>
-                          {canViewCost && (
-                            <td className="px-2 py-2.5 text-right font-bold">
-                              {isLastMileOrder && canEditDeliveryCost ? (
-                                isEditingCost ? <div className="flex min-w-[150px] items-center justify-end gap-1">
-                                  <input inputMode="numeric" value={deliveryCostDraft} onChange={(event) => setDeliveryCostDraft(formatAmountInput(event.target.value))} disabled={deliveryCostSaving} className="h-8 w-28 rounded-lg border border-border px-2 text-right text-[12px] font-extrabold outline-none" />
-                                  <button type="button" title="Lưu cước" onClick={() => void saveDeliveryCost(order.id)} disabled={deliveryCostSaving} className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white disabled:opacity-60">{deliveryCostSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}</button>
-                                  <button type="button" title="Hủy" onClick={() => setEditingDeliveryCostId(null)} disabled={deliveryCostSaving} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground"><X size={13} /></button>
-                                </div> : <div className="flex items-center justify-end gap-1">
-                                  <span>{formatMoney(freight)}</span>
-                                  <button type="button" title="Nhập cước đối soát" onClick={() => { setEditingDeliveryCostId(String(order.id)); setDeliveryCostDraft(formatAmountInput(String(freight || ''))); setDeliveryCostError(''); }} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-primary"><Edit size={13} /></button>
-                                </div>
-                              ) : formatMoney(freight)}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
+                    {debtTrips.map((trip) => (
+                      <tr key={String(trip.id)} className="border-b border-border/70 hover:bg-muted/20">
+                        <td className="px-2 py-2.5 font-extrabold text-primary">#{trip.id}</td>
+                        <td className="px-2 py-2.5 font-bold">{trip.manifest_code || (trip.manifest_id ? `#${trip.manifest_id}` : '—')}</td>
+                        <td className="px-2 py-2.5">{formatDate(trip.departure_time)}</td>
+                        <td className="px-2 py-2.5">{trip.license_plate || '—'}</td>
+                        <td className="px-2 py-2.5">{trip.status || '—'}</td>
+                        <td className="px-2 py-2.5 text-right font-extrabold tabular-nums">{formatMoney(trip.trip_cost)}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -621,10 +591,19 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
           <div className="space-y-4">
             <DetailSection title="Thông tin thanh toán NCC">
               <Row label="Loại hợp đồng" value={formatContractType(vendor.contract_type)} />
-              <Row label="Công nợ phải trả" value={formatVendorMoney(vendor.payable_balance)} />
-              <Row label="Tổng phát sinh" value={formatVendorMoney(ledgerBalance.total_incurred)} />
-              <Row label="Đã chi trả" value={formatVendorMoney(ledgerBalance.total_paid)} />
-              <Row label="Còn lại" value={formatVendorMoney(ledgerBalance.remaining)} />
+              <Row label="Công nợ tồn đầu kỳ" value={formatMoney(vendor.opening_debt)} />
+              <Row label="Công nợ phải trả" value={formatMoney(vendor.payable_balance)} />
+              <Row label="Tổng phát sinh" value={formatMoney(ledgerBalance.total_incurred)} />
+              <Row label="Đã chi trả" value={formatMoney(ledgerBalance.total_paid)} />
+              <Row label="Còn lại" value={formatMoney(ledgerBalance.remaining)} />
+              <Row label="Ngân hàng" value={vendor.bank_name} />
+              <Row label="Số tài khoản" value={vendor.bank_account} />
+              <Row label="Chủ tài khoản" value={vendor.bank_account_holder} />
+              {vendor.qr_image_url && (
+                <div className="mt-3 flex justify-center rounded-xl border border-border bg-muted/5 p-3">
+                  <img src={vendor.qr_image_url} alt="QR nhận tiền NCC" className="max-h-52 w-auto object-contain" />
+                </div>
+              )}
             </DetailSection>
 
             {canViewFinance ? (
@@ -678,66 +657,55 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
             <div className="flex items-start justify-between gap-4 border-b-2 border-slate-900 pb-4">
               <div>
                 <h1 className="text-xl font-extrabold uppercase tracking-wide">Phiếu kê thanh toán nhà cung cấp</h1>
-                <p className="mt-1 text-slate-500">Liệt kê các đơn/chuyến và các khoản chi thanh toán NCC</p>
+                <p className="mt-1 text-slate-500">Sổ phát sinh công nợ và các khoản chi thanh toán NCC</p>
               </div>
               <div className="text-right text-[12px]">
                 <p><b>Ngày in:</b> {new Date().toLocaleString('vi-VN')}</p>
                 <p><b>Mã NCC:</b> {vendor.code || '—'}</p>
               </div>
             </div>
-            <div className="mt-4 grid gap-1 text-[13px]">
-              <p><b>Nhà cung cấp:</b> {vendor.name || '—'}</p>
-              <p><b>Loại dịch vụ:</b> {formatServiceType(vendor.service_type)} <span className="mx-2">·</span> <b>Tỉnh:</b> {formatProvince(vendor.province)}</p>
-              <p><b>Liên hệ:</b> {vendor.contact_name || '—'} <span className="mx-2">·</span> <b>Điện thoại:</b> {vendor.phone || '—'}</p>
+            <div className={clsx('mt-4 grid gap-4', vendor.qr_image_url && 'grid-cols-[1fr_150px]')}>
+              <div className="grid content-start gap-1 text-[13px]">
+                <p><b>Nhà cung cấp:</b> {vendor.name || '—'}</p>
+                <p><b>Loại dịch vụ:</b> {formatServiceType(vendor.service_type)} <span className="mx-2">·</span> <b>Tỉnh:</b> {formatProvince(vendor.province)}</p>
+                <p><b>Liên hệ:</b> {vendor.contact_name || '—'} <span className="mx-2">·</span> <b>Điện thoại:</b> {vendor.phone || '—'}</p>
+                <p><b>Ngân hàng:</b> {vendor.bank_name || '—'}</p>
+                <p><b>Số tài khoản:</b> {vendor.bank_account || '—'}</p>
+                <p><b>Chủ tài khoản:</b> {vendor.bank_account_holder || '—'}</p>
+              </div>
+              {vendor.qr_image_url && <img src={vendor.qr_image_url} alt="QR nhận tiền NCC" className="h-[150px] w-[150px] border border-slate-300 object-contain p-1" />}
             </div>
             <div className="mt-4 grid grid-cols-4 gap-2">
-              <PrintMetric label="Số đơn" value={inventoryItems.length.toLocaleString('vi-VN')} />
-              <PrintMetric label="Tổng cước đơn" value={printMoney(statementData.totalFreight)} />
-              <PrintMetric label="Tổng phát sinh" value={printMoney(statementData.totalIncurred)} />
-              <PrintMetric label="Còn phải trả" value={printMoney(statementData.remaining)} />
+              <PrintMetric label="Số chuyến" value={debtTrips.length.toLocaleString('vi-VN')} />
+              <PrintMetric label="Tổng cước chuyến" value={formatMoney(statementData.totalFreight)} />
+              <PrintMetric label="Tổng phát sinh" value={formatMoney(statementData.totalIncurred)} />
+              <PrintMetric label="Còn phải trả" value={formatMoney(statementData.remaining)} />
             </div>
             <div className="mt-2 grid grid-cols-4 gap-2">
-              <PrintMetric label="Đã chi" value={printMoney(statementData.totalPaid)} />
+              <PrintMetric label="Đã chi" value={formatMoney(statementData.totalPaid)} />
               <PrintMetric label="Số phiếu chi" value={ledgerEntries.filter((entry) => String(entry.type) === 'PAYMENT').length.toLocaleString('vi-VN')} />
               <PrintMetric label="Số phát sinh" value={ledgerEntries.filter((entry) => String(entry.type) !== 'PAYMENT').length.toLocaleString('vi-VN')} />
               <PrintMetric label="Sổ cái" value={ledgerEntries.length.toLocaleString('vi-VN')} />
             </div>
 
-            <h2 className="mt-6 text-[14px] font-extrabold uppercase text-primary">Danh sách đơn / chuyến</h2>
+            <h2 className="mt-6 text-[14px] font-extrabold uppercase text-primary">Các khoản phát sinh và thanh toán</h2>
             <table className="mt-2 w-full border-collapse text-left text-[11px]">
-              <thead className="bg-slate-100 uppercase text-slate-600"><tr>{['#', 'Số bill', 'Ngày', 'Xe / nhà xe', 'Nơi đến', 'Trạng thái', 'Cước'].map((header) => <th key={header} className="border border-slate-300 px-2 py-2">{header}</th>)}</tr></thead>
-              <tbody>
-                {inventoryItems.length ? inventoryItems.map((item, index) => {
-                  const state = item.current_state || item.status || '';
-                  return <tr key={`${item.id}-${item.split_id ?? '0'}`}>
-                    <td className="border border-slate-300 px-2 py-2">{index + 1}</td>
-                    <td className="border border-slate-300 px-2 py-2 font-bold">{item.waybill_code || item.order_code || item.id}</td>
-                    <td className="border border-slate-300 px-2 py-2">{formatDate(item.received_at || item.created_at)}</td>
-                    <td className="border border-slate-300 px-2 py-2">{[item.license_plate, item.trip_nha_xe].filter(Boolean).join(' · ') || '—'}</td>
-                    <td className="border border-slate-300 px-2 py-2">{resolveNoiDen(item)}</td>
-                    <td className="border border-slate-300 px-2 py-2">{statusLabel[state] || state || '—'}</td>
-                    <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(item.freight_amount ?? item.cost_amount)}</td>
-                  </tr>;
-                }) : <tr><td colSpan={7} className="border border-slate-300 px-2 py-6 text-center text-slate-500">Chưa có đơn/chuyến.</td></tr>}
-              </tbody>
-            </table>
-
-            <h2 className="mt-6 text-[14px] font-extrabold uppercase text-primary">Các khoản thanh toán</h2>
-            <table className="mt-2 w-full border-collapse text-left text-[11px]">
-              <thead className="bg-slate-100 uppercase text-slate-600"><tr>{['#', 'Ngày', 'Loại', 'Chuyến', 'Số tiền', 'Ghi chú', 'Dư nợ'].map((header) => <th key={header} className="border border-slate-300 px-2 py-2">{header}</th>)}</tr></thead>
+              <thead className="bg-slate-100 uppercase text-slate-600"><tr>{['#', 'Ngày', 'Loại', 'Chuyến', 'Mã bảng kê', 'Số tiền', 'Ghi chú', 'Dư nợ'].map((header) => <th key={header} className="border border-slate-300 px-2 py-2">{header}</th>)}</tr></thead>
               <tbody>
                 {ledgerEntries.length ? ledgerEntries.map((entry, index) => {
                   const isPayment = String(entry.type) === 'PAYMENT';
+                  const isOpening = String(entry.type) === 'OPENING';
                   return <tr key={String(entry.id)}>
                     <td className="border border-slate-300 px-2 py-2">{index + 1}</td>
                     <td className="border border-slate-300 px-2 py-2">{formatDate(entry.date)}</td>
-                    <td className="border border-slate-300 px-2 py-2">{isPayment ? 'Phiếu chi' : String(entry.type) === 'TRIP' ? 'Phát sinh chuyến' : 'Chi phí phát sinh'}</td>
+                    <td className="border border-slate-300 px-2 py-2">{isPayment ? 'Phiếu chi' : isOpening ? 'Công nợ đầu kỳ' : String(entry.type) === 'TRIP' ? 'Phát sinh chuyến' : 'Chi phí phát sinh'}</td>
                     <td className="border border-slate-300 px-2 py-2">{entry.trip_id ? `#${entry.trip_id}${entry.license_plate ? ` · ${entry.license_plate}` : ''}` : '—'}</td>
-                    <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0)))}</td>
+                    <td className="border border-slate-300 px-2 py-2">{entry.manifest_code || '—'}</td>
+                    <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{formatMoney(Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0)))}</td>
                     <td className="border border-slate-300 px-2 py-2">{entry.description || '—'}</td>
-                    <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(entry.running_balance)}</td>
+                    <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{formatMoney(entry.running_balance)}</td>
                   </tr>;
-                }) : <tr><td colSpan={7} className="border border-slate-300 px-2 py-6 text-center text-slate-500">Chưa có khoản thanh toán.</td></tr>}
+                }) : <tr><td colSpan={8} className="border border-slate-300 px-2 py-6 text-center text-slate-500">Chưa có phát sinh công nợ.</td></tr>}
               </tbody>
             </table>
 

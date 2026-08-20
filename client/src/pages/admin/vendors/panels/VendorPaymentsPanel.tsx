@@ -7,7 +7,7 @@ import { formatMoney, isDateInRange } from '../../../warehouse/customers/utils/c
 export interface VendorPaymentFilters {
   fromDate: string;
   toDate: string;
-  entryType: '' | 'TRIP' | 'COST' | 'PAYMENT';
+  entryType: '' | 'OPENING' | 'TRIP' | 'COST' | 'PAYMENT';
 }
 
 export interface VendorLedgerEntry {
@@ -20,6 +20,7 @@ export interface VendorLedgerEntry {
   description?: string | null;
   trip_id?: string | number | null;
   license_plate?: string | null;
+  manifest_code?: string | null;
   payment_id?: string | number | null;
 }
 
@@ -161,6 +162,7 @@ export default function VendorPaymentsPanel({
               className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] font-bold"
             >
               <option value="">Tất cả</option>
+              <option value="OPENING">Công nợ đầu kỳ</option>
               <option value="TRIP">Phát sinh chuyến</option>
               <option value="COST">Chi phí phát sinh</option>
               <option value="PAYMENT">Phiếu chi</option>
@@ -212,6 +214,7 @@ export default function VendorPaymentsPanel({
                   {group.items.map((entry) => {
                     const isPayment = String(entry.type) === 'PAYMENT';
                     const isTrip = String(entry.type) === 'TRIP';
+                    const isOpening = String(entry.type) === 'OPENING';
                     const amount = Math.abs(Number(entry.signed_amount ?? entry.amount ?? 0));
                     return (
                       <div key={String(entry.id)} className="px-4 py-3">
@@ -224,7 +227,7 @@ export default function VendorPaymentsPanel({
                                   isPayment ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800',
                                 )}
                               >
-                                {isPayment ? 'Phiếu chi' : isTrip ? 'Phát sinh chuyến' : 'Chi phí phát sinh'}
+                                {isPayment ? 'Phiếu chi' : isOpening ? 'Công nợ đầu kỳ' : isTrip ? 'Phát sinh chuyến' : 'Chi phí phát sinh'}
                               </span>
                               <span className="text-[15px] font-extrabold text-foreground">{formatMoney(amount, '0 đ')}</span>
                             </div>
@@ -232,6 +235,7 @@ export default function VendorPaymentsPanel({
                               <p className="mt-1 text-[12px] font-bold text-primary">
                                 Chuyến #{entry.trip_id}
                                 {entry.license_plate ? ` · ${entry.license_plate}` : ''}
+                                {entry.manifest_code ? ` · BK ${entry.manifest_code}` : ''}
                               </p>
                             )}
                           </div>
