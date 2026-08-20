@@ -113,6 +113,24 @@ const plainGoodsNote = (note: string | null | undefined) => {
   return text;
 };
 
+const userFacingWaybillNote = (note: string | null | undefined) => {
+  const text = String(note || '').trim();
+  if (!text) return '';
+  const encodedUserNote = parseNoteField(text, 'user_note');
+  if (encodedUserNote) {
+    try {
+      return decodeURIComponent(encodedUserNote);
+    } catch {
+      return encodedUserNote;
+    }
+  }
+  return text
+    .split('|')
+    .map((part) => part.trim())
+    .filter((part) => part && !/^[a-z][a-z0-9_]*\s*=/i.test(part))
+    .join(' | ');
+};
+
 const STATE_TRANSITIONS: Record<string, WaybillStatus[]> = {
   [WaybillStatus.RECEIVED]: [],
   [WaybillStatus.IN_WAREHOUSE]: [WaybillStatus.MANIFEST_CLOSED],
@@ -2341,7 +2359,7 @@ export class WaybillsService {
     const dv = routeCode && routeCode.length <= 4
       ? routeCode.toUpperCase()
       : String(wbExtra.dich_vu ?? wbExtra.loai_bp ?? 'TC').slice(0, 4).toUpperCase() || 'TC';
-    const note = split.note?.trim() ?? waybill.note?.trim() ?? '';
+    const note = userFacingWaybillNote(split.note) || userFacingWaybillNote(waybill.note);
     const parenthetical = note.match(/\([^)]+\)/)?.[0] ?? null;
     const goodsBody = this.resolveGoodsContent(waybill) || waybill.waybill_code;
     const matHangNote = parenthetical ?? (note && /xe|kiện|lô/i.test(note) ? note : null);

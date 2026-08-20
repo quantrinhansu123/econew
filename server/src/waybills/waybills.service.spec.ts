@@ -2090,6 +2090,49 @@ describe('WaybillsService', () => {
     expect(result).not.toHaveProperty('cc_amount');
   });
 
+  it('does not expose technical key-value metadata as a load-planning item note', () => {
+    const metadata = [
+      'ma_kh=ATAN',
+      'content=DJ807001-17 pallet',
+      'loai_bp=CPN',
+      'dich_vu=Tiêu chuẩn 72h',
+      'billing_unit=Kg',
+      'unit_price=1700',
+      'giao_hang=Tận nơi',
+      'phuong_thuc=Công nợ tháng',
+      'volumetric_weight=14463',
+      'the_tich_m3=4.2',
+    ].join(' | ');
+    const item = (service as any).mapLoadPlanningItem(
+      makeWaybill({ note: metadata, noi_dung: 'DJ807001-17 pallet' }),
+      { id: 'split-1', package_count: 17, note: null },
+      0,
+      manager,
+    );
+
+    expect(item.mat_hang).toBe('DJ807001-17 pallet');
+    expect(item.mat_hang_note).toBeNull();
+    expect(String(item.mat_hang_note || '')).not.toContain('ma_kh=');
+  });
+
+  it('uses the decoded user note or a legacy plain note for load planning', () => {
+    const encodedItem = (service as any).mapLoadPlanningItem(
+      makeWaybill({ note: `content=Máy móc | user_note=${encodeURIComponent('Cần xe nâng khi dỡ')}` }),
+      { id: 'split-1', package_count: 1, note: null },
+      0,
+      manager,
+    );
+    const legacyItem = (service as any).mapLoadPlanningItem(
+      makeWaybill({ note: 'Lô hàng dễ vỡ' }),
+      { id: 'split-2', package_count: 1, note: null },
+      0,
+      manager,
+    );
+
+    expect(encodedItem.mat_hang_note).toBe('Cần xe nâng khi dỡ');
+    expect(legacyItem.mat_hang_note).toBe('Lô hàng dễ vỡ');
+  });
+
   it('getByCode returns accessible waybill by code', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
     await expect(service.getByCode('ECO1', warehouse)).resolves.toMatchObject({ waybill_code: 'ECO1' });
