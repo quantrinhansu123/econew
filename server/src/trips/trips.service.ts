@@ -73,6 +73,8 @@ export class TripsService {
       status: TripStatus.PLANNED,
       trip_cost: tripCostAmount > 0 ? String(tripCostAmount) : null,
       other_costs: tripCostAmount > 0 ? String(tripCostAmount) : null,
+      driver_name: dto.driver_name?.trim() || truck?.ten_lai_xe?.trim() || null,
+      driver_phone: dto.driver_phone?.trim() || null,
       vendor_id: truck?.vendor_id ?? null,
     });
 

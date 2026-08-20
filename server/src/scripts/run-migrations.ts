@@ -42,6 +42,22 @@ const ensureCustomerOpeningDebtSchema = async (dataSource: DataSource) => {
   await dataSource.query(`ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "opening_debt" numeric(18,2) NOT NULL DEFAULT 0`);
 };
 
+const ensureInternalFleetAndPayrollSchema = async (dataSource: DataSource) => {
+  await dataSource.query(`ALTER TABLE "trucks" ADD COLUMN IF NOT EXISTS "ownership_type" varchar(16) NOT NULL DEFAULT 'VENDOR'`);
+  await dataSource.query(`ALTER TABLE "trucks" ADD COLUMN IF NOT EXISTS "hub_id" bigint NULL`);
+  await dataSource.query(`UPDATE "trucks" SET "ownership_type" = 'INTERNAL' WHERE UPPER(COALESCE("loai_xe", '')) IN ('NỘI BỘ', 'NOI BO') AND COALESCE("ownership_type", 'VENDOR') = 'VENDOR'`);
+  await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_trucks_ownership_type" ON "trucks" ("ownership_type")`);
+  await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_trucks_hub_id" ON "trucks" ("hub_id")`);
+  await dataSource.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_trucks_hub') THEN
+        ALTER TABLE "trucks" ADD CONSTRAINT "FK_trucks_hub" FOREIGN KEY ("hub_id") REFERENCES "hubs"("id") ON DELETE SET NULL;
+      END IF;
+    END $$
+  `);
+  await dataSource.query(`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "monthly_salary" numeric(14,2) NOT NULL DEFAULT 0`);
+};
+
 const ensureCodCashFundSchema = async (dataSource: DataSource) => {
   await dataSource.query(`
     CREATE TABLE IF NOT EXISTS "cash_funds" (
@@ -154,6 +170,7 @@ async function main() {
     await ensureHubScheduleSchema(dataSource);
     await ensureCustomerOpeningDebtSchema(dataSource);
     await ensureCodCashFundSchema(dataSource);
+    await ensureInternalFleetAndPayrollSchema(dataSource);
     if (wasBaselined) return;
     const executed = await dataSource.runMigrations({ transaction: 'each' });
 

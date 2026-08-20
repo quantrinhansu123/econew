@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class QueryAttendanceLogsDto {
   @ApiPropertyOptional({ description: 'YYYY-MM-DD' })
@@ -17,6 +17,16 @@ export class QueryAttendanceLogsDto {
   @IsOptional()
   @IsString()
   locationId?: string;
+
+  @ApiPropertyOptional({ description: 'Ngày bắt đầu, dùng cho báo cáo chấm công' })
+  @IsOptional()
+  @IsDateString()
+  date_from?: string;
+
+  @ApiPropertyOptional({ description: 'Ngày kết thúc, dùng cho báo cáo chấm công' })
+  @IsOptional()
+  @IsDateString()
+  date_to?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

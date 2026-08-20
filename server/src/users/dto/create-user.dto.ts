@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayUnique, IsArray, IsEmail, IsInt, IsNotEmpty, IsOptional, IsPhoneNumber, IsString, MaxLength, MinLength } from 'class-validator';
+import { ArrayUnique, IsArray, IsEmail, IsInt, IsNotEmpty, IsNumber, IsOptional, IsPhoneNumber, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'staff@eco.test' })
@@ -27,6 +28,13 @@ export class CreateUserDto {
   @ApiProperty({ example: 1 })
   @IsInt()
   role_mask: number;
+
+  @ApiPropertyOptional({ example: 12000000, description: 'Lương cơ bản tháng, dùng cho bảng tính lương tạm tính' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  monthly_salary?: number;
 
   @ApiPropertyOptional({ example: '1' })
   @IsOptional()

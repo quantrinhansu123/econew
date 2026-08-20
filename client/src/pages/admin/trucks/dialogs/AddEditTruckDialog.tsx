@@ -16,11 +16,13 @@ interface Props {
   setFormField: <K extends keyof TruckFormState>(key: K, value: TruckFormState[K]) => void;
   statusOptions: FilterOption[];
   driverOptions: FilterOption[];
+  internalOnly?: boolean;
+  hubOptions?: FilterOption[];
 }
 
 const inputClass = 'w-full h-10 rounded-xl border border-border bg-white pl-10 pr-3 text-[13px] font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/10';
 
-export default function AddEditTruckDialog({ isOpen, isClosing, isEditMode, isSubmitting, onClose, onSubmit, formState, setFormField, statusOptions, driverOptions }: Props) {
+export default function AddEditTruckDialog({ isOpen, isClosing, isEditMode, isSubmitting, onClose, onSubmit, formState, setFormField, statusOptions, driverOptions, internalOnly = false, hubOptions = [] }: Props) {
   if (!isOpen && !isClosing) return null;
 
   return createPortal(
@@ -40,7 +42,7 @@ export default function AddEditTruckDialog({ isOpen, isClosing, isEditMode, isSu
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 text-primary"><Truck size={22} /></div>
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">{isEditMode ? 'Chỉnh sửa xe' : 'Tạo xe mới'}</p>
-                <Field label="Biển số xe" icon={<Truck size={16} />} className="mt-2 max-w-sm"><input value={formState.license_plate} onChange={e => setFormField('license_plate', e.target.value.toUpperCase())} className={inputClass} placeholder="VD: 29H-12345" /></Field>
+                <Field label="Biển số xe (BKS)" icon={<Truck size={16} />} className="mt-2 max-w-sm"><input value={formState.license_plate} onChange={e => { const value = e.target.value.toUpperCase(); setFormField('license_plate', value); setFormField('bks', value); }} className={inputClass} placeholder="VD: 29H-12345" /></Field>
               </div>
             </section>
 
@@ -51,12 +53,18 @@ export default function AddEditTruckDialog({ isOpen, isClosing, isEditMode, isSu
               </div>
             </Section>
 
-            <Section title="Phân công" icon={<User size={16} />}>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <SelectField label="Tài xế" value={formState.driver_id} options={driverOptions} onChange={value => setFormField('driver_id', value)} icon={<User size={16} />} />
-                <Field label="Mã tài xế" icon={<Hash size={16} />}><input value={formState.driver_id || 'Chưa gán'} disabled className={`${inputClass} opacity-80 disabled:cursor-not-allowed`} /></Field>
-              </div>
-            </Section>
+            {internalOnly ? (
+              <Section title="Bưu cục hoạt động" icon={<Tag size={16} />}>
+                <SelectField label="Gán bưu cục" value={formState.hub_id} options={hubOptions} onChange={value => setFormField('hub_id', value)} icon={<Tag size={16} />} />
+              </Section>
+            ) : (
+              <Section title="Phân công" icon={<User size={16} />}>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <SelectField label="Tài xế mặc định (không bắt buộc)" value={formState.driver_id} options={driverOptions} onChange={value => setFormField('driver_id', value)} icon={<User size={16} />} />
+                  <Field label="Mã tài xế" icon={<Hash size={16} />}><input value={formState.driver_id || 'Chưa gán'} disabled className={`${inputClass} opacity-80 disabled:cursor-not-allowed`} /></Field>
+                </div>
+              </Section>
+            )}
 
             <Section title="Trạng thái hệ thống" icon={<Tag size={16} />}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

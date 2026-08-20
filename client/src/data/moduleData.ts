@@ -121,6 +121,7 @@ export const moduleGroups: ModuleGroup[] = [
     requiredRoleMask: DISPATCHER | MANAGER_ROLES,
     items: [
       { icon: TruckIcon, title: 'Danh sách xe', description: 'Quản lý lái xe, khu vực, nhà xe, BKS và loại xe.', colorScheme: 'cyan', path: '/fleet/vehicles', requiredRoleMask: DISPATCHER | MANAGER_ROLES },
+      { icon: TruckIcon, title: 'Xe nội bộ theo bưu cục', description: 'Danh mục BKS xe công ty, gán bưu cục hoạt động và chọn khi tạo chuyến.', colorScheme: 'teal', path: '/fleet/internal-vehicles', requiredRoleMask: DISPATCHER | MANAGER_ROLES },
       { icon: Fuel, title: 'Chi phí xe', description: 'Theo dõi ngày, BKS, loại chi phí, số tiền và trạng thái.', colorScheme: 'amber', path: '/fleet/vehicle-costs', requiredRoleMask: DISPATCHER | MANAGER_ROLES },
     ],
   },
@@ -189,6 +190,9 @@ export const moduleGroups: ModuleGroup[] = [
       { icon: Wallet, title: 'Số quỹ', description: 'Theo dõi số dư quỹ tiền mặt theo mã quỹ và bưu cục.', colorScheme: 'emerald', path: '/finance/fund-balances', requiredRoleMask: ACCOUNTANT | MANAGER_ROLES },
       { icon: ClipboardList, title: 'Nhật ký thu chi', description: 'Ghi nhận thu nhập và chi phí theo nguồn/phân loại.', colorScheme: 'slate', path: '/finance/cash-journal', requiredRoleMask: ACCOUNTANT | MANAGER_ROLES },
       { icon: BarChart3, title: 'Dashboard thu chi', description: 'Tổng quan dòng tiền thu bill, chi bill và chi NCC.', colorScheme: 'blue', path: '/finance/cashflow-dashboard', requiredRoleMask: ACCOUNTANT | MANAGER_ROLES },
+      { icon: Users, title: 'Tổng danh sách nhân sự nội bộ', description: 'Tra cứu nhân sự, bưu cục, vai trò và mức lương cơ bản.', colorScheme: 'blue', path: '/finance/staff', requiredRoleMask: ACCOUNTANT },
+      { icon: Clock, title: 'Bảng chấm công', description: 'Xem tổng hợp ngày công theo tháng từ dữ liệu GPS.', colorScheme: 'teal', path: '/finance/attendance', requiredRoleMask: ACCOUNTANT },
+      { icon: BadgeDollarSign, title: 'Tính lương theo ngày công', description: 'Tạm tính lương tháng dựa trên mức lương và số ngày đã chấm công.', colorScheme: 'emerald', path: '/finance/payroll', requiredRoleMask: ACCOUNTANT },
     ],
   },
   {

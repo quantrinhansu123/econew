@@ -124,6 +124,9 @@ export interface TripCreateTruckSummary {
   license_plate?: string | null;
   bks?: string | null;
   nha_xe?: string | null;
+  ownership_type?: 'INTERNAL' | 'VENDOR' | string | null;
+  hub_id?: string | number | null;
+  hub?: HubSummary | null;
   payload?: number | null;
   status?: string | null;
   fuel_consumption_limit?: number | null;
@@ -131,6 +134,14 @@ export interface TripCreateTruckSummary {
   vendor_id?: string | number | null;
   warning?: string | null;
   warnings?: string[] | null;
+}
+
+export interface TripCreateDriverSummary {
+  id: string | number;
+  full_name?: string | null;
+  name?: string | null;
+  username?: string | null;
+  phone?: string | null;
 }
 
 export interface TripCreateManifestSummary {
@@ -147,6 +158,7 @@ export interface TripCreateManifestSummary {
 }
 
 export interface TripCreateFormState {
+  transport_mode: 'INTERNAL' | 'VENDOR';
   truck_id: string;
   manifest_id: string;
   start_hub_id: string;
@@ -154,6 +166,9 @@ export interface TripCreateFormState {
   departure_time: string;
   arrival_time: string;
   trip_cost: string;
+  driver_user_id: string;
+  driver_name: string;
+  driver_phone: string;
 }
 
 export type TripCreatePayload = {
@@ -165,6 +180,8 @@ export type TripCreatePayload = {
   arrival_time?: string;
   trip_cost?: number;
   other_costs?: number;
+  driver_name?: string;
+  driver_phone?: string;
 };
 
 export type TripCreateFieldErrors = Partial<Record<keyof TripCreateFormState, string>>;

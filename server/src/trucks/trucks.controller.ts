@@ -32,6 +32,13 @@ export class TrucksController {
     return this.trucksService.findAll(query, currentUser);
   }
 
+  @Get('internal')
+  @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'List active internal trucks by hub' })
+  findInternal(@Query() query: QueryTrucksDto, @CurrentUser() currentUser: UserEntity) {
+    return this.trucksService.findAll({ ...query, ownership_type: 'INTERNAL' }, currentUser);
+  }
+
   @Get('available')
   @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List available trucks for trips' })

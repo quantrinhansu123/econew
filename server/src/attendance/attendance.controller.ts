@@ -21,7 +21,7 @@ export class AttendanceController {
 
   @Get('locations')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List attendance locations' })
   findLocations() {
     return this.attendanceService.findLocations();
@@ -68,7 +68,7 @@ export class AttendanceController {
 
   @Get('logs')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List attendance logs' })
   findLogs(@Query() query: QueryAttendanceLogsDto) {
     return this.attendanceService.findLogs(query);

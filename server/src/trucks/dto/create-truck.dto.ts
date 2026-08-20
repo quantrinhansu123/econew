@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { TruckStatus } from './truck.enums';
 
 export class CreateTruckDto {
@@ -31,6 +31,16 @@ export class CreateTruckDto {
   @IsOptional()
   @IsEnum(TruckStatus)
   status?: TruckStatus = TruckStatus.AVAILABLE;
+
+  @ApiPropertyOptional({ enum: ['INTERNAL', 'VENDOR'], default: 'VENDOR' })
+  @IsOptional()
+  @IsIn(['INTERNAL', 'VENDOR'])
+  ownership_type?: 'INTERNAL' | 'VENDOR';
+
+  @ApiPropertyOptional({ description: 'Bưu cục đang quản lý xe nội bộ' })
+  @IsOptional()
+  @IsString()
+  hub_id?: string;
 
   @ApiPropertyOptional({ example: 'Nguyễn Văn A' })
   @IsOptional()

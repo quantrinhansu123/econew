@@ -16,6 +16,10 @@ export interface Truck {
   driver?: DriverSummary | null;
   fuel_consumption_limit: number;
   status: TruckStatus;
+  ownership_type?: 'INTERNAL' | 'VENDOR' | string | null;
+  bks?: string | null;
+  hub_id?: string | number | null;
+  hub?: { id?: string | number; code?: string | null; name?: string | null } | null;
 }
 
 export interface TruckListResponse {
@@ -40,6 +44,8 @@ export interface TruckFilters {
   driver_id: string;
   page: number;
   limit: number;
+  ownership_type?: string;
+  hub_id?: string;
 }
 
 export interface TruckFormState {
@@ -48,6 +54,8 @@ export interface TruckFormState {
   driver_id: string;
   fuel_consumption_limit: string;
   status: string;
+  bks: string;
+  hub_id: string;
 }
 
 export interface FilterOption {

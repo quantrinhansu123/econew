@@ -13,6 +13,7 @@ import { UpdateTruckStatusDto } from './dto/update-truck-status.dto';
 import { UpdateTruckDto } from './dto/update-truck.dto';
 import { VendorsService } from '../vendors/vendors.service';
 import { TruckEntity } from './truck.entity';
+import { HubEntity } from '../hubs/hub.entity';
 
 const ACTIVE_TRIP_STATUSES = [TripStatus.PLANNED, 'LOADING', TripStatus.IN_TRANSIT, 'ARRIVED_PENDING_CONFIRM'];
 const TRIP_LOCK_STATUSES = [TripStatus.PLANNED, 'LOADING', TripStatus.IN_TRANSIT, TripStatus.ARRIVED, 'ARRIVED_PENDING_CONFIRM'];
@@ -23,6 +24,7 @@ export class TrucksService {
     @InjectRepository(TruckEntity) private readonly trucksRepository: Repository<TruckEntity>,
     @InjectRepository(UserEntity) private readonly usersRepository: Repository<UserEntity>,
     @InjectRepository(TripEntity) private readonly tripsRepository: Repository<TripEntity>,
+    @InjectRepository(HubEntity) private readonly hubsRepository: Repository<HubEntity>,
     private readonly vendorsService: VendorsService,
   ) {}
 
@@ -32,13 +34,23 @@ export class TrucksService {
     await this.assertUniquePlate(licensePlate);
     if (dto.driver_id) await this.assertDriverExists(dto.driver_id);
 
-    const vendorId = dto.vendor_id?.trim() || (await this.vendorsService.resolveDefaultVendorId());
+    const ownershipType = dto.ownership_type ?? 'VENDOR';
+    const hubId = dto.hub_id?.trim() || null;
+    if (ownershipType === 'INTERNAL') {
+      if (!hubId) throw new BadRequestException('Xe nội bộ phải được gán bưu cục hoạt động');
+      await this.assertActiveHub(hubId);
+    }
+    const vendorId = ownershipType === 'INTERNAL'
+      ? null
+      : dto.vendor_id?.trim() || (await this.vendorsService.resolveDefaultVendorId());
     const truck = this.trucksRepository.create({
       license_plate: licensePlate,
       payload: dto.payload,
       driver_id: dto.driver_id ?? null,
       fuel_consumption_limit: dto.fuel_consumption_limit ?? 0,
       status: dto.status ?? TruckStatus.AVAILABLE,
+      ownership_type: ownershipType,
+      hub_id: hubId,
       ten_lai_xe: dto.ten_lai_xe?.trim() || null,
       nha_xe: dto.nha_xe?.trim() || null,
       bks: dto.bks?.trim().toUpperCase() || licensePlate,
@@ -61,7 +73,8 @@ export class TrucksService {
     const qb = this.trucksRepository
       .createQueryBuilder('truck')
       .leftJoinAndSelect('truck.driver', 'driver')
-      .leftJoinAndSelect('truck.vendor', 'vendor');
+      .leftJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('truck.hub', 'hub');
     this.applyFilters(qb, query);
     const [items, total] = await qb.orderBy('truck.id', 'DESC').skip((page - 1) * limit).take(limit).getManyAndCount();
     return { items, meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
@@ -73,7 +86,7 @@ export class TrucksService {
   }
 
   async findOne(id: string, _currentUser: UserEntity): Promise<TruckEntity> {
-    const truck = await this.trucksRepository.findOne({ where: { id } as any, relations: ['driver', 'trips', 'vendor'] });
+    const truck = await this.trucksRepository.findOne({ where: { id } as any, relations: ['driver', 'trips', 'vendor', 'hub'] });
     if (!truck) throw new NotFoundException('Truck not found');
     return truck;
   }
@@ -81,6 +94,12 @@ export class TrucksService {
   async update(id: string, dto: UpdateTruckDto, currentUser: UserEntity): Promise<TruckEntity> {
     this.assertRole(currentUser, [Roles.MANAGER, Roles.DIRECTOR]);
     const truck = await this.findOne(id, currentUser);
+    const nextOwnershipType = dto.ownership_type ?? truck.ownership_type ?? 'VENDOR';
+    const nextHubId = dto.hub_id !== undefined ? dto.hub_id?.trim() || null : truck.hub_id;
+    if (nextOwnershipType === 'INTERNAL') {
+      if (!nextHubId) throw new BadRequestException('Xe nội bộ phải được gán bưu cục hoạt động');
+      await this.assertActiveHub(nextHubId);
+    }
     if (dto.license_plate) {
       const licensePlate = this.normalizePlate(dto.license_plate);
       await this.assertUniquePlate(licensePlate, id);
@@ -99,7 +118,11 @@ export class TrucksService {
       bks: dto.bks !== undefined ? dto.bks.trim().toUpperCase() || truck.license_plate : truck.bks,
       loai_xe: dto.loai_xe !== undefined ? dto.loai_xe.trim() || null : truck.loai_xe,
       khu_vuc: dto.khu_vuc !== undefined ? dto.khu_vuc.trim() || null : truck.khu_vuc,
-      vendor_id: dto.vendor_id !== undefined ? dto.vendor_id?.trim() || null : truck.vendor_id,
+      vendor_id: nextOwnershipType === 'INTERNAL'
+        ? null
+        : dto.vendor_id !== undefined ? dto.vendor_id?.trim() || null : truck.vendor_id,
+      ownership_type: nextOwnershipType,
+      hub_id: nextHubId,
     });
     return this.trucksRepository.save(truck);
   }
@@ -139,6 +162,8 @@ export class TrucksService {
     if (query.loai_xe?.trim()) qb.andWhere('truck.loai_xe = :loaiXe', { loaiXe: query.loai_xe.trim() });
     if (query.driver_id) qb.andWhere('truck.driver_id = :driverId', { driverId: query.driver_id });
     if (query.vendor_id) qb.andWhere('truck.vendor_id = :vendorId', { vendorId: query.vendor_id });
+    if (query.ownership_type) qb.andWhere('truck.ownership_type = :ownershipType', { ownershipType: query.ownership_type });
+    if (query.hub_id) qb.andWhere('truck.hub_id = :hubId', { hubId: query.hub_id });
   }
 
   private parseList(value?: string): string[] {
@@ -157,6 +182,11 @@ export class TrucksService {
     if (!driver) throw new NotFoundException('Driver not found');
     if ((driver.role_mask & Roles.DRIVER) === 0) throw new BadRequestException('Assigned user must have DRIVER role');
     return driver;
+  }
+
+  private async assertActiveHub(hubId: string): Promise<void> {
+    const hub = await this.hubsRepository.findOne({ where: { id: hubId, is_active: true, deleted_at: null } as any });
+    if (!hub) throw new NotFoundException('Bưu cục không tồn tại hoặc đã ngừng hoạt động');
   }
 
   private async assertNoActiveTrips(truckId: string, action: string) {

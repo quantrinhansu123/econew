@@ -59,6 +59,7 @@ export class UsersService {
       full_name: dto.full_name.trim(),
       password_hash: await bcrypt.hash(dto.password, this.saltRounds),
       role_mask: dto.role_mask,
+      monthly_salary: String(dto.monthly_salary ?? 0),
       hub_id: hubIds[0] ?? null,
       is_active: true,
       refresh_token: null,
@@ -117,6 +118,7 @@ export class UsersService {
     if (dto.phone !== undefined) user.phone = phone as string;
     if (dto.full_name !== undefined) user.full_name = dto.full_name.trim();
     if (dto.password !== undefined) user.password_hash = await bcrypt.hash(dto.password, this.saltRounds);
+    if (dto.monthly_salary !== undefined) user.monthly_salary = String(dto.monthly_salary);
 
     return this.toSafeUser(await this.usersRepository.save(user));
   }

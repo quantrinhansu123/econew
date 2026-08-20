@@ -27,6 +27,9 @@ export class UserEntity {
   @Column({ type: 'integer' })
   role_mask: number;
 
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  monthly_salary: string;
+
   @Column({ type: 'bigint', nullable: true })
   hub_id: string | null;
 

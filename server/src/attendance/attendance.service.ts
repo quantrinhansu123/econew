@@ -78,7 +78,12 @@ export class AttendanceService {
 
     if (query.userId) qb.andWhere('log.user_id = :userId', { userId: query.userId });
     if (query.locationId) qb.andWhere('log.location_id = :locationId', { locationId: query.locationId });
-    if (query.date) {
+    if (query.date_from || query.date_to) {
+      const from = query.date_from ?? query.date_to!;
+      const to = query.date_to ?? query.date_from!;
+      const range = this.getDateRange(from, to);
+      qb.andWhere('log.work_date BETWEEN :fromDate AND :toDate', { fromDate: range.dateFrom, toDate: range.dateTo });
+    } else if (query.date) {
       const range = this.getDateRange(query.date);
       qb.andWhere('log.created_at BETWEEN :start AND :end', range);
     }
@@ -201,13 +206,13 @@ export class AttendanceService {
     };
   }
 
-  private getDateRange(date: string) {
+  private getDateRange(date: string, endDate = date) {
     const start = new Date(`${date}T00:00:00.000Z`);
-    const end = new Date(`${date}T23:59:59.999Z`);
+    const end = new Date(`${endDate}T23:59:59.999Z`);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       throw new BadRequestException('Ngày lọc không hợp lệ.');
     }
-    return { start, end, date };
+    return { start, end, date, dateFrom: date, dateTo: endDate };
   }
 
   private enforceRateLimit(userId: string) {

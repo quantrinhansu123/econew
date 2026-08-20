@@ -31,10 +31,18 @@ export class UsersController {
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List internal users with filters and pagination' })
   findAll(@Query() query: QueryUsersDto) {
     return this.usersService.findAll(query);
+  }
+
+  @Get('drivers')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @RequireRoles(Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'List active internal drivers for trip assignment' })
+  findDrivers() {
+    return this.usersService.findActiveUsersByRole(Roles.DRIVER);
   }
 
   @Get(':id')

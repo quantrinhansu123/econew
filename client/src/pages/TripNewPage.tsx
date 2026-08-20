@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ComponentType, InputHTMLAttributes, ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Banknote, Building2, CalendarClock, Info, Loader2, Package, Truck as TruckIcon } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Banknote, Building2, CalendarClock, Info, Loader2, Package, Phone, Truck as TruckIcon, UserRound } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
@@ -10,7 +10,7 @@ import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/Confirm
 import type { AuthUserProfile } from './login/types';
 import CreateTripSuccessDialog from './trips/dialogs/CreateTripSuccessDialog';
 import { expectedArrivalOffsetDays } from './trips/tripScheduleUtils';
-import type { ListResponse, Trip, TripCreateFieldErrors, TripCreateFormState, TripCreateHubSummary, TripCreateManifestSummary, TripCreatePayload, TripCreateTruckSummary } from './trips/types';
+import type { ListResponse, Trip, TripCreateDriverSummary, TripCreateFieldErrors, TripCreateFormState, TripCreateHubSummary, TripCreateManifestSummary, TripCreatePayload, TripCreateTruckSummary } from './trips/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const DISPATCHER = 8;
@@ -18,6 +18,7 @@ const MANAGER = 32;
 const DIRECTOR = 64;
 
 const emptyForm: TripCreateFormState = {
+  transport_mode: 'INTERNAL',
   truck_id: '',
   manifest_id: '',
   start_hub_id: '',
@@ -25,6 +26,9 @@ const emptyForm: TripCreateFormState = {
   departure_time: '',
   arrival_time: '',
   trip_cost: '',
+  driver_user_id: '',
+  driver_name: '',
+  driver_phone: '',
 };
 
 const getStoredUser = (): AuthUserProfile | null => {
@@ -58,6 +62,9 @@ const addDaysToDatetimeLocal = (datetimeLocal: string, days: number): string => 
 
 const warningText = (item?: { warning?: string | null; warnings?: string[] | null } | null) =>
   [item?.warning, ...(item?.warnings ?? [])].filter(Boolean).join(' · ');
+const driverLabel = (driver: TripCreateDriverSummary) => driver.full_name || driver.name || driver.username || `Tài xế #${driver.id}`;
+const hubLabel = (truck?: TripCreateTruckSummary | null) =>
+  [truck?.hub?.code, truck?.hub?.name].filter(Boolean).join(' · ') || (truck?.hub_id ? `Bưu cục #${truck.hub_id}` : '');
 
 function FieldError({ message }: { message?: string }) {
   return message ? <p className="mt-1 text-[12px] font-bold text-red-500">{message}</p> : null;
@@ -138,6 +145,7 @@ export default function TripNewPage() {
   const [form, setForm] = useState<TripCreateFormState>(emptyForm);
   const [errors, setErrors] = useState<TripCreateFieldErrors>({});
   const [trucks, setTrucks] = useState<TripCreateTruckSummary[]>([]);
+  const [drivers, setDrivers] = useState<TripCreateDriverSummary[]>([]);
   const [manifests, setManifests] = useState<TripCreateManifestSummary[]>([]);
   const [hubs, setHubs] = useState<TripCreateHubSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -153,23 +161,37 @@ export default function TripNewPage() {
   const user = useMemo(() => getStoredUser(), []);
   const canCreate = hasPermission(user?.role_mask ?? 0);
   const selectedTruck = trucks.find((truck) => normalizeId(truck.id) === form.truck_id);
+  const selectedDriver = drivers.find((driver) => normalizeId(driver.id) === form.driver_user_id);
   const selectedManifest = manifests.find((manifest) => normalizeId(manifest.id) === form.manifest_id);
   const supplierName =
-    selectedTruck?.vendor?.name || selectedTruck?.nha_xe || (selectedTruck ? '—' : '');
+    form.transport_mode === 'INTERNAL'
+      ? hubLabel(selectedTruck) || 'Xe nội bộ'
+      : selectedTruck?.vendor?.name || selectedTruck?.nha_xe || (selectedTruck ? '—' : '');
+  const visibleTrucks = useMemo(
+    () => trucks.filter((truck) => (truck.ownership_type || 'VENDOR') === form.transport_mode),
+    [form.transport_mode, trucks],
+  );
 
   const truckOptions = useMemo(
     () =>
-      trucks.map((truck) => ({
+      visibleTrucks.map((truck) => ({
         value: normalizeId(truck.id),
         label: [
           truck.bks || truck.license_plate || `Xe #${truck.id}`,
-          truck.vendor?.name || truck.nha_xe,
+          form.transport_mode === 'INTERNAL' ? hubLabel(truck) : truck.vendor?.name || truck.nha_xe,
           truck.status,
         ]
           .filter(Boolean)
           .join(' · '),
       })),
-    [trucks],
+    [form.transport_mode, visibleTrucks],
+  );
+  const driverOptions = useMemo(
+    () => drivers.map((driver) => ({
+      value: normalizeId(driver.id),
+      label: [driverLabel(driver), driver.phone].filter(Boolean).join(' · '),
+    })),
+    [drivers],
   );
   const manifestOptions = useMemo(
     () =>
@@ -191,7 +213,10 @@ export default function TripNewPage() {
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
-      apiRequest<ListResponse<TripCreateTruckSummary> | TripCreateTruckSummary[]>('/trucks/available', {
+      apiRequest<ListResponse<TripCreateTruckSummary> | TripCreateTruckSummary[]>('/trucks/available?limit=100', {
+        signal: controller.signal,
+      }),
+      apiRequest<ListResponse<TripCreateDriverSummary> | TripCreateDriverSummary[]>('/users/drivers', {
         signal: controller.signal,
       }),
       apiRequest<ListResponse<TripCreateManifestSummary> | TripCreateManifestSummary[]>('/manifests?status=CLOSED', {
@@ -201,8 +226,9 @@ export default function TripNewPage() {
         signal: controller.signal,
       }),
     ])
-      .then(([truckResponse, manifestResponse, hubResponse]) => {
+      .then(([truckResponse, driverResponse, manifestResponse, hubResponse]) => {
         setTrucks(normalizeList(truckResponse, 'trucks'));
+        setDrivers(Array.isArray(driverResponse) ? driverResponse : driverResponse.data || driverResponse.items || []);
         setManifests(normalizeList(manifestResponse, 'manifests'));
         setHubs(normalizeList(hubResponse, 'hubs'));
       })
@@ -217,6 +243,29 @@ export default function TripNewPage() {
   const setField = <K extends keyof TripCreateFormState>(key: K, value: TripCreateFormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
+
+  const changeTransportMode = (mode: TripCreateFormState['transport_mode']) => {
+    setForm((prev) => ({
+      ...prev,
+      transport_mode: mode,
+      truck_id: '',
+      driver_user_id: mode === 'INTERNAL' ? prev.driver_user_id : '',
+      driver_name: mode === 'INTERNAL' ? prev.driver_name : '',
+      driver_phone: mode === 'INTERNAL' ? prev.driver_phone : '',
+    }));
+    setErrors((prev) => ({ ...prev, transport_mode: undefined, truck_id: undefined, driver_user_id: undefined }));
+  };
+
+  const changeDriver = (driverId: string) => {
+    const driver = drivers.find((item) => normalizeId(item.id) === driverId);
+    setForm((prev) => ({
+      ...prev,
+      driver_user_id: driverId,
+      driver_name: driver ? driverLabel(driver) : '',
+      driver_phone: driver?.phone || '',
+    }));
+    setErrors((prev) => ({ ...prev, driver_user_id: undefined, driver_name: undefined, driver_phone: undefined }));
   };
 
   const arrivalForHub = (departureTime: string, hubId: string) => {
@@ -266,6 +315,7 @@ export default function TripNewPage() {
   const validate = () => {
     const nextErrors: TripCreateFieldErrors = {};
     if (!form.truck_id) nextErrors.truck_id = 'Bắt buộc chọn biển kiểm soát.';
+    if (form.transport_mode === 'INTERNAL' && !form.driver_user_id) nextErrors.driver_user_id = 'Bắt buộc chọn tài xế nội bộ.';
     if (!form.start_hub_id) nextErrors.start_hub_id = 'Bắt buộc chọn bưu cục đi.';
     if (!form.end_hub_id) nextErrors.end_hub_id = 'Bắt buộc chọn bưu cục đến.';
     if (!form.departure_time) nextErrors.departure_time = 'Bắt buộc nhập giờ khởi hành.';
@@ -285,6 +335,8 @@ export default function TripNewPage() {
     departure_time: toApiDateTime(form.departure_time),
     ...(form.arrival_time ? { arrival_time: toApiDateTime(form.arrival_time) } : {}),
     ...(form.trip_cost ? { trip_cost: parseAmountInput(form.trip_cost) } : {}),
+    ...(form.driver_name.trim() ? { driver_name: form.driver_name.trim() } : {}),
+    ...(form.driver_phone.trim() ? { driver_phone: form.driver_phone.trim() } : {}),
   });
 
   const createTrip = async () => {
@@ -348,7 +400,7 @@ export default function TripNewPage() {
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[20px] font-black text-foreground">Tạo chuyến xe mới</h1>
           <p className="text-[13px] font-medium text-muted-foreground">
-            Chọn BKS, bảng kê, thời gian và chi phí chuyến (cộng công nợ NCC).
+            Chọn xe nội bộ hoặc BKS/NCC, tài xế, bảng kê, thời gian và chi phí chuyến.
           </p>
         </div>
         <button
@@ -395,6 +447,22 @@ export default function TripNewPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <SectionTitle>Liên kết chuyến xe</SectionTitle>
+            <div className="md:col-span-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => changeTransportMode('INTERNAL')}
+                className={clsx('h-10 rounded-lg border text-[13px] font-extrabold', form.transport_mode === 'INTERNAL' ? 'border-primary bg-blue-50 text-primary' : 'border-border bg-white text-muted-foreground')}
+              >
+                Xe nội bộ
+              </button>
+              <button
+                type="button"
+                onClick={() => changeTransportMode('VENDOR')}
+                className={clsx('h-10 rounded-lg border text-[13px] font-extrabold', form.transport_mode === 'VENDOR' ? 'border-primary bg-blue-50 text-primary' : 'border-border bg-white text-muted-foreground')}
+              >
+                BKS/NCC
+              </button>
+            </div>
             <label className="block md:col-span-2">
               <span className="text-[13px] font-bold text-foreground">
                 Biển kiểm soát (BKS) <span className="text-red-500">*</span>
@@ -403,13 +471,14 @@ export default function TripNewPage() {
                 options={truckOptions}
                 value={form.truck_id}
                 onValueChange={(value) => setField('truck_id', value)}
-                placeholder="Chọn BKS"
+                placeholder={form.transport_mode === 'INTERNAL' ? 'Chọn BKS xe nội bộ' : 'Chọn BKS theo NCC'}
                 className={clsx('mt-1.5 h-10 rounded-lg', errors.truck_id && 'border-red-300')}
+                emptyMessage={form.transport_mode === 'INTERNAL' ? 'Chưa có xe nội bộ khả dụng. Vào Danh mục xe > Xe nội bộ theo bưu cục để thêm BKS.' : 'Chưa có BKS/NCC khả dụng.'}
               />
               {form.truck_id && (
                 <p className="mt-2 flex items-center gap-2 text-[13px] font-bold text-primary">
                   <Building2 size={15} />
-                  Nhà cung cấp: {supplierName}
+                  {form.transport_mode === 'INTERNAL' ? 'Bưu cục hoạt động' : 'Nhà cung cấp'}: {supplierName}
                 </p>
               )}
               <FieldError message={errors.truck_id} />
@@ -492,6 +561,52 @@ export default function TripNewPage() {
               error={errors.arrival_time}
             />
 
+            <SectionTitle>Tài xế chuyến</SectionTitle>
+            {form.transport_mode === 'INTERNAL' ? (
+              <label className="block md:col-span-2">
+                <span className="text-[13px] font-bold text-foreground">
+                  Tài xế nội bộ <span className="text-red-500">*</span>
+                </span>
+                <SearchableSelect
+                  options={driverOptions}
+                  value={form.driver_user_id}
+                  onValueChange={changeDriver}
+                  placeholder="Chọn tài xế"
+                  className={clsx('mt-1.5 h-10 rounded-lg', errors.driver_user_id && 'border-red-300')}
+                  searchPlaceholder="Tìm tài xế..."
+                  emptyMessage="Chưa có tài xế nội bộ đang hoạt động."
+                />
+                {selectedDriver && (
+                  <p className="mt-2 flex items-center gap-2 text-[13px] font-bold text-primary">
+                    <Phone size={15} />
+                    SĐT: {selectedDriver.phone || 'Chưa có'}
+                  </p>
+                )}
+                <FieldError message={errors.driver_user_id} />
+              </label>
+            ) : (
+              <>
+                <FormInput
+                  label="Tên tài xế"
+                  icon={UserRound}
+                  value={form.driver_name}
+                  onChange={(event) => setField('driver_name', event.target.value)}
+                  placeholder="Nhập tên tài xế"
+                  error={errors.driver_name}
+                />
+                <FormInput
+                  label="SĐT tài xế"
+                  icon={Phone}
+                  type="tel"
+                  inputMode="tel"
+                  value={form.driver_phone}
+                  onChange={(event) => setField('driver_phone', event.target.value)}
+                  placeholder="Nhập số điện thoại"
+                  error={errors.driver_phone}
+                />
+              </>
+            )}
+
             <SectionTitle>Chi phí & công nợ NCC</SectionTitle>
             <FormInput
               label="Chi phí chuyến xe (VNĐ)"
@@ -506,8 +621,10 @@ export default function TripNewPage() {
             />
             <div className="md:col-span-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-[13px] font-medium text-blue-700">
               <Info className="mr-2 inline" size={15} />
-              Chi phí chuyến được cộng vào <b>công nợ phải trả</b> của nhà cung cấp sở hữu BKS đã chọn. Giờ khởi
-              hành có thể chọn ngày trong quá khứ hoặc tương lai.
+              {form.transport_mode === 'INTERNAL'
+                ? 'Xe nội bộ dùng danh mục BKS công ty và tài xế chọn riêng theo từng chuyến.'
+                : <>Chi phí chuyến được cộng vào <b>công nợ phải trả</b> của nhà cung cấp sở hữu BKS đã chọn.</>}
+              {' '}Giờ khởi hành có thể chọn ngày trong quá khứ hoặc tương lai.
             </div>
           </div>
         )}

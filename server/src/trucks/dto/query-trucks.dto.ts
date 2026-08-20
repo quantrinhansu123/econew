@@ -30,6 +30,16 @@ export class QueryTrucksDto {
   @IsString()
   vendor_id?: string;
 
+  @ApiPropertyOptional({ enum: ['INTERNAL', 'VENDOR'] })
+  @IsOptional()
+  @IsString()
+  ownership_type?: 'INTERNAL' | 'VENDOR';
+
+  @ApiPropertyOptional({ description: 'Lọc xe theo bưu cục quản lý' })
+  @IsOptional()
+  @IsString()
+  hub_id?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)

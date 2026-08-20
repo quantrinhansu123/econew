@@ -1,5 +1,6 @@
 import { Column, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { TripEntity } from '../trips/trip.entity';
+import { HubEntity } from '../hubs/hub.entity';
 import { UserEntity } from '../users/user.entity';
 import { VendorEntity } from '../vendors/vendor.entity';
 
@@ -23,6 +24,12 @@ export class TruckEntity {
   @Column({ type: 'varchar' })
   status: string;
 
+  @Column({ type: 'varchar', length: 16, default: 'VENDOR' })
+  ownership_type: 'INTERNAL' | 'VENDOR';
+
+  @Column({ type: 'bigint', nullable: true })
+  hub_id: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   ten_lai_xe: string | null;
 
@@ -44,6 +51,10 @@ export class TruckEntity {
   @ManyToOne(() => VendorEntity, (vendor) => vendor.trucks, { nullable: true })
   @JoinColumn({ name: 'vendor_id' })
   vendor: VendorEntity | null;
+
+  @ManyToOne(() => HubEntity, { nullable: true })
+  @JoinColumn({ name: 'hub_id' })
+  hub: HubEntity | null;
 
   @ManyToOne(() => UserEntity, (user) => user.trucks, { nullable: true })
   @JoinColumn({ name: 'driver_id' })

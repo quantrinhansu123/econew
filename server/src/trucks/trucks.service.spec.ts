@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Roles } from '../common/roles';
+import { HubEntity } from '../hubs/hub.entity';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
 import { VendorsService } from '../vendors/vendors.service';
@@ -27,15 +28,18 @@ describe('TrucksService canonical schema', () => {
   let trucksRepo: ReturnType<typeof makeRepo>;
   let usersRepo: ReturnType<typeof makeRepo>;
   let tripsRepo: ReturnType<typeof makeRepo>;
+  let hubsRepo: ReturnType<typeof makeRepo>;
   let vendorsService: { resolveDefaultVendorId: jest.Mock };
 
   beforeEach(async () => {
     trucksRepo = makeRepo();
     usersRepo = makeRepo();
     tripsRepo = makeRepo();
+    hubsRepo = makeRepo();
     vendorsService = { resolveDefaultVendorId: jest.fn().mockResolvedValue('vendor-1') };
     usersRepo.findOne.mockResolvedValue({ id: '7', role_mask: Roles.DRIVER });
     tripsRepo.count.mockResolvedValue(0);
+    hubsRepo.findOne.mockResolvedValue({ id: 'hub-1', is_active: true, deleted_at: null });
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -43,6 +47,7 @@ describe('TrucksService canonical schema', () => {
         { provide: getRepositoryToken(TruckEntity), useValue: trucksRepo },
         { provide: getRepositoryToken(UserEntity), useValue: usersRepo },
         { provide: getRepositoryToken(TripEntity), useValue: tripsRepo },
+        { provide: getRepositoryToken(HubEntity), useValue: hubsRepo },
         { provide: VendorsService, useValue: vendorsService },
       ],
     }).compile();
