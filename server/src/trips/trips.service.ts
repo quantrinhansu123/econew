@@ -294,6 +294,22 @@ export class TripsService {
         if (expectedArrival) split.expected_arrival_at = expectedArrival;
       });
       if (tripSplits.length) await this.waybillSplitsRepository.save(tripSplits);
+      if (trip.manifest_id && tripSplits.length) {
+        const manifestRows = await this.manifestWaybillsRepository.find({
+          where: { manifest_id: String(trip.manifest_id) },
+        });
+        const expectedByWaybill = new Map(tripSplits
+          .filter((split) => split.expected_arrival_at)
+          .map((split) => [String(split.waybill_id), new Date(split.expected_arrival_at as Date).toISOString()]));
+        const changedRows = manifestRows.filter((row) => expectedByWaybill.has(String(row.waybill_id)));
+        changedRows.forEach((row) => {
+          row.dispatch_fields = {
+            ...(row.dispatch_fields ?? {}),
+            expected_arrival_at: expectedByWaybill.get(String(row.waybill_id)),
+          };
+        });
+        if (changedRows.length) await this.manifestWaybillsRepository.save(changedRows);
+      }
 
       const finalExpectedArrival = new Date(Math.max(...[...expectedByHub.values()].map((date) => date.getTime())));
       trip.expected_arrival_time = finalExpectedArrival;

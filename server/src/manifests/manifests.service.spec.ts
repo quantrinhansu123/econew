@@ -222,6 +222,31 @@ describe('ManifestsService', () => {
     });
   });
 
+  it('findOne dùng giờ dự kiến mới trên split khi in lại bảng kê', async () => {
+    manifestsRepo.findOne.mockResolvedValue(draftManifest({
+      trips: [{ id: '5', status: TripStatus.IN_TRANSIT }],
+      manifest_waybills: [{
+        manifest_id: '10',
+        waybill_id: '100',
+        loading_position: 1,
+        dispatch_fields: { expected_arrival_at: '2026-08-21T16:28:00.000Z' },
+        waybill: waybill(),
+      }],
+    }));
+    splitsRepo.find.mockResolvedValue([{
+      id: 's1',
+      waybill_id: '100',
+      trip_id: '5',
+      package_count: 1,
+      expected_arrival_at: new Date('2026-08-21T03:28:00.000Z'),
+    }]);
+
+    const result = await service.findOne('10', manager);
+
+    expect(result.manifest_waybills[0].dispatch_fields?.expected_arrival_at)
+      .toBe('2026-08-21T03:28:00.000Z');
+  });
+
   it('findOne hiển thị vị trí liên tục khi dữ liệu cũ bị khuyết số', async () => {
     manifestsRepo.findOne.mockResolvedValue(draftManifest({
       manifest_waybills: [

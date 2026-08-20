@@ -544,7 +544,7 @@ export class ManifestsService {
     if (!tripId || !waybillIds.length) return;
 
     const tripSplits = await this.waybillSplitsRepository.find({
-      select: { id: true, waybill_id: true, trip_id: true, package_count: true },
+      select: { id: true, waybill_id: true, trip_id: true, package_count: true, expected_arrival_at: true },
       where: { trip_id: String(tripId), waybill_id: In(waybillIds) } as any,
     });
     const packageCounts = tripSplits.reduce((map, split) => {
@@ -552,23 +552,36 @@ export class ManifestsService {
       map.set(waybillId, (map.get(waybillId) ?? 0) + Number(split.package_count ?? 0));
       return map;
     }, new Map<string, number>());
+    const expectedArrivalByWaybill = tripSplits.reduce((map, split) => {
+      if (!split.expected_arrival_at) return map;
+      const waybillId = String(split.waybill_id);
+      const expectedArrival = new Date(split.expected_arrival_at);
+      if (Number.isNaN(expectedArrival.getTime())) return map;
+      const current = map.get(waybillId);
+      if (!current || expectedArrival > current) map.set(waybillId, expectedArrival);
+      return map;
+    }, new Map<string, Date>());
 
     links.forEach((link: ManifestWaybillEntity) => {
       const packageCount = packageCounts.get(String(link.waybill_id));
-      if (packageCount == null) return;
+      const expectedArrival = expectedArrivalByWaybill.get(String(link.waybill_id));
+      if (packageCount == null && !expectedArrival) return;
       const waybill = (link as ManifestWaybillEntity & { waybill?: WaybillRecord }).waybill;
-      const totalPackages = Math.max(1, Number(waybill?.package_count ?? packageCount));
-      const ratio = Math.min(1, packageCount / totalPackages);
+      const totalPackages = Math.max(1, Number(waybill?.package_count ?? packageCount ?? 1));
+      const ratio = Math.min(1, Number(packageCount ?? totalPackages) / totalPackages);
       const prorate = (value: unknown, precision = 2) => {
         const numeric = Number(value ?? 0);
         return Number.isFinite(numeric) ? Number((numeric * ratio).toFixed(precision)) : '';
       };
       link.dispatch_fields = {
         ...(link.dispatch_fields ?? {}),
-        so_luong: String(packageCount),
-        kg: prorate(waybill?.weight),
-        m3: prorate(waybill?.the_tich_m3, 3),
-        qd: prorate(waybill?.volumetric_weight),
+        ...(packageCount == null ? {} : {
+          so_luong: String(packageCount),
+          kg: prorate(waybill?.weight),
+          m3: prorate(waybill?.the_tich_m3, 3),
+          qd: prorate(waybill?.volumetric_weight),
+        }),
+        ...(expectedArrival ? { expected_arrival_at: expectedArrival.toISOString() } : {}),
       };
     });
   }

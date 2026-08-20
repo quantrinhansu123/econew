@@ -595,14 +595,20 @@ describe('TripsService', () => {
       const trip = {
         id: '44',
         status: TripStatus.PLANNED,
+        manifest_id: '10',
         end_hub_id: '3',
         departure_time: new Date('2026-08-05T09:48:00Z'),
         arrival_time: new Date('2026-08-08T09:48:00Z'),
       };
-      const splitKhanhHoa = { id: 's1', waybill: { dest_hub_id: '2' }, expected_arrival_at: null };
-      const splitHcm = { id: 's2', waybill: { dest_hub_id: '3' }, expected_arrival_at: null };
+      const splitKhanhHoa = { id: 's1', waybill_id: '100', waybill: { dest_hub_id: '2' }, expected_arrival_at: null };
+      const splitHcm = { id: 's2', waybill_id: '101', waybill: { dest_hub_id: '3' }, expected_arrival_at: null };
       mockFindOne(trip);
       waybillSplits.find.mockResolvedValue([splitKhanhHoa, splitHcm]);
+      const manifestRows = [
+        { manifest_id: '10', waybill_id: '100', dispatch_fields: { expected_arrival_at: 'old' } },
+        { manifest_id: '10', waybill_id: '101', dispatch_fields: null },
+      ];
+      manifestWaybills.find.mockResolvedValue(manifestRows);
 
       const result = await service.update('44', {
         route_stops: [
@@ -614,6 +620,10 @@ describe('TripsService', () => {
       expect(splitKhanhHoa.expected_arrival_at).toEqual(new Date('2026-08-07T09:48:00Z'));
       expect(splitHcm.expected_arrival_at).toEqual(new Date('2026-08-08T09:48:00Z'));
       expect(waybillSplits.save).toHaveBeenCalledWith([splitKhanhHoa, splitHcm]);
+      expect(manifestWaybills.save).toHaveBeenCalledWith([
+        expect.objectContaining({ waybill_id: '100', dispatch_fields: expect.objectContaining({ expected_arrival_at: '2026-08-07T09:48:00.000Z' }) }),
+        expect.objectContaining({ waybill_id: '101', dispatch_fields: expect.objectContaining({ expected_arrival_at: '2026-08-08T09:48:00.000Z' }) }),
+      ]);
       expect(result.expected_arrival_time).toEqual(new Date('2026-08-08T09:48:00Z'));
       expect(result.arrival_time).toEqual(new Date('2026-08-08T09:48:00Z'));
     });
