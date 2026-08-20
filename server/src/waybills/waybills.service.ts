@@ -593,21 +593,17 @@ export class WaybillsService {
     }
     const driversQb = this.usersRepository
       .createQueryBuilder('driver')
-      .leftJoin('driver.user_hubs', 'driver_hubs')
       .where('driver.is_active = true')
       .andWhere('(driver.role_mask & :driverRole) <> 0', { driverRole: Roles.DRIVER })
       .distinct(true)
       .orderBy('driver.full_name', 'ASC');
-    if (hubId) {
-      driversQb.andWhere(
-        new Brackets((builder) => builder
-          .where('driver.hub_id = :hubId', { hubId: String(hubId) })
-          .orWhere('driver_hubs.hub_id = :hubId', { hubId: String(hubId) })),
-      );
-    }
     const drivers = await driversQb.getMany();
     const trucks = await this.trucksRepository.find({
-      where: { status: In([TruckStatus.AVAILABLE, TruckStatus.ASSIGNED]) } as any,
+      where: {
+        status: In([TruckStatus.AVAILABLE, TruckStatus.ASSIGNED]),
+        ownership_type: 'INTERNAL',
+        ...(hubId ? { hub_id: String(hubId) } : {}),
+      } as any,
       relations: ['driver'],
       order: { license_plate: 'ASC' },
     });
@@ -617,7 +613,7 @@ export class WaybillsService {
     });
     return {
       drivers: drivers.map((driver) => ({ id: driver.id, name: driver.full_name, username: driver.username, phone: driver.phone, hub_id: driver.hub_id })),
-      trucks: trucks.map((truck) => ({ id: truck.id, license_plate: truck.license_plate, bks: truck.bks, loai_xe: truck.loai_xe, vendor_id: truck.vendor_id, driver_id: truck.driver_id, driver_name: truck.driver?.full_name ?? truck.ten_lai_xe })),
+      trucks: trucks.map((truck) => ({ id: truck.id, license_plate: truck.license_plate, bks: truck.bks, loai_xe: truck.loai_xe, ownership_type: truck.ownership_type, hub_id: truck.hub_id, vendor_id: truck.vendor_id, driver_id: truck.driver_id, driver_name: truck.driver?.full_name ?? truck.ten_lai_xe })),
       vendors: vendors.map((vendor) => ({ id: vendor.id, code: vendor.code, name: vendor.name, phone: vendor.phone, service_type: vendor.service_type })),
     };
   }
@@ -2807,13 +2803,9 @@ export class WaybillsService {
       const driver = driverId
         ? await this.usersRepository.findOne({
           where: { id: driverId, is_active: true } as any,
-          relations: ['user_hubs', 'user_hubs.hub'],
         })
         : null;
       if (driverId && (!driver || (driver.role_mask & Roles.DRIVER) === 0)) throw new BadRequestException('Tài xế nội bộ không hợp lệ');
-      if (driver && getAssignedHubIds(driver).length && !getAssignedHubIds(driver).includes(String(waybill.dest_hub_id))) {
-        throw new BadRequestException('Tài xế không thuộc HUB đến của vận đơn');
-      }
       const driverName = manualDriverName || driver?.full_name?.trim() || '';
       if (!driverName) throw new BadRequestException('Phải nhập hoặc chọn tài xế nội bộ');
 
@@ -2821,6 +2813,10 @@ export class WaybillsService {
       if (dto.truck_id) {
         truck = await this.trucksRepository.findOne({ where: { id: String(dto.truck_id) } as any });
         if (!truck) throw new BadRequestException('Xe nội bộ không hợp lệ');
+        if (truck.ownership_type !== 'INTERNAL') throw new BadRequestException('Xe được chọn không phải xe nội bộ');
+        if (String(truck.hub_id || '') !== String(waybill.dest_hub_id)) {
+          throw new BadRequestException('Xe nội bộ không thuộc HUB đến của vận đơn');
+        }
       }
       Object.assign(waybill, {
         delivery_assignment_type: 'INTERNAL',

@@ -1800,8 +1800,8 @@ describe('WaybillsService', () => {
       dest_hub_id: '2',
     });
     waybillsRepository.findOne.mockResolvedValue(waybill);
-    usersRepository.findOne.mockResolvedValue({ id: 'd1', full_name: 'Tài xế A', role_mask: Roles.DRIVER, hub_id: '2', is_active: true });
-    trucksRepository.findOne.mockResolvedValue({ id: 'x1', license_plate: '51A-12345', bks: '51A-12345' });
+    usersRepository.findOne.mockResolvedValue({ id: 'd1', full_name: 'Tài xế A', role_mask: Roles.DRIVER, hub_id: '1', is_active: true });
+    trucksRepository.findOne.mockResolvedValue({ id: 'x1', license_plate: '51A-12345', bks: '51A-12345', ownership_type: 'INTERNAL', hub_id: '2' });
 
     await service.updateStatus('1', {
       status: WaybillStatus.OUT_FOR_DELIVERY,
@@ -1826,6 +1826,64 @@ describe('WaybillsService', () => {
       xe_phat: '51A-12345',
       route_code: 'HCM-Q1',
     });
+  });
+
+  it('danh sách giao hàng lấy tài xế độc lập và chỉ lấy xe nội bộ đúng HUB', async () => {
+    const driversQb = createQueryBuilder();
+    driversQb.getMany.mockResolvedValue([
+      { id: 'd1', full_name: 'Tài xế Hà Nội', role_mask: Roles.DRIVER, hub_id: '1', is_active: true },
+    ]);
+    usersRepository.createQueryBuilder.mockReturnValue(driversQb);
+    trucksRepository.find.mockResolvedValue([
+      { id: 'x1', ownership_type: 'INTERNAL', hub_id: '2', license_plate: '51A-12345' },
+    ]);
+
+    const result = await service.getDeliveryResources('2', manager);
+
+    expect(result.drivers).toEqual([expect.objectContaining({ id: 'd1', name: 'Tài xế Hà Nội', hub_id: '1' })]);
+    expect(trucksRepository.find).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ ownership_type: 'INTERNAL', hub_id: '2' }),
+    }));
+    expect(result.trucks).toEqual([expect.objectContaining({ id: 'x1', ownership_type: 'INTERNAL', hub_id: '2' })]);
+  });
+
+  it('chỉ ràng buộc xe nội bộ theo HUB đến, không ràng buộc HUB của tài xế', async () => {
+    const waybill = makeWaybill({
+      current_state: WaybillStatus.AT_DEST_HUB,
+      status: WaybillStatus.AT_DEST_HUB,
+      dest_hub_id: '2',
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+    usersRepository.findOne.mockResolvedValue({ id: 'd1', full_name: 'Tài xế Hà Nội', role_mask: Roles.DRIVER, hub_id: '1', is_active: true });
+    trucksRepository.findOne.mockResolvedValue({ id: 'x1', ownership_type: 'INTERNAL', hub_id: '2' });
+
+    await service.updateStatus('1', {
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+      assignment_type: 'INTERNAL',
+      driver_id: 'd1',
+      truck_id: 'x1',
+      driver_name: 'Tài xế Hà Nội',
+    }, manager);
+
+    expect(waybill).toMatchObject({ last_mile_driver_id: 'd1', last_mile_truck_id: 'x1' });
+  });
+
+  it('chặn xe nội bộ không thuộc HUB đến của vận đơn', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      current_state: WaybillStatus.AT_DEST_HUB,
+      status: WaybillStatus.AT_DEST_HUB,
+      dest_hub_id: '2',
+    }));
+    usersRepository.findOne.mockResolvedValue({ id: 'd1', full_name: 'Tài xế A', role_mask: Roles.DRIVER, is_active: true });
+    trucksRepository.findOne.mockResolvedValue({ id: 'x1', ownership_type: 'INTERNAL', hub_id: '1' });
+
+    await expect(service.updateStatus('1', {
+      status: WaybillStatus.OUT_FOR_DELIVERY,
+      assignment_type: 'INTERNAL',
+      driver_id: 'd1',
+      truck_id: 'x1',
+      driver_name: 'Tài xế A',
+    }, manager)).rejects.toThrow('Xe nội bộ không thuộc HUB đến');
   });
 
   it('cash voucher creation rejects a stale row when id and bill code do not match', async () => {

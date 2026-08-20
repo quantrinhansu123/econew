@@ -107,7 +107,7 @@ export interface WaybillHistoryItem {
 }
 
 export interface DeliveryDriverOption { id: string | number; name?: string | null; username?: string | null; phone?: string | null; hub_id?: string | number | null }
-export interface DeliveryTruckOption { id: string | number; license_plate?: string | null; bks?: string | null; loai_xe?: string | null; driver_id?: string | number | null; driver_name?: string | null }
+export interface DeliveryTruckOption { id: string | number; license_plate?: string | null; bks?: string | null; loai_xe?: string | null; ownership_type?: 'INTERNAL' | 'VENDOR' | null; hub_id?: string | number | null; driver_id?: string | number | null; driver_name?: string | null }
 export interface DeliveryVendorOption { id: string | number; code?: string | null; name?: string | null; phone?: string | null; service_type?: string | null }
 export interface DeliveryResources { drivers: DeliveryDriverOption[]; trucks: DeliveryTruckOption[]; vendors: DeliveryVendorOption[] }
 
