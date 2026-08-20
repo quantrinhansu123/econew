@@ -1,3 +1,4 @@
+import type { UserSummary } from './types';
 import { formatMoney } from '../../../lib/formatMoney';
 import { specialGoodsLabels } from '../../../lib/waybillSpecialGoods';
 
@@ -13,6 +14,7 @@ export interface WaybillHistoryEntry {
   changes: Record<string, WaybillHistoryFieldChange>;
   changed_by_id?: string | number | null;
   changed_by_name?: string | null;
+  changed_by?: UserSummary | null;
   created_at: string;
 }
 
@@ -20,6 +22,8 @@ const ACTION_LABELS: Record<string, string> = {
   CREATED: 'Tạo vận đơn',
   UPDATED: 'Chỉnh sửa vận đơn',
   COD_FEE_UPDATED: 'Cập nhật COD / cước',
+  COD_RECONCILED: 'Xác nhận thu COD vào sổ quỹ',
+  COD_RECONCILIATION_REVERSED: 'Hủy xác nhận thu COD',
   PHOTOS_UPDATED: 'Cập nhật ảnh bill',
   WAREHOUSE_RECEIVED: 'Xác nhận đã nhập kho',
   LEGACY_UPDATE: 'Đã cập nhật trước khi bật lịch sử',
@@ -58,6 +62,9 @@ const FIELD_LABELS: Record<string, string> = {
   cod_amount: 'COD',
   freight_amount: 'Tổng cước',
   cc_amount: 'Cước người nhận trả',
+  cod_reconciled_at: 'Thời gian xác nhận COD',
+  cod_collected_amount: 'Số tiền COD đã thu',
+  cod_fund_id: 'Sổ quỹ nhận tiền',
   noi_dung: 'Nội dung hàng',
   ghi_chu: 'Ghi chú',
   tinh_chat_hang_hoa: 'Tính chất hàng hóa đặc biệt',
@@ -92,7 +99,7 @@ const FIELD_LABELS: Record<string, string> = {
   trip_id: 'Chuyến nguồn',
 };
 
-const MONEY_FIELDS = new Set(['cod_amount', 'freight_amount', 'cc_amount']);
+const MONEY_FIELDS = new Set(['cod_amount', 'freight_amount', 'cc_amount', 'cod_collected_amount']);
 const CENTIMETER_FIELDS = new Set(['length', 'width', 'height']);
 
 export const waybillHistoryActionLabel = (action: string) => ACTION_LABELS[action] || action;
@@ -118,9 +125,10 @@ export function formatWaybillHistoryValue(field: string, value: unknown): string
   }
   if (field === 'tinh_chat_hang_hoa') return specialGoodsLabels(value).join(', ') || '—';
   if (MONEY_FIELDS.has(field)) return formatMoney(value as number | string);
+  if (field === 'cod_reconciled_at') return new Date(String(value)).toLocaleString('vi-VN');
   if (field === 'weight' || field === 'volumetric_weight') return `${value} kg`;
   if (field === 'the_tich_m3') return `${value} m³`;
   if (CENTIMETER_FIELDS.has(field)) return `${value} cm`;
-  if (field === 'origin_hub_id' || field === 'dest_hub_id') return `#${value}`;
+  if (field === 'origin_hub_id' || field === 'dest_hub_id' || field === 'cod_fund_id') return `#${value}`;
   return String(value);
 }

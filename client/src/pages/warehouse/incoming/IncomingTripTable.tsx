@@ -3,23 +3,19 @@ import type { IncomingTrip } from './types';
 import { IncomingTripRowActions } from './IncomingTripRowActions';
 import { formatMoney } from '../../../lib/formatMoney';
 import {
-  formatNumber,
   formatTripDepartureDate,
-  getDriverName,
-  getDriverPhone,
   getManifestCode,
   getPlateLabel,
   getRouteLabel,
-  getTotalVolume,
-  getTotalWeight,
-  getTripProvisionalProfit,
+  getTripExpenseTotal,
+  getTripPayableAmount,
+  getTripRevenueAmount,
   getTripWaitingPaymentDays,
   getVendorCode,
   getVendorName,
   getVendorPaymentStatusLabel,
   getVendorPaymentStatusTone,
   getVehicleType,
-  getWaybillCount,
 } from './incomingTripUtils';
 
 const HEADERS = [
@@ -29,9 +25,10 @@ const HEADERS = [
   'Mã bảng kê',
   'NCC & loại xe',
   'BKS',
-  'Đơn / trọng lượng / CBM',
-  'Tài xế và SĐT',
-  'Lợi nhuận sơ bộ',
+  '# Chuyến',
+  'Tổng cước các đơn',
+  'Chi phí sau khởi hành',
+  'Cước chuyến đường trục',
   'Số ngày chờ TT',
   'Trạng thái thanh toán',
   'Thao tác',
@@ -72,7 +69,7 @@ export function IncomingTripTable({
             {emptyText}
           </div>
         ) : (
-          <table className="w-full min-w-[1540px] border-collapse text-left">
+          <table className="w-full min-w-[1720px] border-collapse text-left">
             <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
               <tr className="border-b border-border">
                 {visibleHeaders.map((header) => (
@@ -81,8 +78,8 @@ export function IncomingTripTable({
                     className={clsx(
                       'whitespace-nowrap border-r border-border/60 px-3 py-3 align-middle last:border-r-0',
                       header === 'STT' && 'w-[56px] text-center',
-                      header === 'Đơn / trọng lượng / CBM' && 'min-w-[170px] text-right',
-                      header === 'Lợi nhuận sơ bộ' && 'min-w-[130px] text-right',
+                      header === '# Chuyến' && 'min-w-[90px] text-center',
+                      ['Tổng cước các đơn', 'Chi phí sau khởi hành', 'Cước chuyến đường trục'].includes(header) && 'min-w-[160px] text-right',
                       header === 'Số ngày chờ TT' && 'min-w-[112px] text-center',
                       header === 'Trạng thái thanh toán' && 'min-w-[150px] text-center',
                       header === 'Thao tác' && 'w-[76px] text-center',
@@ -98,10 +95,7 @@ export function IncomingTripTable({
                 const departure = formatTripDepartureDate(trip);
                 const vendorCode = getVendorCode(trip);
                 const vendorName = getVendorName(trip);
-                const driverName = getDriverName(trip);
-                const driverPhone = getDriverPhone(trip);
                 const waitingDays = getTripWaitingPaymentDays(trip);
-                const profit = getTripProvisionalProfit(trip);
                 return (
                   <tr key={trip.id} className="hover:bg-muted/20">
                     <td className="px-3 py-2.5 text-center font-extrabold tabular-nums text-foreground">{index + 1}</td>
@@ -118,18 +112,19 @@ export function IncomingTripTable({
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 font-extrabold text-foreground">{getPlateLabel(trip)}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
-                      <div className="font-extrabold text-foreground">{Number(getWaybillCount(trip)).toLocaleString('vi-VN')} đơn</div>
-                      <div className={detailLineClass}>{formatNumber(getTotalWeight(trip))} kg · {formatNumber(getTotalVolume(trip), 2)} m³</div>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                      <button type="button" onClick={() => onView?.(trip)} className="font-extrabold text-primary hover:underline">
+                        #{trip.id}
+                      </button>
                     </td>
-                    <td className="max-w-[190px] px-3 py-2.5">
-                      <div className="truncate font-extrabold text-foreground" title={driverName}>{driverName}</div>
-                      <div className={detailLineClass}>
-                        {driverPhone !== '—' ? <a href={`tel:${driverPhone}`} className="text-primary hover:underline">{driverPhone}</a> : '—'}
-                      </div>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-extrabold tabular-nums text-foreground">
+                      {formatMoney(getTripRevenueAmount(trip))}
                     </td>
-                    <td className={clsx('whitespace-nowrap px-3 py-2.5 text-right font-extrabold tabular-nums', profit < 0 ? 'text-red-600' : 'text-emerald-700')}>
-                      {formatMoney(profit)}
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-extrabold tabular-nums text-amber-700">
+                      {formatMoney(getTripExpenseTotal(trip))}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-extrabold tabular-nums text-foreground">
+                      {formatMoney(getTripPayableAmount(trip))}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-center font-extrabold tabular-nums text-foreground">
                       {waitingDays == null ? '—' : `${waitingDays} ngày`}

@@ -625,19 +625,39 @@ export class WaybillsService {
   async findOne(id: string, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.waybillsRepository.findOne({
       where: { id, deleted_at: IsNull() } as any,
-      relations: ['origin_hub', 'dest_hub', 'current_hub', 'last_mile_driver', 'creator'],
+      relations: ['origin_hub', 'dest_hub', 'current_hub', 'last_mile_driver', 'creator', 'updater', 'cod_reconciler'],
     }) as WaybillRecord | null;
     if (!waybill) throw new NotFoundException('Waybill not found');
     this.assertWaybillAccess(waybill, currentUser);
     return this.sanitize(waybill, currentUser);
   }
 
-  async findHistory(id: string, currentUser: UserEntity): Promise<WaybillChangeLogEntity[]> {
+  async findHistory(id: string, currentUser: UserEntity): Promise<Array<Record<string, any>>> {
     await this.findOne(id, currentUser);
-    return this.changeLogsRepository.find({
+    const logs = await this.changeLogsRepository.find({
       where: { waybill_id: id },
+      relations: ['changed_by'],
       order: { created_at: 'DESC' },
       take: 100,
+    });
+    const canViewPricing = isManager(currentUser.role_mask);
+    const canViewCod = canViewPricing || hasRole(currentUser.role_mask, Roles.ACCOUNTANT);
+    return logs.map((log) => {
+      const changes = Object.fromEntries(Object.entries(log.changes || {}).filter(([field]) => {
+        if (['cost_amount', 'freight_amount', 'cc_amount', 'last_mile_cost_amount'].includes(field)) return canViewPricing;
+        if (['cod_amount', 'cod_collected_amount'].includes(field)) return canViewCod;
+        return true;
+      }));
+      return {
+        id: log.id,
+        waybill_id: log.waybill_id,
+        action: log.action,
+        changes,
+        changed_by_id: log.changed_by_id,
+        changed_by_name: log.changed_by_name,
+        created_at: log.created_at,
+        changed_by: this.sanitizeUserSummary(log.changed_by),
+      };
     });
   }
 
@@ -973,6 +993,7 @@ export class WaybillsService {
       }) as WaybillRecord | null;
       if (!waybill) throw new NotFoundException('Waybill not found');
       this.assertWaybillAccess(waybill, currentUser);
+      const reconciliationBefore = this.getCodReconciliationSnapshot(waybill);
 
       if (!dto.confirmed) {
         await cashVouchersRepository.delete({ waybill_id: String(waybill.id), source_type: 'COD_COLLECTION' } as any);
@@ -982,7 +1003,17 @@ export class WaybillsService {
         waybill.cod_collected_amount = '0';
         waybill.updated_by = currentUser.id;
         await this.applyCustomerPaymentStatus(manager, waybill);
-        return this.sanitize(await waybillsRepository.save(waybill) as WaybillRecord, currentUser) as WaybillRecord;
+        const saved = await waybillsRepository.save(waybill) as WaybillRecord;
+        await this.recordWaybillChange(
+          String(saved.id),
+          'COD_RECONCILIATION_REVERSED',
+          currentUser,
+          undefined,
+          undefined,
+          this.diffCodReconciliationSnapshots(reconciliationBefore, this.getCodReconciliationSnapshot(saved)),
+          manager.getRepository(WaybillChangeLogEntity),
+        );
+        return this.sanitize(saved, currentUser) as WaybillRecord;
       }
 
       const collectAmount = this.getCollectOnDeliveryAmount(waybill);
@@ -1023,6 +1054,15 @@ export class WaybillsService {
       waybill.updated_by = currentUser.id;
       await this.applyCustomerPaymentStatus(manager, waybill);
       const saved = await waybillsRepository.save(waybill);
+      await this.recordWaybillChange(
+        String(saved.id),
+        'COD_RECONCILED',
+        currentUser,
+        undefined,
+        undefined,
+        this.diffCodReconciliationSnapshots(reconciliationBefore, this.getCodReconciliationSnapshot(saved as WaybillRecord)),
+        manager.getRepository(WaybillChangeLogEntity),
+      );
       return this.sanitize({ ...saved, cod_fund: { id: fund.id, code: fund.code, name: fund.name } } as WaybillRecord, currentUser) as WaybillRecord;
     });
   }
@@ -1458,6 +1498,7 @@ export class WaybillsService {
           : waybill.customer_payment_status ?? null;
 
       let waybillChanged = nextPaymentStatus !== (waybill.customer_payment_status ?? null);
+      const reconciliationBefore = this.getCodReconciliationSnapshot(waybill);
       if (waybillChanged) {
         waybill.customer_payment_status = nextPaymentStatus;
       }
@@ -1478,7 +1519,19 @@ export class WaybillsService {
           }
         }
       }
-      if (waybillChanged) await waybillsRepository.save(waybill);
+      if (waybillChanged) {
+        waybill.updated_by = currentUser.id;
+        const savedWaybill = await waybillsRepository.save(waybill) as WaybillRecord;
+        await this.recordWaybillChange(
+          String(savedWaybill.id),
+          'COD_RECONCILED',
+          currentUser,
+          undefined,
+          undefined,
+          this.diffCodReconciliationSnapshots(reconciliationBefore, this.getCodReconciliationSnapshot(savedWaybill)),
+          manager.getRepository(WaybillChangeLogEntity),
+        );
+      }
 
       return {
         ...saved,
@@ -1560,6 +1613,10 @@ export class WaybillsService {
       });
 
       const saved = await cashVouchersRepository.save(records);
+      const reconciliationBeforeById = new Map(waybills.map((waybill) => [
+        String(waybill.id),
+        this.getCodReconciliationSnapshot(waybill),
+      ]));
       const changedWaybills = waybills.filter((waybill) => {
         const totalDue = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
         const netPaid = paidByWaybillId.get(String(waybill.id)) ?? 0;
@@ -1578,9 +1635,24 @@ export class WaybillsService {
           waybill.cod_collected_amount = String(collectAmount);
           changed = true;
         }
+        if (changed) waybill.updated_by = currentUser.id;
         return changed;
       });
       if (changedWaybills.length) await waybillsRepository.save(changedWaybills);
+      for (const waybill of changedWaybills) {
+        await this.recordWaybillChange(
+          String(waybill.id),
+          'COD_RECONCILED',
+          currentUser,
+          undefined,
+          undefined,
+          this.diffCodReconciliationSnapshots(
+            reconciliationBeforeById.get(String(waybill.id))!,
+            this.getCodReconciliationSnapshot(waybill),
+          ),
+          manager.getRepository(WaybillChangeLogEntity),
+        );
+      }
 
       return {
         items: saved,
@@ -3648,6 +3720,7 @@ export class WaybillsService {
     before?: WaybillAuditSnapshot,
     afterWaybill?: WaybillRecord,
     additionalChanges: Record<string, WaybillFieldChange> = {},
+    repository: Repository<WaybillChangeLogEntity> = this.changeLogsRepository,
   ): Promise<void> {
     const snapshotChanges = before && afterWaybill
       ? this.diffAuditSnapshots(before, this.buildAuditSnapshot(afterWaybill))
@@ -3658,14 +3731,38 @@ export class WaybillsService {
     const changedByName = this.auditText(currentUser.full_name)
       || this.auditText(currentUser.username)
       || `User #${currentUser.id}`;
-    const log = this.changeLogsRepository.create({
+    const log = repository.create({
       waybill_id: waybillId,
       action,
       changes,
       changed_by_id: currentUser.id || null,
       changed_by_name: changedByName,
     });
-    await this.changeLogsRepository.save(log);
+    await repository.save(log);
+  }
+
+  private getCodReconciliationSnapshot(waybill: WaybillRecord) {
+    const reconciledAt = waybill.cod_reconciled_at
+      ? new Date(waybill.cod_reconciled_at).toISOString()
+      : null;
+    return {
+      cod_reconciled_at: reconciledAt,
+      cod_collected_amount: Number(waybill.cod_collected_amount) || 0,
+      cod_fund_id: waybill.cod_fund_id ? String(waybill.cod_fund_id) : null,
+    };
+  }
+
+  private diffCodReconciliationSnapshots(
+    before: ReturnType<WaybillsService['getCodReconciliationSnapshot']>,
+    after: ReturnType<WaybillsService['getCodReconciliationSnapshot']>,
+  ): Record<string, WaybillFieldChange> {
+    return Object.keys(after).reduce<Record<string, WaybillFieldChange>>((changes, field) => {
+      const key = field as keyof typeof after;
+      if (before[key] !== after[key]) {
+        changes[key] = { old_value: before[key], new_value: after[key] };
+      }
+      return changes;
+    }, {});
   }
 
   private packContact(name?: string | null, phone?: string | null, address?: string | null) {
@@ -3820,13 +3917,13 @@ export class WaybillsService {
       };
     }
     if (waybill.creator) {
-      result.creator = {
-        id: waybill.creator.id,
-        username: waybill.creator.username,
-        name: waybill.creator.full_name,
-        full_name: waybill.creator.full_name,
-        hub_id: waybill.creator.hub_id,
-      };
+      result.creator = this.sanitizeUserSummary(waybill.creator);
+    }
+    if (waybill.updater) {
+      result.updater = this.sanitizeUserSummary(waybill.updater);
+    }
+    if (waybill.cod_reconciler) {
+      result.cod_reconciler = this.sanitizeUserSummary(waybill.cod_reconciler);
     }
     if (waybill.last_mile_truck) {
       result.last_mile_truck = {
@@ -3862,6 +3959,17 @@ export class WaybillsService {
     }
     delete result.deleted_at;
     return result as WaybillRecord;
+  }
+
+  private sanitizeUserSummary(user?: UserEntity | null) {
+    if (!user) return null;
+    return {
+      id: user.id,
+      username: user.username,
+      name: user.full_name,
+      full_name: user.full_name,
+      hub_id: user.hub_id,
+    };
   }
 
   private resolveGoodsContent(waybill: WaybillRecord): string {

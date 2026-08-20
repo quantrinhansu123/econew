@@ -248,8 +248,8 @@ export class WaybillsController {
   }
 
   @Get(':id/history')
-  @RequireRoles(Roles.WAREHOUSE, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Get field-level waybill edit history (manager only)' })
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DRIVER, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Get account activity and field-level waybill history' })
   findHistory(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.findHistory(id, currentUser);
   }

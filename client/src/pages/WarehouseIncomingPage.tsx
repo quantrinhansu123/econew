@@ -47,7 +47,7 @@ export interface WarehouseIncomingPageProps {
 export default function WarehouseIncomingPage({
   mode = 'overview',
   title = 'Tất cả chuyến xe',
-  subtitle = 'Theo dõi chuyến xe, ngày đến, BKS, tài xế và nhà cung cấp.',
+  subtitle = 'Theo dõi chuyến xe, cước đơn, chi phí phát sinh và thanh toán nhà cung cấp.',
   emptyText = 'Chưa có chuyến xe.',
 }: WarehouseIncomingPageProps = {}) {
   const navigate = useNavigate();

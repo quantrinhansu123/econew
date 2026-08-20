@@ -280,6 +280,14 @@ export class WaybillEntity {
   @JoinColumn({ name: 'created_by' })
   creator: UserEntity | null;
 
+  @ManyToOne(() => UserEntity, { nullable: true })
+  @JoinColumn({ name: 'updated_by' })
+  updater: UserEntity | null;
+
+  @ManyToOne(() => UserEntity, { nullable: true })
+  @JoinColumn({ name: 'cod_reconciled_by' })
+  cod_reconciler: UserEntity | null;
+
   @ManyToOne(() => TruckEntity, { nullable: true })
   @JoinColumn({ name: 'last_mile_truck_id' })
   last_mile_truck: TruckEntity | null;

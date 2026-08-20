@@ -4,6 +4,7 @@ import { Roles } from '../common/roles';
 import { CashFundEntity } from '../finance/cash-fund.entity';
 import { UserEntity } from '../users/user.entity';
 import { WaybillCashVoucherEntity } from './waybill-cash-voucher.entity';
+import { WaybillChangeLogEntity } from './waybill-change-log.entity';
 import { WaybillEntity } from './waybill.entity';
 import { WaybillsService } from './waybills.service';
 
@@ -59,11 +60,16 @@ describe('WaybillsService cash voucher reconciliation', () => {
     const fundRepository = {
       findOne: jest.fn(async () => ({ id: '3', is_active: true, hub_id: null })),
     } as unknown as Repository<CashFundEntity>;
+    const changeLogRepository = {
+      create: jest.fn((value) => value),
+      save: jest.fn(async (value) => value),
+    } as unknown as Repository<WaybillChangeLogEntity>;
     const manager = {
       getRepository: jest.fn((entity) => {
         if (entity === WaybillCashVoucherEntity) return voucherRepository;
         if (entity === WaybillEntity) return transactionalWaybillRepository;
         if (entity === CashFundEntity) return fundRepository;
+        if (entity === WaybillChangeLogEntity) return changeLogRepository;
         throw new Error(`Unexpected repository: ${String(entity)}`);
       }),
     } as unknown as EntityManager;
@@ -103,5 +109,9 @@ describe('WaybillsService cash voucher reconciliation', () => {
     expect(waybill.cod_fund_id).toBe('3');
     expect(waybill.cod_collected_amount).toBe(String(collection));
     expect(transactionalWaybillRepository.save).toHaveBeenCalledWith(waybill);
+    expect(changeLogRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'COD_RECONCILED',
+      changed_by_id: '9',
+    }));
   });
 });

@@ -1,8 +1,8 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useState } from 'react';
-import { CalendarClock, Eye, History, Images, Loader2, MapPin, Package, PackageCheck, Printer, Route, Scale, User, X } from 'lucide-react';
+import { CalendarClock, CheckCircle2, Eye, History, Images, Loader2, MapPin, Package, PackageCheck, Pencil, Printer, Route, Scale, User, UserPlus, X } from 'lucide-react';
 import { clsx } from 'clsx';
-import type { BadgeConfig, WaybillInventoryDetail } from '../types';
+import type { BadgeConfig, UserSummary, WaybillInventoryDetail } from '../types';
 import { resolveUserNote, resolveWarehouseIntakePresentation } from '../inventoryColumns';
 import { MAX_WAYBILL_IMAGES, parseWaybillImages } from '../../../../lib/waybillImages';
 import { ImagePreviewModal } from '../../../../components/ImagePreviewModal';
@@ -31,6 +31,12 @@ const displayCode = (waybill: WaybillInventoryDetail | null) => waybill?.waybill
 const displayValue = (value: unknown, suffix = '') => value === null || value === undefined || value === '' ? '—' : `${value}${suffix}`;
 const formatDate = (value?: string | null) => value ? new Date(value).toLocaleString('vi-VN') : '—';
 const formatHub = (hub: WaybillInventoryDetail['current_hub'], fallback?: string | number | null) => hub ? [hub.code?.toUpperCase(), hub.name].filter(Boolean).join(' · ') || `Hub #${hub.id}` : fallback ? `Hub #${fallback}` : '—';
+const formatUser = (user?: UserSummary | null, fallback?: string | null) => {
+  const name = user?.full_name?.trim() || user?.name?.trim() || fallback?.trim() || user?.username?.trim();
+  const username = user?.username?.trim();
+  if (!name) return 'Chưa ghi nhận';
+  return username && username !== name ? `${name} (@${username})` : name;
+};
 
 export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoading, canViewPricing, waybill, statusConfig, paymentConfig, priorityConfig, onClose }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -40,37 +46,35 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
   const [historyError, setHistoryError] = useState('');
 
   useEffect(() => {
-    if (!isOpen || !waybill?.id || !canViewPricing) {
-      setHistory([]);
-      setHistoryError('');
-      setIsHistoryLoading(false);
-      return;
-    }
+    if (!isOpen || !waybill?.id) return undefined;
 
     let mounted = true;
-    setHistory([]);
-    setHistoryError('');
-    setIsHistoryLoading(true);
-    apiRequest<WaybillHistoryEntry[]>(`/waybills/${waybill.id}/history`)
-      .then((items) => {
-        if (mounted) setHistory(Array.isArray(items) ? items : []);
-      })
-      .catch((error: unknown) => {
-        if (!mounted) return;
-        setHistoryError(error instanceof ApiError && error.status === 404
-          ? 'Backend chưa được cập nhật tính năng lịch sử chỉnh sửa.'
-          : error instanceof ApiError
-            ? error.message
-            : 'Chưa tải được lịch sử chỉnh sửa.');
-      })
-      .finally(() => {
-        if (mounted) setIsHistoryLoading(false);
-      });
+    const loadId = window.setTimeout(() => {
+      setHistory([]);
+      setHistoryError('');
+      setIsHistoryLoading(true);
+      apiRequest<WaybillHistoryEntry[]>(`/waybills/${waybill.id}/history`)
+        .then((items) => {
+          if (mounted) setHistory(Array.isArray(items) ? items : []);
+        })
+        .catch((error: unknown) => {
+          if (!mounted) return;
+          setHistoryError(error instanceof ApiError && error.status === 404
+            ? 'Backend chưa được cập nhật tính năng lịch sử thao tác.'
+            : error instanceof ApiError
+              ? error.message
+              : 'Chưa tải được lịch sử thao tác.');
+        })
+        .finally(() => {
+          if (mounted) setIsHistoryLoading(false);
+        });
+    }, 0);
 
     return () => {
       mounted = false;
+      window.clearTimeout(loadId);
     };
-  }, [canViewPricing, isOpen, waybill?.id]);
+  }, [isOpen, waybill?.id]);
 
   if (!isOpen && !isClosing) return null;
 
@@ -146,6 +150,8 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
                 <Info label="Ghi chú nhập kho" value={warehouseIntake?.note || '—'} className="sm:col-span-2" />
               </Section>
 
+              <AuditSummary waybill={waybill} entries={history} />
+
               <Section title="Kích thước & ghi chú" icon={Scale}>
                 <Info label="Dài × Rộng × Cao" value={`${displayValue(waybill.length)} × ${displayValue(waybill.width)} × ${displayValue(waybill.height)}`} />
                 <Info label="Khối lượng quy đổi" value={displayValue(waybill.volumetric_weight, ' kg')} />
@@ -176,13 +182,11 @@ export default function WaybillInventoryDetailDialog({ isOpen, isClosing, isLoad
                 </div>
               </Section>
 
-              {canViewPricing && (
-                <HistorySection
-                  entries={history}
-                  isLoading={isHistoryLoading}
-                  error={historyError}
-                />
-              )}
+              <HistorySection
+                entries={history}
+                isLoading={isHistoryLoading}
+                error={historyError}
+              />
             </div>
           )}
         </div>
@@ -248,12 +252,56 @@ function Badge({ label, className }: { label: React.ReactNode; className: string
   return <span className={clsx('inline-flex min-h-10 items-center justify-center rounded-xl border px-3 py-2 text-center text-[12px] font-black', className)}>{label}</span>;
 }
 
+function AuditSummary({ waybill, entries }: { waybill: WaybillInventoryDetail; entries: WaybillHistoryEntry[] }) {
+  const createdEntry = entries.find((entry) => entry.action === 'CREATED');
+  const codEntry = entries.find((entry) => entry.action === 'COD_RECONCILED');
+  const editEntry = entries.find((entry) => !['CREATED', 'COD_RECONCILED', 'COD_RECONCILIATION_REVERSED'].includes(entry.action));
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
+      <div className="flex items-center gap-2 border-b border-border bg-muted/5 px-5 py-3">
+        <User size={16} className="text-primary" />
+        <span className="text-[12px] font-bold uppercase tracking-wider text-primary">Tài khoản thao tác</span>
+      </div>
+      <div className="grid gap-px bg-border sm:grid-cols-3">
+        <AuditItem
+          icon={UserPlus}
+          label="Người tạo bill"
+          user={formatUser(waybill.creator || createdEntry?.changed_by, createdEntry?.changed_by_name)}
+          time={formatDate(createdEntry?.created_at || waybill.created_at)}
+        />
+        <AuditItem
+          icon={CheckCircle2}
+          label="Người xác nhận COD"
+          user={waybill.cod_reconciled_at ? formatUser(waybill.cod_reconciler || codEntry?.changed_by, codEntry?.changed_by_name) : 'Chưa xác nhận'}
+          time={waybill.cod_reconciled_at ? formatDate(codEntry?.created_at || waybill.cod_reconciled_at) : '—'}
+        />
+        <AuditItem
+          icon={Pencil}
+          label="Người sửa gần nhất"
+          user={formatUser(editEntry?.changed_by || waybill.updater, editEntry?.changed_by_name)}
+          time={formatDate(editEntry?.created_at || waybill.updated_at)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function AuditItem({ icon: Icon, label, user, time }: { icon: typeof User; label: string; user: string; time: string }) {
+  return (
+    <div className="min-w-0 bg-white p-4">
+      <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground"><Icon size={14} />{label}</div>
+      <p className="mt-1 break-words text-[13px] font-extrabold text-foreground">{user}</p>
+      <p className="mt-1 text-[11px] font-semibold text-muted-foreground">{time}</p>
+    </div>
+  );
+}
+
 function HistorySection({ entries, isLoading, error }: { entries: WaybillHistoryEntry[]; isLoading: boolean; error: string }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
       <div className="flex items-center gap-2 border-b border-border bg-muted/5 px-5 py-3">
         <History size={16} className="text-primary" />
-        <span className="text-[12px] font-bold uppercase tracking-wider text-primary">Lịch sử chỉnh sửa</span>
+        <span className="text-[12px] font-bold uppercase tracking-wider text-primary">Lịch sử thao tác</span>
       </div>
       <div className="p-4">
         {isLoading ? (
@@ -266,7 +314,7 @@ function HistorySection({ entries, isLoading, error }: { entries: WaybillHistory
           </div>
         ) : entries.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-muted/5 px-3 py-5 text-center text-[12px] font-semibold text-muted-foreground">
-            Bill chưa có lần chỉnh sửa nào được ghi nhận.
+            Bill chưa có thao tác nào được ghi nhận.
           </div>
         ) : (
           <div className="space-y-3">
@@ -278,7 +326,7 @@ function HistorySection({ entries, isLoading, error }: { entries: WaybillHistory
                     <div>
                       <p className="text-[13px] font-extrabold text-foreground">{waybillHistoryActionLabel(entry.action)}</p>
                       <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">
-                        Người thao tác: {entry.changed_by_name || 'Hệ thống'}
+                        Người thao tác: {formatUser(entry.changed_by, entry.changed_by_name || 'Hệ thống')}
                       </p>
                     </div>
                     <time className="rounded-lg bg-white px-2 py-1 text-[11px] font-bold text-slate-600 shadow-sm">

@@ -10,6 +10,7 @@ import { WaybillPriority, WaybillStatus } from './dto/waybill.enums';
 import { WaybillSplitLoadStatus } from './dto/waybill-split-load-status.enum';
 import { WaybillSplitEntity } from './waybill-split.entity';
 import { WaybillEntity } from './waybill.entity';
+import { WaybillChangeLogEntity } from './waybill-change-log.entity';
 import { WaybillCashVoucherEntity } from './waybill-cash-voucher.entity';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
 import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
@@ -179,6 +180,7 @@ describe('WaybillsService', () => {
       [ManifestWaybillEntity, manifestWaybillsRepository],
       [WaybillSplitEntity, splitsRepository],
       [WaybillCashVoucherEntity, cashVouchersRepository],
+      [WaybillChangeLogEntity, changeLogsRepository],
       [CashFundEntity, cashFundsRepository],
       [TripEntity, tripsRepository],
       [OrderEntity, transactionOrderRepository],
@@ -403,14 +405,31 @@ describe('WaybillsService', () => {
       action: 'UPDATED',
       changes: { cod_amount: { old_value: 0, new_value: 500000 } },
       changed_by_name: 'Quản trị viên',
+      changed_by: {
+        id: 'manager',
+        username: 'manager',
+        full_name: 'Quản trị viên',
+        password_hash: 'must-not-leak',
+        hub_id: '1',
+      },
       created_at: new Date('2026-08-05T08:00:00.000Z'),
     }];
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
     changeLogsRepository.find.mockResolvedValue(history);
 
-    await expect(service.findHistory('1', manager)).resolves.toEqual(history);
+    await expect(service.findHistory('1', manager)).resolves.toEqual([expect.objectContaining({
+      id: '9',
+      changed_by: {
+        id: 'manager',
+        username: 'manager',
+        name: 'Quản trị viên',
+        full_name: 'Quản trị viên',
+        hub_id: '1',
+      },
+    })]);
     expect(changeLogsRepository.find).toHaveBeenCalledWith({
       where: { waybill_id: '1' },
+      relations: ['changed_by'],
       order: { created_at: 'DESC' },
       take: 100,
     });
@@ -1336,6 +1355,32 @@ describe('WaybillsService', () => {
     });
   });
 
+  it('hides pricing changes from warehouse history while preserving the operator account', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill());
+    changeLogsRepository.find.mockResolvedValue([{
+      id: '10',
+      waybill_id: '1',
+      action: 'UPDATED',
+      changes: {
+        receiver_name: { old_value: 'A', new_value: 'B' },
+        freight_amount: { old_value: 100000, new_value: 120000 },
+        last_mile_cost_amount: { old_value: 0, new_value: 50000 },
+        cod_amount: { old_value: 0, new_value: 200000 },
+      },
+      changed_by_id: manager.id,
+      changed_by_name: 'Quản trị viên',
+      changed_by: { id: manager.id, username: 'manager', full_name: 'Quản trị viên', hub_id: '1' },
+      created_at: new Date('2026-08-05T08:00:00.000Z'),
+    }]);
+
+    await expect(service.findHistory('1', warehouse)).resolves.toEqual([
+      expect.objectContaining({
+        changes: { receiver_name: { old_value: 'A', new_value: 'B' } },
+        changed_by: expect.objectContaining({ username: 'manager', full_name: 'Quản trị viên' }),
+      }),
+    ]);
+  });
+
   it('receive blocks wrong status', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.IN_WAREHOUSE, current_state: WaybillStatus.IN_WAREHOUSE }));
     await expect(service.receive('1', { intake_method: WarehouseIntakeMethod.INTERNAL }, warehouse)).rejects.toThrow(BadRequestException);
@@ -1415,6 +1460,14 @@ describe('WaybillsService', () => {
       note: 'Đã đối chiếu tiền mặt với lái xe',
     }));
     expect(result.cod_reconciled_at).toEqual(expect.any(Date));
+    expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'COD_RECONCILED',
+      changed_by_id: accountant.id,
+      changes: expect.objectContaining({
+        cod_collected_amount: { old_value: 0, new_value: 620000 },
+        cod_fund_id: { old_value: null, new_value: 'fund-1' },
+      }),
+    }));
   });
 
   it('rejects hub COD reconciliation when the bill has nothing to collect', async () => {

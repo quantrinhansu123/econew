@@ -19,6 +19,7 @@ export interface UserSummary {
   name?: string | null;
   full_name?: string | null;
   role_mask?: number | null;
+  hub_id?: string | number | null;
 }
 
 export interface InventoryTripHistoryItem {
@@ -76,6 +77,8 @@ export interface WaybillInventoryItem {
   cc_amount?: number | string | null;
   cod_collection_status?: 'NOT_APPLICABLE' | 'PENDING' | 'COLLECTED' | string | null;
   cod_reconciled_at?: string | null;
+  cod_reconciled_by?: string | number | null;
+  cod_reconciler?: UserSummary | null;
   cod_collected_amount?: number | string | null;
   cost_amount?: number | string | null;
   freight_amount?: number | string | null;
@@ -97,6 +100,9 @@ export interface WaybillInventoryItem {
   received_at?: string | null;
   sent_date?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
+  creator?: UserSummary | null;
+  updater?: UserSummary | null;
   received_by?: UserSummary | null;
   warehouse_intake_method?: 'INTERNAL' | 'VENDOR' | 'CUSTOMER_DROPOFF' | null;
   warehouse_intake_truck_id?: string | number | null;

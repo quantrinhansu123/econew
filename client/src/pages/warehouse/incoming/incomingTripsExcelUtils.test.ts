@@ -24,18 +24,26 @@ describe('incoming trips Excel export', () => {
       other_costs: 10000,
       total_collect: 180000,
       total_revenue: 180000,
+      expense_total: 10000,
     }];
 
     const workbook = buildIncomingTripsExcelWorkbook(trips, 'Tất cả ngày');
     const sheet = workbook?.Sheets['Chuyen xe'];
 
     expect(sheet?.A3?.v).toBe('STT');
+    expect(sheet?.H3?.v).toBe('Tổng cước các đơn');
+    expect(sheet?.I3?.v).toBe('Chi phí sau khởi hành');
+    expect(sheet?.J3?.v).toBe('Cước chuyến đường trục');
     expect(sheet?.D4?.v).toBe('BK-001');
     expect(sheet?.F4?.v).toBe('39H-1234');
-    expect(sheet?.G4?.v).toContain('3 đơn');
-    expect(sheet?.I4?.v).toBe(50000);
+    expect(sheet?.G4?.v).toBe('#9');
+    expect(sheet?.H4?.v).toBe(180000);
+    expect(sheet?.I4?.v).toBe(10000);
+    expect(sheet?.J4?.v).toBe(120000);
     expect(sheet?.A5?.v).toBe('TỔNG CỘNG');
-    expect(sheet?.I5?.v).toBe(50000);
+    expect(sheet?.H5?.v).toBe(180000);
+    expect(sheet?.I5?.v).toBe(10000);
+    expect(sheet?.J5?.v).toBe(120000);
   });
 
   it('returns null when there is no trip to export', () => {
