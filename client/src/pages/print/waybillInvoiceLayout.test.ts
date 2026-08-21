@@ -38,6 +38,24 @@ describe('waybill invoice marked layout', () => {
     expect(css).toMatch(
       /\.eco-charge-box\s*\{[^}]*grid-template-rows:\s*12mm minmax\(0,\s*1fr\);/s,
     );
+    expect(css).toMatch(
+      /\.eco-charge-line\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) max-content;/s,
+    );
+    expect(css).toMatch(
+      /\.eco-charge-lines\s*\{[^}]*font-size:\s*var\(--fs-sm\);/s,
+    );
+    expect(css).toMatch(
+      /\.eco-charge-line > :first-child\s*\{[^}]*white-space:\s*nowrap;/s,
+    );
+    expect(css).toMatch(
+      /\.eco-charge-value\s*\{[^}]*min-width:\s*max-content;[^}]*white-space:\s*nowrap;/s,
+    );
+    expect(css).toMatch(
+      /\.eco-a5-template \.eco-total-value\s*\{[^}]*white-space:\s*nowrap;/s,
+    );
+    expect(css).toMatch(
+      /\.eco-extra-info-box b\s*\{[^}]*min-width:\s*max-content;[^}]*white-space:\s*nowrap;/s,
+    );
     expect(css).toMatch(/\.eco-extra-info-box--cod\s*\{[^}]*grid-row:\s*2;/s);
     expect(css).toMatch(/\.eco-extra-info-box--declared-value\s*\{[^}]*grid-row:\s*3;/s);
     expect(css).toMatch(

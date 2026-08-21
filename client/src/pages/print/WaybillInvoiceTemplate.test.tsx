@@ -96,16 +96,30 @@ describe('waybill invoice layout', () => {
   });
 
   it('keeps charge details and the collection total without a separator bar', () => {
-    const html = renderToStaticMarkup(<WaybillInvoiceTemplate data={printData} />);
+    const html = renderToStaticMarkup(
+      <WaybillInvoiceTemplate
+        data={{
+          ...printData,
+          showPricing: true,
+          cuocChinh: '22,000,000 đ',
+          dichVuCongThem: '1,200,000 đ',
+          tongCuoc: '23,200,000 đ',
+          tongPhaiThuPhat: '40,700,000 đ',
+        }}
+      />,
+    );
 
     expect(html).toContain('eco-charge-lines');
     expect(html).toContain('eco-total');
     expect(html).toContain('Tổng phải thu khi phát thư');
-    expect(html).toContain('<strong class="eco-total-value">0</strong>');
+    expect(html).toContain('<span class="eco-charge-value">22,000,000 đ</span>');
+    expect(html).toContain('<b class="eco-charge-value">1,200,000 đ</b>');
+    expect(html).toContain('<span class="eco-charge-value">23,200,000 đ</span>');
+    expect(html).toContain('<strong class="eco-total-value">40,700,000 đ</strong>');
     expect(html).toContain('eco-extra-info-box--cod');
     expect(html).toContain('eco-extra-info-box--declared-value');
     expect(html).toContain('eco-sign-date');
     expect(html).not.toContain('Ngày giờ gửi&nbsp;');
-    expect(html.match(/eco-charge-value/g)).toHaveLength(2);
+    expect(html.match(/eco-charge-value/g)).toHaveLength(3);
   });
 });

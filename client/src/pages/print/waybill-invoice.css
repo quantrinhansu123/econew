@@ -649,14 +649,23 @@
   padding: 0.7mm 1.5mm;
   display: grid;
   grid-template-rows: repeat(3, minmax(0, 1fr));
+  font-size: var(--fs-sm);
 }
 
 .eco-charge-line {
   min-width: 0;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  column-gap: 0.7mm;
   align-items: baseline;
-  gap: 1mm;
+}
+
+.eco-charge-line > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.05;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .eco-extra-info-box {
@@ -668,7 +677,11 @@
 }
 
 .eco-charge-value {
+  min-width: max-content;
   font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .eco-a5-template .eco-total {
@@ -695,7 +708,10 @@
   margin: 0;
   display: block;
   font-size: var(--fs-money);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .eco-extra-info-box--cod {
@@ -712,6 +728,13 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 1mm;
+}
+
+.eco-extra-info-box b {
+  min-width: max-content;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .eco-sign-box {
