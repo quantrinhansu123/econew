@@ -4,12 +4,18 @@ import { AlertTriangle, Building2, Loader2, PackageCheck, RefreshCw, Truck } fro
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { FilterSelect } from '../components/ui/FilterSelect';
+import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
 import { ApiError, apiRequest } from '../lib/api';
 import { TripKanbanCard } from './trips/TripKanbanCard';
 import { getPrimaryTripAction } from './trips/tripKanbanUtils';
 import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
 import type { HubSummary, ListResponse, Trip, TripAction } from './trips/types';
+import type { AuthUserProfile } from './login/types';
 import VehicleManifestButton from './warehouse/inventory/VehicleManifestButton';
+
+const USER_PROFILE_KEY = 'eco_user_profile';
+const MANAGER = 32;
+const DIRECTOR = 64;
 
 const tripKanbanStatuses = ['PLANNED', 'IN_TRANSIT', 'ARRIVED', 'COMPLETED'] as const;
 type TripKanbanStatus = (typeof tripKanbanStatuses)[number];
@@ -46,6 +52,15 @@ async function loadAllTripsByStatus(status: TripKanbanStatus, startHubId: string
 
 export default function TripsPage() {
   const navigate = useNavigate();
+  const canDeleteTrips = useMemo(() => {
+    try {
+      const rawProfile = localStorage.getItem(USER_PROFILE_KEY) || sessionStorage.getItem(USER_PROFILE_KEY);
+      const profile = JSON.parse(rawProfile || 'null') as AuthUserProfile | null;
+      return Boolean((profile?.role_mask ?? 0) & (MANAGER | DIRECTOR));
+    } catch {
+      return false;
+    }
+  }, []);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [startHubId, setStartHubId] = useState('');
@@ -55,6 +70,8 @@ export default function TripsPage() {
   const [action, setAction] = useState<TripAction | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
 
   const loadTrips = useCallback(async () => {
     setIsLoading(true);
@@ -147,6 +164,29 @@ export default function TripsPage() {
     }
   }
 
+  function confirmDeleteTrip(trip: Trip) {
+    if (!canDeleteTrips || trip.delivery_summary?.total_waybills !== 0) return;
+    const manifestLabel = trip.manifest?.manifest_code || (trip.manifest_id ? `BK #${trip.manifest_id}` : 'không có bảng kê');
+    setConfirmDialog({
+      title: `Xóa Chuyến #${trip.id}`,
+      message: `Xóa chuyến và ${manifestLabel}? Chỉ chuyến đã nhả hết đơn/kiện mới được xóa. Dữ liệu chi phí thử nghiệm của chuyến cũng sẽ bị xóa.`,
+      confirmLabel: 'Xóa chuyến',
+      danger: true,
+      onConfirm: async () => {
+        setIsSubmitting(true);
+        setDeleteError('');
+        try {
+          await apiRequest<{ success: boolean }>(`/trips/${trip.id}`, { method: 'DELETE' });
+          await loadTrips();
+        } catch (submitError) {
+          setDeleteError(submitError instanceof ApiError ? submitError.message : 'Không xóa được chuyến.');
+        } finally {
+          setIsSubmitting(false);
+        }
+      },
+    });
+  }
+
   return (
     <div className="h-full min-h-0">
       <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm">
@@ -172,6 +212,13 @@ export default function TripsPage() {
             {isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Làm mới
           </button>
         </div>
+        {deleteError && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-red-200 bg-red-50 px-3 py-2 text-[12px] font-bold text-red-700">
+            <AlertTriangle size={15} />
+            <span className="min-w-0 flex-1">{deleteError}</span>
+            <button type="button" onClick={() => setDeleteError('')} className="rounded px-2 py-1 hover:bg-red-100">Đóng</button>
+          </div>
+        )}
         {isLoading ? (
           <StateBlock icon={<Loader2 size={22} className="animate-spin" />} title="Đang tải bảng kê đơn đã đi..." />
         ) : error ? (
@@ -187,6 +234,8 @@ export default function TripsPage() {
             onExpenses={(id) => navigate(`/trips/${id}/expenses`)}
             onPrimaryAction={openPrimaryAction}
             onCancelAction={openCancelAction}
+            canDeleteTrips={canDeleteTrips}
+            onDeleteTrip={confirmDeleteTrip}
           />
         )}
       </section>
@@ -198,6 +247,7 @@ export default function TripsPage() {
         onClose={() => { setActionTrip(null); setAction(null); }}
         onConfirm={confirmAction}
       />
+      <ConfirmDialog dialog={confirmDialog} isSubmitting={isSubmitting} onClose={() => setConfirmDialog(null)} />
     </div>
   );
 }
@@ -210,6 +260,8 @@ function TripKanbanBoard({
   onExpenses,
   onPrimaryAction,
   onCancelAction,
+  canDeleteTrips,
+  onDeleteTrip,
 }: {
   tripsByStatus: Record<TripKanbanStatus, Trip[]>;
   onOpen: (id: string | number) => void;
@@ -218,6 +270,8 @@ function TripKanbanBoard({
   onExpenses: (id: string | number) => void;
   onPrimaryAction: (trip: Trip) => void;
   onCancelAction: (trip: Trip) => void;
+  canDeleteTrips: boolean;
+  onDeleteTrip: (trip: Trip) => void;
 }) {
   return (
     <div className="min-h-0 flex-1 overflow-auto p-2 custom-scrollbar">
@@ -236,6 +290,8 @@ function TripKanbanBoard({
                       onExpenses={() => onExpenses(trip.id)}
                       onPrimaryAction={() => onPrimaryAction(trip)}
                       onCancelAction={() => onCancelAction(trip)}
+                      canDelete={canDeleteTrips}
+                      onDelete={() => onDeleteTrip(trip)}
                     />
                   ))
                 : <EmptyColumn title="Chưa có chuyến" />}

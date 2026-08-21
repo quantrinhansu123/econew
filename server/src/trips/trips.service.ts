@@ -13,6 +13,7 @@ import { TruckStatus } from '../trucks/dto/truck.enums';
 import { TruckEntity } from '../trucks/truck.entity';
 import { UserEntity } from '../users/user.entity';
 import { VendorsService } from '../vendors/vendors.service';
+import { VendorDebtEntryEntity } from '../vendors/vendor-debt-entry.entity';
 import { VendorPaymentEntity } from '../vendors/vendor-payment.entity';
 import { WaybillsService } from '../waybills/waybills.service';
 import { WaybillEntity } from '../waybills/waybill.entity';
@@ -46,6 +47,7 @@ export class TripsService {
     @InjectRepository(WaybillEntity) private readonly waybillsRepository: Repository<WaybillEntity>,
     @InjectRepository(HubEntity) private readonly hubsRepository: Repository<HubEntity>,
     @InjectRepository(WaybillSplitEntity) private readonly waybillSplitsRepository: Repository<WaybillSplitEntity>,
+    @InjectRepository(VendorDebtEntryEntity) private readonly vendorDebtEntriesRepository: Repository<VendorDebtEntryEntity>,
     @InjectRepository(VendorPaymentEntity) private readonly vendorPaymentsRepository: Repository<VendorPaymentEntity>,
     private readonly vendorsService: VendorsService,
     private readonly waybillsService: WaybillsService,
@@ -414,6 +416,51 @@ export class TripsService {
       if (activeTrips === 0) await this.setTruckStatus(trip.truck_id, TruckStatus.AVAILABLE);
     }
     return this.tripsRepository.save(trip);
+  }
+
+  async remove(id: string, currentUser: UserEntity): Promise<void> {
+    if (!isManager(currentUser.role_mask)) {
+      throw new ForbiddenException('Chỉ quản lý mới được xóa chuyến');
+    }
+
+    const trip = await this.findOne(id, currentUser);
+    if (
+      this.toNumber(trip.vendor_paid_amount) > 0
+      || (trip.vendor_payment_status && trip.vendor_payment_status !== VendorTripPaymentStatus.UNPAID)
+    ) {
+      throw new BadRequestException('Chuyến đã phát sinh thanh toán NCC, không thể xóa');
+    }
+
+    const [manifestWaybillCount, tripSplitCount] = await Promise.all([
+      trip.manifest_id
+        ? this.manifestWaybillsRepository.count({ where: { manifest_id: String(trip.manifest_id) } })
+        : Promise.resolve(0),
+      this.waybillSplitsRepository.count({ where: { trip_id: String(trip.id) } as any }),
+    ]);
+    if (manifestWaybillCount > 0 || tripSplitCount > 0) {
+      throw new BadRequestException('Chỉ được xóa chuyến sau khi đã nhả hết đơn và kiện về tồn kho');
+    }
+
+    const vendorId = trip.vendor_id ? String(trip.vendor_id) : null;
+    await this.vendorDebtEntriesRepository.delete({ trip_id: String(trip.id) } as any);
+    await this.tripsRepository.delete(String(trip.id));
+
+    if (trip.manifest_id) {
+      const remainingTrips = await this.tripsRepository.count({
+        where: { manifest_id: String(trip.manifest_id) },
+      });
+      if (remainingTrips === 0) {
+        await this.manifestsRepository.delete(String(trip.manifest_id));
+      }
+    }
+
+    if (trip.truck_id) {
+      const activeTrips = await this.tripsRepository.count({
+        where: { truck_id: String(trip.truck_id), status: In(ACTIVE_TRIP_STATUSES) } as any,
+      });
+      if (activeTrips === 0) await this.setTruckStatus(String(trip.truck_id), TruckStatus.AVAILABLE);
+    }
+    if (vendorId) await this.vendorsService.refreshPayableBalance(vendorId);
   }
 
   async cancelTrip(id: string, currentUser: UserEntity): Promise<TripEntity> {

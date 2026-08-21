@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { CheckCircle2, Eye, Pencil, Printer, Receipt, Truck, XCircle } from 'lucide-react';
+import { CheckCircle2, Eye, Pencil, Printer, Receipt, Trash2, Truck, XCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 import { formatMoney } from '../../lib/formatMoney';
 import type { Trip } from './types';
-import { getPrimaryTripAction } from './tripKanbanUtils';
+import { getPrimaryTripAction, getTripDeleteDisabledReason } from './tripKanbanUtils';
 
 const formatDate = (value?: string | null) => (
   value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—'
@@ -47,6 +47,8 @@ interface TripKanbanCardProps {
   onExpenses: () => void;
   onPrimaryAction: () => void;
   onCancelAction: () => void;
+  canDelete?: boolean;
+  onDelete?: () => void;
 }
 
 export function TripKanbanCard({
@@ -57,8 +59,11 @@ export function TripKanbanCard({
   onExpenses,
   onPrimaryAction,
   onCancelAction,
+  canDelete = false,
+  onDelete,
 }: TripKanbanCardProps) {
   const primaryAction = getPrimaryTripAction(trip.status);
+  const deleteDisabledReason = getTripDeleteDisabledReason(trip);
   const routeStops = trip.route_stops ?? [];
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-1.5 shadow-sm transition-colors hover:border-primary/30 hover:bg-blue-50/20">
@@ -114,6 +119,7 @@ export function TripKanbanCard({
         <ActionButton title="Sửa bảng kê" icon={<Pencil size={14} />} onClick={onEdit} disabled={!trip.manifest_id || trip.status === 'CANCELLED'} />
         <ActionButton title={primaryActionLabel(trip.status)} icon={primaryAction ? <Truck size={14} /> : <CheckCircle2 size={14} />} onClick={primaryAction ? onPrimaryAction : undefined} disabled={!primaryAction} />
         {trip.status === 'PLANNED' && <ActionButton title="Hủy chuyến và trả đơn về tồn kho" icon={<XCircle size={14} />} onClick={onCancelAction} danger />}
+        {canDelete && onDelete && <ActionButton title={deleteDisabledReason || 'Xóa chuyến'} icon={<Trash2 size={14} />} onClick={deleteDisabledReason ? undefined : onDelete} disabled={Boolean(deleteDisabledReason)} danger />}
       </div>
     </article>
   );

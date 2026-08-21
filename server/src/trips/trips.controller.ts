@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ExpensesService } from '../expenses/expenses.service';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -77,6 +77,14 @@ export class TripsController {
   @ApiOperation({ summary: 'Get trip detail' })
   findOne(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
     return this.tripsService.findOne(id, currentUser);
+  }
+
+  @Delete(':id')
+  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Delete a trip after every waybill and package has been released' })
+  async remove(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
+    await this.tripsService.remove(id, currentUser);
+    return { success: true };
   }
 
   @Patch(':id')

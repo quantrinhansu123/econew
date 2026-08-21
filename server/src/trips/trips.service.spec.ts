@@ -8,6 +8,7 @@ import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
 import { ManifestEntity } from '../manifests/manifest.entity';
 import { TruckStatus } from '../trucks/dto/truck.enums';
 import { TruckEntity } from '../trucks/truck.entity';
+import { VendorDebtEntryEntity } from '../vendors/vendor-debt-entry.entity';
 import { VendorPaymentEntity } from '../vendors/vendor-payment.entity';
 import { VendorsService } from '../vendors/vendors.service';
 import { WaybillEntity } from '../waybills/waybill.entity';
@@ -54,6 +55,7 @@ describe('TripsService', () => {
   let manifestWaybills: any;
   let waybills: any;
   let waybillSplits: any;
+  let vendorDebtEntries: any;
   let hubs: any;
   let vendorsService: any;
   let waybillsService: any;
@@ -79,6 +81,7 @@ describe('TripsService', () => {
         { provide: getRepositoryToken(WaybillEntity), useFactory: repo },
         { provide: getRepositoryToken(HubEntity), useFactory: repo },
         { provide: getRepositoryToken(WaybillSplitEntity), useFactory: repo },
+        { provide: getRepositoryToken(VendorDebtEntryEntity), useFactory: repo },
         { provide: getRepositoryToken(VendorPaymentEntity), useFactory: repo },
         { provide: VendorsService, useValue: vendorsService },
         { provide: WaybillsService, useValue: waybillsService },
@@ -92,6 +95,7 @@ describe('TripsService', () => {
     manifestWaybills = module.get(getRepositoryToken(ManifestWaybillEntity));
     waybills = module.get(getRepositoryToken(WaybillEntity));
     waybillSplits = module.get(getRepositoryToken(WaybillSplitEntity));
+    vendorDebtEntries = module.get(getRepositoryToken(VendorDebtEntryEntity));
     hubs = module.get(getRepositoryToken(HubEntity));
   });
 
@@ -799,6 +803,68 @@ describe('TripsService', () => {
         'Chỉ được hủy chuyến đang chờ khởi hành',
       );
       expect(waybillSplits.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('remove', () => {
+    it('xóa chuyến rỗng, bảng kê rỗng và công nợ thử nghiệm liên quan', async () => {
+      mockFindOne({
+        id: '44',
+        manifest_id: '10',
+        truck_id: '5',
+        vendor_id: '7',
+        vendor_paid_amount: '0',
+        vendor_payment_status: 'UNPAID',
+      });
+      manifestWaybills.count.mockResolvedValue(0);
+      waybillSplits.count.mockResolvedValue(0);
+      trips.count.mockResolvedValue(0);
+      trucks.findOne.mockResolvedValue({ id: '5', status: TruckStatus.IN_TRIP });
+
+      await service.remove('44', manager);
+
+      expect(vendorDebtEntries.delete).toHaveBeenCalledWith({ trip_id: '44' });
+      expect(trips.delete).toHaveBeenCalledWith('44');
+      expect(manifests.delete).toHaveBeenCalledWith('10');
+      expect(trucks.save).toHaveBeenCalledWith(expect.objectContaining({ status: TruckStatus.AVAILABLE }));
+      expect(vendorsService.refreshPayableBalance).toHaveBeenCalledWith('7');
+    });
+
+    it.each([
+      ['đơn trong bảng kê', 1, 0],
+      ['kiện gắn trực tiếp với chuyến', 0, 1],
+    ])('không xóa khi còn %s', async (_label, manifestCount, splitCount) => {
+      mockFindOne({
+        id: '44',
+        manifest_id: '10',
+        vendor_paid_amount: '0',
+        vendor_payment_status: 'UNPAID',
+      });
+      manifestWaybills.count.mockResolvedValue(manifestCount);
+      waybillSplits.count.mockResolvedValue(splitCount);
+
+      await expect(service.remove('44', manager)).rejects.toThrow(
+        'Chỉ được xóa chuyến sau khi đã nhả hết đơn và kiện về tồn kho',
+      );
+      expect(trips.delete).not.toHaveBeenCalled();
+    });
+
+    it('không xóa chuyến đã phát sinh thanh toán NCC', async () => {
+      mockFindOne({
+        id: '44',
+        vendor_paid_amount: '500000',
+        vendor_payment_status: 'PARTIAL',
+      });
+
+      await expect(service.remove('44', manager)).rejects.toThrow(
+        'Chuyến đã phát sinh thanh toán NCC, không thể xóa',
+      );
+      expect(trips.delete).not.toHaveBeenCalled();
+    });
+
+    it('không cho điều phối viên xóa chuyến', async () => {
+      await expect(service.remove('44', dispatcher)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(trips.delete).not.toHaveBeenCalled();
     });
   });
 
