@@ -136,7 +136,7 @@ export function IncomingTripsPageLayout({
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-2 sm:gap-3">
+    <div className="h-full min-h-0 overflow-hidden flex flex-col gap-2 sm:gap-3">
       {error && <ErrorBanner error={error} />}
 
       <div className="rounded-xl border border-border bg-white px-4 py-3 text-[13px] text-muted-foreground shadow-sm">
@@ -275,7 +275,7 @@ export function IncomingTripsPageLayout({
         {isLoading ? (
           <IncomingStateBlock icon={<Loader2 className="animate-spin" size={22} />} title="Đang tải danh sách xe" />
         ) : (
-          <div className="flex flex-1 min-h-0 w-full flex-col overflow-auto custom-scrollbar p-2 sm:p-3">{children}</div>
+          <div className="flex flex-1 min-h-0 w-full flex-col overflow-hidden p-2 sm:p-3">{children}</div>
         )}
       </div>
     </div>

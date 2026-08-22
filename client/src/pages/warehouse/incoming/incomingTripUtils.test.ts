@@ -84,4 +84,13 @@ describe('incoming trip summary', () => {
     expect(getTripProvisionalProfit(trip)).toBe(500_000);
     expect(getTripWaitingPaymentDays(trip, new Date('2026-08-09T12:00:00.000Z'))).toBe(4);
   });
+
+  it('uses allocated bill freight for the filtered receivable total', () => {
+    const trips: IncomingTrip[] = [
+      { id: 1, manifest_id: 10, status: 'IN_TRANSIT', total_collect: 1_000_000, total_revenue: 250_000 },
+      { id: 2, manifest_id: 11, status: 'IN_TRANSIT', total_collect: 1_000_000, total_revenue: 750_000 },
+    ];
+
+    expect(summarizeIncomingTrips(trips).totalCollect).toBe(1_000_000);
+  });
 });

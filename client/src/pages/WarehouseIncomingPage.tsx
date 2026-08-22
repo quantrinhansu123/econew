@@ -51,7 +51,7 @@ export default function WarehouseIncomingPage({
   emptyText = 'Chưa có chuyến xe.',
 }: WarehouseIncomingPageProps = {}) {
   const navigate = useNavigate();
-  const { trips, isLoading, error, updatedAt, refresh } = useIncomingTrips({ source: mode });
+  const { trips, isLoading, error, updatedAt, refresh, updateTrip } = useIncomingTrips({ source: mode });
   const [keyword, setKeyword] = useState('');
   const [filterFromDate, setFilterFromDate] = useState('');
   const [filterToDate, setFilterToDate] = useState('');
@@ -264,6 +264,20 @@ export default function WarehouseIncomingPage({
     navigate(`/trips/${encodeURIComponent(String(trip.id))}/expenses`);
   }, [navigate]);
 
+  const handleTripCostSave = useCallback(async (trip: IncomingTrip, amount: number) => {
+    setExportError('');
+    try {
+      const updated = await apiRequest<IncomingTrip>(`/trips/${trip.id}`, {
+        method: 'PATCH',
+        body: { trip_cost: amount },
+      });
+      updateTrip(trip.id, { trip_cost: updated.trip_cost ?? amount });
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : 'Không lưu được cước chuyến đường trục.');
+      throw err;
+    }
+  }, [updateTrip]);
+
   const handlePrintManifest = useCallback((trip: IncomingTrip) => {
     const manifestId = getManifestId(trip);
     if (!manifestId) return;
@@ -364,10 +378,12 @@ export default function WarehouseIncomingPage({
             showOriginColumn
             canDelete={actions.canDelete}
             canPay={actions.canPay}
+            canEditCost={actions.canDelete}
             onView={actions.handleView}
             onEdit={actions.handleEdit}
             onDelete={actions.handleDelete}
             onPayment={actions.handlePayment}
+            onTripCostSave={handleTripCostSave}
           />
         )}
       </IncomingTripsPageLayout>

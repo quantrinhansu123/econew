@@ -14,7 +14,6 @@ interface Props {
   open: boolean;
   customerName: string;
   customerCode: string;
-  accountCredit: number;
   bills: CustomerCreditBill[];
   onClose: () => void;
   onSaved: () => Promise<void> | void;
@@ -24,7 +23,6 @@ export default function CustomerPayoutDialog({
   open,
   customerName,
   customerCode,
-  accountCredit,
   bills,
   onClose,
   onSaved,
@@ -40,12 +38,12 @@ export default function CustomerPayoutDialog({
     () => bills.find(({ item }) => String(item.id) === waybillId) ?? null,
     [bills, waybillId],
   );
-  const maxPayout = Math.min(accountCredit, selected?.credit ?? 0);
+  const maxPayout = selected?.credit ?? 0;
 
   useEffect(() => {
     if (!open) return;
     const first = bills[0] ?? null;
-    const firstMaximum = Math.min(accountCredit, first?.credit ?? 0);
+    const firstMaximum = first?.credit ?? 0;
     queueMicrotask(() => {
       setWaybillId(first ? String(first.item.id) : '');
       setAmountInput(firstMaximum > 0 ? formatAmountInputFromNumber(firstMaximum) : '');
@@ -53,14 +51,14 @@ export default function CustomerPayoutDialog({
       setFundId('');
       setError('');
     });
-  }, [accountCredit, bills, open]);
+  }, [bills, open]);
 
   if (!open) return null;
 
   const selectBill = (id: string) => {
     const bill = bills.find(({ item }) => String(item.id) === id);
     setWaybillId(id);
-    setAmountInput(formatAmountInputFromNumber(Math.min(accountCredit, bill?.credit ?? 0)));
+    setAmountInput(formatAmountInputFromNumber(bill?.credit ?? 0));
     setError('');
   };
 
@@ -118,8 +116,8 @@ export default function CustomerPayoutDialog({
 
         <div className="space-y-4 p-5">
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">ECO cần trả khách</p>
-            <p className="mt-1 text-xl font-black tabular-nums text-amber-900">{formatMoney(accountCredit)}</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">ECO cần trả theo bill đã chọn</p>
+            <p className="mt-1 text-xl font-black tabular-nums text-amber-900">{formatMoney(maxPayout, { empty: '0 đ' })}</p>
           </div>
 
           <label className="block">
@@ -147,7 +145,7 @@ export default function CustomerPayoutDialog({
               }}
               className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[15px] font-extrabold tabular-nums outline-none focus:border-amber-400"
             />
-            {selected && <p className="mt-1 text-[11px] font-bold text-muted-foreground">Tối đa theo bill và công nợ: {formatMoney(maxPayout)}</p>}
+            {selected && <p className="mt-1 text-[11px] font-bold text-muted-foreground">Tối đa theo số dư của bill: {formatMoney(maxPayout)}</p>}
           </label>
 
           <label className="block">

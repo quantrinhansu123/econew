@@ -37,6 +37,14 @@ const ALLOCATION_BOARD_STATUSES = [TripStatus.PLANNED, TripStatus.IN_TRANSIT, Tr
 
 type Money = string | number | null | undefined;
 
+interface IncomingTripFinancialAllocation {
+  waybill_count: number;
+  planned_total_weight: number;
+  planned_total_volume: number;
+  total_collect: number;
+  total_revenue: number;
+}
+
 @Injectable()
 export class TripsService {
   constructor(
@@ -620,7 +628,10 @@ export class TripsService {
     }).slice(0, limit);
     await this.enrichRouteLabels(trips);
     await this.enrichDeliverySummaries(trips);
-    const data = await Promise.all(trips.map((trip) => this.toIncomingTripSummary(trip)));
+    const financialAllocations = await this.buildIncomingTripFinancialAllocations(trips);
+    const data = await Promise.all(trips.map((trip) => (
+      this.toIncomingTripSummary(trip, financialAllocations.get(String(trip.id)))
+    )));
     return { data, total: data.length };
   }
 
@@ -666,7 +677,10 @@ export class TripsService {
     this.applyHubScope(qb, currentUser);
 
     const [trips, total] = await qb.getManyAndCount();
-    const data = await Promise.all(trips.map((trip) => this.toIncomingTripSummary(trip)));
+    const financialAllocations = await this.buildIncomingTripFinancialAllocations(trips);
+    const data = await Promise.all(trips.map((trip) => (
+      this.toIncomingTripSummary(trip, financialAllocations.get(String(trip.id)))
+    )));
     return { data, total, page, limit };
   }
 
@@ -685,10 +699,14 @@ export class TripsService {
     this.applyHubScope(qb, currentUser);
     const trip = await qb.getOne();
     if (!trip) throw new NotFoundException('Trip not found');
-    const waybills = await this.getManifestWaybills(trip.manifest_id);
-    const weight = waybills.reduce((sum, wb) => sum + Number(wb.weight ?? 0), 0);
-    const volume = waybills.reduce((sum, wb) => sum + Number(wb.the_tich_m3 ?? 0), 0);
-    const total_collect = waybills.reduce((sum, wb) => sum + this.calcWaybillCollectAmount(wb), 0);
+    const allocation = (await this.buildIncomingTripFinancialAllocations([trip])).get(String(trip.id));
+    const waybills = allocation ? [] : await this.getManifestWaybills(trip.manifest_id);
+    const weight = allocation?.planned_total_weight
+      ?? waybills.reduce((sum, wb) => sum + Number(wb.weight ?? 0), 0);
+    const volume = allocation?.planned_total_volume
+      ?? waybills.reduce((sum, wb) => sum + Number(wb.the_tich_m3 ?? 0), 0);
+    const total_collect = allocation?.total_collect
+      ?? waybills.reduce((sum, wb) => sum + this.calcWaybillCollectAmount(wb), 0);
     const payable = Number(trip.trip_cost ?? trip.other_costs ?? 0) || 0;
     const paid = Number(trip.vendor_paid_amount ?? 0) || 0;
 
@@ -759,7 +777,7 @@ export class TripsService {
       vendor_id: trip.vendor?.id ?? trip.vendor_id ?? trip.truck?.vendor?.id ?? trip.truck?.vendor_id ?? null,
       vendor_code: trip.vendor?.code?.trim() || trip.truck?.vendor?.code?.trim() || null,
       vehicle_type: trip.truck?.loai_xe?.trim() || null,
-      waybill_count: waybills.length,
+      waybill_count: allocation?.waybill_count ?? waybills.length,
       planned_total_weight: weight,
       planned_total_volume: volume,
       total_collect,
@@ -1096,24 +1114,127 @@ export class TripsService {
     if (changed.length) await this.waybillsRepository.save(changed);
   }
 
+  private async buildIncomingTripFinancialAllocations(
+    trips: TripEntity[],
+  ): Promise<Map<string, IncomingTripFinancialAllocation>> {
+    const tripIds = trips.map((trip) => String(trip.id));
+    if (!tripIds.length) return new Map();
+
+    const requestedSplits = (await this.waybillSplitsRepository.find({
+      where: { trip_id: In(tripIds) } as any,
+      relations: ['waybill'],
+    })) ?? [];
+    const waybillIds = [...new Set(requestedSplits.map((split) => String(split.waybill_id)).filter(Boolean))];
+    if (!waybillIds.length) return new Map();
+
+    const relatedSplits = (await this.waybillSplitsRepository.find({
+      where: { waybill_id: In(waybillIds) } as any,
+      relations: ['waybill'],
+    })) ?? [];
+    const splitRows = [...requestedSplits, ...relatedSplits].reduce<Map<string, WaybillSplitEntity>>((map, split) => {
+      map.set(String(split.id), split);
+      return map;
+    }, new Map());
+    const splitsByWaybill = [...splitRows.values()].reduce<Map<string, WaybillSplitEntity[]>>((map, split) => {
+      const waybillId = String(split.waybill_id);
+      const rows = map.get(waybillId) ?? [];
+      rows.push(split);
+      map.set(waybillId, rows);
+      return map;
+    }, new Map());
+
+    const allocationBySplitId = new Map<string, Omit<IncomingTripFinancialAllocation, 'waybill_count'>>();
+    for (const splits of splitsByWaybill.values()) {
+      const assignedSplits = splits
+        .filter((split) => Boolean(split.trip_id))
+        .sort((left, right) => String(left.id).localeCompare(String(right.id), 'en', { numeric: true }));
+      const waybill = assignedSplits.find((split) => split.waybill)?.waybill;
+      if (!waybill || !assignedSplits.length) continue;
+
+      const assignedPackages = assignedSplits.reduce((sum, split) => sum + Math.max(0, Number(split.package_count ?? 0)), 0);
+      const declaredPackages = Math.max(1, Number(waybill.package_count ?? 0) || assignedPackages || 1);
+      const allocationDenominator = Math.max(declaredPackages, assignedPackages, 1);
+      const allocateInteger = (total: number, packageCount: number, isLast: boolean, allocatedBefore: number) => (
+        isLast && assignedPackages >= declaredPackages
+          ? Math.max(0, total - allocatedBefore)
+          : Math.floor((total * packageCount) / allocationDenominator)
+      );
+      const totalRevenue = Math.max(0, Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0);
+      const totalCollect = Math.max(0, this.calcWaybillCollectAmount(waybill));
+      const totalWeight = Math.max(0, Number(waybill.weight ?? 0) || 0);
+      const totalVolume = Math.max(0, Number(waybill.the_tich_m3 ?? 0) || 0);
+      let allocatedRevenue = 0;
+      let allocatedCollect = 0;
+
+      assignedSplits.forEach((split, index) => {
+        const packageCount = Math.max(0, Number(split.package_count ?? 0));
+        const isLast = index === assignedSplits.length - 1;
+        const revenue = allocateInteger(totalRevenue, packageCount, isLast, allocatedRevenue);
+        const collect = allocateInteger(totalCollect, packageCount, isLast, allocatedCollect);
+        allocatedRevenue += revenue;
+        allocatedCollect += collect;
+        allocationBySplitId.set(String(split.id), {
+          planned_total_weight: (totalWeight * packageCount) / allocationDenominator,
+          planned_total_volume: (totalVolume * packageCount) / allocationDenominator,
+          total_collect: collect,
+          total_revenue: revenue,
+        });
+      });
+    }
+
+    const resultWithIds = new Map<string, IncomingTripFinancialAllocation & { waybill_ids: Set<string> }>();
+    requestedSplits.forEach((split) => {
+      const tripId = String(split.trip_id || '');
+      const allocation = allocationBySplitId.get(String(split.id));
+      if (!tripId || !allocation) return;
+      const current = resultWithIds.get(tripId) ?? {
+        waybill_count: 0,
+        waybill_ids: new Set<string>(),
+        planned_total_weight: 0,
+        planned_total_volume: 0,
+        total_collect: 0,
+        total_revenue: 0,
+      };
+      current.waybill_ids.add(String(split.waybill_id));
+      current.waybill_count = current.waybill_ids.size;
+      current.planned_total_weight += allocation.planned_total_weight;
+      current.planned_total_volume += allocation.planned_total_volume;
+      current.total_collect += allocation.total_collect;
+      current.total_revenue += allocation.total_revenue;
+      resultWithIds.set(tripId, current);
+    });
+
+    return new Map([...resultWithIds.entries()].map(([tripId, value]) => [tripId, {
+      waybill_count: value.waybill_count,
+      planned_total_weight: value.planned_total_weight,
+      planned_total_volume: value.planned_total_volume,
+      total_collect: value.total_collect,
+      total_revenue: value.total_revenue,
+    }]));
+  }
+
   private async getManifestWaybills(manifestId: string | null): Promise<WaybillEntity[]> {
     if (!manifestId) return [];
     const rows = await this.manifestWaybillsRepository.find({ where: { manifest_id: manifestId }, relations: ['waybill'] });
     return rows.map((row) => row.waybill).filter(Boolean);
   }
 
-  private async toIncomingTripSummary(trip: TripEntity) {
-    const waybills = await this.getManifestWaybills(trip.manifest_id);
-    const weight = waybills.reduce((sum, waybill) => sum + Number(waybill.weight ?? 0), 0);
-    const volume = waybills.reduce((sum, waybill) => sum + Number(waybill.the_tich_m3 ?? 0), 0);
-    const total_collect = waybills.reduce((sum, waybill) => sum + this.calcWaybillCollectAmount(waybill), 0);
-    const total_revenue = waybills.reduce((sum, waybill) => sum + Number(waybill.cost_amount ?? 0), 0);
+  private async toIncomingTripSummary(trip: TripEntity, allocation?: IncomingTripFinancialAllocation) {
+    const waybills = allocation ? [] : await this.getManifestWaybills(trip.manifest_id);
+    const weight = allocation?.planned_total_weight
+      ?? waybills.reduce((sum, waybill) => sum + Number(waybill.weight ?? 0), 0);
+    const volume = allocation?.planned_total_volume
+      ?? waybills.reduce((sum, waybill) => sum + Number(waybill.the_tich_m3 ?? 0), 0);
+    const total_collect = allocation?.total_collect
+      ?? waybills.reduce((sum, waybill) => sum + this.calcWaybillCollectAmount(waybill), 0);
+    const total_revenue = allocation?.total_revenue
+      ?? waybills.reduce((sum, waybill) => sum + Number(waybill.freight_amount ?? waybill.cost_amount ?? 0), 0);
     const expense_total = (trip.expenses ?? []).reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
     return {
       ...trip,
       manifest_code: trip.manifest?.manifest_code ?? null,
       seal_code: trip.manifest?.seal_code ?? null,
-      waybill_count: waybills.length,
+      waybill_count: allocation?.waybill_count ?? waybills.length,
       planned_total_weight: weight,
       planned_total_volume: volume,
       total_collect,

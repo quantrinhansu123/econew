@@ -2,6 +2,7 @@ import { clsx } from 'clsx';
 import type { IncomingTrip } from './types';
 import { IncomingTripRowActions } from './IncomingTripRowActions';
 import { formatMoney } from '../../../lib/formatMoney';
+import InlineMoneyInput from '../../../components/ui/InlineMoneyInput';
 import {
   formatTripDepartureDate,
   getManifestCode,
@@ -42,20 +43,24 @@ export function IncomingTripTable({
   showOriginColumn: _showOriginColumn = true,
   canDelete = false,
   canPay = false,
+  canEditCost = false,
   onView,
   onEdit,
   onDelete,
   onPayment,
+  onTripCostSave,
 }: {
   trips: IncomingTrip[];
   emptyText: string;
   showOriginColumn?: boolean;
   canDelete?: boolean;
   canPay?: boolean;
+  canEditCost?: boolean;
   onView?: (trip: IncomingTrip) => void;
   onEdit?: (trip: IncomingTrip) => void;
   onDelete?: (trip: IncomingTrip) => void;
   onPayment?: (trip: IncomingTrip) => void;
+  onTripCostSave?: (trip: IncomingTrip, amount: number) => Promise<void>;
 }) {
   void _showOriginColumn;
   const showActions = Boolean(onView && onEdit && onDelete && onPayment);
@@ -124,7 +129,12 @@ export function IncomingTripTable({
                       {formatMoney(getTripExpenseTotal(trip))}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-right font-extrabold tabular-nums text-foreground">
-                      {formatMoney(getTripPayableAmount(trip))}
+                      <InlineMoneyInput
+                        value={getTripPayableAmount(trip)}
+                        editable={Boolean(canEditCost && onTripCostSave)}
+                        label={`Cước chuyến đường trục #${trip.id}`}
+                        onSave={(amount) => onTripCostSave?.(trip, amount) ?? Promise.resolve()}
+                      />
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-center font-extrabold tabular-nums text-foreground">
                       {waitingDays == null ? '—' : `${waitingDays} ngày`}

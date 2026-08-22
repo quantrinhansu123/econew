@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { TripStatus, WaybillState } from '../common/enums';
+import { PaymentType, TripStatus, WaybillState } from '../common/enums';
 import { Roles } from '../common/roles';
 import { ManifestStatus } from '../manifests/dto/manifest.enums';
 import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
@@ -444,6 +444,42 @@ describe('TripsService', () => {
       await service.getIncomingOverview({}, dispatcher);
 
       expect(qb.andWhere).toHaveBeenCalledWith(expect.any(Object));
+    });
+
+    it('allocates one bill across split trips so its freight is counted exactly once', async () => {
+      const qb = new MockQb();
+      const overviewTrips = [
+        { id: '1', status: TripStatus.IN_TRANSIT, manifest_id: '10' },
+        { id: '2', status: TripStatus.IN_TRANSIT, manifest_id: '11' },
+      ];
+      const waybill = {
+        id: 'bill-1',
+        package_count: 4,
+        freight_amount: '100',
+        cost_amount: '100',
+        cod_amount: '40',
+        cc_amount: '0',
+        payment_type: PaymentType.COD,
+        weight: '200',
+        the_tich_m3: '4',
+      };
+      const splitRows = [
+        { id: 'split-1', trip_id: '1', waybill_id: 'bill-1', package_count: 1, waybill },
+        { id: 'split-2', trip_id: '2', waybill_id: 'bill-1', package_count: 3, waybill },
+      ];
+      qb.getManyAndCount.mockResolvedValue([overviewTrips, overviewTrips.length]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+      waybillSplits.find
+        .mockResolvedValueOnce(splitRows)
+        .mockResolvedValueOnce(splitRows);
+
+      const result = await service.getIncomingOverview({ page: 1, limit: 100 }, manager);
+
+      expect(result.data).toEqual([
+        expect.objectContaining({ id: '1', total_revenue: 25, total_collect: 10, waybill_count: 1 }),
+        expect.objectContaining({ id: '2', total_revenue: 75, total_collect: 30, waybill_count: 1 }),
+      ]);
+      expect(result.data.reduce((sum, trip) => sum + trip.total_revenue, 0)).toBe(100);
     });
   });
 

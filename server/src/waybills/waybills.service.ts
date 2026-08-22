@@ -47,6 +47,7 @@ import { VendorsService } from '../vendors/vendors.service';
 import { normalizeWaybillPhotos } from '../common/waybill-photos';
 import { ProofOfDeliveryDto } from './dto/proof-of-delivery.dto';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
+import { UpdateWaybillPricingDto, WaybillPricingField } from './dto/update-waybill-pricing.dto';
 import { VendorEntity } from '../vendors/vendor.entity';
 
 type WaybillRecord = WaybillEntity & Record<string, any>;
@@ -111,6 +112,21 @@ const plainGoodsNote = (note: string | null | undefined) => {
   const text = (note || '').trim();
   if (!text || /(^|\|)\s*[a-z_]+\s*=/i.test(text)) return '';
   return text;
+};
+
+const upsertNoteFields = (note: string | null | undefined, fields: Record<string, string | number>) => {
+  const normalizedKeys = new Set(Object.keys(fields).map((key) => key.toLocaleLowerCase('vi-VN')));
+  const preserved = String(note || '')
+    .split('|')
+    .map((part) => part.trim())
+    .filter((part) => {
+      if (!part) return false;
+      const separator = part.indexOf('=');
+      if (separator < 0) return true;
+      return !normalizedKeys.has(part.slice(0, separator).trim().toLocaleLowerCase('vi-VN'));
+    });
+  const updated = Object.entries(fields).map(([key, value]) => `${key}=${value}`);
+  return [...preserved, ...updated].join(' | ');
 };
 
 const userFacingWaybillNote = (note: string | null | undefined) => {
@@ -779,6 +795,70 @@ export class WaybillsService {
     }
     await this.recordWaybillChange(String(saved.id), 'UPDATED', currentUser, auditBefore, saved);
     return this.sanitize(saved, currentUser);
+  }
+
+  async updatePricing(id: string, dto: UpdateWaybillPricingDto, currentUser: UserEntity): Promise<WaybillRecord> {
+    const waybill = await this.findEditable(id, currentUser);
+    const note = waybill.note || '';
+    const currentFreight = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
+    const currentCod = Number(waybill.cod_amount ?? 0) || 0;
+    const currentSurcharge = Number(parseNoteField(note, 'phu_phi') || parseNoteField(note, 'giamGia')) || 0;
+    const storedMainFreightValue = parseNoteField(note, 'cuoc_chinh');
+    const storedMainFreight = Number(storedMainFreightValue);
+    let mainFreight = storedMainFreightValue && Number.isFinite(storedMainFreight) && storedMainFreight >= 0
+      ? storedMainFreight
+      : Math.max(0, currentFreight - currentSurcharge);
+    let surcharge = currentSurcharge;
+    let freight = currentFreight;
+    let cod = currentCod;
+    const notePatch: Record<string, string | number> = {};
+
+    if (dto.field === WaybillPricingField.UNIT_PRICE) {
+      notePatch.unit_price = dto.amount;
+      const billingUnit = parseNoteField(note, 'billing_unit').toLocaleLowerCase('vi-VN');
+      const quantity = /^(m3|m³|cbm|khối|khoi)$/.test(billingUnit)
+        ? Number(waybill.the_tich_m3 ?? 0) || 0
+        : /^(trọn gói|tron goi|chuyến|chuyen|lô|lo)$/.test(billingUnit)
+          ? 1
+          : Number(waybill.volumetric_weight ?? waybill.weight ?? 0) || 0;
+      if (quantity > 0) {
+        mainFreight = Math.round(quantity * dto.amount);
+        freight = mainFreight + surcharge;
+      }
+    } else if (dto.field === WaybillPricingField.SURCHARGE) {
+      surcharge = dto.amount;
+      freight = mainFreight + surcharge;
+    } else if (dto.field === WaybillPricingField.TRANSIT_FEE) {
+      notePatch.trung_chuyen = dto.amount;
+    } else if (dto.field === WaybillPricingField.TOTAL_AMOUNT) {
+      const receiverPays = parseNoteField(note, 'phuong_thuc') === 'Người nhận thanh toán';
+      freight = receiverPays ? Math.max(0, dto.amount - cod) : dto.amount;
+      mainFreight = Math.max(0, freight - surcharge);
+    } else if (dto.field === WaybillPricingField.FREIGHT_AMOUNT) {
+      freight = dto.amount;
+      mainFreight = Math.max(0, freight - surcharge);
+    } else if (dto.field === WaybillPricingField.COD_AMOUNT) {
+      cod = dto.amount;
+    }
+
+    if (dto.field !== WaybillPricingField.TRANSIT_FEE) {
+      Object.assign(notePatch, {
+        phu_phi: surcharge,
+        cuoc_chinh: mainFreight,
+        tong_cuoc: freight,
+      });
+      const receiverPays = parseNoteField(note, 'phuong_thuc') === 'Người nhận thanh toán';
+      notePatch.thanh_toan = freight + (receiverPays ? cod : 0);
+    }
+
+    const isReceiverCollect = parseNoteField(note, 'phuong_thuc') === 'Người nhận thanh toán'
+      || waybill.payment_type === PaymentType.CC;
+    return this.update(id, {
+      note: upsertNoteFields(note, notePatch),
+      freight_amount: freight,
+      cod_amount: cod,
+      cc_amount: isReceiverCollect ? freight : Number(waybill.cc_amount ?? 0) || 0,
+    }, currentUser);
   }
 
   async receive(id: string, dto: ReceiveWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {

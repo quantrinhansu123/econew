@@ -24,6 +24,12 @@ export function useIncomingTrips(options?: { source?: IncomingTripsSource }) {
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
+  const updateTrip = useCallback((tripId: string | number, patch: Partial<IncomingTrip>) => {
+    setTrips((current) => current.map((trip) => (
+      String(trip.id) === String(tripId) ? { ...trip, ...patch } : trip
+    )));
+  }, []);
+
   const fetchOverview = useCallback(async () => {
     const loadPage = (page: number) => apiRequest<IncomingTripListResponse | IncomingTrip[]>(
       `/trips/incoming-overview?page=${page}&limit=100`,
@@ -82,5 +88,5 @@ export function useIncomingTrips(options?: { source?: IncomingTripsSource }) {
     };
   }, [fetchIncomingTrips]);
 
-  return { trips, isLoading, error, updatedAt, refresh: fetchIncomingTrips };
+  return { trips, isLoading, error, updatedAt, refresh: fetchIncomingTrips, updateTrip };
 }

@@ -16,6 +16,7 @@ import { ManifestStatus } from '../manifests/dto/manifest.enums';
 import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums';
 import { CashFundEntity } from '../finance/cash-fund.entity';
 import { WarehouseIntakeMethod } from './dto/receive-waybill.dto';
+import { WaybillPricingField } from './dto/update-waybill-pricing.dto';
 
 const manager = { id: 'u1', role_mask: Roles.MANAGER, hub_id: '1' } as any;
 const warehouse = { id: 'u2', role_mask: Roles.WAREHOUSE, hub_id: '1' } as any;
@@ -1973,6 +1974,34 @@ describe('WaybillsService', () => {
       amount: 600001,
       fund_id: 'fund-1',
     }, accountant)).rejects.toThrow(BadRequestException);
+  });
+
+  it('updates an inline unit price and recalculates the bill freight without changing logistics state', async () => {
+    const waybill = makeWaybill({
+      id: '76',
+      current_state: WaybillStatus.DELIVERED,
+      status: WaybillStatus.DELIVERED,
+      volumetric_weight: '100',
+      freight_amount: '170000',
+      cost_amount: '170000',
+      note: 'ma_kh=KHACHLE | billing_unit=Kg | unit_price=1500 | phu_phi=20000 | cuoc_chinh=150000 | tong_cuoc=170000 | thanh_toan=170000',
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+
+    const result = await service.updatePricing('76', {
+      field: WaybillPricingField.UNIT_PRICE,
+      amount: 1800,
+    }, manager);
+
+    expect(result).toMatchObject({
+      id: '76',
+      current_state: WaybillStatus.DELIVERED,
+      freight_amount: 200000,
+      cost_amount: '200000',
+    });
+    expect(result.note).toContain('unit_price=1800');
+    expect(result.note).toContain('cuoc_chinh=180000');
+    expect(result.note).toContain('tong_cuoc=200000');
   });
 
   it('bulk payment creates one exact payment per selected bill and marks each bill paid', async () => {

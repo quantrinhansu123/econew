@@ -277,7 +277,6 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   const collectTotal = selectedCollectBills.reduce((sum, { item }) => (
     sum + parseAmountInput(collectAmounts[String(item.id)] || '')
   ), 0);
-  const accountCredit = Math.max(0, -statementData.totalDebt);
   const creditBills = useMemo(() => inventoryItems.map((item) => {
     const freight = getBillFreight(item);
     const paid = resolvePaidForBill(item, statementData.paidMaps);
@@ -1139,7 +1138,6 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
           open={isPayoutOpen}
           customerName={customer.name}
           customerCode={customer.code}
-          accountCredit={accountCredit}
           bills={creditBills}
           onClose={() => setIsPayoutOpen(false)}
           onSaved={reloadCustomerFinance}

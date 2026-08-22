@@ -465,7 +465,7 @@ export const summarizeIncomingTrips = (trips: IncomingTrip[]): IncomingTripSumma
     total: trips.length,
     expectedArriving: trips.filter(isExpectedArrivingTrip).length,
     arrived: trips.filter(isArrivedTrip).length,
-    totalCollect: manifestTrips.reduce((sum, trip) => sum + getTotalCollect(trip), 0),
+    totalCollect: manifestTrips.reduce((sum, trip) => sum + getTripRevenueAmount(trip), 0),
     totalPayable: payableTrips.reduce((sum, trip) => sum + getTripPayableAmount(trip), 0),
     payableManifestCount: payableTrips.length,
   };

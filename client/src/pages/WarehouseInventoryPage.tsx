@@ -10,6 +10,7 @@ import { DateRangePicker } from '../components/ui/DateRangePicker';
 import { FilterSelect } from '../components/ui/FilterSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
 import { ImagePreviewModal } from '../components/ImagePreviewModal';
+import InlineMoneyInput from '../components/ui/InlineMoneyInput';
 import type { AuthUserProfile } from './login/types';
 import WaybillInventoryDetailDialog from './warehouse/inventory/dialogs/WaybillInventoryDetailDialog';
 import WaybillEditDialog from './warehouse/inventory/dialogs/WaybillEditDialog';
@@ -620,6 +621,26 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     });
   };
 
+  const saveInlinePricing = async (
+    waybill: WaybillInventoryItem,
+    field: 'unit_price' | 'surcharge' | 'transit_fee' | 'total_amount' | 'freight_amount' | 'cod_amount',
+    amount: number,
+  ) => {
+    setActionError('');
+    try {
+      const updated = await apiRequest<WaybillInventoryItem>(`/waybills/${waybill.id}/pricing`, {
+        method: 'PATCH',
+        body: { field, amount },
+      });
+      setWaybills((current) => current.map((item) => (
+        String(item.id) === String(waybill.id) ? { ...item, ...updated } : item
+      )));
+    } catch (error) {
+      setActionError(error instanceof ApiError ? error.message : 'Không lưu được cước vừa nhập.');
+      throw error;
+    }
+  };
+
   const openCustomerLedger = async (rawCode: string) => {
     const code = rawCode.trim();
     if (!code || code === '—') return;
@@ -1013,6 +1034,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       onCashVoucher={openCashVoucher}
                       onReleaseUnscheduledSplit={confirmReleaseUnscheduledSplit}
                       onCustomerLedger={openCustomerLedger}
+                      onPricingSave={saveInlinePricing}
                       onOpenTripManifest={(trip) => {
                         if (trip.manifest_id) navigate(`/warehouse/manifests?openManifestId=${trip.manifest_id}&openExpense=1`);
                         else if (trip.trip_id) navigate(`/trips/${trip.trip_id}`);
@@ -1211,6 +1233,7 @@ function InventoryRow({
   onCashVoucher,
   onReleaseUnscheduledSplit,
   onCustomerLedger,
+  onPricingSave,
   onOpenTripManifest,
 }: InventoryItemProps & {
   hubs: HubSummary[];
@@ -1218,6 +1241,11 @@ function InventoryRow({
   rowIndex?: number;
   isAllOrders?: boolean;
   canViewPricing: boolean;
+  onPricingSave: (
+    waybill: WaybillInventoryItem,
+    field: 'unit_price' | 'surcharge' | 'transit_fee' | 'total_amount' | 'freight_amount' | 'cod_amount',
+    amount: number,
+  ) => Promise<void>;
   showSelection?: boolean;
   selected?: boolean;
   onToggleSelect?: (waybillId: string | number) => void;
@@ -1433,25 +1461,68 @@ function InventoryRow({
           </td>
         );
       case 'unit_price':
-        return <td className={`${cellClass} font-bold text-right tabular-nums`}>{formatMoney(resolveUnitPrice(waybill) || null)}</td>;
+        return (
+          <td className={`${cellClass} font-bold text-right tabular-nums`}>
+            <InlineMoneyInput
+              value={resolveUnitPrice(waybill)}
+              editable={Boolean(isAllOrders && canViewPricing && canEdit)}
+              label={`Đơn giá bill ${displayCode(waybill)}`}
+              onSave={(amount) => onPricingSave(waybill, 'unit_price', amount)}
+            />
+          </td>
+        );
       case 'transit_fee':
-        return <td className={`${cellClass} font-bold text-right tabular-nums`}>{formatMoney(resolveTransitFee(waybill))}</td>;
+        return (
+          <td className={`${cellClass} font-bold text-right tabular-nums`}>
+            <InlineMoneyInput
+              value={resolveTransitFee(waybill)}
+              editable={Boolean(isAllOrders && canViewPricing && canEdit)}
+              label={`Phí trung chuyển bill ${displayCode(waybill)}`}
+              onSave={(amount) => onPricingSave(waybill, 'transit_fee', amount)}
+            />
+          </td>
+        );
       case 'surcharge':
         return (
           <td className={clsx(cellClass, 'font-bold text-right tabular-nums', isAllOrders && 'bg-orange-50/70 text-orange-900')}>
-            {canViewPricing ? formatMoney(resolveSurcharge(waybill)) : '—'}
+            {canViewPricing ? (
+              <InlineMoneyInput
+                value={resolveSurcharge(waybill)}
+                editable={Boolean(isAllOrders && canEdit)}
+                label={`Dịch vụ cộng thêm bill ${displayCode(waybill)}`}
+                toneClassName="text-orange-900"
+                onSave={(amount) => onPricingSave(waybill, 'surcharge', amount)}
+              />
+            ) : '—'}
           </td>
         );
       case 'total_amount': {
         const totalAmount = resolveTotalAmount(waybill);
         return (
           <td className={clsx(cellClass, 'font-bold text-right tabular-nums', isAllOrders && 'bg-emerald-50/80 text-emerald-800')}>
-            {canViewPricing ? formatMoney(totalAmount) : '—'}
+            {canViewPricing ? (
+              <InlineMoneyInput
+                value={totalAmount}
+                editable={Boolean(isAllOrders && canEdit)}
+                label={`Thành tiền bill ${displayCode(waybill)}`}
+                toneClassName="text-emerald-800"
+                onSave={(amount) => onPricingSave(waybill, 'total_amount', amount)}
+              />
+            ) : '—'}
           </td>
         );
       }
       case 'thu_ho_khach':
-        return <td className={`${cellClass} font-bold text-right tabular-nums`}>{formatMoney(waybill.allocated_cod ?? waybill.cod_amount)}</td>;
+        return (
+          <td className={`${cellClass} font-bold text-right tabular-nums`}>
+            <InlineMoneyInput
+              value={waybill.cod_amount}
+              editable={Boolean(isAllOrders && canViewPricing && canEdit)}
+              label={`Thu hộ khách bill ${displayCode(waybill)}`}
+              onSave={(amount) => onPricingSave(waybill, 'cod_amount', amount)}
+            />
+          </td>
+        );
       case 'payment_method':
         return <td className={cellClass}>{resolvePaymentMethod(waybill)}</td>;
       case 'customer_payment_status': {
@@ -1515,7 +1586,14 @@ function InventoryRow({
       case 'freight':
         return (
           <td className={`${cellClass} font-bold text-right tabular-nums`}>
-            {canViewPricing ? formatMoney(waybill.allocated_freight ?? resolveFreight(waybill)) : '—'}
+            {canViewPricing ? (
+              <InlineMoneyInput
+                value={isAllOrders ? resolveFreight(waybill) : waybill.allocated_freight ?? resolveFreight(waybill)}
+                editable={Boolean(isAllOrders && canEdit)}
+                label={`Cước phí bill ${displayCode(waybill)}`}
+                onSave={(amount) => onPricingSave(waybill, 'freight_amount', amount)}
+              />
+            ) : '—'}
           </td>
         );
       case 'sender_info':
