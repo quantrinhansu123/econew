@@ -14,6 +14,7 @@ import TripManifestDetailDialog from './trips/dialogs/TripManifestDetailDialog';
 import TripTruckDetailDialog from './trips/dialogs/TripTruckDetailDialog';
 import EditTripScheduleDialog, { type TripScheduleFormState } from './trips/dialogs/EditTripScheduleDialog';
 import EditTripTransportDialog from './trips/dialogs/EditTripTransportDialog';
+import { canConfirmTripArrival } from './trips/tripKanbanUtils';
 import { buildTripScheduleRouteStops, toLocalDateTimeInput } from './trips/tripScheduleUtils';
 import AddWaybillsToManifestDialog from './warehouse/manifests/dialogs/AddWaybillsToManifestDialog';
 import { buildInventoryTripLinesQuery, filterManifestAddableInventoryRows, isIncompleteSplitRow } from './warehouse/inventory/inventoryTripLines';
@@ -78,13 +79,6 @@ const normalizeList = <T,>(response: ListResponse<T> | T[], key: 'hubs') => Arra
 const formatDate = (value?: string | null) => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—';
 const formatNumber = (value?: number | string | null, suffix = '') => value == null || value === '' ? '—' : `${new Intl.NumberFormat('vi-VN').format(Number(value))}${suffix}`;
 const tripStatusLabel = (status?: string | null) => tripStatusOptions.find(option => option.value === status)?.label || status || '—';
-const canConfirmEarlyArrival = (trip: Trip) => {
-  const expected = trip.expected_arrival_time || trip.arrival_time;
-  if (!expected) return true;
-  const timestamp = new Date(expected).getTime();
-  return Number.isNaN(timestamp) || Date.now() < timestamp;
-};
-
 const compareLoadingPosition = (a: WaybillSummary, b: WaybillSummary) => {
   const posA = Number(a.loading_position);
   const posB = Number(b.loading_position);
@@ -439,7 +433,7 @@ function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, is
         {canEditTrip && <button type="button" onClick={openTransportEditor} className="h-8 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-bold text-violet-800"><Pencil size={13} className="mr-1 inline" />Sửa BKS / NCC / tài xế / cước</button>}
         {canEditTrip && String(trip.status || '') !== 'CANCELLED' && <button type="button" onClick={openScheduleEditor} className="h-8 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[11px] font-bold text-primary"><Pencil size={13} className="mr-1 inline" />Sửa ngày chuyến</button>}
         {canEditTrip && trip.manifest_id && String(trip.status || '') !== 'CANCELLED' && <button type="button" onClick={openAddWaybills} className="h-8 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-bold text-emerald-700"><Plus size={13} className="mr-1 inline" />Thêm đơn tồn</button>}
-        {getAvailableTripActions(trip.status).filter(action => action !== 'arrive' || canConfirmEarlyArrival(trip)).map(action => (
+        {getAvailableTripActions(trip.status).filter(action => action !== 'arrive' || canConfirmTripArrival(trip)).map(action => (
           <button key={action} type="button" disabled={!canOperateTrip || (action === 'cancel' && !canEditTrip)} onClick={() => openAction(action)} className={clsx('h-8 rounded-lg border px-2 text-[11px] font-bold disabled:opacity-40', action === 'cancel' ? 'border-red-200 bg-red-50 text-red-600' : 'border-primary/20 bg-blue-50 text-primary')}>
             {action === 'start' ? 'Khởi hành' : action === 'arrive' ? 'Đến hub' : action === 'complete' ? 'Hoàn tất' : 'Hủy'}
           </button>

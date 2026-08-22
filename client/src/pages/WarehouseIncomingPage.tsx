@@ -28,7 +28,7 @@ import {
   summarizeIncomingTrips,
 } from './warehouse/incoming/incomingTripUtils';
 import type { IncomingVendorPaymentStatus } from './warehouse/incoming/incomingTripUtils';
-import { getPrimaryTripAction } from './trips/tripKanbanUtils';
+import { getPrimaryTripActionForTrip } from './trips/tripKanbanUtils';
 import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
 import type { TripAction } from './trips/types';
 import { useIncomingTripActions } from './warehouse/incoming/useIncomingTripActions';
@@ -271,7 +271,7 @@ export default function WarehouseIncomingPage({
   }, []);
 
   const handleOpenPrimaryTripAction = useCallback((trip: IncomingTrip) => {
-    const nextAction = getPrimaryTripAction(trip.status);
+    const nextAction = getPrimaryTripActionForTrip(trip);
     if (!nextAction) return;
     setStatusActionTrip(trip);
     setStatusAction(nextAction);

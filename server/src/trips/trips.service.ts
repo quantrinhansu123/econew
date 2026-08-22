@@ -384,8 +384,24 @@ export class TripsService {
   async arriveTrip(id: string, dto: ArriveTripDto, currentUser: UserEntity): Promise<TripEntity> {
     const trip = await this.findOne(id, currentUser);
     if (trip.status !== TripStatus.IN_TRANSIT) throw new BadRequestException('Only IN_TRANSIT trips can arrive');
+    const arrivalTime = dto.arrival_time ?? new Date();
+    const tripSplits = (await this.waybillSplitsRepository.find({
+      where: { trip_id: String(trip.id) } as any,
+      relations: ['waybill'],
+    })) ?? [];
+    const destinationHubIds = new Set(tripSplits
+      .map((split) => String(split.waybill?.dest_hub_id || '').trim())
+      .filter(Boolean));
+    const finalExpectedArrival = tripSplits
+      .map((split) => split.expected_arrival_at ? new Date(split.expected_arrival_at) : null)
+      .filter((value): value is Date => value instanceof Date && !Number.isNaN(value.getTime()))
+      .reduce<Date | null>((latest, value) => !latest || value > latest ? value : latest, null);
+    if (destinationHubIds.size > 1 && finalExpectedArrival && arrivalTime < finalExpectedArrival) {
+      throw new BadRequestException('Chuyến nhiều HUB chỉ được xác nhận Xe đã đến tại bưu cục cuối cùng');
+    }
+
     trip.status = TripStatus.ARRIVED;
-    trip.arrival_time = dto.arrival_time ?? new Date();
+    trip.arrival_time = arrivalTime;
     if (trip.manifest_id) await this.moveManifestWaybills(trip.manifest_id, WaybillState.IN_TRANSIT, WaybillState.AT_DEST_HUB);
     await this.waybillSplitsRepository.update(
       {
@@ -404,7 +420,12 @@ export class TripsService {
 
   async completeTrip(id: string, currentUser: UserEntity): Promise<TripEntity> {
     const trip = await this.findOne(id, currentUser);
+    if (trip.status === TripStatus.COMPLETED) return trip;
     if (trip.status !== TripStatus.ARRIVED) throw new BadRequestException('Only ARRIVED trips can be completed');
+    return this.finalizeTrip(trip);
+  }
+
+  private async finalizeTrip(trip: TripEntity): Promise<TripEntity> {
     trip.status = TripStatus.COMPLETED;
     const manifest = trip.manifest_id ? await this.manifestsRepository.findOne({ where: { id: trip.manifest_id } }) : null;
     if (manifest) {
@@ -412,7 +433,13 @@ export class TripsService {
       await this.manifestsRepository.save(manifest);
     }
     if (trip.truck_id) {
-      const activeTrips = await this.tripsRepository.count({ where: { truck_id: trip.truck_id, status: In(ACTIVE_TRIP_STATUSES), id: Not(trip.id) } as any });
+      const activeTrips = await this.tripsRepository.count({
+        where: {
+          truck_id: trip.truck_id,
+          status: In([...ACTIVE_TRIP_STATUSES, TripStatus.ARRIVED]),
+          id: Not(trip.id),
+        } as any,
+      });
       if (activeTrips === 0) await this.setTruckStatus(trip.truck_id, TruckStatus.AVAILABLE);
     }
     return this.tripsRepository.save(trip);
@@ -1192,7 +1219,7 @@ export class TripsService {
       return map;
     }, new Map<string, Map<string, WaybillEntity>>());
 
-    trips.forEach((trip) => {
+    for (const trip of trips) {
       const waybills = [...(waybillsByManifest.get(String(trip.manifest_id || ''))?.values() ?? [])];
       const delivered = waybills.filter((waybill) => String(waybill.current_state || '').toUpperCase() === WaybillState.DELIVERED).length;
       const processed = waybills.filter((waybill) => {
@@ -1201,6 +1228,9 @@ export class TripsService {
         return [WaybillState.OUT_FOR_DELIVERY, WaybillState.DELIVERED, WaybillState.RETURNED].includes(state as WaybillState)
           || (Boolean(preparationStatus) && preparationStatus !== 'PENDING_CONFIRMATION');
       }).length;
+      if (trip.status === TripStatus.ARRIVED && waybills.length > 0 && delivered === waybills.length) {
+        await this.finalizeTrip(trip);
+      }
       trip.delivery_summary = {
         total_waybills: waybills.length,
         processed_waybills: processed,
@@ -1208,7 +1238,7 @@ export class TripsService {
         pending_delivery_waybills: Math.max(0, waybills.length - delivered),
         completed_waybills: trip.status === TripStatus.COMPLETED ? waybills.length : delivered,
       };
-    });
+    }
   }
 
   /** Chốt chuyến đã quá giờ dự kiến; nút Đến hub chỉ còn dùng cho xe đến sớm. */
@@ -1225,13 +1255,21 @@ export class TripsService {
     const tripIds = trips.map((trip) => String(trip.id));
     const splits = (await this.waybillSplitsRepository.find({
       where: { trip_id: In(tripIds) } as any,
+      relations: ['waybill'],
     })) ?? [];
     const finalExpectedByTrip = new Map<string, Date>();
+    const destinationHubsByTrip = new Map<string, Set<string>>();
     splits.forEach((split) => {
+      const tripId = String(split.trip_id || '');
+      const destinationHubId = String(split.waybill?.dest_hub_id || '').trim();
+      if (destinationHubId) {
+        const hubIds = destinationHubsByTrip.get(tripId) ?? new Set<string>();
+        hubIds.add(destinationHubId);
+        destinationHubsByTrip.set(tripId, hubIds);
+      }
       if (!split.expected_arrival_at) return;
       const expected = new Date(split.expected_arrival_at);
       if (Number.isNaN(expected.getTime())) return;
-      const tripId = String(split.trip_id || '');
       const current = finalExpectedByTrip.get(tripId);
       if (!current || expected > current) finalExpectedByTrip.set(tripId, expected);
     });
@@ -1243,15 +1281,18 @@ export class TripsService {
       if (!expected || Number.isNaN(expected.getTime())) continue;
 
       const storedExpected = trip.expected_arrival_time ? new Date(trip.expected_arrival_time) : null;
+      const isMultiHubTrip = (destinationHubsByTrip.get(String(trip.id))?.size ?? 0) > 1;
       const shouldSyncFinalStop = Boolean(finalStopExpected)
         && (!storedExpected || Number.isNaN(storedExpected.getTime()) || storedExpected.getTime() !== expected.getTime());
       if (shouldSyncFinalStop) trip.expected_arrival_time = expected;
       if (expected > now) {
-        // Tự sửa các chuyến cũ đã bị chốt ở giờ HUB trung gian. Trường hợp bấm
-        // "Đến hub" sớm vẫn được giữ nguyên vì expected_arrival_time đã là HUB cuối.
-        if (trip.status === TripStatus.ARRIVED && shouldSyncFinalStop) {
+        let restoredIntermediateArrival = false;
+        // Chuyến nhiều HUB luôn giữ trạng thái đang chạy cho tới mốc HUB cuối,
+        // kể cả dữ liệu cũ đã bị chốt thủ công tại một HUB trung gian.
+        if (trip.status === TripStatus.ARRIVED && (shouldSyncFinalStop || isMultiHubTrip)) {
           trip.status = TripStatus.IN_TRANSIT;
           trip.arrival_time = expected;
+          restoredIntermediateArrival = true;
           if (trip.manifest_id) {
             await this.moveManifestWaybills(String(trip.manifest_id), WaybillState.AT_DEST_HUB, WaybillState.IN_TRANSIT);
           }
@@ -1261,7 +1302,9 @@ export class TripsService {
           );
           await this.waybillsService.reconcileTransportStatesForTrips([trip.id]);
         }
-        if (shouldSyncFinalStop) await this.tripsRepository.save(trip);
+        if (shouldSyncFinalStop || restoredIntermediateArrival) {
+          await this.tripsRepository.save(trip);
+        }
         continue;
       }
       if (trip.status === TripStatus.ARRIVED) {

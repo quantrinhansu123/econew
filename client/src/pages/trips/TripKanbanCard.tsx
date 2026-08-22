@@ -3,7 +3,7 @@ import { CheckCircle2, Eye, Pencil, Printer, Receipt, Trash2, Truck, XCircle } f
 import { clsx } from 'clsx';
 import { formatMoney } from '../../lib/formatMoney';
 import type { Trip } from './types';
-import { getPrimaryTripAction, getTripDeleteDisabledReason } from './tripKanbanUtils';
+import { getPrimaryTripActionForTrip, getTripDeleteDisabledReason } from './tripKanbanUtils';
 
 const formatDate = (value?: string | null) => (
   value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—'
@@ -62,7 +62,7 @@ export function TripKanbanCard({
   canDelete = false,
   onDelete,
 }: TripKanbanCardProps) {
-  const primaryAction = getPrimaryTripAction(trip.status);
+  const primaryAction = getPrimaryTripActionForTrip(trip);
   const deleteDisabledReason = getTripDeleteDisabledReason(trip);
   const routeStops = trip.route_stops ?? [];
   return (

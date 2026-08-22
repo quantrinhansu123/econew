@@ -228,6 +228,38 @@ describe('TripsService', () => {
       expect(waybillsService.reconcileTransportStatesForTrips).toHaveBeenCalledWith(['legacy-88']);
     });
 
+    it('restores a multi-HUB trip even when its stored ETA already points to the final HUB', async () => {
+      const intermediateArrival = new Date(Date.now() - 60_000);
+      const finalArrival = new Date(Date.now() + 60_000);
+      const trip = {
+        id: 'arrived-at-first-hub',
+        status: TripStatus.ARRIVED,
+        expected_arrival_time: finalArrival,
+        arrival_time: intermediateArrival,
+        manifest_id: null,
+      };
+      const qb = new MockQb();
+      trips.find.mockResolvedValue([trip]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+      qb.getManyAndCount.mockResolvedValue([[trip], 1]);
+      waybillSplits.find.mockResolvedValue([
+        { trip_id: trip.id, expected_arrival_at: intermediateArrival, waybill: { dest_hub_id: '2' } },
+        { trip_id: trip.id, expected_arrival_at: finalArrival, waybill: { dest_hub_id: '3' } },
+      ]);
+
+      const result = await service.findAll({}, manager);
+
+      expect(result.data[0]).toMatchObject({
+        status: TripStatus.IN_TRANSIT,
+        expected_arrival_time: finalArrival,
+        arrival_time: finalArrival,
+      });
+      expect(trips.save).toHaveBeenCalledWith(expect.objectContaining({
+        id: trip.id,
+        status: TripStatus.IN_TRANSIT,
+      }));
+    });
+
     it('moves a multi-HUB trip to arrived after the final stop time', async () => {
       const trip = {
         id: '89',
@@ -544,6 +576,28 @@ describe('TripsService', () => {
       });
     });
 
+    it('tự hoàn tất chuyến khi toàn bộ đơn đã giao thành công', async () => {
+      const qb = new MockQb();
+      const trip = { id: '43', manifest_id: '11', status: TripStatus.ARRIVED, truck_id: null };
+      qb.getManyAndCount.mockResolvedValue([[trip], 1]);
+      trips.createQueryBuilder.mockReturnValue(qb);
+      waybillSplits.find.mockResolvedValue([]);
+      manifestWaybills.find.mockResolvedValue([
+        { manifest_id: '11', waybill: { id: '200', current_state: WaybillState.DELIVERED } },
+        { manifest_id: '11', waybill: { id: '201', current_state: WaybillState.DELIVERED } },
+      ]);
+      manifests.findOne.mockResolvedValue({ id: '11', status: ManifestStatus.IN_TRANSIT });
+
+      const result = await service.findAll({ status: TripStatus.ARRIVED }, manager);
+
+      expect(result.data[0]).toMatchObject({
+        status: TripStatus.COMPLETED,
+        delivery_summary: expect.objectContaining({ completed_waybills: 2, pending_delivery_waybills: 0 }),
+      });
+      expect(trips.save).toHaveBeenCalledWith(expect.objectContaining({ id: '43', status: TripStatus.COMPLETED }));
+      expect(manifests.save).toHaveBeenCalledWith(expect.objectContaining({ id: '11', status: ManifestStatus.COMPLETED }));
+    });
+
     it('cho cập nhật thông tin tài xế trực tiếp trên chuyến', async () => {
       mockFindOne({
         id: '1',
@@ -723,6 +777,20 @@ describe('TripsService', () => {
     it('trip không phải IN_TRANSIT → BadRequestException', async () => {
       mockFindOne({ status: TripStatus.PLANNED });
       await expect(service.arriveTrip('1', {}, dispatcher)).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('không cho chốt Xe đã đến tại HUB trung gian của chuyến nhiều HUB', async () => {
+      const finalArrival = new Date(Date.now() + 60_000);
+      mockFindOne({ id: '1', status: TripStatus.IN_TRANSIT, manifest_id: '10' });
+      waybillSplits.find.mockResolvedValue([
+        { trip_id: '1', expected_arrival_at: new Date(Date.now() - 60_000), waybill: { dest_hub_id: '2' } },
+        { trip_id: '1', expected_arrival_at: finalArrival, waybill: { dest_hub_id: '3' } },
+      ]);
+
+      await expect(service.arriveTrip('1', {}, dispatcher)).rejects.toThrow(
+        'Chuyến nhiều HUB chỉ được xác nhận Xe đã đến tại bưu cục cuối cùng',
+      );
+      expect(trips.save).not.toHaveBeenCalled();
     });
   });
 

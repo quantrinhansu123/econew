@@ -7,7 +7,7 @@ import { FilterSelect } from '../components/ui/FilterSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
 import { ApiError, apiRequest } from '../lib/api';
 import { TripKanbanCard } from './trips/TripKanbanCard';
-import { getPrimaryTripAction } from './trips/tripKanbanUtils';
+import { getPrimaryTripActionForTrip } from './trips/tripKanbanUtils';
 import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
 import type { HubSummary, ListResponse, Trip, TripAction } from './trips/types';
 import type { AuthUserProfile } from './login/types';
@@ -134,7 +134,7 @@ export default function TripsPage() {
   ], [hubs]);
 
   function openPrimaryAction(trip: Trip) {
-    const nextAction = getPrimaryTripAction(trip.status);
+    const nextAction = getPrimaryTripActionForTrip(trip);
     if (!nextAction) return;
     setActionTrip(trip);
     setAction(nextAction);
