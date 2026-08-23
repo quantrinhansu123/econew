@@ -19,7 +19,7 @@ import { HubEntity } from '../hubs/hub.entity';
 const ACTIVE_TRIP_STATUSES = [TripStatus.PLANNED, 'LOADING', TripStatus.IN_TRANSIT, 'ARRIVED_PENDING_CONFIRM'];
 const TRIP_LOCK_STATUSES = [TripStatus.PLANNED, 'LOADING', TripStatus.IN_TRANSIT, TripStatus.ARRIVED, 'ARRIVED_PENDING_CONFIRM'];
 const INTERNAL_HUB_CODES = new Set(['HAN', 'HCM']);
-const DUPLICATE_PLATE_MESSAGE = 'BKS đã tồn tại trong dữ liệu xe. Nếu không thấy trong danh sách nội bộ, dùng Khôi phục BKS cũ.';
+const DUPLICATE_PLATE_MESSAGE = 'BKS đã tồn tại. Hãy tìm BKS trong danh sách xe và chọn Chỉnh sửa.';
 
 @Injectable()
 export class TrucksService {

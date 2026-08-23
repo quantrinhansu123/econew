@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, Edit, Fuel, Gauge, Filter, GripVertical, History, LayoutGrid, Loader2, Plus, Power, Search, Tag, Trash2, Truck as TruckIcon, User, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, Edit, Fuel, Gauge, Filter, GripVertical, LayoutGrid, Loader2, Plus, Power, Search, Tag, Trash2, Truck as TruckIcon, User, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useLocation } from 'react-router-dom';
 import { ApiError, apiRequest } from '../../lib/api';
@@ -9,7 +9,6 @@ import { FilterSelect } from '../../components/ui/FilterSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../../components/ui/ConfirmDialog';
 import type { AuthUserProfile } from '../login/types';
 import AddEditTruckDialog from './trucks/dialogs/AddEditTruckDialog';
-import RestoreInternalTruckDialog from './trucks/dialogs/RestoreInternalTruckDialog';
 import type { DriverSummary, FilterOption, Truck, TruckFilters, TruckFormState, TruckListResponse } from './trucks/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -54,11 +53,12 @@ const formatPlate = (truck: Truck) => (truck.license_plate || '—').toUpperCase
 const formatOption = (options: FilterOption[], value?: string | null) => options.find(option => option.value === value)?.label || value || '—';
 const formatHub = (truck: Truck) => [truck.hub?.code, truck.hub?.name].filter(Boolean).join(' · ') || (truck.hub_id ? `Bưu cục #${truck.hub_id}` : 'Chưa gán');
 const getDriverName = (truck: Truck) => truck.ownership_type === 'INTERNAL' ? formatHub(truck) : truck.driver?.name || truck.driver?.full_name || truck.driver?.username || (truck.driver_id ? `Tài xế #${truck.driver_id}` : 'Chưa gán');
+const isInternalTruck = (truck?: Truck | null) => truck?.ownership_type === 'INTERNAL';
 
 export default function AdminTrucksPage() {
   const location = useLocation();
   const internalOnly = location.pathname === '/fleet/internal-vehicles' || location.pathname === '/admin/trucks' || location.pathname === '/trucks';
-  const [filters, setFilters] = useState<TruckFilters>({ keyword: '', status: [], driver_id: '', page: 1, limit: 10, ownership_type: internalOnly ? 'INTERNAL' : 'VENDOR' });
+  const [filters, setFilters] = useState<TruckFilters>({ keyword: '', status: [], driver_id: '', page: 1, limit: 10, ownership_type: '' });
   const [trucks, setTrucks] = useState<Truck[]>([]);
   const [drivers, setDrivers] = useState<DriverSummary[]>([]);
   const [hubs, setHubs] = useState<Array<{ id: string | number; code?: string; name?: string }>>([]);
@@ -69,7 +69,6 @@ export default function AdminTrucksPage() {
   const [detailTruck, setDetailTruck] = useState<Truck | null>(null);
   const [formState, setFormState] = useState<TruckFormState>(emptyForm);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [isFormClosing, setIsFormClosing] = useState(false);
   const [isDetailClosing, setIsDetailClosing] = useState(false);
@@ -85,6 +84,7 @@ export default function AdminTrucksPage() {
   const canManage = isManager(user?.role_mask ?? 0);
   const canDelete = isDirector(user?.role_mask ?? 0);
   const totalPages = Math.max(1, Math.ceil(total / filters.limit));
+  const formInternalMode = isEditMode ? isInternalTruck(selectedTruck) : internalOnly;
   const visibleColumnSet = useMemo(() => new Set(visibleColumns), [visibleColumns]);
   const orderedVisibleHeaders = useMemo(() => columnOrder.map(columnId => truckTableHeaders.find(header => header.id === columnId)).filter((header): header is (typeof truckTableHeaders)[number] => Boolean(header && visibleColumnSet.has(header.id))), [columnOrder, visibleColumnSet]);
   const selectedBulkDeleteCount = selectedTruckIds.length;
@@ -96,10 +96,11 @@ export default function AdminTrucksPage() {
     .map(hub => ({ value: normalizeId(hub.id), label: [hub.code, hub.name].filter(Boolean).join(' · ') || `Bưu cục #${hub.id}` })), [hubs]);
   const filterPanelGroups = useMemo(() => [{ id: 'status', title: 'Trạng thái', icon: Tag, options: statusOptions, value: filters.status, searchPlaceholder: 'Tìm trạng thái...', onChange: (value: string[]) => updateFilter('status', value) }], [filters.status]);
 
-  useEffect(() => { setFilters(prev => ({ ...prev, ownership_type: internalOnly ? 'INTERNAL' : 'VENDOR', page: 1 })); }, [internalOnly]);
   useEffect(() => { void fetchTrucks(); }, [filters]);
-  useEffect(() => { if (internalOnly) void fetchHubs(); else void fetchDrivers(); }, [internalOnly]);
-  useEffect(() => { setSelectedTruckIds(prev => prev.filter(id => trucks.some(truck => normalizeId(truck.id) === id))); }, [trucks]);
+  useEffect(() => {
+    void fetchDrivers();
+    if (internalOnly) void fetchHubs();
+  }, [internalOnly]);
 
   const updateFilter = <K extends keyof TruckFilters>(key: K, value: TruckFilters[K]) => setFilters(prev => ({ ...prev, [key]: value, page: key === 'page' ? Number(value) : 1 }));
   const setFormField = <K extends keyof TruckFormState>(key: K, value: TruckFormState[K]) => setFormState(prev => ({ ...prev, [key]: value }));
@@ -115,7 +116,6 @@ export default function AdminTrucksPage() {
     try {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => { if (Array.isArray(value)) { if (value.length) params.set(key, value.join(',')); } else if (value !== '') params.set(key, String(value)); });
-      if (internalOnly) params.set('hub_codes', 'HAN,HCM');
       const response = await apiRequest<TruckListResponse | Truck[]>(`/trucks?${params.toString()}`);
       const items = normalizeList(response);
       setTrucks(items); setTotal(normalizeTotal(response, items.length));
@@ -146,8 +146,8 @@ export default function AdminTrucksPage() {
   async function submitForm() {
     setIsSubmitting(true); setActionError('');
     try {
-      if (isEditMode && selectedTruck) await apiRequest(`/trucks/${selectedTruck.id}`, { method: 'PATCH', body: toTruckPayload(formState, internalOnly) });
-      else await apiRequest('/trucks', { method: 'POST', body: toTruckPayload(formState, internalOnly) });
+      if (isEditMode && selectedTruck) await apiRequest(`/trucks/${selectedTruck.id}`, { method: 'PATCH', body: toTruckPayload(formState, formInternalMode) });
+      else await apiRequest('/trucks', { method: 'POST', body: toTruckPayload(formState, formInternalMode) });
       closeForm(); await fetchTrucks();
     } catch (err) { setActionError(err instanceof ApiError ? err.message : 'Không thể lưu thông tin xe.'); }
     finally { setIsSubmitting(false); }
@@ -169,9 +169,9 @@ export default function AdminTrucksPage() {
 
   function renderTruckCell(columnId: TruckTableColumnId, truck: Truck) {
     switch (columnId) {
-      case 'license_plate': return <td key={columnId} className="px-4 py-3 border-r border-border"><div className="font-extrabold text-[13px] text-foreground">{formatPlate(truck)}</div></td>;
+      case 'license_plate': return <td key={columnId} className="px-4 py-3 border-r border-border"><div className="font-extrabold text-[13px] text-foreground">{formatPlate(truck)}</div><span className={clsx('mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold', isInternalTruck(truck) ? 'border-blue-200 bg-blue-50 text-primary' : 'border-slate-200 bg-slate-50 text-slate-600')}>{isInternalTruck(truck) ? 'Xe nội bộ' : 'BKS/NCC'}</span></td>;
       case 'payload': return <td key={columnId} className="px-4 py-3 border-r border-border text-[13px] font-bold">{truck.payload ?? 0} kg</td>;
-      case 'driver': return <td key={columnId} className="px-4 py-3 border-r border-border text-[13px] font-medium">{internalOnly ? formatHub(truck) : getDriverName(truck)}</td>;
+      case 'driver': return <td key={columnId} className="px-4 py-3 border-r border-border text-[13px] font-medium">{getDriverName(truck)}</td>;
       case 'fuel_consumption_limit': return <td key={columnId} className="px-4 py-3 border-r border-border text-[13px] font-bold">{truck.fuel_consumption_limit ?? 0} L/100km</td>;
       case 'status': return <td key={columnId} className="px-4 py-3 border-r border-border"><StatusBadge truck={truck} /></td>;
       case 'actions': return <td key={columnId} className="w-[132px] min-w-[132px] px-4 py-3"><TruckActions truck={truck} canManage={canManage} canDelete={canDelete} openDetail={setDetailTruck} openEdit={openEdit} confirmStatus={confirmStatus} confirmDelete={confirmDelete} /></td>;
@@ -186,12 +186,11 @@ export default function AdminTrucksPage() {
           {canDelete && selectedBulkDeleteCount > 0 ? <div className="flex items-center justify-between gap-3 md:hidden animate-in fade-in duration-150"><div className="flex items-center gap-2"><span className="inline-flex h-10 min-w-12 items-center justify-center rounded-lg bg-primary px-3 text-[13px] font-extrabold text-white">✓ {selectedBulkDeleteCount}</span><button onClick={clearTruckSelection} className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted">×</button></div><button disabled={isSubmitting} onClick={() => void confirmBulkDelete()} className="flex h-11 w-12 items-center justify-center rounded-xl bg-red-500 text-white shadow-sm shadow-red-500/20 disabled:opacity-60"><Trash2 size={17} /></button></div> : null}
           <div className={clsx('flex flex-wrap items-center gap-2', canDelete && selectedBulkDeleteCount > 0 && 'hidden md:flex')}>
             <button onClick={() => window.history.back()} className="h-10 w-10 shrink-0 rounded-lg border border-border bg-muted/10 text-[13px] font-medium text-muted-foreground hover:bg-muted flex items-center justify-center gap-2 md:w-auto md:px-3"><ArrowLeft size={15} /><span className="hidden md:inline">Quay lại</span></button>
-            <div className="relative min-w-0 flex-1 md:max-w-[460px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={filters.keyword} onChange={e => updateFilter('keyword', e.target.value)} placeholder={internalOnly ? 'Tìm BKS xe nội bộ...' : 'Tìm kiếm...'} className="w-full h-10 rounded-lg border border-border bg-muted/10 pl-9 pr-3 text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-primary/10" /></div>
+            <div className="relative min-w-0 flex-1 md:max-w-[460px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={filters.keyword} onChange={e => updateFilter('keyword', e.target.value)} placeholder="Tìm BKS trong toàn bộ danh sách xe..." className="w-full h-10 rounded-lg border border-border bg-muted/10 pl-9 pr-3 text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-primary/10" /></div>
             <button title="Mở bộ lọc" onClick={() => setIsFilterPanelOpen(true)} className="relative h-10 w-10 rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 flex items-center justify-center md:hidden"><Filter size={16} />{activeFilterCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white">{activeFilterCount}</span>}</button>
             {activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
             <div className="hidden flex-1 md:block" />
             <ColumnSettings columns={truckTableHeaders} columnOrder={columnOrder} visibleColumns={visibleColumns} onToggle={toggleColumn} onReorder={reorderColumn} />
-            {canManage && internalOnly && <button title="Khôi phục BKS cũ" onClick={() => setIsRestoreOpen(true)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 md:w-auto md:px-3"><History size={17} /><span className="ml-2 hidden md:inline text-[13px] font-bold">Khôi phục BKS cũ</span></button>}
             {canManage && <button onClick={openAdd} className="h-10 w-12 shrink-0 rounded-lg bg-primary text-white text-[14px] font-bold shadow-sm shadow-primary/20 flex items-center justify-center gap-2 md:w-auto md:px-4"><Plus size={18} /><span className="hidden md:inline">Thêm</span></button>}
           </div>
           <div className="hidden md:flex flex-wrap items-center gap-2">
@@ -201,15 +200,14 @@ export default function AdminTrucksPage() {
         {isLoading ? <StateBlock icon={<Loader2 className="animate-spin" size={24} />} title="Đang tải danh sách xe" description="Đang cập nhật dữ liệu xe mới nhất." /> : error ? <StateBlock icon={<AlertTriangle size={24} />} title="Không tải được dữ liệu" description={error} /> : trucks.length === 0 ? <StateBlock icon={<TruckIcon size={24} />} title="Chưa có xe phù hợp" description="Thử đổi bộ lọc hoặc tạo xe mới nếu bạn có quyền quản lý." /> : (
           <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
             {canDelete && selectedBulkDeleteCount > 0 && <div className="sticky top-0 z-10 hidden flex-wrap items-center justify-between gap-2 border-b border-blue-100 bg-blue-50 px-4 py-2 text-[13px] font-bold text-primary md:flex"><span>Đã chọn {selectedBulkDeleteCount} xe để xóa</span><div className="flex items-center gap-2"><button onClick={clearTruckSelection} className="h-8 rounded-lg border border-border bg-white px-3 text-[12px] text-muted-foreground hover:bg-muted">Bỏ chọn</button><button disabled={isSubmitting} onClick={() => void confirmBulkDelete()} className="h-8 rounded-lg bg-red-600 px-3 text-[12px] text-white hover:bg-red-700 disabled:opacity-60">Xóa đã chọn</button></div></div>}
-            <table className="hidden md:table w-full min-w-[860px] text-left border-collapse"><thead className="bg-slate-100 text-[11px] uppercase tracking-wider text-slate-600"><tr><th className="w-11 px-4 py-2.5 border-r border-border"><input type="checkbox" checked={isAllVisibleSelected} disabled={!trucks.length} onChange={toggleAllVisibleTrucks} className="h-4 w-4 rounded border-border" /></th>{orderedVisibleHeaders.map(header => <th key={header.id} className={clsx('px-4 py-2.5 font-bold border-r border-border last:border-r-0', header.className)}>{internalOnly && header.id === 'driver' ? 'Bưu cục hoạt động' : header.label}</th>)}</tr></thead><tbody>{trucks.map(truck => { const truckId = normalizeId(truck.id); return <tr key={truck.id} onClick={() => openDetail(truck)} className="cursor-pointer border-b border-border hover:bg-muted/10 transition-colors"><td className="px-4 py-3 border-r border-border"><input type="checkbox" checked={selectedTruckIds.includes(truckId)} disabled={!canDelete} onClick={event => event.stopPropagation()} onChange={() => toggleTruckSelection(truckId)} className="h-4 w-4 rounded border-border disabled:opacity-40" /></td>{orderedVisibleHeaders.map(header => renderTruckCell(header.id, truck))}</tr>; })}</tbody></table>
+            <table className="hidden md:table w-full min-w-[860px] text-left border-collapse"><thead className="bg-slate-100 text-[11px] uppercase tracking-wider text-slate-600"><tr><th className="w-11 px-4 py-2.5 border-r border-border"><input type="checkbox" checked={isAllVisibleSelected} disabled={!trucks.length} onChange={toggleAllVisibleTrucks} className="h-4 w-4 rounded border-border" /></th>{orderedVisibleHeaders.map(header => <th key={header.id} className={clsx('px-4 py-2.5 font-bold border-r border-border last:border-r-0', header.className)}>{internalOnly && header.id === 'driver' ? 'Bưu cục / Tài xế' : header.label}</th>)}</tr></thead><tbody>{trucks.map(truck => { const truckId = normalizeId(truck.id); return <tr key={truck.id} onClick={() => openDetail(truck)} className="cursor-pointer border-b border-border hover:bg-muted/10 transition-colors"><td className="px-4 py-3 border-r border-border"><input type="checkbox" checked={selectedTruckIds.includes(truckId)} disabled={!canDelete} onClick={event => event.stopPropagation()} onChange={() => toggleTruckSelection(truckId)} className="h-4 w-4 rounded border-border disabled:opacity-40" /></td>{orderedVisibleHeaders.map(header => renderTruckCell(header.id, truck))}</tr>; })}</tbody></table>
             <div className="grid gap-3 p-3 md:hidden">{trucks.map(truck => <TruckMobileCard key={truck.id} truck={truck} canManage={canManage} canDelete={canDelete} isSelected={selectedTruckIds.includes(normalizeId(truck.id))} canSelect={canDelete} onToggleSelect={() => toggleTruckSelection(normalizeId(truck.id))} openDetail={openDetail} openEdit={openEdit} confirmStatus={confirmStatus} confirmDelete={confirmDelete} />)}</div>
           </div>
         )}
         <div className="border-t border-border bg-card flex flex-col items-center justify-between gap-1 px-2 py-1 text-[11px] text-muted-foreground shrink-0 sm:flex-row sm:gap-3 sm:px-4 sm:py-2 sm:text-[12px]"><span><b className="text-foreground font-medium">{(filters.page - 1) * filters.limit + (trucks.length ? 1 : 0)}–{(filters.page - 1) * filters.limit + trucks.length}</b>/Tổng:{total}</span><div className="flex items-center gap-2"><select value={filters.limit} onChange={e => updateFilter('limit', Number(e.target.value))} className="h-7 rounded border border-border bg-card px-1.5 text-[11px] focus:outline-none sm:h-8 sm:px-2 sm:text-[12px]">{[10, 20, 50].map(limit => <option key={limit} value={limit}>{limit}</option>)}</select><span>/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilter('page', filters.page - 1)} className="rounded-lg border border-border bg-card p-1.5 disabled:opacity-40 hover:bg-muted sm:p-2"><ChevronLeft size={15} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilter('page', filters.page + 1)} className="rounded-lg border border-border bg-card p-1.5 disabled:opacity-40 hover:bg-muted sm:p-2"><ChevronRight size={15} /></button><span className="flex h-7 items-center rounded bg-primary px-2 text-[11px] font-bold text-white sm:h-8 sm:text-[12px]">{filters.page}</span><span>/</span><span className="text-foreground">{totalPages}</span></div></div>
       </div>
-      <AddEditTruckDialog isOpen={isFormOpen} isClosing={isFormClosing} isEditMode={isEditMode} isSubmitting={isSubmitting} onClose={closeForm} onSubmit={submitForm} formState={formState} setFormField={setFormField} statusOptions={statusOptions} driverOptions={driverOptions} internalOnly={internalOnly} hubOptions={hubOptions} />
-      {isRestoreOpen && <RestoreInternalTruckDialog hubOptions={hubOptions} onClose={() => setIsRestoreOpen(false)} onRestored={fetchTrucks} />}
-      {detailTruck && <TruckDetailOverlay truck={detailTruck} isClosing={isDetailClosing} internalOnly={internalOnly} canManage={canManage} canDelete={canDelete} onClose={closeDetail} onEdit={editFromDetail} onDelete={confirmDelete} />}
+      <AddEditTruckDialog isOpen={isFormOpen} isClosing={isFormClosing} isEditMode={isEditMode} isSubmitting={isSubmitting} onClose={closeForm} onSubmit={submitForm} formState={formState} setFormField={setFormField} statusOptions={statusOptions} driverOptions={driverOptions} internalOnly={formInternalMode} hubOptions={hubOptions} />
+      {detailTruck && <TruckDetailOverlay truck={detailTruck} isClosing={isDetailClosing} internalOnly={isInternalTruck(detailTruck)} canManage={canManage} canDelete={canDelete} onClose={closeDetail} onEdit={editFromDetail} onDelete={confirmDelete} />}
       <ConfirmDialog dialog={confirmDialog} isSubmitting={isSubmitting} onClose={() => setConfirmDialog(null)} />
       <FilterPanel open={isFilterPanelOpen} activeCount={activeFilterCount} groups={filterPanelGroups} onClose={() => setIsFilterPanelOpen(false)} onApply={() => setIsFilterPanelOpen(false)} onClear={clearFilters} />
     </div>
