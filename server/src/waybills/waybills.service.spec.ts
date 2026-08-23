@@ -1356,6 +1356,51 @@ describe('WaybillsService', () => {
     });
   });
 
+  it('corrects warehouse intake details without changing status or received time', async () => {
+    const receivedAt = new Date('2026-08-21T08:00:00+07:00');
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      status: WaybillStatus.MANIFEST_CLOSED,
+      current_state: WaybillStatus.MANIFEST_CLOSED,
+      received_at: receivedAt,
+      current_hub_id: '2',
+      warehouse_intake_method: WarehouseIntakeMethod.CUSTOMER_DROPOFF,
+      xe_lay: 'Khách mang đến',
+    }));
+    trucksRepository.findOne.mockResolvedValue({
+      id: 'truck-1',
+      bks: '29H-123.45',
+      license_plate: '29H-123.45',
+      vendor_id: null,
+      driver_id: null,
+      driver: null,
+    });
+
+    const result = await service.updateWarehouseIntake('1', {
+      intake_method: WarehouseIntakeMethod.INTERNAL,
+      truck_id: 'truck-1',
+      note: 'A Hà đi bốc',
+    }, warehouse);
+
+    expect(result).toMatchObject({
+      status: WaybillStatus.MANIFEST_CLOSED,
+      current_state: WaybillStatus.MANIFEST_CLOSED,
+      received_at: receivedAt,
+      warehouse_intake_method: WarehouseIntakeMethod.INTERNAL,
+      warehouse_intake_license_plate: '29H-123.45',
+      warehouse_intake_note: 'A Hà đi bốc',
+      xe_lay: 'Xe nội bộ - BKS 29H-123.45',
+    });
+    expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ action: 'WAREHOUSE_INTAKE_UPDATED' }));
+  });
+
+  it('does not correct intake details before the waybill is received', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill());
+
+    await expect(service.updateWarehouseIntake('1', {
+      intake_method: WarehouseIntakeMethod.CUSTOMER_DROPOFF,
+    }, warehouse)).rejects.toThrow('Vận đơn chưa được xác nhận nhập kho');
+  });
+
   it('hides pricing changes from warehouse history while preserving the operator account', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill());
     changeLogsRepository.find.mockResolvedValue([{

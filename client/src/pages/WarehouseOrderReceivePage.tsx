@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ClipboardCheck, Loader2, Package, PackageCheck, RotateCcw, Search, ShieldAlert, Truck, UserRound, Warehouse } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ClipboardCheck, Loader2, Package, PackageCheck, RotateCcw, Save, Search, ShieldAlert, Truck, UserRound, Warehouse } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
 
 import { ApiError, apiRequest } from '../lib/api';
@@ -66,6 +66,21 @@ const displayCode = (waybill: WaybillDetail | null) => waybill?.waybill_code || 
 const displayNumber = (value: unknown, suffix = '') => value === null || value === undefined || value === '' ? '—' : `${value}${suffix}`;
 const isManager = (roleMask: number) => (roleMask & (32 | 64)) !== 0;
 const canReceiveByRole = (roleMask: number) => (roleMask & RECEIVABLE_ROLES) !== 0;
+const safeReturnPath = (value: string) => value.startsWith('/') && !value.startsWith('//')
+  ? value
+  : '/warehouse/inventory';
+
+const formStateFromWaybill = (waybill: WaybillDetail, fallbackCode = ''): ReceiveFormState => ({
+  ...initialFormState,
+  waybillCode: displayCode(waybill) || fallbackCode,
+  intakeMethod: waybill.warehouse_intake_method || '',
+  truckId: normalizeId(waybill.warehouse_intake_truck_id),
+  vendorId: normalizeId(waybill.warehouse_intake_vendor_id),
+  driverId: normalizeId(waybill.warehouse_intake_driver_id),
+  licensePlate: waybill.warehouse_intake_license_plate || '',
+  driverName: waybill.warehouse_intake_driver_name || '',
+  intakeNote: waybill.warehouse_intake_note || '',
+});
 
 const getUserHubIds = (user: UserSummary | null) => {
   if (!user) return new Set<string>();
@@ -81,6 +96,7 @@ function Badge({ config, fallback }: { config?: BadgeConfig; fallback: string })
 export default function WarehouseOrderReceivePage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [user] = useState<UserSummary | null>(() => getStoredUser());
   const [formState, setFormState] = useState<ReceiveFormState>(initialFormState);
   const [waybill, setWaybill] = useState<WaybillDetail | null>(null);
@@ -92,39 +108,43 @@ export default function WarehouseOrderReceivePage() {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isConfirmClosing, setIsConfirmClosing] = useState(false);
   const [resources, setResources] = useState<DeliveryResources>(emptyResources);
-  const [isResourcesLoading, setIsResourcesLoading] = useState(false);
+  const [isResourcesLoading, setIsResourcesLoading] = useState(true);
 
   const roleMask = user?.role_mask ?? 0;
+  const returnToParam = searchParams.get('returnTo') || '';
+  const returnTo = safeReturnPath(returnToParam);
   const canSeeRestrictedMoney = isManager(roleMask);
   const hasReceiveRole = canReceiveByRole(roleMask);
   const userHubIds = useMemo(() => getUserHubIds(user), [user]);
   const status = normalizeStatus(waybill);
   const isReceived = status === 'RECEIVED';
-  const isFinalized = status === 'RETURNED' || status === 'CANCELLED' || status === 'DELIVERED';
-  const isTerminal = isFinalized;
+  const isCancelled = status === 'CANCELLED';
   const hubAllowed = userHubIds.size === 0 || userHubIds.has(normalizeId(waybill?.current_hub_id)) || userHubIds.has(normalizeId(waybill?.origin_hub_id));
   const hasManifestOrTrip = Boolean(waybill?.manifest_id || waybill?.trip_id);
   const alreadyInWarehouse = status === 'IN_WAREHOUSE';
-  const receiveDisabled = !waybill || !hasReceiveRole || !isReceived || isTerminal || hasManifestOrTrip || !hubAllowed || alreadyInWarehouse || isSubmitting;
+  const hasWarehouseIntake = Boolean(waybill?.received_at || waybill?.warehouse_intake_method || alreadyInWarehouse || (waybill && !isReceived && !isCancelled));
+  const isCorrectionMode = !isReceived && hasWarehouseIntake;
+  const canSubmitIntake = isCorrectionMode || (isReceived && !hasManifestOrTrip);
+  const receiveDisabled = !waybill || !hasReceiveRole || !canSubmitIntake || isCancelled || !hubAllowed || isSubmitting;
 
   const warnings = useMemo(() => {
     const items: string[] = [];
     if (!hasReceiveRole) items.push('Tài khoản hiện tại không có quyền WAREHOUSE, PACKER, MANAGER hoặc DIRECTOR để tiếp nhận đơn.');
-    if (waybill && !isReceived && !alreadyInWarehouse) {
-      items.push(`Vận đơn đang ở trạng thái ${status || 'không xác định'}, chỉ được tiếp nhận khi trạng thái là RECEIVED.`);
+    if (waybill && !isReceived && !hasWarehouseIntake) {
+      items.push(`Vận đơn đang ở trạng thái ${status || 'không xác định'} nhưng chưa có thông tin nhập kho để chỉnh sửa.`);
     }
-    if (waybill && hasManifestOrTrip) items.push('Vận đơn đã gắn manifest hoặc chuyến xe nên không thể tiếp nhận tại kho.');
-    if (waybill && isTerminal) items.push('Vận đơn đã hủy/trả hàng/hoàn tất, không được nhập kho lại.');
+    if (waybill && isReceived && hasManifestOrTrip) items.push('Vận đơn đã gắn manifest hoặc chuyến xe nên không thể tiếp nhận tại kho.');
+    if (waybill && isCancelled) items.push('Vận đơn đã hủy nên không thể sửa thông tin nhập kho.');
     if (waybill && !hubAllowed) items.push('Vận đơn không thuộc hub được phân quyền của nhân sự hiện tại.');
     return items;
-  }, [alreadyInWarehouse, hasManifestOrTrip, hasReceiveRole, hubAllowed, isReceived, isTerminal, status, waybill]);
+  }, [hasManifestOrTrip, hasReceiveRole, hasWarehouseIntake, hubAllowed, isCancelled, isReceived, status, waybill]);
 
   const infoMessages = useMemo(() => {
-    if (waybill && alreadyInWarehouse && !isTerminal) {
-      return ['Vận đơn đã được xác nhận nhập kho. Không cần tiếp nhận lại.'];
+    if (waybill && isCorrectionMode) {
+      return ['Đang chỉnh sửa thông tin nhập kho đã ghi nhận. Trạng thái và ngày nhận kho sẽ được giữ nguyên.'];
     }
     return [];
-  }, [alreadyInWarehouse, isTerminal, waybill]);
+  }, [isCorrectionMode, waybill]);
 
   const setFormField = <K extends keyof ReceiveFormState>(key: K, value: ReceiveFormState[K]) => setFormState(prev => ({ ...prev, [key]: value }));
   const internalTrucks = useMemo(() => resources.trucks.filter((truck) => !truck.vendor_id), [resources.trucks]);
@@ -133,22 +153,11 @@ export default function WarehouseOrderReceivePage() {
     setError('');
     const response = await apiRequest<WaybillDetail>(`/waybills/${waybillId}`);
     setWaybill(response);
-    setFormState(prev => ({
-      ...prev,
-      waybillCode: displayCode(response),
-      intakeMethod: response.warehouse_intake_method || prev.intakeMethod,
-      truckId: normalizeId(response.warehouse_intake_truck_id) || prev.truckId,
-      vendorId: normalizeId(response.warehouse_intake_vendor_id) || prev.vendorId,
-      driverId: normalizeId(response.warehouse_intake_driver_id) || prev.driverId,
-      licensePlate: response.warehouse_intake_license_plate || prev.licensePlate,
-      driverName: response.warehouse_intake_driver_name || prev.driverName,
-      intakeNote: response.warehouse_intake_note || prev.intakeNote,
-    }));
+    setFormState(formStateFromWaybill(response));
   };
 
   useEffect(() => {
     let ignore = false;
-    setIsResourcesLoading(true);
     apiRequest<DeliveryResources>('/waybills/delivery-resources')
       .then((response) => { if (!ignore) setResources(response); })
       .catch(() => { if (!ignore) setResources(emptyResources); })
@@ -187,10 +196,7 @@ export default function WarehouseOrderReceivePage() {
     try {
       const response = await apiRequest<WaybillDetail>(`/waybills/code/${encodeURIComponent(code)}`);
       setWaybill(response);
-      setFormState(prev => ({
-        ...prev,
-        waybillCode: displayCode(response) || code,
-      }));
+      setFormState(formStateFromWaybill(response, code));
     } catch (searchError) {
       setWaybill(null);
       setError(searchError instanceof ApiError ? searchError.message : 'Không tìm thấy vận đơn theo mã đã nhập.');
@@ -241,10 +247,16 @@ export default function WarehouseOrderReceivePage() {
     setIsSubmitting(true);
     setError('');
     try {
-      const response = await apiRequest<WaybillDetail>(`/waybills/${waybill.id}/receive`, { method: 'PUT', body: payload });
-      setWaybill(response || { ...waybill, current_state: 'IN_WAREHOUSE', received_at: new Date().toISOString(), delivery_photo_url: payload.delivery_photo_url });
-      setSuccessMessage('Đã nhập kho thành công và lưu thông tin xe/tài xế lấy hàng.');
+      const endpoint = isCorrectionMode
+        ? `/waybills/${waybill.id}/warehouse-intake`
+        : `/waybills/${waybill.id}/receive`;
+      const response = await apiRequest<WaybillDetail>(endpoint, { method: isCorrectionMode ? 'PATCH' : 'PUT', body: payload });
+      setWaybill(response || (isCorrectionMode
+        ? { ...waybill, delivery_photo_url: payload.delivery_photo_url || waybill.delivery_photo_url }
+        : { ...waybill, current_state: 'IN_WAREHOUSE', received_at: new Date().toISOString(), delivery_photo_url: payload.delivery_photo_url }));
+      setSuccessMessage(isCorrectionMode ? 'Đã cập nhật thông tin nhập kho.' : 'Đã nhập kho thành công và lưu thông tin xe/tài xế lấy hàng.');
       closeConfirm();
+      if (isCorrectionMode) window.setTimeout(() => navigate(returnTo), 350);
     } catch (submitError) {
       setError(submitError instanceof ApiError ? submitError.message : 'Không thể tiếp nhận vận đơn.');
     } finally {
@@ -266,11 +278,11 @@ export default function WarehouseOrderReceivePage() {
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-[12px] font-bold text-primary">
             <Warehouse size={14} /> Module 1 · Kho & Bưu cục
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-foreground">Tiếp nhận đơn tại kho</h1>
-          <p className="mt-2 max-w-2xl text-[13px] text-muted-foreground">Đơn mới ở trạng thái “Đơn cần lấy”. Chọn nguồn đưa hàng và xác nhận khi hàng thực tế đã có mặt tại kho.</p>
+          <h1 className="text-2xl font-black tracking-tight text-foreground">{isCorrectionMode ? 'Sửa thông tin nhập kho' : 'Tiếp nhận đơn tại kho'}</h1>
+          <p className="mt-2 max-w-2xl text-[13px] text-muted-foreground">{isCorrectionMode ? 'Chỉnh lại nguồn đưa hàng, xe, tài xế hoặc ghi chú. Trạng thái và ngày nhận kho không thay đổi.' : 'Đơn mới ở trạng thái “Đơn cần lấy”. Chọn nguồn đưa hàng và xác nhận khi hàng thực tế đã có mặt tại kho.'}</p>
         </div>
-        <button type="button" onClick={() => navigate('/warehouse/inventory')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted">
-          <ArrowLeft size={16} /> Về danh sách tồn kho
+        <button type="button" onClick={() => navigate(returnTo)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted">
+          <ArrowLeft size={16} /> Về danh sách đơn
         </button>
       </div>
 
@@ -309,8 +321,8 @@ export default function WarehouseOrderReceivePage() {
                 </Field>
                 <Field label="Hình thức đưa hàng vào kho">
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <IntakeMethodButton icon={<Truck size={16} />} label="Xe nội bộ" active={formState.intakeMethod === 'INTERNAL'} onClick={() => setFormState(prev => ({ ...prev, intakeMethod: 'INTERNAL', vendorId: '' }))} />
-                    <IntakeMethodButton icon={<Building2 size={16} />} label="Xe NCC" active={formState.intakeMethod === 'VENDOR'} onClick={() => setFormState(prev => ({ ...prev, intakeMethod: 'VENDOR', truckId: '' }))} />
+                    <IntakeMethodButton icon={<Truck size={16} />} label="Xe nội bộ" active={formState.intakeMethod === 'INTERNAL'} onClick={() => setFormState(prev => prev.intakeMethod === 'INTERNAL' ? prev : ({ ...prev, intakeMethod: 'INTERNAL', truckId: '', vendorId: '', driverId: '', licensePlate: '', driverName: '' }))} />
+                    <IntakeMethodButton icon={<Building2 size={16} />} label="Xe NCC" active={formState.intakeMethod === 'VENDOR'} onClick={() => setFormState(prev => prev.intakeMethod === 'VENDOR' ? prev : ({ ...prev, intakeMethod: 'VENDOR', truckId: '', vendorId: '', driverId: '', licensePlate: '', driverName: '' }))} />
                     <IntakeMethodButton icon={<UserRound size={16} />} label="Khách mang đến" active={formState.intakeMethod === 'CUSTOMER_DROPOFF'} onClick={() => setFormState(prev => ({ ...prev, intakeMethod: 'CUSTOMER_DROPOFF', truckId: '', vendorId: '', driverId: '', licensePlate: '', driverName: '' }))} />
                   </div>
                 </Field>
@@ -396,8 +408,8 @@ export default function WarehouseOrderReceivePage() {
               {successMessage && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] font-bold text-emerald-700 flex items-center gap-2"><CheckCircle2 size={16} />{successMessage}</div>}
 
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <button type="button" onClick={resetForNextScan} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted"><RotateCcw size={16} /> Quét đơn khác</button>
-                <button type="submit" disabled={receiveDisabled} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-bold text-white shadow-sm shadow-primary/20 transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"><PackageCheck size={16} /> Đã nhập kho</button>
+                <button type="button" onClick={isCorrectionMode ? () => navigate(returnTo) : resetForNextScan} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted">{isCorrectionMode ? <ArrowLeft size={16} /> : <RotateCcw size={16} />} {isCorrectionMode ? 'Hủy chỉnh sửa' : 'Quét đơn khác'}</button>
+                <button type="submit" disabled={receiveDisabled} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-bold text-white shadow-sm shadow-primary/20 transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50">{isCorrectionMode ? <Save size={16} /> : <PackageCheck size={16} />} {isCorrectionMode ? 'Lưu chỉnh sửa' : 'Đã nhập kho'}</button>
               </div>
             </form>
 
@@ -442,7 +454,7 @@ export default function WarehouseOrderReceivePage() {
         </div>
       )}
 
-      <WaybillReceiveConfirmDialog isOpen={isConfirmOpen} isClosing={isConfirmClosing} isSubmitting={isSubmitting} waybill={waybill} formState={formState} onClose={closeConfirm} onConfirm={submitReceive} />
+      <WaybillReceiveConfirmDialog isOpen={isConfirmOpen} isClosing={isConfirmClosing} isSubmitting={isSubmitting} isCorrectionMode={isCorrectionMode} waybill={waybill} formState={formState} onClose={closeConfirm} onConfirm={submitReceive} />
     </div>
   );
 }

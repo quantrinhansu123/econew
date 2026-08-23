@@ -797,6 +797,33 @@ export class WaybillsService {
     return this.sanitize(saved, currentUser);
   }
 
+  async receive(id: string, dto: ReceiveWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
+    const waybill = await this.findMutable(id, currentUser);
+    if (this.getStatus(waybill) !== WaybillStatus.RECEIVED) throw new BadRequestException('Chỉ đơn cần lấy mới được xác nhận nhập kho');
+    const receiveHubId = String(waybill.origin_hub_id ?? waybill.current_hub_id);
+    await this.assertHubAccess(receiveHubId, currentUser);
+    const before = this.buildAuditSnapshot(waybill);
+    const intakeDetails = await this.resolveWarehouseIntakeDetails(dto);
+
+    this.setStatus(waybill, WaybillStatus.IN_WAREHOUSE);
+    Object.assign(waybill, {
+      current_hub_id: receiveHubId,
+      delivery_photo_url: dto.delivery_photo_url?.trim()
+        ? normalizeWaybillPhotos(dto.delivery_photo_url)
+        : waybill.delivery_photo_url,
+      received_at: new Date(),
+      received_by: currentUser.id,
+      ...intakeDetails,
+      updated_by: currentUser.id,
+      last_audit_action: 'WAREHOUSE_RECEIVED',
+      last_audit_user_id: currentUser.id,
+      last_audit_at: new Date(),
+    });
+    const saved = await this.waybillsRepository.save(waybill);
+    await this.recordWaybillChange(String(saved.id), 'WAREHOUSE_RECEIVED', currentUser, before, saved);
+    return this.sanitize(saved, currentUser);
+  }
+
   async updatePricing(id: string, dto: UpdateWaybillPricingDto, currentUser: UserEntity): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
     const note = waybill.note || '';
@@ -861,12 +888,32 @@ export class WaybillsService {
     }, currentUser);
   }
 
-  async receive(id: string, dto: ReceiveWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
-    const waybill = await this.findMutable(id, currentUser);
-    if (this.getStatus(waybill) !== WaybillStatus.RECEIVED) throw new BadRequestException('Chỉ đơn cần lấy mới được xác nhận nhập kho');
-    const receiveHubId = String(waybill.current_hub_id ?? waybill.origin_hub_id);
+  async updateWarehouseIntake(id: string, dto: ReceiveWaybillDto, currentUser: UserEntity): Promise<WaybillRecord> {
+    const waybill = await this.findEditable(id, currentUser);
+    if (this.getStatus(waybill) === WaybillStatus.RECEIVED) {
+      throw new BadRequestException('Vận đơn chưa được xác nhận nhập kho');
+    }
+    const receiveHubId = String(waybill.origin_hub_id ?? waybill.current_hub_id);
     await this.assertHubAccess(receiveHubId, currentUser);
 
+    const before = this.buildAuditSnapshot(waybill);
+    const intakeDetails = await this.resolveWarehouseIntakeDetails(dto);
+    Object.assign(waybill, {
+      ...intakeDetails,
+      delivery_photo_url: dto.delivery_photo_url?.trim()
+        ? normalizeWaybillPhotos(dto.delivery_photo_url)
+        : waybill.delivery_photo_url,
+      updated_by: currentUser.id,
+      last_audit_action: 'WAREHOUSE_INTAKE_UPDATED',
+      last_audit_user_id: currentUser.id,
+      last_audit_at: new Date(),
+    });
+    const saved = await this.waybillsRepository.save(waybill);
+    await this.recordWaybillChange(String(saved.id), 'WAREHOUSE_INTAKE_UPDATED', currentUser, before, saved);
+    return this.sanitize(saved, currentUser);
+  }
+
+  private async resolveWarehouseIntakeDetails(dto: ReceiveWaybillDto) {
     let truck: TruckEntity | null = null;
     let vendor: VendorEntity | null = null;
     let driver: UserEntity | null = null;
@@ -886,7 +933,6 @@ export class WaybillsService {
       driver = truck.driver;
     }
 
-    const before = this.buildAuditSnapshot(waybill);
     const licensePlate = dto.intake_method === WarehouseIntakeMethod.CUSTOMER_DROPOFF
       ? null
       : dto.license_plate?.trim().toUpperCase() || truck?.bks?.trim() || truck?.license_plate?.trim() || null;
@@ -902,14 +948,7 @@ export class WaybillsService {
         ? ['Xe NCC', vendorName, licensePlate ? `BKS ${licensePlate}` : null, driverName ? `lái xe ${driverName}` : null].filter(Boolean).join(' - ')
         : 'Khách mang đến';
 
-    this.setStatus(waybill, WaybillStatus.IN_WAREHOUSE);
-    Object.assign(waybill, {
-      current_hub_id: receiveHubId,
-      delivery_photo_url: dto.delivery_photo_url?.trim()
-        ? normalizeWaybillPhotos(dto.delivery_photo_url)
-        : waybill.delivery_photo_url,
-      received_at: new Date(),
-      received_by: currentUser.id,
+    return {
       warehouse_intake_method: dto.intake_method,
       warehouse_intake_truck_id: dto.intake_method === WarehouseIntakeMethod.INTERNAL && truck ? String(truck.id) : null,
       warehouse_intake_vendor_id: dto.intake_method === WarehouseIntakeMethod.VENDOR && vendor ? String(vendor.id) : null,
@@ -919,14 +958,7 @@ export class WaybillsService {
       warehouse_intake_vendor_name: vendorName,
       warehouse_intake_note: dto.note?.trim() || null,
       xe_lay: intakeSummary,
-      updated_by: currentUser.id,
-      last_audit_action: 'WAREHOUSE_RECEIVED',
-      last_audit_user_id: currentUser.id,
-      last_audit_at: new Date(),
-    });
-    const saved = await this.waybillsRepository.save(waybill);
-    await this.recordWaybillChange(String(saved.id), 'WAREHOUSE_RECEIVED', currentUser, before, saved);
-    return this.sanitize(saved, currentUser);
+    };
   }
 
   async updateStatus(id: string, dto: UpdateWaybillStatusDto, currentUser: UserEntity): Promise<WaybillRecord> {

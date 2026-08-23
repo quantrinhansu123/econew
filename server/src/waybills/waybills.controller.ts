@@ -289,6 +289,13 @@ export class WaybillsController {
     return this.waybillsService.receive(id, dto, currentUser);
   }
 
+  @Patch(':id/warehouse-intake')
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Correct recorded warehouse intake details without changing logistics state' })
+  updateWarehouseIntake(@Param('id') id: string, @Body() dto: ReceiveWaybillDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.updateWarehouseIntake(id, dto, currentUser);
+  }
+
   @Patch(':id/status')
   @RequireRoles(Roles.DISPATCHER, Roles.DRIVER, Roles.WAREHOUSE, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Update waybill status by state machine' })

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Hash, Layers, Loader2, MoreHorizontal, Package, PackageCheck, Pencil, Printer, ReceiptText, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Truck, Unlink, X } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { formatMoney } from '../lib/formatMoney';
 import { DayPicker } from '../components/ui/DayPicker';
@@ -219,6 +219,7 @@ async function loadAllInventoryRows(
 export default function WarehouseInventoryPage({ variant = 'split-pending' }: { variant?: InventoryPageVariant }) {
   const isAllOrders = variant === 'all-orders';
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<InventoryFilters>(() => ({
     ...(isAllOrders ? allOrdersDefaultFilters : defaultFilters),
@@ -259,6 +260,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [customerCodeOptions, setCustomerCodeOptions] = useState<AllOrdersColumnFilterOption[]>([]);
   const [ledgerCustomer, setLedgerCustomer] = useState<CustomerRecord | null>(null);
   const [isLedgerCustomerLoading, setIsLedgerCustomerLoading] = useState(false);
+  const openWarehouseIntake = (item: WaybillInventoryItem) => {
+    const returnTo = `${location.pathname}${location.search}`;
+    navigate(`/warehouse/orders/${encodeURIComponent(String(item.id))}/receive?returnTo=${encodeURIComponent(returnTo)}`);
+  };
   const inventoryRequestIdRef = useRef(0);
   const selectedWaybillCacheRef = useRef<Map<string, WaybillInventoryItem>>(new Map());
   const cashVoucherCloseTimerRef = useRef<number | null>(null);
@@ -1030,7 +1035,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       onCloseActionMenu={() => setOpenActionMenuId(null)}
                       onDetail={openDetail}
                       onEdit={openEdit}
-                      onReceive={(item) => navigate(`/warehouse/orders/${encodeURIComponent(String(item.id))}/receive`)}
+                      onReceive={openWarehouseIntake}
                       onCashVoucher={openCashVoucher}
                       onReleaseUnscheduledSplit={confirmReleaseUnscheduledSplit}
                       onCustomerLedger={openCustomerLedger}
@@ -1070,12 +1075,13 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                   canRelease={canUpdate}
                   onDetail={openDetail}
                   onEdit={openEdit}
+                  onWarehouseIntake={openWarehouseIntake}
                   onPayment={openCashVoucher}
                   onRelease={confirmReleaseUnscheduledSplit}
                   onCustomerLedger={openCustomerLedger}
                 />
               ) : (
-                <div className="grid gap-3 p-3 md:hidden">{displayedWaybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} hubs={hubs} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onReceive={(item) => navigate(`/warehouse/orders/${encodeURIComponent(String(item.id))}/receive`)} onCashVoucher={openCashVoucher} onReleaseUnscheduledSplit={confirmReleaseUnscheduledSplit} onCustomerLedger={openCustomerLedger} />)}</div>
+                <div className="grid gap-3 p-3 md:hidden">{displayedWaybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} hubs={hubs} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onReceive={openWarehouseIntake} onCashVoucher={openCashVoucher} onReleaseUnscheduledSplit={confirmReleaseUnscheduledSplit} onCustomerLedger={openCustomerLedger} />)}</div>
               )}
             </>
           )}
@@ -1642,6 +1648,11 @@ function InventoryRow({
                 <PackageCheck size={13} /> Đã nhập kho
               </button>
             )}
+            {!intake.canConfirm && canEdit && normalizeStatus(waybill) !== 'CANCELLED' && (
+              <button type="button" title="Sửa thông tin nhập kho" onClick={() => onReceive(waybill)} className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-blue-700 hover:bg-blue-100">
+                <Pencil size={13} /> Sửa
+              </button>
+            )}
           </td>
         );
       }
@@ -1731,6 +1742,7 @@ function AllOrdersActions({
   canRelease,
   onDetail,
   onEdit,
+  onWarehouseIntake,
   onPayment,
   onRelease,
 }: {
@@ -1740,6 +1752,7 @@ function AllOrdersActions({
   canRelease: boolean;
   onDetail: (waybill: WaybillInventoryItem) => void;
   onEdit: (waybill: WaybillInventoryItem) => void;
+  onWarehouseIntake?: (waybill: WaybillInventoryItem) => void;
   onPayment: (waybill: WaybillInventoryItem) => void;
   onRelease: (waybill: WaybillInventoryItem) => void;
 }) {
@@ -1773,6 +1786,21 @@ function AllOrdersActions({
       >
         <Pencil size={14} />
       </button>
+      {onWarehouseIntake && normalizeStatus(waybill) !== 'CANCELLED' && (
+        <button
+          type="button"
+          title={normalizeStatus(waybill) === 'RECEIVED' ? 'Xác nhận đã nhập kho' : 'Sửa thông tin nhập kho'}
+          disabled={!canEdit}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!canEdit) return;
+            onWarehouseIntake?.(waybill);
+          }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-white text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          <PackageCheck size={14} />
+        </button>
+      )}
       <button
         type="button"
         title={canPay ? 'Thanh toán bill' : 'Cần quyền Kế toán hoặc Quản lý'}
@@ -1857,6 +1885,7 @@ function AllOrdersCompactTable({
   canRelease,
   onDetail,
   onEdit,
+  onWarehouseIntake,
   onPayment,
   onRelease,
   onCustomerLedger,
@@ -1868,6 +1897,7 @@ function AllOrdersCompactTable({
   canRelease: boolean;
   onDetail: (waybill: WaybillInventoryItem) => void;
   onEdit: (waybill: WaybillInventoryItem) => void;
+  onWarehouseIntake: (waybill: WaybillInventoryItem) => void;
   onPayment: (waybill: WaybillInventoryItem) => void;
   onRelease: (waybill: WaybillInventoryItem) => void;
   onCustomerLedger: (code: string) => void;
@@ -1933,6 +1963,7 @@ function AllOrdersCompactTable({
                     canRelease={canRelease}
                     onDetail={onDetail}
                     onEdit={onEdit}
+                    onWarehouseIntake={onWarehouseIntake}
                     onPayment={onPayment}
                     onRelease={onRelease}
                   />
@@ -2055,6 +2086,7 @@ function Actions({
 }: Pick<InventoryItemProps, 'waybill' | 'canEdit' | 'onDetail' | 'onEdit' | 'onReceive' | 'onCashVoucher'> & { isMutable: boolean; isOpen: boolean; onToggle: () => void; onClose: () => void }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const editDisabled = !canEdit || !isMutable;
+  const canCorrectWarehouseIntake = canEdit && !['RECEIVED', 'CANCELLED'].includes(normalizeStatus(waybill));
   useEffect(() => {
     if (!isOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
@@ -2093,6 +2125,9 @@ function Actions({
         <MenuAction icon={<Eye size={14} />} label="Xem" onClick={() => runAction(() => onDetail(waybill))} />
         {normalizeStatus(waybill) === 'RECEIVED' && canEdit && (
           <MenuAction icon={<PackageCheck size={14} />} label="Đã nhập kho" onClick={() => runAction(() => onReceive(waybill))} tone="teal" />
+        )}
+        {canCorrectWarehouseIntake && (
+          <MenuAction icon={<PackageCheck size={14} />} label="Sửa nhập kho" onClick={() => runAction(() => onReceive(waybill))} tone="teal" />
         )}
         {canCollectCashPayment(waybill.payment_type) && (
           <MenuAction icon={<HandCoins size={14} />} label="Thu chi" onClick={() => runAction(() => onCashVoucher(waybill))} tone="teal" />

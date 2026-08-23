@@ -26,6 +26,7 @@ const ACTION_LABELS: Record<string, string> = {
   COD_RECONCILIATION_REVERSED: 'Hủy xác nhận thu COD',
   PHOTOS_UPDATED: 'Cập nhật ảnh bill',
   WAREHOUSE_RECEIVED: 'Xác nhận đã nhập kho',
+  WAREHOUSE_INTAKE_UPDATED: 'Chỉnh sửa thông tin nhập kho',
   LEGACY_UPDATE: 'Đã cập nhật trước khi bật lịch sử',
   DELIVERY_PREPARATION_READY: 'Khách xác nhận sẵn sàng giao',
   DELIVERY_PREPARATION_SCHEDULED: 'Lưu kho và hẹn ngày giao',

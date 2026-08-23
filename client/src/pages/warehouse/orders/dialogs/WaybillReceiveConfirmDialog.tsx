@@ -7,6 +7,7 @@ interface Props {
   isOpen: boolean;
   isClosing: boolean;
   isSubmitting: boolean;
+  isCorrectionMode?: boolean;
   waybill: WaybillDetail | null;
   formState: ReceiveFormState;
   onClose: () => void;
@@ -20,7 +21,7 @@ const intakeMethodLabels = {
   CUSTOMER_DROPOFF: 'Khách mang đến',
 } as const;
 
-export default function WaybillReceiveConfirmDialog({ isOpen, isClosing, isSubmitting, waybill, formState, onClose, onConfirm }: Props) {
+export default function WaybillReceiveConfirmDialog({ isOpen, isClosing, isSubmitting, isCorrectionMode = false, waybill, formState, onClose, onConfirm }: Props) {
   if (!isOpen && !isClosing) return null;
 
   return (
@@ -32,8 +33,8 @@ export default function WaybillReceiveConfirmDialog({ isOpen, isClosing, isSubmi
               <PackageCheck size={20} />
             </div>
             <div>
-              <h2 className="text-lg font-black text-foreground">Xác nhận đã nhập kho</h2>
-              <p className="mt-1 text-[13px] text-muted-foreground">Sau thao tác này đơn được ghi nhận là đã có mặt thực tế tại kho.</p>
+              <h2 className="text-lg font-black text-foreground">{isCorrectionMode ? 'Xác nhận chỉnh sửa' : 'Xác nhận đã nhập kho'}</h2>
+              <p className="mt-1 text-[13px] text-muted-foreground">{isCorrectionMode ? 'Chỉ thông tin nguồn hàng và ghi chú được cập nhật; trạng thái đơn không thay đổi.' : 'Sau thao tác này đơn được ghi nhận là đã có mặt thực tế tại kho.'}</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="rounded-xl p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label="Đóng">
@@ -58,7 +59,7 @@ export default function WaybillReceiveConfirmDialog({ isOpen, isClosing, isSubmi
         <div className="flex flex-col-reverse gap-2 border-t border-border p-5 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted">Hủy</button>
           <button type="button" onClick={onConfirm} disabled={isSubmitting} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-bold text-white shadow-sm shadow-primary/20 transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60">
-            <CheckCircle2 size={16} /> {isSubmitting ? 'Đang nhập kho...' : 'Xác nhận đã nhập kho'}
+            <CheckCircle2 size={16} /> {isSubmitting ? (isCorrectionMode ? 'Đang lưu...' : 'Đang nhập kho...') : (isCorrectionMode ? 'Lưu chỉnh sửa' : 'Xác nhận đã nhập kho')}
           </button>
         </div>
       </div>
