@@ -43,7 +43,7 @@ export interface DispatchPrintColumnDef {
 
 export const DISPATCH_PRINT_COLUMN_DEFS: DispatchPrintColumnDef[] = [
   { id: 'viTriHang', label: 'Vị trí hàng', header: 'Vị trí hàng', cssClass: 'col-location', align: 'center', defaultVisible: true, required: true },
-  { id: 'ngayBoc', label: 'Ngày bốc', header: 'Ngày bốc', cssClass: 'col-date', align: 'center', defaultVisible: true },
+  { id: 'ngayBoc', label: 'Ngày gửi', header: 'Ngày gửi', cssClass: 'col-date', align: 'center', defaultVisible: true },
   { id: 'dv', label: 'DV', header: 'DV', cssClass: 'col-service', align: 'center', defaultVisible: true },
   { id: 'noiTra', label: 'Hướng dẫn phát', header: 'Hướng dẫn phát', cssClass: 'col-place', defaultVisible: true },
   { id: 'maTinh', label: 'Mã Tỉnh', header: 'Mã Tỉnh', cssClass: 'col-province', align: 'center', defaultVisible: true },

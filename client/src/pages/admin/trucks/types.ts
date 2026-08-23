@@ -17,6 +17,8 @@ export interface Truck {
   fuel_consumption_limit: number;
   status: TruckStatus;
   ownership_type?: 'INTERNAL' | 'VENDOR' | string | null;
+  vendor_id?: string | number | null;
+  vendor?: { id?: string | number; code?: string | null; name?: string | null } | null;
   bks?: string | null;
   hub_id?: string | number | null;
   hub?: { id?: string | number; code?: string | null; name?: string | null } | null;

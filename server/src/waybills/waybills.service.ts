@@ -2610,7 +2610,7 @@ export class WaybillsService {
       waybill_code: waybill.waybill_code,
       loading_position: position,
       vi_tri_hang: position,
-      ngay_boc: this.formatDispatchDate(waybill.loaded_at ?? waybill.received_at ?? waybill.created_at),
+      ngay_boc: this.formatDispatchDate(waybill.sent_date),
       ngay_toi: this.formatDispatchDate(split.expected_arrival_at ?? this.computeExpectedArrivalAt(
         split.created_at ?? waybill.loaded_at ?? waybill.received_at ?? waybill.created_at ?? new Date(),
         hubCode,

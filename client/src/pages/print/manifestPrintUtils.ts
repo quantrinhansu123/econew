@@ -61,7 +61,7 @@ function mapLinkToRow(link: ManifestLink, index: number, showPricing: boolean): 
 
   return {
     viTriHang: fmt(link.loading_position ?? index + 1),
-    ngayBoc: fieldOrDefault(link, 'ngay_boc', fields) || formatDispatchShortDate(link.loaded_at ?? null),
+    ngayBoc: formatDispatchShortDate(waybill?.sent_date ?? null),
     maTinh: fieldOrDefault(link, 'ma_tinh', fields) || resolveMaTinh(waybill),
     quanHuyen: resolveReceiverDistrict(waybill),
     phuongXa: resolveReceiverWard(waybill),

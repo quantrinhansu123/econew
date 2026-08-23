@@ -14,9 +14,11 @@ const makeRepo = () => ({
   create: jest.fn((value) => ({ ...value })),
   save: jest.fn(async (value) => value),
   findOne: jest.fn(),
+  find: jest.fn(),
   count: jest.fn(),
   delete: jest.fn(),
   createQueryBuilder: jest.fn(),
+  manager: undefined as any,
 });
 
 const manager = { id: 'm1', role_mask: Roles.MANAGER } as any;
@@ -36,6 +38,11 @@ describe('TrucksService canonical schema', () => {
     usersRepo = makeRepo();
     tripsRepo = makeRepo();
     hubsRepo = makeRepo();
+    trucksRepo.manager = {
+      transaction: jest.fn(async (callback) => callback({
+        getRepository: (entity: unknown) => entity === TruckEntity ? trucksRepo : tripsRepo,
+      })),
+    };
     vendorsService = { resolveDefaultVendorId: jest.fn().mockResolvedValue('vendor-1') };
     usersRepo.findOne.mockResolvedValue({ id: '7', role_mask: Roles.DRIVER });
     tripsRepo.count.mockResolvedValue(0);
@@ -150,11 +157,68 @@ describe('TrucksService canonical schema', () => {
     expect(whereSql).not.toContain('hub_id');
   });
 
+  it('tìm được xe cũ bị ẩn do chưa phân loại hoặc chưa gán HUB', async () => {
+    const qb = mockQb();
+    trucksRepo.createQueryBuilder.mockReturnValue(qb);
+    qb.getManyAndCount.mockResolvedValue([[truck({ ownership_type: 'INTERNAL', hub_id: null })], 1]);
+
+    const result = await service.findLegacy({ keyword: '29H-12345', page: 1, limit: 20 }, manager);
+
+    expect(result.meta.total).toBe(1);
+    expect(qb.andWhere).toHaveBeenCalledTimes(2);
+  });
+
   it('update chuẩn hóa license_plate và cập nhật schema fields', async () => {
     mockUniquePlate(null);
     trucksRepo.findOne.mockResolvedValue(truck());
     const result = await service.update('10', { license_plate: ' hcm-999 ', payload: 3000, fuel_consumption_limit: 13, status: TruckStatus.IN_USE }, manager);
     expect(result).toMatchObject({ license_plate: 'HCM-999', payload: 3000, fuel_consumption_limit: 13, status: TruckStatus.IN_USE });
+  });
+
+  it('khôi phục xe cũ và giữ thông tin NCC, tài xế trong chuyến lịch sử', async () => {
+    const legacyTruck = truck({
+      ownership_type: 'VENDOR',
+      hub_id: null,
+      vendor_id: 'vendor-1',
+      ten_lai_xe: 'Tài xế cũ',
+      driver: { phone: '0901000000' },
+      bks: '29H-12345',
+    });
+    const historicalTrip = { id: 'trip-1', truck_id: '10', vendor_id: null, driver_name: null, driver_phone: null };
+    trucksRepo.findOne.mockResolvedValue(legacyTruck);
+    tripsRepo.find.mockResolvedValue([historicalTrip]);
+
+    const result = await service.restoreInternal('10', { hub_id: 'hub-1' }, manager);
+
+    expect(tripsRepo.save).toHaveBeenCalledWith([
+      expect.objectContaining({ vendor_id: 'vendor-1', driver_name: 'Tài xế cũ', driver_phone: '0901000000' }),
+    ]);
+    expect(result).toMatchObject({
+      ownership_type: 'INTERNAL',
+      hub_id: 'hub-1',
+      vendor_id: null,
+      driver_id: null,
+      ten_lai_xe: null,
+    });
+  });
+
+  it('không khôi phục xe cũ đang có chuyến hoạt động', async () => {
+    trucksRepo.findOne.mockResolvedValue(truck({ ownership_type: 'VENDOR' }));
+    tripsRepo.count.mockResolvedValue(1);
+
+    await expect(service.restoreInternal('10', { hub_id: 'hub-1' }, manager)).rejects.toBeInstanceOf(BadRequestException);
+    expect(trucksRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('không cho gọi API khôi phục với xe nội bộ đang hoạt động bình thường', async () => {
+    trucksRepo.findOne.mockResolvedValue(truck({
+      ownership_type: 'INTERNAL',
+      hub_id: 'hub-1',
+      hub: { id: 'hub-1', code: 'HAN' },
+    }));
+
+    await expect(service.restoreInternal('10', { hub_id: 'hub-1' }, manager)).rejects.toBeInstanceOf(BadRequestException);
+    expect(trucksRepo.manager.transaction).not.toHaveBeenCalled();
   });
 
   it('updateStatus sang INACTIVE khi xe đang có trip active bị chặn', async () => {

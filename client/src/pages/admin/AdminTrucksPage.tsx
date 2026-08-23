@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, Edit, Fuel, Gauge, Filter, GripVertical, LayoutGrid, Loader2, Plus, Power, Search, Tag, Trash2, Truck as TruckIcon, User, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, Edit, Fuel, Gauge, Filter, GripVertical, History, LayoutGrid, Loader2, Plus, Power, Search, Tag, Trash2, Truck as TruckIcon, User, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useLocation } from 'react-router-dom';
 import { ApiError, apiRequest } from '../../lib/api';
@@ -9,6 +9,7 @@ import { FilterSelect } from '../../components/ui/FilterSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../../components/ui/ConfirmDialog';
 import type { AuthUserProfile } from '../login/types';
 import AddEditTruckDialog from './trucks/dialogs/AddEditTruckDialog';
+import RestoreInternalTruckDialog from './trucks/dialogs/RestoreInternalTruckDialog';
 import type { DriverSummary, FilterOption, Truck, TruckFilters, TruckFormState, TruckListResponse } from './trucks/types';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -68,6 +69,7 @@ export default function AdminTrucksPage() {
   const [detailTruck, setDetailTruck] = useState<Truck | null>(null);
   const [formState, setFormState] = useState<TruckFormState>(emptyForm);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [isFormClosing, setIsFormClosing] = useState(false);
   const [isDetailClosing, setIsDetailClosing] = useState(false);
@@ -189,6 +191,7 @@ export default function AdminTrucksPage() {
             {activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
             <div className="hidden flex-1 md:block" />
             <ColumnSettings columns={truckTableHeaders} columnOrder={columnOrder} visibleColumns={visibleColumns} onToggle={toggleColumn} onReorder={reorderColumn} />
+            {canManage && internalOnly && <button title="Khôi phục BKS cũ" onClick={() => setIsRestoreOpen(true)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 md:w-auto md:px-3"><History size={17} /><span className="ml-2 hidden md:inline text-[13px] font-bold">Khôi phục BKS cũ</span></button>}
             {canManage && <button onClick={openAdd} className="h-10 w-12 shrink-0 rounded-lg bg-primary text-white text-[14px] font-bold shadow-sm shadow-primary/20 flex items-center justify-center gap-2 md:w-auto md:px-4"><Plus size={18} /><span className="hidden md:inline">Thêm</span></button>}
           </div>
           <div className="hidden md:flex flex-wrap items-center gap-2">
@@ -205,6 +208,7 @@ export default function AdminTrucksPage() {
         <div className="border-t border-border bg-card flex flex-col items-center justify-between gap-1 px-2 py-1 text-[11px] text-muted-foreground shrink-0 sm:flex-row sm:gap-3 sm:px-4 sm:py-2 sm:text-[12px]"><span><b className="text-foreground font-medium">{(filters.page - 1) * filters.limit + (trucks.length ? 1 : 0)}–{(filters.page - 1) * filters.limit + trucks.length}</b>/Tổng:{total}</span><div className="flex items-center gap-2"><select value={filters.limit} onChange={e => updateFilter('limit', Number(e.target.value))} className="h-7 rounded border border-border bg-card px-1.5 text-[11px] focus:outline-none sm:h-8 sm:px-2 sm:text-[12px]">{[10, 20, 50].map(limit => <option key={limit} value={limit}>{limit}</option>)}</select><span>/ trang</span><button disabled={filters.page <= 1} onClick={() => updateFilter('page', filters.page - 1)} className="rounded-lg border border-border bg-card p-1.5 disabled:opacity-40 hover:bg-muted sm:p-2"><ChevronLeft size={15} /></button><button disabled={filters.page >= totalPages} onClick={() => updateFilter('page', filters.page + 1)} className="rounded-lg border border-border bg-card p-1.5 disabled:opacity-40 hover:bg-muted sm:p-2"><ChevronRight size={15} /></button><span className="flex h-7 items-center rounded bg-primary px-2 text-[11px] font-bold text-white sm:h-8 sm:text-[12px]">{filters.page}</span><span>/</span><span className="text-foreground">{totalPages}</span></div></div>
       </div>
       <AddEditTruckDialog isOpen={isFormOpen} isClosing={isFormClosing} isEditMode={isEditMode} isSubmitting={isSubmitting} onClose={closeForm} onSubmit={submitForm} formState={formState} setFormField={setFormField} statusOptions={statusOptions} driverOptions={driverOptions} internalOnly={internalOnly} hubOptions={hubOptions} />
+      {isRestoreOpen && <RestoreInternalTruckDialog hubOptions={hubOptions} onClose={() => setIsRestoreOpen(false)} onRestored={fetchTrucks} />}
       {detailTruck && <TruckDetailOverlay truck={detailTruck} isClosing={isDetailClosing} internalOnly={internalOnly} canManage={canManage} canDelete={canDelete} onClose={closeDetail} onEdit={editFromDetail} onDelete={confirmDelete} />}
       <ConfirmDialog dialog={confirmDialog} isSubmitting={isSubmitting} onClose={() => setConfirmDialog(null)} />
       <FilterPanel open={isFilterPanelOpen} activeCount={activeFilterCount} groups={filterPanelGroups} onClose={() => setIsFilterPanelOpen(false)} onApply={() => setIsFilterPanelOpen(false)} onClear={clearFilters} />

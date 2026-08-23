@@ -1,9 +1,10 @@
 import { utils, writeFile } from 'xlsx';
 import type { LoadPlanningManifest, ManifestWaybill } from './types';
+import { formatDispatchShortDate } from './manifestDispatchDefaults';
 
 type ManifestExcelWaybill = ManifestWaybill & Record<string, unknown>;
 
-const headers = ['Vị trí hàng', 'Ngày bốc', 'Mã Tỉnh', 'Tên CTY', 'DV', 'Mặt Hàng', 'Nơi Trả', 'Số Lượng', '', '', 'Ghi chú', 'kế hoạch', 'Lái xe thu hộ', 'BC thu  hộ', 'Mã Bill', 'Ghi chú'];
+const headers = ['Vị trí hàng', 'Ngày gửi', 'Mã Tỉnh', 'Tên CTY', 'DV', 'Mặt Hàng', 'Nơi Trả', 'Số Lượng', '', '', 'Ghi chú', 'kế hoạch', 'Lái xe thu hộ', 'BC thu  hộ', 'Mã Bill', 'Ghi chú'];
 const cell = (value: unknown) => (value == null || value === '' ? '' : value);
 const first = (waybill: ManifestExcelWaybill, keys: string[]) => keys.map((key) => waybill[key]).find((value) => value != null && value !== '') ?? '';
 
@@ -15,7 +16,7 @@ function normalizeWaybills(manifest: LoadPlanningManifest): ManifestExcelWaybill
 export function buildManifestDetailExcelRows(manifest: LoadPlanningManifest) {
   return normalizeWaybills(manifest).map((waybill) => [
     cell(first(waybill, ['vi_tri_hang', 'loading_position', 'position'])),
-    cell(first(waybill, ['ngay_boc', 'loaded_at', 'received_at', 'created_at'])),
+    cell(formatDispatchShortDate(String(first(waybill, ['sent_date']) || ''))),
     cell(first(waybill, ['ma_tinh', 'noi_den', 'dest_province'])),
     cell(first(waybill, ['ten_cty', 'customer_name', 'receiver_company', 'receiver_info'])),
     cell(first(waybill, ['dv', 'service_type']) || 'TC'),

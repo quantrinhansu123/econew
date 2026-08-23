@@ -8,6 +8,7 @@ import { Roles } from '../common/roles';
 import { UserEntity } from '../users/user.entity';
 import { CreateTruckDto } from './dto/create-truck.dto';
 import { QueryTrucksDto } from './dto/query-trucks.dto';
+import { RestoreInternalTruckDto } from './dto/restore-internal-truck.dto';
 import { UpdateTruckStatusDto } from './dto/update-truck-status.dto';
 import { UpdateTruckDto } from './dto/update-truck.dto';
 import { TrucksService } from './trucks.service';
@@ -46,6 +47,13 @@ export class TrucksController {
     return this.trucksService.findAvailableTrucks(query, currentUser);
   }
 
+  @Get('legacy')
+  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Search legacy trucks hidden from the internal fleet list' })
+  findLegacy(@Query() query: QueryTrucksDto, @CurrentUser() currentUser: UserEntity) {
+    return this.trucksService.findLegacy(query, currentUser);
+  }
+
   @Get(':id')
   @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Get truck detail' })
@@ -58,6 +66,17 @@ export class TrucksController {
   @ApiOperation({ summary: 'Update truck information' })
   update(@Param('id') id: string, @Body() dto: UpdateTruckDto, @CurrentUser() currentUser: UserEntity) {
     return this.trucksService.update(id, dto, currentUser);
+  }
+
+  @Patch(':id/restore-internal')
+  @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Safely restore a legacy truck to the internal fleet' })
+  restoreInternal(
+    @Param('id') id: string,
+    @Body() dto: RestoreInternalTruckDto,
+    @CurrentUser() currentUser: UserEntity,
+  ) {
+    return this.trucksService.restoreInternal(id, dto, currentUser);
   }
 
   @Patch(':id/status')

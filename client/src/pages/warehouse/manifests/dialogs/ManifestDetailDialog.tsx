@@ -3,6 +3,7 @@ import { CalendarDays, Check, Edit3, Loader2, Package, Printer, Trash2, X } from
 import { DateTimePicker } from '../../../../components/ui/DateTimePicker';
 import { resolveWaybillDisplayNote } from '../../../../lib/waybillSpecialGoods';
 import { getTripStatus, hubDeliveryLabelFromWaybill, parseDeliveryPhotos } from '../manifestHubUtils';
+import { formatDispatchShortDate } from '../manifestDispatchDefaults';
 import { canRemoveWaybillsFromManifest } from '../types';
 import type { BadgeConfig, LoadPlanningManifest, ManifestWaybill } from '../types';
 import ManifestExpensesSection from './ManifestExpensesSection';
@@ -98,7 +99,7 @@ export default function ManifestDetailDialog({ isOpen, isClosing, isLoading, isS
             <div className="overflow-auto custom-scrollbar">
               <table className="hidden w-full min-w-[1040px] table-fixed border-separate border-spacing-0 text-left md:table">
                 <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] uppercase tracking-wider text-slate-600 shadow-sm">
-                  <tr><Header className="w-[50px] text-center">Vị trí</Header><Header className="w-[70px]">Ngày bốc</Header><Header className="w-[86px]">Mã tỉnh</Header><Header className="w-[118px]">Tên CTY / DV</Header><Header className="w-[128px]">Mặt hàng / Bill</Header><Header className="w-[170px]">Nơi trả / Địa chỉ</Header><Header className="w-[70px] text-right">SL / ĐVT</Header>{showHubDeliveryStatus && <Header className="w-[120px]">TT giao</Header>}{showHubDeliveryStatus && <Header className="w-[90px]">Ảnh</Header>}<Header className="w-[140px]">Ghi chú</Header><Header className="w-[126px]">Ngày hoàn thành</Header><Header className="w-[108px] text-right">Thu hộ</Header><Header className="w-[100px] text-right">KG / M3 / QĐ</Header>{mayRemoveWaybill && <Header className="w-[52px] text-center">Gỡ</Header>}</tr>
+                  <tr><Header className="w-[50px] text-center">Vị trí</Header><Header className="w-[70px]">Ngày gửi</Header><Header className="w-[86px]">Mã tỉnh</Header><Header className="w-[118px]">Tên CTY / DV</Header><Header className="w-[128px]">Mặt hàng / Bill</Header><Header className="w-[170px]">Nơi trả / Địa chỉ</Header><Header className="w-[70px] text-right">SL / ĐVT</Header>{showHubDeliveryStatus && <Header className="w-[120px]">TT giao</Header>}{showHubDeliveryStatus && <Header className="w-[90px]">Ảnh</Header>}<Header className="w-[140px]">Ghi chú</Header><Header className="w-[126px]">Ngày hoàn thành</Header><Header className="w-[108px] text-right">Thu hộ</Header><Header className="w-[100px] text-right">KG / M3 / QĐ</Header>{mayRemoveWaybill && <Header className="w-[52px] text-center">Gỡ</Header>}</tr>
                 </thead>
                 <tbody>{waybills.map((waybill, index) => <WaybillRow key={waybill.id} waybill={waybill} index={index} canManage={canManage && !!onUpdateDispatchFields} isSubmitting={isSubmitting} showHubDeliveryStatus={showHubDeliveryStatus} mayRemoveWaybill={mayRemoveWaybill} onRemoveWaybill={onRemoveWaybill} onUpdateDispatchFields={onUpdateDispatchFields} />)}</tbody>
               </table>
@@ -134,7 +135,7 @@ function WaybillRow({ waybill, index, canManage, isSubmitting, showHubDeliverySt
 
   return <tr className="group align-top transition-colors hover:bg-blue-50/50">
     <Cell align="center"><span className="inline-flex h-8 min-w-8 items-center justify-center rounded-xl bg-amber-100 px-2 font-black text-amber-800 ring-1 ring-amber-200">{display(waybill.loading_position ?? index + 1)}</span></Cell>
-    <Cell>{dispatchValue(waybill, 'ngay_boc')}</Cell>
+    <Cell>{formatDispatchShortDate(waybill.sent_date)}</Cell>
     <Cell><HubChip>{dispatchValue(waybill, 'ma_tinh') || display(waybill.noi_den || waybill.dest_hub?.code || waybill.dest_hub_id, '')}</HubChip></Cell>
     <Cell strong><StackLines primary={dispatchValue(waybill, 'ten_cty') || contactName(waybill.sender_info)} secondary={<span className="inline-flex w-fit rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-700">{service}</span>} /></Cell>
     <Cell strong><StackLines primary={dispatchValue(waybill, 'mat_hang') || display(waybill.waybill_code, '')} secondary={<span className="whitespace-nowrap text-primary">Bill: {bill}</span>} /></Cell>

@@ -463,6 +463,7 @@ export class ManifestsService {
     const phone = waybill.receiver_phone?.trim() || this.parseContactPhone(waybill.receiver_info);
     const diaChi = phone ? (address ? `${address} · SĐT: ${phone}` : `SĐT: ${phone}`) : address;
     return this.sanitizeDispatchFields({
+      ngay_boc: waybill.sent_date,
       ma_tinh: waybill.dest_hub?.code || waybill.dest_hub?.name || waybill.noi_den,
       ten_cty: this.parseContactName(waybill.sender_info),
       dv: this.dispatchServiceCode(waybill.note),

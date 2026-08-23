@@ -11,6 +11,7 @@ export type DispatchLink = {
   waybill?: {
     id?: string | number;
     waybill_code?: string | null;
+    sent_date?: string | null;
     sender_info?: string | null;
     receiver_info?: string | null;
     receiver_phone?: string | null;
@@ -184,7 +185,7 @@ export function resolveDispatchDefault(link: DispatchLink, key: DispatchFieldKey
   const waybill = link.waybill;
   switch (key) {
     case 'ngay_boc':
-      return formatDispatchShortDate(link.loaded_at ?? null);
+      return formatDispatchShortDate(waybill?.sent_date ?? null);
     case 'ma_tinh':
       return resolveMaTinh(waybill);
     case 'ten_cty':
@@ -228,7 +229,7 @@ export function getDispatchCellValue(
   rowKey: string,
   key: DispatchFieldKey,
 ): string {
-  if (key === 'dv' || key === 'noi_tra' || key === 'trang_thai_giao' || key === 'ngay_hoan_thanh') {
+  if (key === 'ngay_boc' || key === 'dv' || key === 'noi_tra' || key === 'trang_thai_giao' || key === 'ngay_hoan_thanh') {
     return resolveDispatchDefault(link, key);
   }
   const saved = rows[rowKey]?.[key];

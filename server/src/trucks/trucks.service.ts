@@ -8,6 +8,7 @@ import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
 import { CreateTruckDto } from './dto/create-truck.dto';
 import { QueryTrucksDto } from './dto/query-trucks.dto';
+import { RestoreInternalTruckDto } from './dto/restore-internal-truck.dto';
 import { TruckStatus } from './dto/truck.enums';
 import { UpdateTruckStatusDto } from './dto/update-truck-status.dto';
 import { UpdateTruckDto } from './dto/update-truck.dto';
@@ -18,6 +19,7 @@ import { HubEntity } from '../hubs/hub.entity';
 const ACTIVE_TRIP_STATUSES = [TripStatus.PLANNED, 'LOADING', TripStatus.IN_TRANSIT, 'ARRIVED_PENDING_CONFIRM'];
 const TRIP_LOCK_STATUSES = [TripStatus.PLANNED, 'LOADING', TripStatus.IN_TRANSIT, TripStatus.ARRIVED, 'ARRIVED_PENDING_CONFIRM'];
 const INTERNAL_HUB_CODES = new Set(['HAN', 'HCM']);
+const DUPLICATE_PLATE_MESSAGE = 'BKS đã tồn tại trong dữ liệu xe. Nếu không thấy trong danh sách nội bộ, dùng Khôi phục BKS cũ.';
 
 @Injectable()
 export class TrucksService {
@@ -63,7 +65,7 @@ export class TrucksService {
     try {
       return await this.trucksRepository.save(truck);
     } catch (error) {
-      if ((error as { code?: string }).code === '23505') throw new ConflictException('Truck license plate already exists');
+      if ((error as { code?: string }).code === '23505') throw new ConflictException(DUPLICATE_PLATE_MESSAGE);
       throw error;
     }
   }
@@ -84,6 +86,30 @@ export class TrucksService {
   async findAvailableTrucks(query: QueryTrucksDto, currentUser: UserEntity) {
     const result = await this.findAll({ ...query, status: TruckStatus.AVAILABLE }, currentUser);
     return { ...result, items: result.items.filter((truck) => truck.status === TruckStatus.AVAILABLE) };
+  }
+
+  async findLegacy(query: QueryTrucksDto, currentUser: UserEntity) {
+    this.assertRole(currentUser, [Roles.MANAGER, Roles.DIRECTOR]);
+    if (!query.keyword?.trim()) throw new BadRequestException('Nhập BKS cần tìm trong dữ liệu cũ');
+    const page = query.page ?? 1;
+    const limit = clampPaginationLimit(query.limit, 20);
+    const qb = this.trucksRepository
+      .createQueryBuilder('truck')
+      .leftJoinAndSelect('truck.driver', 'driver')
+      .leftJoinAndSelect('truck.vendor', 'vendor')
+      .leftJoinAndSelect('truck.hub', 'hub');
+    this.applyFilters(qb, {
+      ...query,
+      ownership_type: undefined,
+      hub_id: undefined,
+      hub_codes: undefined,
+    });
+    qb.andWhere(new Brackets((builder) => builder
+      .where("COALESCE(truck.ownership_type, '') <> 'INTERNAL'")
+      .orWhere('truck.hub_id IS NULL')
+      .orWhere("UPPER(COALESCE(hub.code, '')) NOT IN ('HAN', 'HCM')")));
+    const [items, total] = await qb.orderBy('truck.id', 'DESC').skip((page - 1) * limit).take(limit).getManyAndCount();
+    return { items, meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
   }
 
   async findOne(id: string, _currentUser: UserEntity): Promise<TruckEntity> {
@@ -127,6 +153,60 @@ export class TrucksService {
       hub_id: nextHubId,
     });
     return this.trucksRepository.save(truck);
+  }
+
+  async restoreInternal(id: string, dto: RestoreInternalTruckDto, currentUser: UserEntity): Promise<TruckEntity> {
+    this.assertRole(currentUser, [Roles.MANAGER, Roles.DIRECTOR]);
+    const truck = await this.findOne(id, currentUser);
+    if (!this.isLegacyTruck(truck)) {
+      throw new BadRequestException('BKS này đã thuộc danh sách xe nội bộ đang hoạt động');
+    }
+    const hubId = dto.hub_id.trim();
+    const hub = await this.assertInternalHub(hubId);
+
+    return this.trucksRepository.manager.transaction(async (manager) => {
+      const transactionalTrucks = manager.getRepository(TruckEntity);
+      const transactionalTrips = manager.getRepository(TripEntity);
+      const activeTrips = await transactionalTrips.count({
+        where: { truck_id: id, status: In(TRIP_LOCK_STATUSES as any[]) } as any,
+      });
+      if (activeTrips > 0) {
+        throw new BadRequestException('Xe đang có chuyến hoạt động, cần hoàn tất chuyến trước khi khôi phục');
+      }
+
+      const historicalTrips = await transactionalTrips.find({ where: { truck_id: id } as any });
+      const changedTrips = historicalTrips.filter((trip) => {
+        let changed = false;
+        if (!trip.vendor_id && truck.vendor_id) {
+          trip.vendor_id = String(truck.vendor_id);
+          changed = true;
+        }
+        if (!trip.driver_name && truck.ten_lai_xe) {
+          trip.driver_name = truck.ten_lai_xe;
+          changed = true;
+        }
+        if (!trip.driver_phone && truck.driver?.phone) {
+          trip.driver_phone = truck.driver.phone;
+          changed = true;
+        }
+        return changed;
+      });
+      if (changedTrips.length) await transactionalTrips.save(changedTrips);
+
+      Object.assign(truck, {
+        ownership_type: 'INTERNAL',
+        hub_id: hubId,
+        driver_id: null,
+        ten_lai_xe: null,
+        nha_xe: null,
+        vendor_id: null,
+        driver: null,
+        vendor: null,
+        hub,
+        bks: truck.bks?.trim().toUpperCase() || truck.license_plate,
+      });
+      return transactionalTrucks.save(truck);
+    });
   }
 
   async updateStatus(id: string, dto: UpdateTruckStatusDto, currentUser: UserEntity): Promise<TruckEntity> {
@@ -174,11 +254,16 @@ export class TrucksService {
     return value?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];
   }
 
+  private isLegacyTruck(truck: TruckEntity): boolean {
+    const hubCode = String(truck.hub?.code || '').toUpperCase();
+    return truck.ownership_type !== 'INTERNAL' || !truck.hub_id || !INTERNAL_HUB_CODES.has(hubCode);
+  }
+
   private async assertUniquePlate(licensePlate: string, ignoreId?: string) {
     const qb = this.trucksRepository.createQueryBuilder('truck').where('truck.license_plate = :licensePlate', { licensePlate });
     if (ignoreId) qb.andWhere('truck.id != :ignoreId', { ignoreId });
     const existing = await qb.getOne();
-    if (existing) throw new ConflictException('Truck license plate already exists');
+    if (existing) throw new ConflictException(DUPLICATE_PLATE_MESSAGE);
   }
 
   private async assertDriverExists(driverId: string): Promise<UserEntity> {
@@ -188,12 +273,13 @@ export class TrucksService {
     return driver;
   }
 
-  private async assertInternalHub(hubId: string): Promise<void> {
+  private async assertInternalHub(hubId: string): Promise<HubEntity> {
     const hub = await this.hubsRepository.findOne({ where: { id: hubId, is_active: true, deleted_at: null } as any });
     if (!hub) throw new NotFoundException('Bưu cục không tồn tại hoặc đã ngừng hoạt động');
     if (!INTERNAL_HUB_CODES.has(String(hub.code || '').toUpperCase())) {
       throw new BadRequestException('Xe nội bộ chỉ được gán bưu cục Hà Nội (HAN) hoặc TP.HCM (HCM)');
     }
+    return hub;
   }
 
   private async assertNoActiveTrips(truckId: string, action: string) {

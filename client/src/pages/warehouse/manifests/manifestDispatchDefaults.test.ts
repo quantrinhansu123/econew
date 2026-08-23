@@ -7,6 +7,16 @@ const link = (waybill: DispatchLink['waybill']): DispatchLink => ({
 });
 
 describe('manifest dispatch bill-backed columns', () => {
+  it('uses the bill sent date instead of a stale saved loading date', () => {
+    const row = link({
+      id: 10,
+      sent_date: '2026-08-21',
+    });
+    const saved = { '10': { ngay_boc: '18/08' } };
+
+    expect(getDispatchCellValue(saved, row, '10', 'ngay_boc')).toBe('21/08');
+  });
+
   it('maps service and delivery method from the bill instead of stale dispatch cells', () => {
     const row = link({
       id: 1,
