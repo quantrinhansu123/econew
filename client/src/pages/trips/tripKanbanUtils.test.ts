@@ -40,6 +40,20 @@ describe('canConfirmTripArrival', () => {
     expect(canConfirmTripArrival(trip, now)).toBe(true);
     expect(getPrimaryTripActionForTrip(trip, now)).toBe('arrive');
   });
+
+  it('khóa xác nhận nếu còn HUB chưa có ngày dự kiến đến', () => {
+    const trip = {
+      id: 4,
+      status: 'IN_TRANSIT' as const,
+      route_stops: [
+        { hub_id: 'HCM', expected_arrival_at: '2026-08-22T08:00:00.000Z' },
+        { hub_id: 'ECO_LX', expected_arrival_at: null },
+      ],
+    };
+
+    expect(canConfirmTripArrival(trip, now)).toBe(false);
+    expect(getPrimaryTripActionForTrip(trip, now)).toBeNull();
+  });
 });
 
 describe('getTripDeleteDisabledReason', () => {

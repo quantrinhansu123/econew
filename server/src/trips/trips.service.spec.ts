@@ -828,6 +828,19 @@ describe('TripsService', () => {
       );
       expect(trips.save).not.toHaveBeenCalled();
     });
+
+    it('không cho chốt Xe đã đến nếu còn HUB chưa có ngày dự kiến', async () => {
+      mockFindOne({ id: '1', status: TripStatus.IN_TRANSIT, manifest_id: '10' });
+      waybillSplits.find.mockResolvedValue([
+        { trip_id: '1', expected_arrival_at: new Date(Date.now() - 60_000), waybill: { dest_hub_id: '2' } },
+        { trip_id: '1', expected_arrival_at: null, waybill: { dest_hub_id: '3' } },
+      ]);
+
+      await expect(service.arriveTrip('1', {}, dispatcher)).rejects.toThrow(
+        'Cần nhập ngày dự kiến đến cho tất cả HUB trước khi xác nhận Xe đã đến',
+      );
+      expect(trips.save).not.toHaveBeenCalled();
+    });
   });
 
   describe('completeTrip', () => {

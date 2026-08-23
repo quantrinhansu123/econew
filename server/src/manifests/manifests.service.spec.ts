@@ -118,6 +118,68 @@ describe('ManifestsService', () => {
     expect(whereSql).toContain('manifest.created_at <=');
   });
 
+  it('findAll không chuyển chuyến nhiều HUB sang Đã tới tại mốc HUB đầu', async () => {
+    const intermediateArrival = new Date(Date.now() - 60_000);
+    const finalArrival = new Date(Date.now() + 60_000);
+    const trip = {
+      id: '5',
+      status: TripStatus.IN_TRANSIT,
+      expected_arrival_time: intermediateArrival,
+      arrival_time: intermediateArrival,
+      manifest_id: '10',
+    };
+    const qb = mockQb();
+    tripsRepo.find.mockResolvedValue([trip]);
+    splitsRepo.find.mockResolvedValue([
+      { trip_id: '5', expected_arrival_at: intermediateArrival, waybill: { dest_hub_id: '2' } },
+      { trip_id: '5', expected_arrival_at: finalArrival, waybill: { dest_hub_id: '3' } },
+    ]);
+    manifestsRepo.createQueryBuilder.mockReturnValue(qb);
+    qb.getManyAndCount.mockResolvedValue([[], 0]);
+
+    await service.findAll({}, manager);
+
+    expect(trip).toMatchObject({
+      status: TripStatus.IN_TRANSIT,
+      expected_arrival_time: finalArrival,
+    });
+    expect(tripsRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: '5',
+      status: TripStatus.IN_TRANSIT,
+      expected_arrival_time: finalArrival,
+    }));
+    expect(splitsRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('findAll sửa chuyến cũ đã nhảy Đã tới ở HUB trung gian về Đang chạy', async () => {
+    const intermediateArrival = new Date(Date.now() - 60_000);
+    const finalArrival = new Date(Date.now() + 60_000);
+    const trip = {
+      id: '6',
+      status: TripStatus.ARRIVED,
+      expected_arrival_time: intermediateArrival,
+      arrival_time: intermediateArrival,
+      manifest_id: '10',
+    };
+    const qb = mockQb();
+    tripsRepo.find.mockResolvedValue([trip]);
+    splitsRepo.find.mockResolvedValue([
+      { trip_id: '6', expected_arrival_at: intermediateArrival, waybill: { dest_hub_id: '2' } },
+      { trip_id: '6', expected_arrival_at: finalArrival, waybill: { dest_hub_id: '3' } },
+    ]);
+    manifestsRepo.createQueryBuilder.mockReturnValue(qb);
+    qb.getManyAndCount.mockResolvedValue([[], 0]);
+    linksRepo.find.mockResolvedValue([]);
+
+    await service.findAll({}, manager);
+
+    expect(trip).toMatchObject({ status: TripStatus.IN_TRANSIT, arrival_time: null });
+    expect(splitsRepo.update).toHaveBeenCalledWith(
+      { trip_id: '6', load_status: WaybillSplitLoadStatus.ARRIVED },
+      { load_status: WaybillSplitLoadStatus.IN_TRANSIT },
+    );
+  });
+
   it('findAll calculates order, package and weight totals from manifest waybills', async () => {
     const qb = mockQb();
     const manifest = draftManifest({ trips: [{ id: '5', status: TripStatus.IN_TRANSIT }] });

@@ -12,13 +12,18 @@ export const canConfirmTripArrival = (trip: Trip, now = Date.now()): boolean => 
   const destinationHubIds = new Set(routeStops.map((stop) => String(stop.hub_id || '').trim()).filter(Boolean));
   if (destinationHubIds.size <= 1) return true;
 
+  const scheduledHubIds = new Set<string>();
   const finalExpectedArrival = routeStops.reduce<number | null>((latest, stop) => {
     const timestamp = stop.expected_arrival_at ? new Date(stop.expected_arrival_at).getTime() : Number.NaN;
     if (Number.isNaN(timestamp)) return latest;
+    const hubId = String(stop.hub_id || '').trim();
+    if (hubId) scheduledHubIds.add(hubId);
     return latest == null || timestamp > latest ? timestamp : latest;
   }, null);
 
-  return finalExpectedArrival != null && now >= finalExpectedArrival;
+  return scheduledHubIds.size === destinationHubIds.size
+    && finalExpectedArrival != null
+    && now >= finalExpectedArrival;
 };
 
 export const getPrimaryTripActionForTrip = (trip: Trip, now = Date.now()): TripAction | null => {

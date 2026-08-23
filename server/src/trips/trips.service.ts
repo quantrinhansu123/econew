@@ -30,6 +30,7 @@ import { UpdateTripCargoTotalsDto } from './dto/update-trip-cargo-totals.dto';
 import { UpdateTripCostsDto } from './dto/update-trip-costs.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripEntity } from './trip.entity';
+import { resolveTripArrivalSchedule } from './trip-arrival-schedule';
 
 const ACTIVE_TRIP_STATUSES = [TripStatus.PLANNED, TripStatus.IN_TRANSIT];
 const LOADING_SEQUENCE_STATUSES = [TripStatus.PLANNED, TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED];
@@ -397,15 +398,14 @@ export class TripsService {
       where: { trip_id: String(trip.id) } as any,
       relations: ['waybill'],
     })) ?? [];
-    const destinationHubIds = new Set(tripSplits
-      .map((split) => String(split.waybill?.dest_hub_id || '').trim())
-      .filter(Boolean));
-    const finalExpectedArrival = tripSplits
-      .map((split) => split.expected_arrival_at ? new Date(split.expected_arrival_at) : null)
-      .filter((value): value is Date => value instanceof Date && !Number.isNaN(value.getTime()))
-      .reduce<Date | null>((latest, value) => !latest || value > latest ? value : latest, null);
-    if (destinationHubIds.size > 1 && finalExpectedArrival && arrivalTime < finalExpectedArrival) {
-      throw new BadRequestException('Chuyến nhiều HUB chỉ được xác nhận Xe đã đến tại bưu cục cuối cùng');
+    const arrivalSchedule = resolveTripArrivalSchedule(tripSplits, trip.expected_arrival_time);
+    if (arrivalSchedule.isMultiHub) {
+      if (!arrivalSchedule.hasCompleteHubSchedule || !arrivalSchedule.finalExpectedArrival) {
+        throw new BadRequestException('Cần nhập ngày dự kiến đến cho tất cả HUB trước khi xác nhận Xe đã đến');
+      }
+      if (arrivalTime < arrivalSchedule.finalExpectedArrival) {
+        throw new BadRequestException('Chuyến nhiều HUB chỉ được xác nhận Xe đã đến tại bưu cục cuối cùng');
+      }
     }
 
     trip.status = TripStatus.ARRIVED;
@@ -1378,39 +1378,49 @@ export class TripsService {
       where: { trip_id: In(tripIds) } as any,
       relations: ['waybill'],
     })) ?? [];
-    const finalExpectedByTrip = new Map<string, Date>();
-    const destinationHubsByTrip = new Map<string, Set<string>>();
-    splits.forEach((split) => {
+    const splitsByTrip = splits.reduce<Map<string, WaybillSplitEntity[]>>((map, split) => {
       const tripId = String(split.trip_id || '');
-      const destinationHubId = String(split.waybill?.dest_hub_id || '').trim();
-      if (destinationHubId) {
-        const hubIds = destinationHubsByTrip.get(tripId) ?? new Set<string>();
-        hubIds.add(destinationHubId);
-        destinationHubsByTrip.set(tripId, hubIds);
-      }
-      if (!split.expected_arrival_at) return;
-      const expected = new Date(split.expected_arrival_at);
-      if (Number.isNaN(expected.getTime())) return;
-      const current = finalExpectedByTrip.get(tripId);
-      if (!current || expected > current) finalExpectedByTrip.set(tripId, expected);
-    });
+      const tripSplits = map.get(tripId) ?? [];
+      tripSplits.push(split);
+      map.set(tripId, tripSplits);
+      return map;
+    }, new Map());
 
     for (const trip of trips) {
-      const finalStopExpected = finalExpectedByTrip.get(String(trip.id));
-      const expected = finalStopExpected
-        ?? (trip.expected_arrival_time ? new Date(trip.expected_arrival_time) : null);
+      const arrivalSchedule = resolveTripArrivalSchedule(
+        splitsByTrip.get(String(trip.id)) ?? [],
+        trip.expected_arrival_time,
+      );
+      const finalStopExpected = arrivalSchedule.splitExpectedArrival;
+      const expected = arrivalSchedule.finalExpectedArrival;
       if (!expected || Number.isNaN(expected.getTime())) continue;
 
       const storedExpected = trip.expected_arrival_time ? new Date(trip.expected_arrival_time) : null;
-      const isMultiHubTrip = (destinationHubsByTrip.get(String(trip.id))?.size ?? 0) > 1;
       const shouldSyncFinalStop = Boolean(finalStopExpected)
+        && arrivalSchedule.hasCompleteHubSchedule
         && (!storedExpected || Number.isNaN(storedExpected.getTime()) || storedExpected.getTime() !== expected.getTime());
       if (shouldSyncFinalStop) trip.expected_arrival_time = expected;
+      if (arrivalSchedule.isMultiHub && !arrivalSchedule.hasCompleteHubSchedule) {
+        if (trip.status === TripStatus.ARRIVED) {
+          trip.status = TripStatus.IN_TRANSIT;
+          trip.arrival_time = null;
+          if (trip.manifest_id) {
+            await this.moveManifestWaybills(String(trip.manifest_id), WaybillState.AT_DEST_HUB, WaybillState.IN_TRANSIT);
+          }
+          await this.waybillSplitsRepository.update(
+            { trip_id: String(trip.id), load_status: WaybillSplitLoadStatus.ARRIVED } as any,
+            { load_status: WaybillSplitLoadStatus.IN_TRANSIT },
+          );
+          await this.waybillsService.reconcileTransportStatesForTrips([trip.id]);
+          await this.tripsRepository.save(trip);
+        }
+        continue;
+      }
       if (expected > now) {
         let restoredIntermediateArrival = false;
         // Chuyến nhiều HUB luôn giữ trạng thái đang chạy cho tới mốc HUB cuối,
         // kể cả dữ liệu cũ đã bị chốt thủ công tại một HUB trung gian.
-        if (trip.status === TripStatus.ARRIVED && (shouldSyncFinalStop || isMultiHubTrip)) {
+        if (trip.status === TripStatus.ARRIVED && (shouldSyncFinalStop || arrivalSchedule.isMultiHub)) {
           trip.status = TripStatus.IN_TRANSIT;
           trip.arrival_time = expected;
           restoredIntermediateArrival = true;
