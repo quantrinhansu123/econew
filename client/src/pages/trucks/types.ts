@@ -17,6 +17,7 @@ export interface Truck {
   driver?: DriverSummary | null;
   fuel_consumption_limit?: number | null;
   status: TruckStatus;
+  ownership_type?: 'INTERNAL' | 'VENDOR' | string | null;
   ten_lai_xe?: string | null;
   nha_xe?: string | null;
   vendor_id?: string | number | null;

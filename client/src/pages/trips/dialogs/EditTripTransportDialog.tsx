@@ -69,10 +69,8 @@ export default function EditTripTransportDialog({ trip, currentTruck, onClose, o
 
   useEffect(() => {
     let active = true;
-    const params = new URLSearchParams({ limit: '100' });
+    const params = new URLSearchParams({ limit: '100', ownership_type: 'VENDOR' });
     if (form.vendor_id) params.set('vendor_id', form.vendor_id);
-    setIsTruckLoading(true);
-    setTrucks([]);
     apiRequest<ListResponse<TruckSummary> | TruckSummary[]>(`/trucks?${params.toString()}`)
       .then((truckResponse) => {
         if (!active) return;
@@ -120,6 +118,8 @@ export default function EditTripTransportDialog({ trip, currentTruck, onClose, o
   };
 
   const changeVendor = (vendorId: string) => {
+    setIsTruckLoading(true);
+    setTrucks([]);
     setForm((current) => {
       const selectedTruck = trucks.find((item) => String(item.id) === current.truck_id);
       const selectedTruckVendorId = String(selectedTruck?.vendor_id || selectedTruck?.vendor?.id || '');
@@ -152,6 +152,7 @@ export default function EditTripTransportDialog({ trip, currentTruck, onClose, o
           license_plate: plate,
           bks: plate,
           payload: 1,
+          ownership_type: 'VENDOR',
           vendor_id: form.vendor_id,
           nha_xe: vendor?.name || vendor?.code || undefined,
           ten_lai_xe: form.driver_name.trim() || undefined,
@@ -176,6 +177,10 @@ export default function EditTripTransportDialog({ trip, currentTruck, onClose, o
   };
 
   const submit = async () => {
+    if (licensePlateMode === 'MANUAL' && form.manual_license_plate.trim() && !form.vendor_id) {
+      setError('BKS nhập tay phải được gán nhà cung cấp (NCC).');
+      return;
+    }
     const tripCost = form.trip_cost.trim() ? parseAmountInput(form.trip_cost) : null;
     setIsSubmitting(true);
     setError('');

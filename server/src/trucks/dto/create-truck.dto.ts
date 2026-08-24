@@ -67,7 +67,7 @@ export class CreateTruckDto {
   @IsString()
   khu_vuc?: string;
 
-  @ApiPropertyOptional({ description: 'Nhà cung cấp (NCC); mặc định Công lẻ nếu bỏ trống' })
+  @ApiPropertyOptional({ description: 'Nhà cung cấp (NCC), bắt buộc với BKS đối tác' })
   @IsOptional()
   @IsString()
   vendor_id?: string;

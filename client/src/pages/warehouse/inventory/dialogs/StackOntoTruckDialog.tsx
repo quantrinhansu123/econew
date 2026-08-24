@@ -90,6 +90,7 @@ const toTruckOption = (truck: TruckRecord): TruckPickOption => ({
   bks: truck.bks,
   nha_xe: truck.nha_xe || truck.vendor?.name || null,
   ten_lai_xe: truck.ten_lai_xe,
+  vendor_id: truck.vendor_id == null ? null : String(truck.vendor_id),
   label: [truckPlate(truck), truck.nha_xe || truck.vendor?.name, truck.ten_lai_xe].filter(Boolean).join(' · '),
 });
 
@@ -111,7 +112,7 @@ export default function StackOntoTruckDialog({
   const [isSaving, setIsSaving] = useState(false);
   const [isPrintOpen, setIsPrintOpen] = useState(false);
   const [error, setError] = useState('');
-  const user = useMemo(getStoredUser, []);
+  const user = useMemo(() => getStoredUser(), []);
   const canViewPricing = ((user?.role_mask ?? 0) & (MANAGER | DIRECTOR)) !== 0;
   const [printColumnIds, setPrintColumnIds] = useState<DispatchPrintColumnId[]>(() =>
     loadVisibleDispatchColumnIds(canViewPricing),
@@ -135,14 +136,13 @@ export default function StackOntoTruckDialog({
   );
 
   const filteredTruckOptions = useMemo(() => {
-    const selectedVendorName = shared.nha_xe.trim().toLowerCase();
     const keyword = truckDraft.trim().toLowerCase();
     return truckOptions.filter((truck) => {
-      const vendorOk = !selectedVendorName || (truck.nha_xe || '').toLowerCase() === selectedVendorName;
+      const vendorOk = !shared.vendor_id || truck.vendor_id === shared.vendor_id;
       const plate = (truck.bks || truck.license_plate || '').toLowerCase();
       return vendorOk && (!keyword || plate.includes(keyword));
     });
-  }, [shared.nha_xe, truckDraft, truckOptions]);
+  }, [shared.vendor_id, truckDraft, truckOptions]);
 
   const updatePrintColumnIds = (ids: DispatchPrintColumnId[]) => {
     saveVisibleDispatchColumnIds(ids);
@@ -162,10 +162,6 @@ export default function StackOntoTruckDialog({
     [waybills, rows, shared, selectedTruckLabel, canViewPricing, printColumnIds],
   );
 
-  useEffect(() => {
-    setPrintColumnIds(loadVisibleDispatchColumnIds(canViewPricing));
-  }, [canViewPricing]);
-
   const loadVendors = useCallback(async () => {
     try {
       const vendorsRes = await apiRequest<VendorListResponse | VendorOption[]>('/vendors/active?limit=200');
@@ -182,7 +178,7 @@ export default function StackOntoTruckDialog({
     setIsLoading(true);
     setError('');
     try {
-      const trucksRes = await apiRequest<TruckListResponse>('/trucks?limit=200');
+      const trucksRes = await apiRequest<TruckListResponse>('/trucks?ownership_type=VENDOR&limit=200');
       const trucks = normalizeTruckList(trucksRes)
         .map(toTruckOption)
         .sort((a, b) => (a.bks || a.license_plate || '').localeCompare(b.bks || b.license_plate || '', 'vi'));
@@ -197,7 +193,6 @@ export default function StackOntoTruckDialog({
   useEffect(() => {
     if (!isOpen) {
       wasOpenRef.current = false;
-      setIsPrintOpen(false);
       return;
     }
     if (wasOpenRef.current) return;
@@ -247,11 +242,11 @@ export default function StackOntoTruckDialog({
 
   const handleCreateTruck = async () => {
     const plate = truckDraft.trim().toUpperCase();
-    if (!plate || !shared.nha_xe.trim()) return;
+    if (!plate || !shared.vendor_id) return;
     setIsSaving(true);
     setError('');
     try {
-      const truck = await apiRequest<TruckRecord>('/trucks', { method: 'POST', body: { license_plate: plate, bks: plate, payload: 1, nha_xe: shared.nha_xe, vendor_id: shared.vendor_id || undefined, ten_lai_xe: shared.driver_name || undefined, status: 'AVAILABLE' } });
+      const truck = await apiRequest<TruckRecord>('/trucks', { method: 'POST', body: { license_plate: plate, bks: plate, payload: 1, ownership_type: 'VENDOR', nha_xe: shared.nha_xe, vendor_id: shared.vendor_id, status: 'AVAILABLE' } });
       const option = toTruckOption(truck);
       setTruckOptions((prev) => [...prev, option]);
       setShared((prev) => ({ ...prev, truck_id: option.id }));
@@ -386,13 +381,13 @@ export default function StackOntoTruckDialog({
                   </div>
                   <div className="col-span-12 md:col-span-3">
                     <label className="mb-1 block text-[12px] font-bold uppercase tracking-wide text-slate-700">BKS theo NCC <span className="normal-case text-muted-foreground">(không bắt buộc)</span></label>
-                    <TruckSearchSelect options={filteredTruckOptions} value={shared.truck_id} onChange={handleTruckChange} disabled={!shared.nha_xe} placeholder={shared.nha_xe ? 'Chọn BKS...' : 'Chọn NCC trước'} searchPlaceholder="Tìm biển số..." className="h-11 text-[14px]" />
+                    <TruckSearchSelect options={filteredTruckOptions} value={shared.truck_id} onChange={handleTruckChange} disabled={!shared.vendor_id} placeholder={shared.vendor_id ? 'Chọn BKS...' : 'Chọn NCC trước'} searchPlaceholder="Tìm biển số..." className="h-11 text-[14px]" />
                   </div>
                   <div className="col-span-12 md:col-span-3">
                     <label className="mb-1 block text-[12px] font-bold uppercase tracking-wide text-slate-700">Thêm BKS nếu chưa có <span className="normal-case text-muted-foreground">(không bắt buộc)</span></label>
                     <div className="flex gap-2">
-                      <input value={truckDraft} onChange={(e) => setTruckDraft(e.target.value.toUpperCase())} disabled={!shared.nha_xe} placeholder="VD: 89H-09800" className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-[14px] font-bold outline-none focus:border-primary disabled:bg-slate-100" />
-                      <button type="button" disabled={isSaving || !shared.nha_xe || !truckDraft.trim()} onClick={() => void handleCreateTruck()} className="inline-flex h-11 items-center gap-1 rounded-lg border border-primary/20 bg-white px-3 text-[12px] font-black text-primary disabled:opacity-50"><Plus size={14} />BKS</button>
+                      <input value={truckDraft} onChange={(e) => setTruckDraft(e.target.value.toUpperCase())} disabled={!shared.vendor_id} placeholder="VD: 89H-09800" className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-[14px] font-bold outline-none focus:border-primary disabled:bg-slate-100" />
+                      <button type="button" disabled={isSaving || !shared.vendor_id || !truckDraft.trim()} onClick={() => void handleCreateTruck()} className="inline-flex h-11 items-center gap-1 rounded-lg border border-primary/20 bg-white px-3 text-[12px] font-black text-primary disabled:opacity-50"><Plus size={14} />BKS</button>
                     </div>
                   </div>
                   <div className="col-span-12 md:col-span-3">

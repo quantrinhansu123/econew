@@ -19,6 +19,9 @@ export interface Truck {
   ownership_type?: 'INTERNAL' | 'VENDOR' | string | null;
   vendor_id?: string | number | null;
   vendor?: { id?: string | number; code?: string | null; name?: string | null } | null;
+  nha_xe?: string | null;
+  ten_lai_xe?: string | null;
+  loai_xe?: string | null;
   bks?: string | null;
   hub_id?: string | number | null;
   hub?: { id?: string | number; code?: string | null; name?: string | null } | null;
@@ -48,6 +51,7 @@ export interface TruckFilters {
   limit: number;
   ownership_type?: string;
   hub_id?: string;
+  vendor_id?: string;
 }
 
 export interface TruckFormState {
@@ -58,6 +62,7 @@ export interface TruckFormState {
   status: string;
   bks: string;
   hub_id: string;
+  vendor_id: string;
 }
 
 export interface FilterOption {

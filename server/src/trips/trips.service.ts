@@ -328,6 +328,12 @@ export class TripsService {
         trip.arrival_time = finalExpectedArrival;
       }
     }
+    if (trip.manual_license_plate && !trip.vendor_id) {
+      throw new BadRequestException('BKS nhập tay phải được gán nhà cung cấp (NCC)');
+    }
+    if (trip.manual_license_plate && trip.vendor_id) {
+      await this.syncManualVendorTruck(trip.manual_license_plate, trip.vendor_id);
+    }
     const savedTrip = await this.tripsRepository.save(trip);
     if (dto.vendor_id !== undefined || dto.trip_cost !== undefined || dto.truck_id !== undefined) {
       const affectedVendorIds = [...new Set([
@@ -1105,6 +1111,47 @@ export class TripsService {
       inner.where('trip.start_hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds })
         .orWhere('trip.end_hub_id IN (:...userHubIds)', { userHubIds: assignedHubIds });
     }));
+  }
+
+  private async syncManualVendorTruck(licensePlate: string, vendorId: string): Promise<void> {
+    const plate = licensePlate.trim().toUpperCase();
+    if (!plate) return;
+    const vendor = await this.vendorsService.findOne(vendorId);
+    const existing = await this.trucksRepository
+      .createQueryBuilder('truck')
+      .where('UPPER(TRIM(truck.license_plate)) = :plate', { plate })
+      .getOne();
+    if (existing?.ownership_type === 'INTERNAL') {
+      throw new ConflictException('BKS này đã thuộc danh mục xe nội bộ');
+    }
+    if (existing) {
+      existing.ownership_type = 'VENDOR';
+      existing.vendor_id = String(vendor.id);
+      existing.nha_xe = vendor.name?.trim() || vendor.code?.trim() || existing.nha_xe;
+      existing.bks = plate;
+      await this.trucksRepository.save(existing);
+      return;
+    }
+    const truck = this.trucksRepository.create({
+      license_plate: plate,
+      bks: plate,
+      payload: 1,
+      driver_id: null,
+      fuel_consumption_limit: 0,
+      status: TruckStatus.AVAILABLE,
+      ownership_type: 'VENDOR',
+      hub_id: null,
+      ten_lai_xe: null,
+      nha_xe: vendor.name?.trim() || vendor.code?.trim() || null,
+      loai_xe: 'ĐỐI TÁC',
+      khu_vuc: null,
+      vendor_id: String(vendor.id),
+    });
+    try {
+      await this.trucksRepository.save(truck);
+    } catch (error) {
+      if ((error as { code?: string }).code !== '23505') throw error;
+    }
   }
 
   private async moveManifestWaybills(manifestId: string, from: WaybillState, to: WaybillState): Promise<void> {

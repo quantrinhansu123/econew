@@ -573,19 +573,43 @@ describe('TripsService', () => {
       },
     );
 
-    it('cho lưu BKS thủ công hoặc bỏ trống mà không tác động xe trong danh mục', async () => {
+    it('lưu BKS thủ công vào danh mục xe đối tác và gắn đúng NCC', async () => {
       mockFindOne({
         id: '1',
         status: TripStatus.COMPLETED,
         truck_id: '5',
         manual_license_plate: null,
+        vendor_id: null,
+        vendor_paid_amount: '0',
+      });
+      vendorsService.findOne.mockResolvedValue({ id: '11', name: 'NCC mới', code: 'NCC11' });
+      const truckQb = new MockQb();
+      truckQb.getOne.mockResolvedValue(null);
+      trucks.createQueryBuilder.mockReturnValue(truckQb);
+
+      const result = await service.update('1', { truck_id: null, manual_license_plate: '51h-123.45', vendor_id: '11' }, manager);
+
+      expect(result).toMatchObject({ truck_id: null, manual_license_plate: '51H-123.45', vendor_id: '11' });
+      expect(trucks.findOne).not.toHaveBeenCalled();
+      expect(trucks.save).toHaveBeenCalledWith(expect.objectContaining({
+        license_plate: '51H-123.45',
+        ownership_type: 'VENDOR',
+        vendor_id: '11',
+      }));
+    });
+
+    it('không cho lưu BKS thủ công khi chưa gắn NCC', async () => {
+      mockFindOne({
+        id: '1',
+        status: TripStatus.COMPLETED,
+        truck_id: null,
+        manual_license_plate: null,
+        vendor_id: null,
         vendor_paid_amount: '0',
       });
 
-      const result = await service.update('1', { truck_id: null, manual_license_plate: '51h-123.45' }, manager);
-
-      expect(result).toMatchObject({ truck_id: null, manual_license_plate: '51H-123.45' });
-      expect(trucks.findOne).not.toHaveBeenCalled();
+      await expect(service.update('1', { manual_license_plate: '51h-123.45' }, manager))
+        .rejects.toThrow('BKS nhập tay phải được gán nhà cung cấp (NCC)');
       expect(trucks.save).not.toHaveBeenCalled();
     });
 

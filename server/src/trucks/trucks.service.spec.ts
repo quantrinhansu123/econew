@@ -23,7 +23,8 @@ const makeRepo = () => ({
 
 const manager = { id: 'm1', role_mask: Roles.MANAGER } as any;
 const director = { id: 'd1', role_mask: Roles.DIRECTOR } as any;
-const truck = (overrides: Record<string, any> = {}) => ({ id: '10', license_plate: '29H-12345', payload: 2500, driver_id: null, fuel_consumption_limit: 12, status: TruckStatus.AVAILABLE, ...overrides });
+const truck = (overrides: Record<string, any> = {}) => ({ id: '10', license_plate: '29H-12345', payload: 2500, driver_id: null, fuel_consumption_limit: 12, status: TruckStatus.AVAILABLE, ownership_type: 'VENDOR', vendor_id: 'vendor-1', ...overrides });
+
 
 describe('TrucksService canonical schema', () => {
   let service: TrucksService;
@@ -31,7 +32,7 @@ describe('TrucksService canonical schema', () => {
   let usersRepo: ReturnType<typeof makeRepo>;
   let tripsRepo: ReturnType<typeof makeRepo>;
   let hubsRepo: ReturnType<typeof makeRepo>;
-  let vendorsService: { resolveDefaultVendorId: jest.Mock };
+  let vendorsService: { resolveDefaultVendorId: jest.Mock; findOne: jest.Mock };
 
   beforeEach(async () => {
     trucksRepo = makeRepo();
@@ -43,7 +44,10 @@ describe('TrucksService canonical schema', () => {
         getRepository: (entity: unknown) => entity === TruckEntity ? trucksRepo : tripsRepo,
       })),
     };
-    vendorsService = { resolveDefaultVendorId: jest.fn().mockResolvedValue('vendor-1') };
+    vendorsService = {
+      resolveDefaultVendorId: jest.fn().mockResolvedValue('vendor-1'),
+      findOne: jest.fn().mockResolvedValue({ id: 'vendor-1', code: 'NCC1', name: 'NCC 1' }),
+    };
     usersRepo.findOne.mockResolvedValue({ id: '7', role_mask: Roles.DRIVER });
     tripsRepo.count.mockResolvedValue(0);
     hubsRepo.findOne.mockResolvedValue({ id: 'hub-1', code: 'HAN', is_active: true, deleted_at: null });
@@ -64,8 +68,8 @@ describe('TrucksService canonical schema', () => {
 
   it('create lưu đúng 6 field schema TRUCKS', async () => {
     mockUniquePlate(null);
-    const result = await service.create({ license_plate: ' 29h-12345 ', payload: 2500, driver_id: '7', fuel_consumption_limit: 11, status: TruckStatus.AVAILABLE }, manager);
-    expect(result).toMatchObject({ license_plate: '29H-12345', payload: 2500, driver_id: '7', fuel_consumption_limit: 11, status: TruckStatus.AVAILABLE });
+    const result = await service.create({ license_plate: ' 29h-12345 ', payload: 2500, driver_id: '7', fuel_consumption_limit: 11, status: TruckStatus.AVAILABLE, vendor_id: 'vendor-1' }, manager);
+    expect(result).toMatchObject({ license_plate: '29H-12345', payload: 2500, driver_id: null, fuel_consumption_limit: 11, status: TruckStatus.AVAILABLE });
     expect(result).not.toHaveProperty('plate_number');
     expect(result).not.toHaveProperty('capacity_kg');
   });
@@ -126,21 +130,27 @@ describe('TrucksService canonical schema', () => {
     }, manager)).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('BKS đối tác bắt buộc gắn NCC', async () => {
+    mockUniquePlate(null);
+
+    await expect(service.create({
+      license_plate: '29H-99999',
+      payload: 2500,
+      ownership_type: 'VENDOR',
+    }, manager)).rejects.toThrow('BKS đối tác phải được gán nhà cung cấp (NCC)');
+  });
+
   it('create trùng license_plate bị chặn', async () => {
     mockUniquePlate(truck());
     await expect(service.create({ license_plate: '29H-12345', payload: 2500 }, manager)).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('create với driver không tồn tại bị chặn', async () => {
+  it('BKS đối tác không lưu tài xế cố định vì tài xế nhập theo chuyến', async () => {
     mockUniquePlate(null);
     usersRepo.findOne.mockResolvedValue(null);
-    await expect(service.create({ license_plate: '29H-12345', payload: 2500, driver_id: '7' }, manager)).rejects.toBeInstanceOf(NotFoundException);
-  });
-
-  it('create với user không có DRIVER role bị chặn', async () => {
-    mockUniquePlate(null);
-    usersRepo.findOne.mockResolvedValue({ id: '7', role_mask: Roles.WAREHOUSE });
-    await expect(service.create({ license_plate: '29H-12345', payload: 2500, driver_id: '7' }, manager)).rejects.toBeInstanceOf(BadRequestException);
+    const result = await service.create({ license_plate: '29H-12345', payload: 2500, driver_id: '7', ten_lai_xe: 'Tài xế tạm', vendor_id: 'vendor-1' }, manager);
+    expect(result).toMatchObject({ driver_id: null, ten_lai_xe: null });
+    expect(usersRepo.findOne).not.toHaveBeenCalled();
   });
 
   it('findAll lọc trực tiếp theo NCC để danh sách chọn BKS không bị mất do phân trang', async () => {

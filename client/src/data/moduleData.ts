@@ -120,7 +120,7 @@ export const moduleGroups: ModuleGroup[] = [
     section: 'Danh mục xe',
     requiredRoleMask: DISPATCHER | MANAGER_ROLES,
     items: [
-      { icon: TruckIcon, title: 'Danh sách xe', description: 'Quản lý lái xe, khu vực, nhà xe, BKS và loại xe.', colorScheme: 'cyan', path: '/fleet/vehicles', requiredRoleMask: DISPATCHER | MANAGER_ROLES },
+      { icon: TruckIcon, title: 'BKS xe đối tác', description: 'Quản lý BKS gắn NCC; tài xế nhập riêng theo từng chuyến.', colorScheme: 'cyan', path: '/fleet/vehicles', requiredRoleMask: DISPATCHER | MANAGER_ROLES },
       { icon: TruckIcon, title: 'Xe nội bộ theo bưu cục', description: 'Danh mục BKS xe công ty, gán bưu cục hoạt động và chọn khi tạo chuyến.', colorScheme: 'teal', path: '/fleet/internal-vehicles', requiredRoleMask: DISPATCHER | MANAGER_ROLES },
       { icon: Fuel, title: 'Chi phí xe', description: 'Theo dõi ngày, BKS, loại chi phí, số tiền và trạng thái.', colorScheme: 'amber', path: '/fleet/vehicle-costs', requiredRoleMask: DISPATCHER | MANAGER_ROLES },
     ],

@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { Fuel, Gauge, Hash, Tag, Truck, User, X } from 'lucide-react';
+import { Building2, Fuel, Gauge, Tag, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { ReactNode } from 'react';
 import { SearchableSelect } from '../../../../components/ui/SearchableSelect';
@@ -15,14 +15,14 @@ interface Props {
   formState: TruckFormState;
   setFormField: <K extends keyof TruckFormState>(key: K, value: TruckFormState[K]) => void;
   statusOptions: FilterOption[];
-  driverOptions: FilterOption[];
   internalOnly?: boolean;
   hubOptions?: FilterOption[];
+  vendorOptions?: FilterOption[];
 }
 
 const inputClass = 'w-full h-10 rounded-xl border border-border bg-white pl-10 pr-3 text-[13px] font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/10';
 
-export default function AddEditTruckDialog({ isOpen, isClosing, isEditMode, isSubmitting, onClose, onSubmit, formState, setFormField, statusOptions, driverOptions, internalOnly = false, hubOptions = [] }: Props) {
+export default function AddEditTruckDialog({ isOpen, isClosing, isEditMode, isSubmitting, onClose, onSubmit, formState, setFormField, statusOptions, internalOnly = false, hubOptions = [], vendorOptions = [] }: Props) {
   if (!isOpen && !isClosing) return null;
 
   return createPortal(
@@ -58,11 +58,9 @@ export default function AddEditTruckDialog({ isOpen, isClosing, isEditMode, isSu
                 <SelectField label="Gán bưu cục" value={formState.hub_id} options={hubOptions} onChange={value => setFormField('hub_id', value)} icon={<Tag size={16} />} />
               </Section>
             ) : (
-              <Section title="Phân công" icon={<User size={16} />}>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <SelectField label="Tài xế mặc định (không bắt buộc)" value={formState.driver_id} options={driverOptions} onChange={value => setFormField('driver_id', value)} icon={<User size={16} />} />
-                  <Field label="Mã tài xế" icon={<Hash size={16} />}><input value={formState.driver_id || 'Chưa gán'} disabled className={`${inputClass} opacity-80 disabled:cursor-not-allowed`} /></Field>
-                </div>
+              <Section title="Nhà cung cấp" icon={<Building2 size={16} />}>
+                <SelectField label="Gán nhà cung cấp (NCC)" value={formState.vendor_id} options={vendorOptions} onChange={value => setFormField('vendor_id', value)} icon={<Building2 size={16} />} />
+                <p className="mt-3 text-[12px] font-medium text-muted-foreground">Tài xế không gắn cố định với BKS; nhập tên và SĐT tài xế khi tạo hoặc sửa chuyến.</p>
               </Section>
             )}
 

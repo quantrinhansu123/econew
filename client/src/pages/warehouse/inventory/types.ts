@@ -314,4 +314,5 @@ export interface TruckPickOption {
   bks?: string | null;
   nha_xe?: string | null;
   ten_lai_xe?: string | null;
+  vendor_id?: string | null;
 }
