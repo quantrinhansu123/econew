@@ -61,7 +61,7 @@ export default function InlineMoneyInput({
   };
 
   return (
-    <div className="relative min-w-[112px]">
+    <div className="relative min-w-[112px]" onClick={(event) => event.stopPropagation()}>
       <input
         type="text"
         inputMode="numeric"

@@ -1298,7 +1298,18 @@ function InventoryRow({
       case 'waybill_code':
         return (
           <td {...stickyAllOrdersCellProps} className={clsx(stickyAllOrdersCellProps.className, isAllOrders ? 'font-bold' : 'font-extrabold text-primary')}>
-            {displayCode(waybill)}
+            {isAllOrders ? (
+              <button
+                type="button"
+                onClick={() => onDetail(waybill)}
+                className="font-extrabold text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/20"
+                title={`Xem chi tiết ${displayCode(waybill)}`}
+              >
+                {displayCode(waybill)}
+              </button>
+            ) : (
+              displayCode(waybill)
+            )}
           </td>
         );
       case 'customer_name':
@@ -1715,9 +1726,8 @@ function InventoryRow({
         'group border-b border-border align-top transition-colors',
         getStorageAgeRowClass(waybill),
         selected && 'bg-amber-50/60',
-        isAllOrders && 'cursor-pointer hover:bg-sky-50/50',
+        isAllOrders && 'hover:bg-sky-50/50',
       )}
-      onClick={isAllOrders ? () => onDetail(waybill) : undefined}
     >
       {showSelection && (
         <td className="w-10 border-r border-border px-2 py-3 text-center">
@@ -1931,12 +1941,20 @@ function AllOrdersCompactTable({
             return (
               <tr
                 key={`${waybill.id}-${waybill.split_id ?? 'base'}-compact`}
-                className="cursor-pointer odd:bg-white even:bg-slate-50/70 active:bg-blue-50"
-                onClick={() => onDetail(waybill)}
+                className="odd:bg-white even:bg-slate-50/70"
               >
                 <td className={`${cellClass} text-center font-bold text-slate-500`}>{index + 1}</td>
                 <td className={`${cellClass} text-slate-600`}>{formatDate(waybill.sent_date)}</td>
-                <td className={`${cellClass} font-extrabold text-primary`} title={displayCode(waybill)}>{displayCode(waybill)}</td>
+                <td className={cellClass}>
+                  <button
+                    type="button"
+                    onClick={() => onDetail(waybill)}
+                    className="font-extrabold text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    title={`Xem chi tiết ${displayCode(waybill)}`}
+                  >
+                    {displayCode(waybill)}
+                  </button>
+                </td>
                 <td className={`${cellClass} font-semibold`} title={resolveMaKh(waybill)} onClick={(event) => event.stopPropagation()}>
                   {resolveMaKh(waybill) !== '—' ? (
                     <button type="button" onClick={() => void onCustomerLedger(resolveMaKh(waybill))} className="font-extrabold text-violet-700 hover:underline">
