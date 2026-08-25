@@ -7,6 +7,8 @@ import { formatAmountInput, formatMoney, parseAmountInput } from '../../../lib/f
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { ReceiptImageLinks, ReceiptImagePicker } from '../../../components/finance/ReceiptImagePicker';
 import { defaultExpenseCategoryNames, loadExpenseCategoryNames } from '../../../lib/expenseCategories';
+import { normalizeUserList } from '../../../lib/userNormalize';
+import type { UserAccount } from '../../admin/users/types';
 
 type VoucherType = 'Thu' | 'Chi';
 
@@ -108,6 +110,7 @@ const defaultFilters: Filters = { q: '', date_from: '', date_to: '', voucher_typ
 const newForm = (): EntryForm => ({ voucher_type: 'Chi', entry_date: today(), fund_id: '', vendor_id: '', hub_id: '', source: 'Nội bộ', cost_category: expenseCategories[0], detail: '', content: '', note: '', amount: '', attachment_urls: [] });
 const normalizeList = <T,>(response: T[] | { items?: T[]; data?: T[] }) => Array.isArray(response) ? response : response.items || response.data || [];
 const errorMessage = (error: unknown) => error instanceof ApiError ? error.message : error instanceof Error ? error.message : 'Không xử lý được dữ liệu.';
+const accountantDetail = (accountant: UserAccount) => [accountant.name, accountant.username].filter(Boolean).join(' · ') || String(accountant.id);
 
 function buildQuery(filters: Filters) {
   const params = new URLSearchParams({ page: String(filters.page), limit: String(filters.limit) });
@@ -125,6 +128,7 @@ export default function DailyCashJournalPage() {
   const [funds, setFunds] = useState<CashFund[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [hubs, setHubs] = useState<Hub[]>([]);
+  const [accountants, setAccountants] = useState<UserAccount[]>([]);
   const [savedExpenseCategories, setSavedExpenseCategories] = useState<string[]>([]);
   const [meta, setMeta] = useState<JournalResponse['meta']>({ total: 0, page: 1, limit: 20, total_pages: 1, total_income: 0, total_expense: 0, balance: 0 });
   const [loading, setLoading] = useState(true);
@@ -137,15 +141,17 @@ export default function DailyCashJournalPage() {
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
 
   const loadReferences = useCallback(async () => {
-    const [fundResponse, vendorResponse, hubResponse, categoryResponse] = await Promise.all([
+    const [fundResponse, vendorResponse, hubResponse, accountantResponse, categoryResponse] = await Promise.all([
       apiRequest<CashFund[] | { items?: CashFund[]; data?: CashFund[] }>('/finance/cash-funds'),
       apiRequest<Vendor[] | { items?: Vendor[]; data?: Vendor[] }>('/vendors?status=ACTIVE&limit=500'),
       apiRequest<Hub[] | { items?: Hub[]; data?: Hub[] }>('/hubs/active'),
+      apiRequest<unknown>('/users?role_mask=16&is_active=true&limit=100'),
       loadExpenseCategoryNames(),
     ]);
     setFunds(normalizeList(fundResponse).filter((fund) => fund.is_active !== false));
     setVendors(normalizeList(vendorResponse));
     setHubs(normalizeList(hubResponse));
+    setAccountants(normalizeUserList(accountantResponse).users);
     setSavedExpenseCategories(Array.isArray(categoryResponse) ? categoryResponse : []);
   }, []);
 
@@ -317,7 +323,7 @@ export default function DailyCashJournalPage() {
         <div className="flex items-center gap-2"><select value={filters.limit} onChange={(event) => updateFilters({ limit: Number(event.target.value), page: 1 })} className="h-8 rounded-lg border border-border px-2">{[20, 50, 100].map((limit) => <option key={limit} value={limit}>{limit}</option>)}</select><button type="button" disabled={filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border disabled:opacity-40"><ChevronLeft size={14} /></button><b>{filters.page}/{pageCount}</b><button type="button" disabled={filters.page >= pageCount} onClick={() => updateFilters({ page: filters.page + 1 })} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border disabled:opacity-40"><ChevronRight size={14} /></button></div>
       </div>
 
-      {formOpen && <EntryDialog form={form} editing={Boolean(editingId)} categories={categoryOptions} funds={funds} hubs={hubs} vendors={vendors} submitting={submitting} uploadingReceipt={uploadingReceipt} error={formError} onChange={updateForm} onUploadingReceiptChange={setUploadingReceipt} onTypeChange={changeVoucherType} onClose={() => setFormOpen(false)} onSubmit={() => void submit()} />}
+      {formOpen && <EntryDialog form={form} editing={Boolean(editingId)} categories={categoryOptions} funds={funds} hubs={hubs} vendors={vendors} accountants={accountants} submitting={submitting} uploadingReceipt={uploadingReceipt} error={formError} onChange={updateForm} onUploadingReceiptChange={setUploadingReceipt} onTypeChange={changeVoucherType} onClose={() => setFormOpen(false)} onSubmit={() => void submit()} />}
     </div>
   );
 }
@@ -330,8 +336,12 @@ function JournalCard({ entry, onEdit, onRemove }: { entry: JournalEntry; onEdit:
   return <article className="rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-2"><div><TypeBadge value={entry.voucher_type} /><p className="mt-2 text-[14px] font-extrabold">{entry.detail}</p><p className="text-[11px] text-muted-foreground">{new Date(entry.entry_date).toLocaleDateString('vi-VN')} · {[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</p><p className="text-[11px] font-bold text-primary">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || 'Chưa gắn HUB'}</p></div><p className={clsx('text-[15px] font-black', entry.voucher_type === 'Thu' ? 'text-emerald-700' : 'text-red-600')}>{formatMoney(entry.voucher_type === 'Thu' ? entry.income_amount : entry.expense_amount)}</p></div><p className="mt-2 text-[12px]">{entry.content}</p><p className="mt-1 text-[11px] font-bold text-muted-foreground">{entry.cost_category}{entry.vendor_name ? ` · ${entry.vendor_name}` : ''}</p><div className="mt-2"><ReceiptImageLinks images={entry.attachment_urls} /></div>{entry.editable && <div className="mt-3 flex justify-end gap-1 border-t border-border pt-2"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600"><Trash2 size={14} /></button></div>}</article>;
 }
 
-function EntryDialog({ form, editing, categories, funds, hubs, vendors, submitting, uploadingReceipt, error, onChange, onUploadingReceiptChange, onTypeChange, onClose, onSubmit }: { form: EntryForm; editing: boolean; categories: string[]; funds: CashFund[]; hubs: Hub[]; vendors: Vendor[]; submitting: boolean; uploadingReceipt: boolean; error: string; onChange: (patch: Partial<EntryForm>) => void; onUploadingReceiptChange: (uploading: boolean) => void; onTypeChange: (value: VoucherType) => void; onClose: () => void; onSubmit: () => void }) {
+function EntryDialog({ form, editing, categories, funds, hubs, vendors, accountants, submitting, uploadingReceipt, error, onChange, onUploadingReceiptChange, onTypeChange, onClose, onSubmit }: { form: EntryForm; editing: boolean; categories: string[]; funds: CashFund[]; hubs: Hub[]; vendors: Vendor[]; accountants: UserAccount[]; submitting: boolean; uploadingReceipt: boolean; error: string; onChange: (patch: Partial<EntryForm>) => void; onUploadingReceiptChange: (uploading: boolean) => void; onTypeChange: (value: VoucherType) => void; onClose: () => void; onSubmit: () => void }) {
   const inputClass = 'h-11 w-full rounded-lg border border-border bg-white px-3 text-[13px] outline-none focus:border-primary';
+  const accountantOptions = accountants.map((accountant) => ({ value: accountantDetail(accountant), label: accountantDetail(accountant) }));
+  if (form.detail && !accountantOptions.some((option) => option.value === form.detail)) {
+    accountantOptions.unshift({ value: form.detail, label: `${form.detail} · dữ liệu cũ` });
+  }
   return (
     <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-slate-900/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
       <div className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-border bg-white shadow-2xl sm:rounded-lg">
@@ -356,7 +366,7 @@ function EntryDialog({ form, editing, categories, funds, hubs, vendors, submitti
             <Field label={form.voucher_type === 'Chi' ? 'Chi cho bưu cục (HUB) *' : 'Bưu cục ghi nhận'}><select value={form.hub_id} onChange={(event) => onChange({ hub_id: event.target.value })} className={`${inputClass} font-bold`}><option value="">Chọn bưu cục</option>{hubs.map((hub) => <option key={String(hub.id)} value={String(hub.id)}>{[hub.code, hub.name].filter(Boolean).join(' · ')}</option>)}</select></Field>
             <Field label="Loại thu/chi"><SearchableSelect value={form.cost_category} onValueChange={(value) => onChange({ cost_category: value })} options={categories.map((category) => ({ value: category, label: category }))} placeholder="Chọn loại thu/chi" searchPlaceholder="Tìm loại thu/chi..." emptyMessage="Chưa có loại chi phí trong danh mục." disabled={submitting} className="h-11 rounded-lg bg-white px-3 font-bold" /></Field>
             <Field label="Nhà cung cấp (nếu có)"><select value={form.vendor_id} onChange={(event) => onChange({ vendor_id: event.target.value })} className={`${inputClass} font-bold`}><option value="">Không gắn NCC</option>{vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{[vendor.code, vendor.name].filter(Boolean).join(' · ')}</option>)}</select></Field>
-            <Field label="Đối tượng / chi tiết"><input value={form.detail} onChange={(event) => onChange({ detail: event.target.value })} placeholder="Người nộp, người nhận, bộ phận..." className={inputClass} /></Field>
+            <Field label="Đối tượng / chi tiết *"><SearchableSelect value={form.detail} onValueChange={(value) => onChange({ detail: value })} options={accountantOptions} placeholder="Chọn tài khoản kế toán" searchPlaceholder="Tìm tên hoặc tài khoản kế toán..." emptyMessage="Chưa có tài khoản đang hoạt động được cấp quyền Kế toán." disabled={submitting} className="h-11 rounded-lg bg-white px-3 font-bold" /></Field>
             <Field label="Nội dung"><input value={form.content} onChange={(event) => onChange({ content: event.target.value })} placeholder="Nội dung thu hoặc chi..." className={inputClass} /></Field>
           </div>
           <Field label="Ghi chú" className="mt-3"><textarea value={form.note} onChange={(event) => onChange({ note: event.target.value })} rows={3} className="w-full rounded-lg border border-border px-3 py-2 text-[13px] outline-none focus:border-primary" /></Field>
