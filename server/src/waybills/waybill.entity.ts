@@ -58,6 +58,12 @@ export class WaybillEntity {
   @Column({ type: 'double precision' })
   volumetric_weight: number;
 
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  dimension_file_url: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  dimension_file_name: string | null;
+
   @Column({ type: 'enum', enum: PaymentType })
   payment_type: PaymentType;
 

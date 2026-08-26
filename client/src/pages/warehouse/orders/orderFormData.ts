@@ -71,6 +71,8 @@ export const emptyOrderForm = (): NewOrderFormState => ({
   chieuRong: '0',
   chieuCao: '0',
   klQuyDoi: '',
+  dimensionFileUrl: '',
+  dimensionFileName: '',
   m3: '',
   donGia: '0',
   donGiaDonVi: 'Kg',

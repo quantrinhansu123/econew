@@ -17,6 +17,7 @@ import BillListSidebar from './BillListSidebar';
 import CustomerMaKhCombobox from './CustomerMaKhCombobox';
 import ReceiverPhoneCombobox from './ReceiverPhoneCombobox';
 import WaybillImagePicker from './WaybillImagePicker';
+import WaybillDimensionFilePicker from './WaybillDimensionFilePicker';
 
 interface Props {
   embedded?: boolean;
@@ -88,11 +89,12 @@ export default function NewOrderWorkbench({
   error,
 }: Props) {
   const [isImageUploading, setIsImageUploading] = useState(false);
+  const [isDimensionFileUploading, setIsDimensionFileUploading] = useState(false);
   const pricing = useMemo(
     () => calcOrderPricing(form),
     [form],
   );
-  const isBusy = isSubmitting || isImageUploading;
+  const isBusy = isSubmitting || isImageUploading || isDimensionFileUploading;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#e8eef5]">
@@ -287,6 +289,7 @@ export default function NewOrderWorkbench({
                     inputMode="decimal"
                   />
                 </CompactField>
+                <WaybillDimensionFilePicker url={form.dimensionFileUrl} name={form.dimensionFileName} disabled={!canManage || isBusy} onUploadingChange={setIsDimensionFileUploading} onChange={(url, name) => { setField('dimensionFileUrl', url); setField('dimensionFileName', name); }} />
                 <CompactField label="Nội dung" className="col-span-12 sm:col-span-6 xl:col-span-6">
                   <CompactTextarea value={form.noiDung} onChange={(e) => setField('noiDung', e.target.value)} />
                 </CompactField>

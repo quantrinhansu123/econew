@@ -29,6 +29,7 @@ export interface StaffRecord {
   other_allowance?: string | number;
   overtime_hourly_rate?: string | number;
   standard_work_days?: string | number;
+  opening_salary_debt?: string | number;
   note?: string | null;
 }
 

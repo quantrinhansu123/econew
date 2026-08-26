@@ -11,6 +11,8 @@ import { QueryStaffMemberDto } from './dto/query-staff-member.dto';
 import { UpdateStaffMemberDto } from './dto/update-staff-member.dto';
 import { CreateStaffDepartmentDto, UpdateStaffDepartmentDto } from './dto/staff-department.dto';
 import { UpsertStaffAttendanceDto } from './dto/upsert-staff-attendance.dto';
+import { CreateSalaryAdvanceDto } from './dto/create-salary-advance.dto';
+import { UpsertPayrollAdjustmentDto } from './dto/upsert-payroll-adjustment.dto';
 import { StaffMemberService } from './staff-member.service';
 
 @ApiTags('Staff Members')
@@ -68,6 +70,22 @@ export class StaffMemberController {
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   payroll(@Query('month') month: string) {
     return this.staffMemberService.payroll(month);
+  }
+
+  @Get('salary-advances/list')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  listSalaryAdvances(@Query('month') month?: string) { return this.staffMemberService.listSalaryAdvances(month); }
+
+  @Post('salary-advances')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  createSalaryAdvance(@Body() dto: CreateSalaryAdvanceDto, @CurrentUser() currentUser: UserEntity) {
+    return this.staffMemberService.createSalaryAdvance(dto, currentUser);
+  }
+
+  @Put('payroll/:staffId/:month')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  upsertPayrollAdjustment(@Param('staffId') staffId: string, @Param('month') month: string, @Body() dto: UpsertPayrollAdjustmentDto) {
+    return this.staffMemberService.upsertPayrollAdjustment(staffId, month, dto);
   }
 
   @Get(':id')

@@ -354,6 +354,16 @@ const ensureStaffDirectorySchema = async (dataSource: DataSource) => {
   `);
 };
 
+const ensureSalaryAdvanceSchema = async (dataSource: DataSource) => {
+  await dataSource.query(`ALTER TABLE "staff_members" ADD COLUMN IF NOT EXISTS "opening_salary_debt" numeric(14,2) NOT NULL DEFAULT 0`);
+  await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "dimension_file_url" varchar(1000)`);
+  await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "dimension_file_name" varchar(255)`);
+  await dataSource.query(`CREATE TABLE IF NOT EXISTS "staff_payroll_adjustments" ("id" bigserial PRIMARY KEY, "staff_member_id" bigint NOT NULL REFERENCES "staff_members"("id") ON DELETE CASCADE, "payroll_month" varchar(7) NOT NULL, "reward_amount" numeric(14,2) NOT NULL DEFAULT 0, "note" varchar(1000), "updated_at" timestamp NOT NULL DEFAULT now(), CONSTRAINT "UQ_staff_payroll_adjustment_month" UNIQUE ("staff_member_id", "payroll_month"))`);
+  await dataSource.query(`CREATE TABLE IF NOT EXISTS "salary_advances" ("id" bigserial PRIMARY KEY, "staff_member_id" bigint NOT NULL REFERENCES "staff_members"("id") ON DELETE RESTRICT, "advance_date" date NOT NULL, "amount" numeric(14,2) NOT NULL, "fund_id" bigint NOT NULL REFERENCES "cash_funds"("id") ON DELETE RESTRICT, "hub_id" bigint REFERENCES "hubs"("id") ON DELETE SET NULL, "note" varchar(1000), "cash_journal_entry_id" bigint NOT NULL REFERENCES "cash_journal_entries"("id") ON DELETE RESTRICT, "created_by" bigint REFERENCES "users"("id") ON DELETE SET NULL, "created_at" timestamp NOT NULL DEFAULT now())`);
+  await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_salary_advances_staff_date" ON "salary_advances" ("staff_member_id", "advance_date")`);
+  await dataSource.query(`INSERT INTO "expense_categories" ("name", "description", "is_active", "sort_order") SELECT '334-Phải trả người lao động', 'Các khoản chi lương, tạm ứng lương', true, 5 WHERE NOT EXISTS (SELECT 1 FROM "expense_categories" WHERE LOWER("name") = LOWER('334-Phải trả người lao động'))`);
+};
+
 const baselineLegacyDatabase = async (dataSource: DataSource): Promise<boolean> => {
   const [{ waybills_exists: waybillsExists }] = await dataSource.query(
     `SELECT to_regclass('public.waybills') IS NOT NULL AS waybills_exists`,
@@ -426,6 +436,7 @@ async function main() {
     await ensureExpenseCategorySchema(dataSource);
     await ensureStaffDirectorySchema(dataSource);
     await ensureInternalFleetAndPayrollSchema(dataSource);
+    await ensureSalaryAdvanceSchema(dataSource);
     await ensurePartnerFleetDirectory(dataSource);
     if (wasBaselined) return;
     const executed = await dataSource.runMigrations({ transaction: 'each' });

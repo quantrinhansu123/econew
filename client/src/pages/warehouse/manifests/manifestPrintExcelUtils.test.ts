@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CellObject } from 'xlsx';
+import { read, write, type CellObject } from 'xlsx';
 import {
   buildManifestPrintRows,
   groupManifestPrintLinksByDestination,
@@ -58,5 +58,17 @@ describe('manifest print Excel workbook', () => {
     expect(worksheet.C6.v).toBe(10072500);
     expect(worksheet['!merges']).toContainEqual({ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } });
     expect(worksheet['!merges']).toContainEqual({ s: { r: 6, c: 0 }, e: { r: 6, c: 3 } });
+    expect(worksheet['!rows']?.map((row) => row.hpt)).toEqual([28, 60, 60, 34, 38, 24, 26]);
+    expect((worksheet.A1 as CellObject).s?.font).toMatchObject({ name: 'Times New Roman', sz: 16, bold: true });
+    expect((worksheet.A2 as CellObject).s?.font).toMatchObject({ name: 'Times New Roman', sz: 10 });
+    expect((worksheet.A4 as CellObject).s?.font).toMatchObject({ name: 'Arial', sz: 9, bold: true });
+    expect(worksheet['!margins']).toEqual({ left: 0.2, right: 0.2, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 });
+    expect(worksheet['!pageSetup']).toMatchObject({ orientation: 'landscape', fitToWidth: 1, fitToHeight: 0, paperSize: 9 });
+
+    const exported = write(workbook!, { type: 'buffer', bookType: 'xlsx' });
+    expect(exported.byteLength).toBeGreaterThan(1_000);
+    const reopened = read(exported, { type: 'buffer' });
+    expect(reopened.Sheets['Bang ke phat hang'].A1.v).toBe('BẢNG KÊ PHÁT HÀNG ECO');
+    expect(reopened.Sheets['Bang ke phat hang'].A2.v).toContain('Bưu cục Hà Nội');
   });
 });

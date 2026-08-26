@@ -38,6 +38,8 @@ export class CreateWaybillDto {
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) height?: number;
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) volumetric_weight?: number;
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) the_tich_m3?: number;
+  @ApiPropertyOptional({ description: 'URL file Excel bảng quy đổi kích thước' }) @IsOptional() @IsString() @MaxLength(1000) dimension_file_url?: string;
+  @ApiPropertyOptional({ description: 'Tên file Excel bảng quy đổi kích thước' }) @IsOptional() @IsString() @MaxLength(255) dimension_file_name?: string;
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @IsNumber() @Min(1) package_count?: number;
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) cod_amount?: number;
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) freight_amount?: number;

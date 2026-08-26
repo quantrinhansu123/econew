@@ -97,6 +97,12 @@ export class CreateStaffMemberDto {
   standard_work_days?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  opening_salary_debt?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(1000)
   note?: string | null;

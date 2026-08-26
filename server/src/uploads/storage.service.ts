@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_PRICE_LIST_BYTES = 10 * 1024 * 1024;
+const MAX_SPREADSHEET_BYTES = 10 * 1024 * 1024;
 const STORAGE_TIMEOUT_MS = 12_000;
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
@@ -196,5 +197,14 @@ export class StorageService {
     }
 
     return this.storeObject(file, `customer-price-lists/${customerFolder}`, ext);
+  }
+
+  async uploadWaybillDimensionFile(file: Express.Multer.File): Promise<string> {
+    if (!file?.buffer?.length) throw new BadRequestException('Thiếu file quy đổi kích thước.');
+    if (file.size > MAX_SPREADSHEET_BYTES) throw new BadRequestException('File quy đổi tối đa 10 MB.');
+    const nameExt = file.originalname?.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase() || '';
+    const allowed = new Set(['xlsx', 'xls']);
+    if (!allowed.has(nameExt)) throw new BadRequestException('Chỉ chấp nhận file Excel .xlsx hoặc .xls.');
+    return this.storeObject(file, 'waybill-dimensions', nameExt);
   }
 }

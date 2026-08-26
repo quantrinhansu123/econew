@@ -263,6 +263,12 @@ export function uploadWaybillImage(file: File): Promise<string> {
   return uploadImage(file, '/uploads/waybill-images');
 }
 
+export function uploadWaybillDimensionFile(file: File): Promise<string> {
+  if (!/\.(?:xlsx|xls)$/i.test(file.name)) throw new ApiError(400, 'Chỉ chấp nhận file Excel .xlsx hoặc .xls.', null);
+  if (file.size > MAX_PRICE_LIST_BYTES) throw new ApiError(400, 'File quy đổi tối đa 10 MB.', null);
+  return uploadStoredFile(file, '/uploads/waybill-dimension-files', 'Không upload được file quy đổi kích thước.');
+}
+
 export function uploadVendorQrImage(file: File, vendorCode: string): Promise<string> {
   const normalizedVendorCode = vendorCode.trim().toUpperCase();
   if (!normalizedVendorCode) {

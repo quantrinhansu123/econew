@@ -194,6 +194,8 @@ export class WaybillsService {
       height: dto.height ?? 0,
       volumetric_weight: dto.volumetric_weight ?? 0,
       the_tich_m3: dto.the_tich_m3 ?? null,
+      dimension_file_url: dto.dimension_file_url?.trim() || null,
+      dimension_file_name: dto.dimension_file_name?.trim() || null,
       payment_type: this.resolvePaymentType(dto),
       cost_amount: String(dto.freight_amount ?? 0),
       current_state: WaybillStatus.RECEIVED as any,

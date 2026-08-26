@@ -67,6 +67,16 @@ export class UploadsController {
     return this.storageService.uploadWaybillImage(file).then((url) => ({ url }));
   }
 
+  @Post('waybill-dimension-files')
+  @HttpCode(HttpStatus.OK)
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Upload file Excel quy đổi kích thước của vận đơn' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
+  uploadWaybillDimensionFile(@UploadedFile() file: Express.Multer.File) {
+    return this.storageService.uploadWaybillDimensionFile(file).then((url) => ({ url, name: file.originalname }));
+  }
+
   @Post('vendor-qr-images/:vendorCode')
   @HttpCode(HttpStatus.OK)
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)

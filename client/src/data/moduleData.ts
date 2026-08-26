@@ -193,6 +193,7 @@ export const moduleGroups: ModuleGroup[] = [
       { icon: BarChart3, title: 'Dashboard thu chi', description: 'Tổng quan dòng tiền thu bill, chi bill và chi NCC.', colorScheme: 'blue', path: '/finance/cashflow-dashboard', requiredRoleMask: ACCOUNTANT | MANAGER_ROLES },
       { icon: Users, title: 'Tổng danh sách nhân sự nội bộ', description: 'Nhập hồ sơ, bộ phận, bưu cục, lương cơ bản và các khoản phụ cấp.', colorScheme: 'blue', path: '/finance/staff', requiredRoleMask: ACCOUNTANT },
       { icon: Clock, title: 'Bảng chấm công', description: 'Chấm ngày công và giờ tăng ca theo từng ngày trong tháng.', colorScheme: 'teal', path: '/finance/attendance', requiredRoleMask: ACCOUNTANT },
+      { icon: Receipt, title: 'Theo dõi tiền tạm ứng lương', description: 'Nhập tiền trả trước lương theo nhân sự, sổ quỹ và bưu cục.', colorScheme: 'amber', path: '/finance/salary-advances', requiredRoleMask: ACCOUNTANT },
       { icon: BadgeDollarSign, title: 'Tính lương theo ngày công', description: 'Tính lương cơ bản theo ngày công, phụ cấp và giờ tăng ca.', colorScheme: 'emerald', path: '/finance/payroll', requiredRoleMask: ACCOUNTANT },
     ],
   },

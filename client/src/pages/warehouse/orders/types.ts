@@ -48,6 +48,8 @@ export interface WaybillDetail {
   width?: number | string | null;
   height?: number | string | null;
   volumetric_weight?: number | string | null;
+  dimension_file_url?: string | null;
+  dimension_file_name?: string | null;
   the_tich_m3?: number | string | null;
   actual_weight?: number | string | null;
   package_count?: number | string | null;

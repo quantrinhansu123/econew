@@ -70,6 +70,9 @@ describe('StaffMemberService', () => {
       staffRepository as any,
       departmentRepository as any,
       createAttendanceRepository() as any,
+      {} as any,
+      {} as any,
+      {} as any,
     );
   });
 

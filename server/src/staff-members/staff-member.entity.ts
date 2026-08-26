@@ -77,6 +77,9 @@ export class StaffMemberEntity {
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 26 })
   standard_work_days: string;
 
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  opening_salary_debt: string;
+
   @Column({ type: 'varchar', length: 1000, nullable: true })
   note: string | null;
 

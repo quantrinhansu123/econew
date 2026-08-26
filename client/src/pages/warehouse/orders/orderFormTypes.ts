@@ -40,6 +40,8 @@ export interface NewOrderFormState {
   chieuRong: string;
   chieuCao: string;
   klQuyDoi: string;
+  dimensionFileUrl: string;
+  dimensionFileName: string;
   m3: string;
   donGia: string;
   donGiaDonVi: string;
