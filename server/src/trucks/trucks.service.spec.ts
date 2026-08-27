@@ -118,6 +118,34 @@ describe('TrucksService canonical schema', () => {
     expect(vendorsService.resolveDefaultVendorId).not.toHaveBeenCalled();
   });
 
+  it('xe nội bộ lưu tối đa 10 ảnh giấy tờ và loại URL trùng', async () => {
+    mockUniquePlate(null);
+    const urls = Array.from({ length: 11 }, (_, index) => `https://example.com/vehicle-${index}.jpg`);
+    const result = await service.create({
+      license_plate: '29H-88889',
+      payload: 2500,
+      ownership_type: 'INTERNAL',
+      hub_id: 'hub-1',
+      document_image_urls: [urls[0], urls[0], ...urls.slice(1)],
+    }, manager);
+
+    expect(result.document_image_urls).toHaveLength(10);
+    expect(new Set(result.document_image_urls).size).toBe(10);
+  });
+
+  it('BKS đối tác không lưu ảnh giấy tờ xe nội bộ', async () => {
+    mockUniquePlate(null);
+    const result = await service.create({
+      license_plate: '29H-88890',
+      payload: 2500,
+      ownership_type: 'VENDOR',
+      vendor_id: 'vendor-1',
+      document_image_urls: ['https://example.com/vehicle.jpg'],
+    }, manager);
+
+    expect(result.document_image_urls).toEqual([]);
+  });
+
   it('xe nội bộ không được gán ngoài HAN và HCM', async () => {
     mockUniquePlate(null);
     hubsRepo.findOne.mockResolvedValue({ id: 'hub-3', code: 'DNG', is_active: true, deleted_at: null });
@@ -183,6 +211,13 @@ describe('TrucksService canonical schema', () => {
     trucksRepo.findOne.mockResolvedValue(truck());
     const result = await service.update('10', { license_plate: ' hcm-999 ', payload: 3000, fuel_consumption_limit: 13, status: TruckStatus.IN_USE }, manager);
     expect(result).toMatchObject({ license_plate: 'HCM-999', payload: 3000, fuel_consumption_limit: 13, status: TruckStatus.IN_USE });
+  });
+
+  it('update thay danh sách ảnh giấy tờ của xe nội bộ', async () => {
+    mockUniquePlate(null);
+    trucksRepo.findOne.mockResolvedValue(truck({ ownership_type: 'INTERNAL', hub_id: 'hub-1', document_image_urls: [] }));
+    const result = await service.update('10', { document_image_urls: ['https://example.com/registration.jpg'] }, manager);
+    expect(result.document_image_urls).toEqual(['https://example.com/registration.jpg']);
   });
 
   it('khôi phục xe cũ và giữ thông tin NCC, tài xế trong chuyến lịch sử', async () => {

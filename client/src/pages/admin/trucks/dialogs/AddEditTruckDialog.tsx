@@ -1,9 +1,10 @@
 import { createPortal } from 'react-dom';
-import { Building2, Fuel, Gauge, Tag, Truck, X } from 'lucide-react';
+import { Building2, Fuel, Gauge, Images, Tag, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { ReactNode } from 'react';
 import { SearchableSelect } from '../../../../components/ui/SearchableSelect';
 import type { FilterOption, TruckFormState } from '../types';
+import TruckDocumentImagePicker from '../components/TruckDocumentImagePicker';
 
 interface Props {
   isOpen: boolean;
@@ -18,11 +19,12 @@ interface Props {
   internalOnly?: boolean;
   hubOptions?: FilterOption[];
   vendorOptions?: FilterOption[];
+  onUploadingChange?: (uploading: boolean) => void;
 }
 
 const inputClass = 'w-full h-10 rounded-xl border border-border bg-white pl-10 pr-3 text-[13px] font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/10';
 
-export default function AddEditTruckDialog({ isOpen, isClosing, isEditMode, isSubmitting, onClose, onSubmit, formState, setFormField, statusOptions, internalOnly = false, hubOptions = [], vendorOptions = [] }: Props) {
+export default function AddEditTruckDialog({ isOpen, isClosing, isEditMode, isSubmitting, onClose, onSubmit, formState, setFormField, statusOptions, internalOnly = false, hubOptions = [], vendorOptions = [], onUploadingChange }: Props) {
   if (!isOpen && !isClosing) return null;
 
   return createPortal(
@@ -54,9 +56,14 @@ export default function AddEditTruckDialog({ isOpen, isClosing, isEditMode, isSu
             </Section>
 
             {internalOnly ? (
-              <Section title="Bưu cục hoạt động" icon={<Tag size={16} />}>
-                <SelectField label="Gán bưu cục" value={formState.hub_id} options={hubOptions} onChange={value => setFormField('hub_id', value)} icon={<Tag size={16} />} />
-              </Section>
+              <>
+                <Section title="Bưu cục hoạt động" icon={<Tag size={16} />}>
+                  <SelectField label="Gán bưu cục" value={formState.hub_id} options={hubOptions} onChange={value => setFormField('hub_id', value)} icon={<Tag size={16} />} />
+                </Section>
+                <Section title="Giấy tờ xe" icon={<Images size={16} />}>
+                  <TruckDocumentImagePicker value={formState.document_image_urls} onChange={value => setFormField('document_image_urls', value)} onUploadingChange={onUploadingChange} disabled={isSubmitting} />
+                </Section>
+              </>
             ) : (
               <Section title="Nhà cung cấp" icon={<Building2 size={16} />}>
                 <SelectField label="Gán nhà cung cấp (NCC)" value={formState.vendor_id} options={vendorOptions} onChange={value => setFormField('vendor_id', value)} icon={<Building2 size={16} />} />

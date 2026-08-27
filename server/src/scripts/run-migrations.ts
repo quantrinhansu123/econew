@@ -53,6 +53,7 @@ const ensureVendorPaymentProfileSchema = async (dataSource: DataSource) => {
 const ensureInternalFleetAndPayrollSchema = async (dataSource: DataSource) => {
   await dataSource.query(`ALTER TABLE "trucks" ADD COLUMN IF NOT EXISTS "ownership_type" varchar(16) NOT NULL DEFAULT 'VENDOR'`);
   await dataSource.query(`ALTER TABLE "trucks" ADD COLUMN IF NOT EXISTS "hub_id" bigint NULL`);
+  await dataSource.query(`ALTER TABLE "trucks" ADD COLUMN IF NOT EXISTS "document_image_urls" jsonb NOT NULL DEFAULT '[]'::jsonb`);
   await dataSource.query(`UPDATE "trucks" SET "driver_id" = NULL, "ten_lai_xe" = NULL, "vendor_id" = NULL, "nha_xe" = NULL WHERE "ownership_type" = 'INTERNAL'`);
   await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_trucks_ownership_type" ON "trucks" ("ownership_type")`);
   await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_trucks_hub_id" ON "trucks" ("hub_id")`);

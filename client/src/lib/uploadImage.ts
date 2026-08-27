@@ -263,6 +263,10 @@ export function uploadWaybillImage(file: File): Promise<string> {
   return uploadImage(file, '/uploads/waybill-images');
 }
 
+export function uploadVehicleDocument(file: File): Promise<string> {
+  return uploadImage(file, '/uploads/vehicle-documents');
+}
+
 export function uploadWaybillDimensionFile(file: File): Promise<string> {
   if (!/\.(?:xlsx|xls)$/i.test(file.name)) throw new ApiError(400, 'Chỉ chấp nhận file Excel .xlsx hoặc .xls.', null);
   if (file.size > MAX_PRICE_LIST_BYTES) throw new ApiError(400, 'File quy đổi tối đa 10 MB.', null);

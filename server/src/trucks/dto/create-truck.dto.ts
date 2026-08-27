@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, IsUrl, Min } from 'class-validator';
 import { TruckStatus } from './truck.enums';
 
 export class CreateTruckDto {
@@ -71,4 +71,11 @@ export class CreateTruckDto {
   @IsOptional()
   @IsString()
   vendor_id?: string;
+
+  @ApiPropertyOptional({ type: [String], description: 'Tối đa 10 ảnh giấy tờ xe nội bộ' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsUrl({}, { each: true })
+  document_image_urls?: string[];
 }

@@ -25,6 +25,7 @@ export interface Truck {
   bks?: string | null;
   hub_id?: string | number | null;
   hub?: { id?: string | number; code?: string | null; name?: string | null } | null;
+  document_image_urls?: string[] | null;
 }
 
 export interface TruckListResponse {
@@ -63,6 +64,7 @@ export interface TruckFormState {
   bks: string;
   hub_id: string;
   vendor_id: string;
+  document_image_urls: string[];
 }
 
 export interface FilterOption {

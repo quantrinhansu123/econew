@@ -63,6 +63,7 @@ export class TrucksService {
       loai_xe: dto.loai_xe?.trim() || null,
       khu_vuc: dto.khu_vuc?.trim() || null,
       vendor_id: vendorId,
+      document_image_urls: ownershipType === 'INTERNAL' ? this.normalizeDocumentImages(dto.document_image_urls) : [],
     });
 
     try {
@@ -160,6 +161,9 @@ export class TrucksService {
       vendor: nextOwnershipType === 'INTERNAL' ? null : nextVendor,
       ownership_type: nextOwnershipType,
       hub_id: nextHubId,
+      document_image_urls: nextOwnershipType === 'INTERNAL'
+        ? dto.document_image_urls === undefined ? truck.document_image_urls : this.normalizeDocumentImages(dto.document_image_urls)
+        : [],
     });
     return this.trucksRepository.save(truck);
   }
@@ -293,6 +297,10 @@ export class TrucksService {
     const normalized = licensePlate.trim().toUpperCase();
     if (!normalized) throw new BadRequestException('Truck license plate is required');
     return normalized;
+  }
+
+  private normalizeDocumentImages(urls?: string[]): string[] {
+    return [...new Set((urls ?? []).map((url) => url.trim()).filter(Boolean))].slice(0, 10);
   }
 
   private assertRole(currentUser: UserEntity, roles: number[]) {

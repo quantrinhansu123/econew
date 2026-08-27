@@ -67,6 +67,16 @@ export class UploadsController {
     return this.storageService.uploadWaybillImage(file).then((url) => ({ url }));
   }
 
+  @Post('vehicle-documents')
+  @HttpCode(HttpStatus.OK)
+  @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Upload ảnh giấy tờ xe nội bộ lên Supabase Storage' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }))
+  uploadVehicleDocument(@UploadedFile() file: Express.Multer.File) {
+    return this.storageService.uploadVehicleDocument(file).then((url) => ({ url }));
+  }
+
   @Post('waybill-dimension-files')
   @HttpCode(HttpStatus.OK)
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)

@@ -48,6 +48,9 @@ export class TruckEntity {
   @Column({ type: 'bigint', nullable: true })
   vendor_id: string | null;
 
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  document_image_urls: string[];
+
   @ManyToOne(() => VendorEntity, (vendor) => vendor.trucks, { nullable: true })
   @JoinColumn({ name: 'vendor_id' })
   vendor: VendorEntity | null;

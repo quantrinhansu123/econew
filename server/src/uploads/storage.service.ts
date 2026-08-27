@@ -164,6 +164,10 @@ export class StorageService {
     return this.uploadImage(file, 'waybills');
   }
 
+  uploadVehicleDocument(file: Express.Multer.File): Promise<string> {
+    return this.uploadImage(file, 'vehicle-documents');
+  }
+
   uploadVendorQrImage(file: Express.Multer.File, vendorCode: string): Promise<string> {
     const normalizedCode = vendorCode?.trim().toUpperCase()
       .normalize('NFD')
