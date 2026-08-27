@@ -289,7 +289,18 @@ export default function NewOrderWorkbench({
                     inputMode="decimal"
                   />
                 </CompactField>
-                <WaybillDimensionFilePicker url={form.dimensionFileUrl} name={form.dimensionFileName} disabled={!canManage || isBusy} onUploadingChange={setIsDimensionFileUploading} onChange={(url, name) => { setField('dimensionFileUrl', url); setField('dimensionFileName', name); }} />
+                <WaybillDimensionFilePicker
+                  url={form.dimensionFileUrl}
+                  name={form.dimensionFileName}
+                  waybillCode={form.soBill}
+                  packageCount={form.soKien}
+                  disabled={!canManage || isBusy}
+                  onUploadingChange={setIsDimensionFileUploading}
+                  onChange={(url, name) => { setField('dimensionFileUrl', url); setField('dimensionFileName', name); }}
+                  onTotalsChange={({ packageCount: count, volumeM3, convertedWeightKg }) => {
+                    setField('soKien', String(count)); setField('m3', String(volumeM3)); setField('klQuyDoi', String(convertedWeightKg));
+                  }}
+                />
                 <CompactField label="Nội dung" className="col-span-12 sm:col-span-6 xl:col-span-6">
                   <CompactTextarea value={form.noiDung} onChange={(e) => setField('noiDung', e.target.value)} />
                 </CompactField>
