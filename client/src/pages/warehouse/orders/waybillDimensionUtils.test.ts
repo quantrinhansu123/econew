@@ -6,15 +6,15 @@ const row = (values: Partial<DimensionRow> = {}): DimensionRow => ({
 });
 
 describe('waybill dimension calculations', () => {
-  it('calculates CBM and converted weight with divisor 5000', () => {
-    expect(calculateDimensionRow(row())).toMatchObject({ volumeM3: 0.4, convertedWeightKg: 80 });
+  it('calculates CBM and converted weight with divisor 3000', () => {
+    expect(calculateDimensionRow(row())).toMatchObject({ volumeM3: 0.4, convertedWeightKg: 133.33 });
   });
 
   it('accepts Vietnamese decimal commas and sums all rows', () => {
     const totals = calculateDimensionTotals([row(), row({ id: '2', quantity: '1', lengthCm: '50,5', widthCm: '20', heightCm: '10' })]);
     expect(totals.packageCount).toBe(3);
     expect(totals.volumeM3).toBe(0.4101);
-    expect(totals.convertedWeightKg).toBe(82.02);
+    expect(totals.convertedWeightKg).toBe(136.7);
   });
 
   it('treats incomplete or invalid cells as zero', () => {

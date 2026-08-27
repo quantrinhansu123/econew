@@ -2,9 +2,11 @@ import type { HubSummary } from './types';
 
 export function getDefaultOriginHubId(
   hubs: HubSummary[],
-  assignedHubId?: string | number | null,
+  assignedHubIds: Array<string | number> = [],
 ): string {
-  const assigned = hubs.find((hub) => String(hub.id) === String(assignedHubId || ''));
+  const assigned = assignedHubIds.length === 1
+    ? hubs.find((hub) => String(hub.id) === String(assignedHubIds[0]))
+    : undefined;
   return String(
     assigned?.id
     || hubs.find((hub) => hub.code?.trim().toUpperCase() === 'HAN')?.id

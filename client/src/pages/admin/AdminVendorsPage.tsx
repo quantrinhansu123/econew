@@ -5,8 +5,6 @@ import {
   ArrowLeft,
   BadgeDollarSign,
   Building2,
-  ChevronLeft,
-  ChevronRight,
   Edit,
   Eye,
   Filter,
@@ -111,7 +109,7 @@ export default function AdminVendorsPage() {
     province: [],
     contract_type: [],
     page: 1,
-    limit: 10,
+    limit: 500,
   });
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [total, setTotal] = useState(0);
@@ -140,7 +138,6 @@ export default function AdminVendorsPage() {
   const user = useMemo(getStoredUser, []);
   const canManage = isManager(user?.role_mask ?? 0);
   const canDelete = isDirector(user?.role_mask ?? 0);
-  const totalPages = Math.max(1, Math.ceil(total / filters.limit));
   const visibleColumnSet = useMemo(() => new Set(visibleColumns), [visibleColumns]);
   const orderedVisibleHeaders = useMemo(
     () =>
@@ -608,47 +605,8 @@ export default function AdminVendorsPage() {
           </div>
         )}
 
-        <div className="border-t border-border bg-card flex flex-col items-center justify-between gap-1 px-2 py-1 text-[11px] text-muted-foreground shrink-0 sm:flex-row sm:gap-3 sm:px-4 sm:py-2 sm:text-[12px]">
-          <span>
-            <b className="text-foreground font-medium">
-              {(filters.page - 1) * filters.limit + (vendors.length ? 1 : 0)}–
-              {(filters.page - 1) * filters.limit + vendors.length}
-            </b>
-            /Tổng:{total}
-          </span>
-          <div className="flex items-center gap-2">
-            <select
-              value={filters.limit}
-              onChange={event => updateFilter('limit', Number(event.target.value))}
-              className="h-7 rounded border border-border bg-card px-1.5 text-[11px] focus:outline-none sm:h-8 sm:px-2 sm:text-[12px]"
-            >
-              {[10, 20, 50].map(limit => (
-                <option key={limit} value={limit}>
-                  {limit}
-                </option>
-              ))}
-            </select>
-            <span>/ trang</span>
-            <button
-              disabled={filters.page <= 1}
-              onClick={() => updateFilter('page', filters.page - 1)}
-              className="rounded-lg border border-border bg-card p-1.5 disabled:opacity-40 hover:bg-muted sm:p-2"
-            >
-              <ChevronLeft size={15} />
-            </button>
-            <button
-              disabled={filters.page >= totalPages}
-              onClick={() => updateFilter('page', filters.page + 1)}
-              className="rounded-lg border border-border bg-card p-1.5 disabled:opacity-40 hover:bg-muted sm:p-2"
-            >
-              <ChevronRight size={15} />
-            </button>
-            <span className="flex h-7 items-center rounded bg-primary px-2 text-[11px] font-bold text-white sm:h-8 sm:text-[12px]">
-              {filters.page}
-            </span>
-            <span>/</span>
-            <span className="text-foreground">{totalPages}</span>
-          </div>
+        <div className="flex shrink-0 items-center justify-between border-t border-border bg-card px-4 py-2 text-[12px] text-muted-foreground">
+          <span>Hiển thị <b className="font-bold text-foreground">{vendors.length}</b>/Tổng:{total} NCC trong một danh sách.</span>
         </div>
       </div>
 

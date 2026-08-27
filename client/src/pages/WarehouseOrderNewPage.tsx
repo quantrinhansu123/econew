@@ -127,6 +127,10 @@ export default function WarehouseOrderNewPage({
     () => hubs.filter(normalizeActive).map((hub) => ({ value: String(hub.id), label: formatHub(hub) })),
     [hubs],
   );
+  const assignedHubIds = useMemo(
+    () => user?.hub_ids?.length ? user.hub_ids : user?.hubs?.map((hub) => hub.id) || [],
+    [user],
+  );
 
   const volumetricWeight = useMemo(
     () => parseDecimalNumber(form.klQuyDoi),
@@ -203,7 +207,7 @@ export default function WarehouseOrderNewPage({
           return;
         }
 
-        const defaultOrigin = getDefaultOriginHubId(activeHubs, user?.hub_id);
+        const defaultOrigin = getDefaultOriginHubId(activeHubs, assignedHubIds);
         const destinationHub = getPreferredDestinationHub(activeHubs, defaultOrigin);
         const defaultDest = String(destinationHub?.id || '');
         const nextCode = await loadNextWaybillCode(defaultOrigin);
@@ -226,7 +230,7 @@ export default function WarehouseOrderNewPage({
       }
     };
     void load();
-  }, [embeddedWaybillId, loadBills, loadNextWaybillCode, location.state, loginName, searchParams, user?.hub_id]);
+  }, [assignedHubIds, embeddedWaybillId, loadBills, loadNextWaybillCode, location.state, loginName, searchParams]);
 
   useEffect(() => {
     const refreshHubsAfterCatalogEdit = () => {
@@ -412,7 +416,7 @@ export default function WarehouseOrderNewPage({
     setCustomerPriceList(null);
     skipNewFormInitRef.current = false;
     loadedEditIdRef.current = '';
-    const defaultOrigin = getDefaultOriginHubId(hubs, user?.hub_id);
+    const defaultOrigin = getDefaultOriginHubId(hubs, assignedHubIds);
     const destinationHub = getPreferredDestinationHub(hubs, defaultOrigin);
     const defaultDest = String(destinationHub?.id || '');
     const nextCode = await loadNextWaybillCode(defaultOrigin);

@@ -9,8 +9,8 @@ const hubs: HubSummary[] = [
 ];
 
 describe('order HUB defaults', () => {
-  it('uses the assigned HUB as origin and HCM as destination by default', () => {
-    const originHubId = getDefaultOriginHubId(hubs, '1');
+  it('uses the only assigned HUB as origin and HCM as destination by default', () => {
+    const originHubId = getDefaultOriginHubId(hubs, ['1']);
 
     expect(originHubId).toBe('1');
     expect(getPreferredDestinationHub(hubs, originHubId)?.code).toBe('HCM');
@@ -22,5 +22,13 @@ describe('order HUB defaults', () => {
 
   it('falls back to HAN as origin when the user has no assigned HUB', () => {
     expect(getDefaultOriginHubId(hubs)).toBe('1');
+  });
+
+  it('defaults to HAN when the user manages multiple HUBs', () => {
+    expect(getDefaultOriginHubId(hubs, ['3', '2'])).toBe('1');
+  });
+
+  it('uses a non-HAN HUB when it is the only assigned HUB', () => {
+    expect(getDefaultOriginHubId(hubs, ['3'])).toBe('3');
   });
 });

@@ -1,5 +1,7 @@
 import * as XLSX from 'xlsx';
 
+export const DIMENSION_WEIGHT_DIVISOR = 3_000;
+
 export interface DimensionRow {
   id: string;
   quantity: string;
@@ -37,7 +39,7 @@ export const calculateDimensionRow = (row: DimensionRow): DimensionRowResult => 
     widthCm,
     heightCm,
     volumeM3: round(cubicCentimeters / 1_000_000, 6),
-    convertedWeightKg: round(cubicCentimeters / 5_000, 2),
+    convertedWeightKg: round(cubicCentimeters / DIMENSION_WEIGHT_DIVISOR, 2),
   };
 };
 
@@ -74,7 +76,7 @@ export const createDimensionWorkbookFile = (rows: DimensionRow[], waybillCode: s
         result.widthCm,
         result.heightCm,
         { f: `B${excelRow}*C${excelRow}*D${excelRow}*E${excelRow}/1000000`, v: result.volumeM3 } as unknown as number,
-        { f: `B${excelRow}*C${excelRow}*D${excelRow}*E${excelRow}/5000`, v: result.convertedWeightKg } as unknown as number,
+        { f: `B${excelRow}*C${excelRow}*D${excelRow}*E${excelRow}/${DIMENSION_WEIGHT_DIVISOR}`, v: result.convertedWeightKg } as unknown as number,
       ];
     }),
   ];

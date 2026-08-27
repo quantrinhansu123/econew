@@ -68,7 +68,7 @@ export class VendorsService {
 
   async findAll(query: QueryVendorsDto) {
     const page = query.page ?? 1;
-    const limit = clampPaginationLimit(query.limit, 20);
+    const limit = Math.min(query.limit ?? 20, 500);
     const qb = this.vendorsRepository.createQueryBuilder('vendor');
     this.applyFilters(qb, query);
     const [items, total] = await qb.orderBy('vendor.id', 'DESC').skip((page - 1) * limit).take(limit).getManyAndCount();
