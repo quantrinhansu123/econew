@@ -2,170 +2,67 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from './storage.service';
 
-const imageFile = {
-  buffer: Buffer.from('image-bytes'),
-  mimetype: 'image/jpeg',
-  size: 11,
-} as Express.Multer.File;
-
-const priceListFile = {
-  buffer: Buffer.from('%PDF-1.7 price-list'),
-  mimetype: 'application/pdf',
-  originalname: 'bao-gia.pdf',
-  size: 11,
-} as Express.Multer.File;
-
-const jsonResponse = (status: number, body: unknown) => new Response(
-  JSON.stringify(body),
-  { status, headers: { 'Content-Type': 'application/json' } },
-);
+const imageFile = { buffer: Buffer.from('image-bytes'), mimetype: 'image/jpeg', originalname: 'photo.jpg', size: 11 } as Express.Multer.File;
+const priceListFile = { buffer: Buffer.from('%PDF-1.7 price-list'), mimetype: 'application/pdf', originalname: 'bao-gia.pdf', size: 11 } as Express.Multer.File;
+const excelFile = { buffer: Buffer.from('xlsx-bytes'), mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', originalname: 'kich-thuoc.xlsx', size: 11 } as Express.Multer.File;
+const response = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 describe('StorageService', () => {
   let config: Record<string, string>;
   let fetchMock: jest.SpiedFunction<typeof fetch>;
 
-  const createService = () => {
-    const configService = {
-      get: jest.fn((key: string) => config[key]),
-    } as unknown as ConfigService;
-    return new StorageService(configService);
-  };
+  const createService = () => new StorageService({ get: jest.fn((key: string) => config[key]) } as unknown as ConfigService);
 
   beforeEach(() => {
-    config = {
-      SUPABASE_URL: 'https://project.supabase.co',
-      SUPABASE_STORAGE_BUCKET: 'payment-proofs',
-    };
+    config = { CLOUDINARY_CLOUD_NAME: 'eco-cloud', CLOUDINARY_API_KEY: '123456', CLOUDINARY_API_SECRET: 'server-secret', CLOUDINARY_FOLDER: 'eco-transport' };
     fetchMock = jest.spyOn(global, 'fetch');
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
   });
 
-  afterEach(() => {
-    jest.restoreAllMocks();
+  afterEach(() => jest.restoreAllMocks());
+
+  it('uploads vehicle documents to the configured Cloudinary folder', async () => {
+    fetchMock.mockResolvedValueOnce(response(200, { secure_url: 'https://res.cloudinary.com/eco-cloud/image/upload/vehicle.jpg' }));
+    await expect(createService().uploadVehicleDocument(imageFile)).resolves.toContain('res.cloudinary.com');
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://api.cloudinary.com/v1_1/eco-cloud/auto/upload');
+    const body = fetchMock.mock.calls[0][1]?.body as FormData;
+    expect(body.get('api_key')).toBe('123456');
+    expect(body.get('folder')).toBe('eco-transport/vehicle-documents');
+    expect(String(body.get('signature'))).toMatch(/^[a-f0-9]{40}$/);
   });
 
-  it('uploads directly with only the apikey header for a new Supabase secret key', async () => {
-    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
-
-    const url = await createService().uploadWaybillImage(imageFile);
-
-    const [requestUrl, init] = fetchMock.mock.calls[0];
-    const headers = init?.headers as Record<string, string>;
-    expect(String(requestUrl)).toContain('/storage/v1/object/payment-proofs/waybills/');
-    expect(headers.apikey).toBe('sb_secret_server_key');
-    expect(headers).not.toHaveProperty('Authorization');
-    expect(url).toMatch(
-      /^https:\/\/project\.supabase\.co\/storage\/v1\/object\/public\/payment-proofs\/waybills\/.+\.jpg$/,
-    );
-  });
-
-  it('keeps Bearer authorization for a legacy service-role JWT', async () => {
-    config.SUPABASE_SERVICE_ROLE_KEY = 'eyJheader.eyJpayload.signature';
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
-
+  it('removes wrapping quotes copied into environment values', async () => {
+    config.CLOUDINARY_CLOUD_NAME = '"eco-cloud"';
+    config.CLOUDINARY_API_KEY = '"123456"';
+    fetchMock.mockResolvedValueOnce(response(200, { secure_url: 'https://res.cloudinary.com/eco-cloud/image/upload/photo.jpg' }));
     await createService().uploadWaybillImage(imageFile);
-
-    const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
-    expect(headers.apikey).toBe(config.SUPABASE_SERVICE_ROLE_KEY);
-    expect(headers.Authorization).toBe(`Bearer ${config.SUPABASE_SERVICE_ROLE_KEY}`);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/eco-cloud/auto/upload');
+    expect((fetchMock.mock.calls[0][1]?.body as FormData).get('api_key')).toBe('123456');
   });
 
-  it('falls back to the service-role key when a stale secret key is rejected', async () => {
-    config.SUPABASE_SECRET_KEY = 'sb_secret_stale';
-    config.SUPABASE_SERVICE_ROLE_KEY = 'eyJheader.eyJpayload.signature';
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse(401, { message: 'Invalid API key' }))
-      .mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
-
-    await expect(createService().uploadWaybillImage(imageFile)).resolves.toContain('/waybills/');
-
-    const fallbackHeaders = fetchMock.mock.calls[1][1]?.headers as Record<string, string>;
-    expect(fallbackHeaders.apikey).toBe(config.SUPABASE_SERVICE_ROLE_KEY);
-    expect(fallbackHeaders.Authorization).toBe(`Bearer ${config.SUPABASE_SERVICE_ROLE_KEY}`);
+  it('returns an actionable error when Cloudinary rejects credentials', async () => {
+    fetchMock.mockResolvedValueOnce(response(401, { error: { message: 'Invalid Signature' } }));
+    await expect(createService().uploadWaybillImage(imageFile)).rejects.toThrow('Thông tin xác thực Cloudinary không hợp lệ hoặc không đủ quyền.');
   });
 
-  it('removes wrapping quotes copied into Render environment values', async () => {
-    config.SUPABASE_URL = '"https://project.supabase.co/"';
-    config.SUPABASE_SECRET_KEY = '"sb_secret_server_key"';
-    config.SUPABASE_STORAGE_BUCKET = '"payment-proofs"';
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo.jpg' }));
-
-    await createService().uploadWaybillImage(imageFile);
-
-    const [requestUrl, init] = fetchMock.mock.calls[0];
-    expect(String(requestUrl)).toMatch(/^https:\/\/project\.supabase\.co\/storage/);
-    expect((init?.headers as Record<string, string>).apikey).toBe('sb_secret_server_key');
-  });
-
-  it('returns an actionable error when every configured key is rejected', async () => {
-    config.SUPABASE_SECRET_KEY = 'sb_secret_invalid';
-    fetchMock.mockResolvedValueOnce(jsonResponse(401, { message: 'Invalid API key' }));
-
-    await expect(createService().uploadWaybillImage(imageFile)).rejects.toThrow(
-      'Khóa Supabase Storage trên server không hợp lệ hoặc không đủ quyền.',
-    );
-  });
-
-  it('returns an actionable error when the configured bucket does not exist', async () => {
-    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
-    fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: 'Bucket not found' }));
-
-    await expect(createService().uploadWaybillImage(imageFile)).rejects.toThrow(
-      'Không tìm thấy bucket "payment-proofs" trên Supabase Storage.',
-    );
-  });
-
-  it('maps network failures to the Storage connection error', async () => {
-    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
+  it('maps network failures to the Cloudinary connection error', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
-
-    await expect(createService().uploadWaybillImage(imageFile)).rejects.toThrow(
-      'Không kết nối được Supabase Storage.',
-    );
+    await expect(createService().uploadWaybillImage(imageFile)).rejects.toThrow('Không kết nối được Cloudinary.');
   });
 
-  it('uploads concurrent files without a bucket-listing request', async () => {
-    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
+  it('rejects a successful response without secure_url', async () => {
+    fetchMock.mockResolvedValueOnce(response(200, { public_id: 'waybills/photo' }));
+    await expect(createService().uploadWaybillImage(imageFile)).rejects.toThrow('Cloudinary không trả về URL file hợp lệ.');
+  });
+
+  it('uploads PDF price lists and Excel dimension files through auto resource detection', async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, { Key: 'waybills/photo-1.jpg' }))
-      .mockResolvedValueOnce(jsonResponse(200, { Key: 'vendor-payments/photo-2.jpg' }));
-
+      .mockResolvedValueOnce(response(200, { secure_url: 'https://res.cloudinary.com/eco-cloud/raw/upload/bao-gia.pdf' }))
+      .mockResolvedValueOnce(response(200, { secure_url: 'https://res.cloudinary.com/eco-cloud/raw/upload/kich-thuoc.xlsx' }));
     const service = createService();
-    await Promise.all([
-      service.uploadWaybillImage(imageFile),
-      service.uploadPaymentProof(imageFile),
-    ]);
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls.every(([url]) => !String(url).endsWith('/storage/v1/bucket'))).toBe(true);
-  });
-
-  it('uploads a PDF customer price list under the customer code folder', async () => {
-    config.SUPABASE_SECRET_KEY = 'sb_secret_server_key';
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { Key: 'customer-price-lists/ACESCO/bao-gia.pdf' }));
-
-    const url = await createService().uploadCustomerPriceList(priceListFile, 'acesco');
-
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/customer-price-lists/ACESCO/');
-    expect(url).toMatch(/\/customer-price-lists\/ACESCO\/.+\.pdf$/);
-  });
-
-  it('rejects Excel customer price-list files', async () => {
-    const unsupported = {
-      ...priceListFile,
-      mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      originalname: 'bao-gia.xlsx',
-    } as Express.Multer.File;
-
-    await expect(createService().uploadCustomerPriceList(unsupported, 'ACESCO')).rejects.toThrow(
-      'Chỉ chấp nhận bảng giá PDF hoặc ảnh JPG, PNG, WebP.',
-    );
-  });
-
-  it('requires a customer code for customer price-list files', async () => {
-    await expect(createService().uploadCustomerPriceList(priceListFile, '  ')).rejects.toThrow(
-      'Thiếu mã khách hàng của bảng giá.',
-    );
+    await expect(service.uploadCustomerPriceList(priceListFile, 'acesco')).resolves.toContain('bao-gia.pdf');
+    await expect(service.uploadWaybillDimensionFile(excelFile)).resolves.toContain('kich-thuoc.xlsx');
+    expect((fetchMock.mock.calls[0][1]?.body as FormData).get('folder')).toBe('eco-transport/customer-price-lists/ACESCO');
+    expect((fetchMock.mock.calls[1][1]?.body as FormData).get('folder')).toBe('eco-transport/waybill-dimensions');
   });
 });

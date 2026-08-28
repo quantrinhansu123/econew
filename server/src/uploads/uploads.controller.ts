@@ -25,7 +25,7 @@ export class UploadsController {
 
   @Post('payment-proofs')
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Upload ảnh chứng từ thanh toán NCC lên Supabase Storage' })
+  @ApiOperation({ summary: 'Upload ảnh chứng từ thanh toán NCC lên Cloudinary' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -55,7 +55,7 @@ export class UploadsController {
   @Post('waybill-images')
   @HttpCode(HttpStatus.OK)
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Upload ảnh bill/hàng hóa lên Supabase Storage' })
+  @ApiOperation({ summary: 'Upload ảnh bill/hàng hóa lên Cloudinary' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -70,7 +70,7 @@ export class UploadsController {
   @Post('vehicle-documents')
   @HttpCode(HttpStatus.OK)
   @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Upload ảnh giấy tờ xe nội bộ lên Supabase Storage' })
+  @ApiOperation({ summary: 'Upload ảnh giấy tờ xe nội bộ lên Cloudinary' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }))
   uploadVehicleDocument(@UploadedFile() file: Express.Multer.File) {
@@ -90,7 +90,7 @@ export class UploadsController {
   @Post('vendor-qr-images/:vendorCode')
   @HttpCode(HttpStatus.OK)
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
-  @ApiOperation({ summary: 'Upload ảnh QR nhận tiền của NCC lên Supabase Storage' })
+  @ApiOperation({ summary: 'Upload ảnh QR nhận tiền của NCC lên Cloudinary' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('file', {

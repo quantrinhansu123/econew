@@ -14,14 +14,14 @@ services:
         value: production
       - key: SUPABASE_POOLER_DATABASE_URL
         sync: false
-      - key: SUPABASE_URL
+      - key: CLOUDINARY_CLOUD_NAME
         sync: false
-      - key: SUPABASE_SECRET_KEY
+      - key: CLOUDINARY_API_KEY
         sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
+      - key: CLOUDINARY_API_SECRET
         sync: false
-      - key: SUPABASE_STORAGE_BUCKET
-        value: payment-proofs
+      - key: CLOUDINARY_FOLDER
+        value: eco-transport
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
