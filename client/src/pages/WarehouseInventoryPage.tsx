@@ -22,6 +22,8 @@ import StackOntoTruckDialog from './warehouse/inventory/dialogs/StackOntoTruckDi
 import { mapWaybillsToPrintSheets, saveInventoryPrintPayload, summarizeFilters } from './print/inventoryPrintUtils';
 import InventoryColumnPicker from './warehouse/inventory/InventoryColumnPicker';
 import AllOrdersTableHeader from './warehouse/inventory/AllOrdersTableHeader';
+import AllOrdersSortControl from './warehouse/inventory/AllOrdersSortControl';
+import { resolveCustomerLedgerCode } from './warehouse/inventory/allOrdersSortUtils';
 import {
   applyAllOrdersColumnFilters,
   applyAllOrdersGlobalSearch,
@@ -354,6 +356,16 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     () => ({ ...columnFilters, ...(filters.ma_kh.trim() ? { ma_kh: filters.ma_kh.trim() } : {}) }),
     [columnFilters, filters.ma_kh],
   );
+  const inferredLedgerCustomerCode = useMemo(() => {
+    const customerCodes = [...new Set(
+      displayedWaybills
+        .map(resolveMaKh)
+        .map((code) => code.trim())
+        .filter((code) => code && code !== '—'),
+    )];
+    return customerCodes.length === 1 ? customerCodes[0] : '';
+  }, [displayedWaybills]);
+  const ledgerCustomerCode = resolveCustomerLedgerCode(filters.ma_kh, inferredLedgerCustomerCode);
   const allOrdersColumnFilterOptions = useMemo(() => {
     return Object.fromEntries(visibleColumns.map((column) => [
       column.id,
@@ -865,11 +877,11 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                 </select>
                 <button
                   type="button"
-                  disabled={!filters.ma_kh.trim() || isLedgerCustomerLoading}
-                  onClick={() => void openCustomerLedger(filters.ma_kh)}
+                  disabled={!ledgerCustomerCode || isLedgerCustomerLoading}
+                  onClick={() => void openCustomerLedger(ledgerCustomerCode)}
                   className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-[13px] font-bold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  title={filters.ma_kh.trim()
-                    ? `Xem chi tiết và bảng kê công nợ ${filters.ma_kh}`
+                  title={ledgerCustomerCode
+                    ? `Xem chi tiết và bảng kê công nợ ${ledgerCustomerCode}`
                     : 'Chọn mã khách để mở bảng kê KH'}
                 >
                   {isLedgerCustomerLoading ? <Loader2 size={15} className="animate-spin" /> : <ReceiptText size={15} />}
@@ -900,6 +912,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               </button>
             )}
             {isAllOrders && <DateRangePicker value={{ from: filters.receivedFrom, to: filters.receivedTo }} onChange={({ from, to }) => updateFilters({ receivedFrom: from || '', receivedTo: to || '' })} placeholder="Từ ngày - Đến ngày" className="w-full shrink-0 md:w-[18.5rem]" />}
+            {isAllOrders && <AllOrdersSortControl columns={visibleColumns} sort={sort} onChange={updateSort} />}
             {isAllOrders && totalActiveFilterCount > 0 && <button onClick={clearFilters} className="h-10 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100">× Xóa {totalActiveFilterCount} bộ lọc</button>}
             {!isAllOrders && activeColumnFilterCount > 0 && <button onClick={() => setColumnFilters({})} className="h-10 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100">× Xóa {activeColumnFilterCount} lọc cột</button>}
             <button
