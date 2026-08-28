@@ -14,7 +14,7 @@ const createQueryBuilder = () => ({
   set: jest.fn().mockReturnThis(),
   execute: jest.fn(async () => ({ affected: 1 })),
   getMany: jest.fn(async () => []),
-  getManyAndCount: jest.fn(async () => [[{ id: '1', employee_code: 'NV001', full_name: 'Sample' }], 1]),
+  getManyAndCount: jest.fn(async () => [[{ id: '1', employee_code: 'NV001', full_name: 'Sample', base_salary: '8000000' }], 1]),
   getOne: jest.fn(async () => null),
 });
 
@@ -73,11 +73,20 @@ describe('StaffMemberService', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
     );
   });
 
   it('lists records with paging metadata', async () => {
     await expect(service.list({ page: 1, limit: 20 })).resolves.toMatchObject({ total: 1, page: 1, limit: 20 });
+  });
+
+  it('only returns compensation fields to directors', async () => {
+    const accountant = await service.list({ page: 1, limit: 20 }, { role_mask: 16 } as any);
+    const director = await service.list({ page: 1, limit: 20 }, { role_mask: 64 } as any);
+
+    expect(accountant.data[0]).not.toHaveProperty('base_salary');
+    expect(director.data[0]).toHaveProperty('base_salary', '8000000');
   });
 
   it('creates an employee without a login account', async () => {
@@ -88,7 +97,7 @@ describe('StaffMemberService', () => {
       position: 'Nhan vien',
       phone: '0900000000',
       base_salary: 8_000_000,
-    });
+    }, { id: '99', role_mask: 64 } as any);
 
     expect(departmentRepository.findOne).toHaveBeenCalledWith({ where: { id: '10', is_active: true } });
     expect(staffRepository.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -100,9 +109,14 @@ describe('StaffMemberService', () => {
   });
 
   it('updates, finds, and deactivates an employee', async () => {
-    await expect(service.update('1', { full_name: 'Updated' })).resolves.toMatchObject({ id: '1', full_name: 'Updated' });
+    await expect(service.update('1', { full_name: 'Updated' }, { id: '99', role_mask: 16 } as any)).resolves.toMatchObject({ id: '1', full_name: 'Updated' });
     await expect(service.findOne('1')).resolves.toMatchObject({ id: '1' });
     await expect(service.remove('1')).resolves.toBeUndefined();
     expect(staffRepository.save).toHaveBeenLastCalledWith(expect.objectContaining({ employment_status: 'INACTIVE' }));
+  });
+
+  it('rejects compensation changes from non-directors', async () => {
+    await expect(service.update('1', { base_salary: 9_000_000 }, { id: '99', role_mask: 16 } as any))
+      .rejects.toThrow('Chỉ Giám đốc');
   });
 });

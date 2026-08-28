@@ -37,6 +37,7 @@ describe('UsersService', () => {
     full_name: 'Staff One',
     password_hash: 'hashed-password',
     role_mask: Roles.WAREHOUSE,
+    monthly_salary: '12000000',
     hub_id: '1',
     is_active: true,
     refresh_token: 'refresh-token',
@@ -99,6 +100,23 @@ describe('UsersService', () => {
     expect(queryBuilder.andWhere).toHaveBeenCalledTimes(4);
     expect(queryBuilder.skip).toHaveBeenCalledWith(10);
     expect(result.items[0]).not.toHaveProperty('password_hash');
+    expect(result.items[0]).not.toHaveProperty('monthly_salary');
+  });
+
+  it('only exposes monthly_salary to directors', async () => {
+    const queryBuilder = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      distinct: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[user], 1]),
+    };
+    usersRepository.createQueryBuilder.mockReturnValue(queryBuilder);
+
+    const result = await service.findAll({}, { ...user, id: '2', role_mask: Roles.DIRECTOR } as UserEntity);
+
+    expect(result.items[0]).toHaveProperty('monthly_salary', '12000000');
   });
 
   it('findOne returns safe user details', async () => {
@@ -146,6 +164,11 @@ describe('UsersService', () => {
     usersRepository.findOne.mockResolvedValue(user);
     hubsRepository.find.mockResolvedValue([]);
     await expect(service.assignHub('1', { hub_id: '404' })).rejects.toThrow(NotFoundException);
+  });
+
+  it('rejects salary updates from non-directors', async () => {
+    await expect(service.update('1', { monthly_salary: 15_000_000 }, { ...user, id: '2', role_mask: Roles.MANAGER } as UserEntity))
+      .rejects.toThrow('Chỉ Giám đốc');
   });
 
   it('assignHub persists multiple hub assignments and keeps the first as default', async () => {
@@ -211,5 +234,6 @@ describe('UsersService', () => {
 
   it('response sanitizer removes password_hash', () => {
     expect(service.toSafeUser(user)).not.toHaveProperty('password_hash');
+    expect(service.toSafeUser(user)).not.toHaveProperty('monthly_salary');
   });
 });

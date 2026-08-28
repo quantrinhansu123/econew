@@ -43,6 +43,7 @@ const MANAGER_ROLES = MANAGER | DIRECTOR;
 export type ModuleCardItem = Omit<ModuleCardProps, 'path'> & {
   path: string;
   requiredRoleMask?: number;
+  directorOnly?: boolean;
   isHidden?: boolean;
   isPrint?: boolean;
 };
@@ -179,7 +180,7 @@ export const moduleGroups: ModuleGroup[] = [
     id: 'finance',
     path: '/finance',
     section: 'Tài chính kế toán',
-    requiredRoleMask: ACCOUNTANT,
+    requiredRoleMask: ACCOUNTANT | DIRECTOR,
     items: [
       { icon: ClipboardCheck, title: 'Phê duyệt chi phí xe nội bộ', description: 'Duyệt chi phí phát sinh cho xe công ty.', colorScheme: 'blue', path: '/finance/approve/internal', requiredRoleMask: ACCOUNTANT },
       { icon: CreditCard, title: 'Phê duyệt chi phí NCC', description: 'Duyệt chi phí nhà cung cấp vận tải.', colorScheme: 'purple', path: '/finance/approve/vendor', requiredRoleMask: ACCOUNTANT },
@@ -193,8 +194,8 @@ export const moduleGroups: ModuleGroup[] = [
       { icon: BarChart3, title: 'Dashboard thu chi', description: 'Tổng quan dòng tiền thu bill, chi bill và chi NCC.', colorScheme: 'blue', path: '/finance/cashflow-dashboard', requiredRoleMask: ACCOUNTANT | MANAGER_ROLES },
       { icon: Users, title: 'Tổng danh sách nhân sự nội bộ', description: 'Nhập hồ sơ, bộ phận, bưu cục, lương cơ bản và các khoản phụ cấp.', colorScheme: 'blue', path: '/finance/staff', requiredRoleMask: ACCOUNTANT },
       { icon: Clock, title: 'Bảng chấm công', description: 'Chấm ngày công và giờ tăng ca theo từng ngày trong tháng.', colorScheme: 'teal', path: '/finance/attendance', requiredRoleMask: ACCOUNTANT },
-      { icon: Receipt, title: 'Theo dõi tiền tạm ứng lương', description: 'Nhập tiền trả trước lương theo nhân sự, sổ quỹ và bưu cục.', colorScheme: 'amber', path: '/finance/salary-advances', requiredRoleMask: ACCOUNTANT },
-      { icon: BadgeDollarSign, title: 'Tính lương theo ngày công', description: 'Tính lương cơ bản theo ngày công, phụ cấp và giờ tăng ca.', colorScheme: 'emerald', path: '/finance/payroll', requiredRoleMask: ACCOUNTANT },
+      { icon: Receipt, title: 'Theo dõi tiền tạm ứng lương', description: 'Nhập, chỉnh sửa và kiểm tra lịch sử tạm ứng theo nhân sự.', colorScheme: 'amber', path: '/finance/salary-advances', requiredRoleMask: DIRECTOR, directorOnly: true },
+      { icon: BadgeDollarSign, title: 'Tính lương theo ngày công', description: 'Tính lương cơ bản theo ngày công, phụ cấp và giờ tăng ca.', colorScheme: 'emerald', path: '/finance/payroll', requiredRoleMask: DIRECTOR, directorOnly: true },
     ],
   },
   {
@@ -229,6 +230,10 @@ export const getVisibleItems = (group: ModuleGroup, roleMask: number): ModuleCar
   const isManagerPlus = (roleMask & MANAGER_ROLES) !== 0;
 
   return group.items.filter((item) => {
+    if (item.directorOnly && (roleMask & DIRECTOR) === 0) {
+      return false;
+    }
+
     if (item.isHidden && !isManagerPlus) {
       return false;
     }

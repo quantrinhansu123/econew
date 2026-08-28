@@ -12,6 +12,7 @@ import { UpdateStaffMemberDto } from './dto/update-staff-member.dto';
 import { CreateStaffDepartmentDto, UpdateStaffDepartmentDto } from './dto/staff-department.dto';
 import { UpsertStaffAttendanceDto } from './dto/upsert-staff-attendance.dto';
 import { CreateSalaryAdvanceDto } from './dto/create-salary-advance.dto';
+import { UpdateSalaryAdvanceDto } from './dto/update-salary-advance.dto';
 import { UpsertPayrollAdjustmentDto } from './dto/upsert-payroll-adjustment.dto';
 import { StaffMemberService } from './staff-member.service';
 
@@ -22,8 +23,11 @@ export class StaffMemberController {
   constructor(private readonly staffMemberService: StaffMemberService) {}
 
   @Get()
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List Staff Members' })
-  list(@Query() query: QueryStaffMemberDto) { return this.staffMemberService.list(query); }
+  list(@Query() query: QueryStaffMemberDto, @CurrentUser() currentUser: UserEntity) {
+    return this.staffMemberService.list(query, currentUser);
+  }
 
   @Get('departments/list')
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
@@ -67,40 +71,72 @@ export class StaffMemberController {
   }
 
   @Get('payroll/monthly')
-  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.DIRECTOR)
   payroll(@Query('month') month: string) {
     return this.staffMemberService.payroll(month);
   }
 
   @Get('salary-advances/list')
-  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.DIRECTOR)
   listSalaryAdvances(@Query('month') month?: string) { return this.staffMemberService.listSalaryAdvances(month); }
 
+  @Get('salary-advances/summary')
+  @RequireRoles(Roles.DIRECTOR)
+  getSalaryAdvanceSummary(
+    @Query('staff_member_id') staffMemberId: string,
+    @Query('month') month: string,
+  ) {
+    return this.staffMemberService.getSalaryAdvanceSummary(staffMemberId, month);
+  }
+
   @Post('salary-advances')
-  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.DIRECTOR)
   createSalaryAdvance(@Body() dto: CreateSalaryAdvanceDto, @CurrentUser() currentUser: UserEntity) {
     return this.staffMemberService.createSalaryAdvance(dto, currentUser);
   }
 
+  @Patch('salary-advances/:id')
+  @RequireRoles(Roles.DIRECTOR)
+  updateSalaryAdvance(
+    @Param('id') id: string,
+    @Body() dto: UpdateSalaryAdvanceDto,
+    @CurrentUser() currentUser: UserEntity,
+  ) {
+    return this.staffMemberService.updateSalaryAdvance(id, dto, currentUser);
+  }
+
+  @Get('salary-advances/:id/history')
+  @RequireRoles(Roles.DIRECTOR)
+  listSalaryAdvanceHistory(@Param('id') id: string) {
+    return this.staffMemberService.listSalaryAdvanceHistory(id);
+  }
+
   @Put('payroll/:staffId/:month')
-  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.DIRECTOR)
   upsertPayrollAdjustment(@Param('staffId') staffId: string, @Param('month') month: string, @Body() dto: UpsertPayrollAdjustmentDto) {
     return this.staffMemberService.upsertPayrollAdjustment(staffId, month, dto);
   }
 
   @Get(':id')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Get Staff Members record' })
-  findOne(@Param('id') id: string) { return this.staffMemberService.findOne(id); }
+  findOne(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
+    return this.staffMemberService.findOne(id, currentUser);
+  }
 
   @Post()
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Create Staff Members record' })
-  create(@Body() dto: CreateStaffMemberDto) { return this.staffMemberService.create(dto); }
+  create(@Body() dto: CreateStaffMemberDto, @CurrentUser() currentUser: UserEntity) {
+    return this.staffMemberService.create(dto, currentUser);
+  }
 
   @Patch(':id')
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Update Staff Members record' })
-  update(@Param('id') id: string, @Body() dto: UpdateStaffMemberDto) { return this.staffMemberService.update(id, dto); }
+  update(@Param('id') id: string, @Body() dto: UpdateStaffMemberDto, @CurrentUser() currentUser: UserEntity) {
+    return this.staffMemberService.update(id, dto, currentUser);
+  }
 
   @Delete(':id')
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)

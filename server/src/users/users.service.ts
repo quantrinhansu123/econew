@@ -20,7 +20,8 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UserHubEntity } from './user-hub.entity';
 import { UserEntity } from './user.entity';
 
-export type SafeUser = Omit<UserEntity, 'password_hash' | 'refresh_token' | 'user_hubs'> & {
+export type SafeUser = Omit<UserEntity, 'password_hash' | 'refresh_token' | 'user_hubs' | 'monthly_salary'> & {
+  monthly_salary?: string;
   hubs: HubEntity[];
   hub_ids: string[];
 };
@@ -44,7 +45,8 @@ export class UsersService {
     @InjectRepository(WaybillEntity) private readonly waybillsRepository: Repository<WaybillEntity>,
   ) {}
 
-  async create(dto: CreateUserDto): Promise<SafeUser> {
+  async create(dto: CreateUserDto, actor?: UserEntity): Promise<SafeUser> {
+    this.assertCanManageSalary(dto.monthly_salary, actor);
     this.validateRoleMask(dto.role_mask);
     const email = this.normalizeEmail(dto.email);
     const phone = this.normalizePhone(dto.phone);
@@ -68,10 +70,10 @@ export class UsersService {
 
     const savedUser = await this.usersRepository.save(user);
     await this.syncUserHubs(savedUser.id, hubIds);
-    return this.toSafeUser(await this.getUserOrThrow(savedUser.id));
+    return this.toSafeUser(await this.getUserOrThrow(savedUser.id), isDirector(actor?.role_mask ?? 0));
   }
 
-  async findAll(query: QueryUsersDto) {
+  async findAll(query: QueryUsersDto, actor?: UserEntity) {
     if (query.role_mask !== undefined) this.validateRoleMask(query.role_mask);
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 20);
@@ -97,15 +99,17 @@ export class UsersService {
     if (typeof query.is_active === 'boolean') queryBuilder.andWhere('users.is_active = :isActive', { isActive: query.is_active });
 
     const [users, total] = await queryBuilder.orderBy('users.created_at', 'DESC').skip((page - 1) * limit).take(limit).getManyAndCount();
-    return { items: users.map((user) => this.toSafeUser(user)), meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
+    const includeSalary = isDirector(actor?.role_mask ?? 0);
+    return { items: users.map((user) => this.toSafeUser(user, includeSalary)), meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
   }
 
   async findOne(id: string, actor?: UserEntity): Promise<SafeUser> {
     if (actor && actor.id !== id && !isManager(actor.role_mask)) throw new ForbiddenException('Insufficient role permissions');
-    return this.toSafeUser(await this.getUserOrThrow(id));
+    return this.toSafeUser(await this.getUserOrThrow(id), isDirector(actor?.role_mask ?? 0));
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<SafeUser> {
+  async update(id: string, dto: UpdateUserDto, actor?: UserEntity): Promise<SafeUser> {
+    this.assertCanManageSalary(dto.monthly_salary, actor);
     const user = await this.getUserOrThrow(id);
     const email = dto.email === undefined ? undefined : this.normalizeEmail(dto.email);
     const phone = dto.phone === undefined ? undefined : this.normalizePhone(dto.phone);
@@ -120,7 +124,7 @@ export class UsersService {
     if (dto.password !== undefined) user.password_hash = await bcrypt.hash(dto.password, this.saltRounds);
     if (dto.monthly_salary !== undefined) user.monthly_salary = String(dto.monthly_salary);
 
-    return this.toSafeUser(await this.usersRepository.save(user));
+    return this.toSafeUser(await this.usersRepository.save(user), isDirector(actor?.role_mask ?? 0));
   }
 
   async updateStatus(id: string, dto: UpdateUserStatusDto, actor?: UserEntity): Promise<SafeUser> {
@@ -130,7 +134,7 @@ export class UsersService {
     if (!dto.is_active) await this.assertNoActiveTasks(user, 'deactivate');
     user.is_active = dto.is_active;
     user.refresh_token = null;
-    return this.toSafeUser(await this.usersRepository.save(user));
+    return this.toSafeUser(await this.usersRepository.save(user), isDirector(actor?.role_mask ?? 0));
   }
 
   async assignRole(id: string, dto: AssignUserRoleDto, actor?: UserEntity): Promise<SafeUser> {
@@ -141,17 +145,17 @@ export class UsersService {
     const user = await this.getUserOrThrow(id);
     if (actor && !isDirector(actor.role_mask) && hasRole(user.role_mask, Roles.DIRECTOR) && !hasRole(dto.role_mask, Roles.DIRECTOR)) throw new ForbiddenException('Only directors can remove director role');
     user.role_mask = dto.role_mask;
-    return this.toSafeUser(await this.usersRepository.save(user));
+    return this.toSafeUser(await this.usersRepository.save(user), isDirector(actor?.role_mask ?? 0));
   }
 
-  async assignHub(id: string, dto: AssignUserHubDto): Promise<SafeUser> {
+  async assignHub(id: string, dto: AssignUserHubDto, actor?: UserEntity): Promise<SafeUser> {
     const user = await this.getUserOrThrow(id);
     const hubIds = this.normalizeHubIds(dto.hub_ids, dto.hub_id);
     await this.ensureHubsExist(hubIds);
     user.hub_id = hubIds[0] ?? null;
     await this.usersRepository.save(user);
     await this.syncUserHubs(user.id, hubIds);
-    return this.toSafeUser(await this.getUserOrThrow(id));
+    return this.toSafeUser(await this.getUserOrThrow(id), isDirector(actor?.role_mask ?? 0));
   }
 
   async remove(id: string, actor?: UserEntity): Promise<void> {
@@ -181,8 +185,8 @@ export class UsersService {
     return users.map((user) => this.toSafeUser(user));
   }
 
-  toSafeUser(user: UserEntity): SafeUser {
-    const { password_hash: _passwordHash, refresh_token: _refreshToken, user_hubs: userHubs, ...safeUser } = user;
+  toSafeUser(user: UserEntity, includeSalary = false): SafeUser {
+    const { password_hash: _passwordHash, refresh_token: _refreshToken, monthly_salary: monthlySalary, user_hubs: userHubs, ...safeUser } = user;
     const hubsById = new Map<string, HubEntity>();
     if (user.hub) hubsById.set(String(user.hub.id), user.hub);
     for (const assignment of userHubs ?? []) {
@@ -191,6 +195,7 @@ export class UsersService {
     const hubs = [...hubsById.values()];
     return {
       ...safeUser,
+      ...(includeSalary ? { monthly_salary: monthlySalary } : {}),
       hubs,
       hub_ids: hubs.map((hub) => String(hub.id)),
     };
@@ -229,6 +234,12 @@ export class UsersService {
   private normalizeHubIds(hubIds?: string[], legacyHubId?: string | null): string[] {
     const source = hubIds !== undefined ? hubIds : legacyHubId ? [legacyHubId] : [];
     return [...new Set(source.map((hubId) => String(hubId).trim()).filter(Boolean))];
+  }
+
+  private assertCanManageSalary(monthlySalary: number | undefined, actor?: UserEntity): void {
+    if (monthlySalary !== undefined && !isDirector(actor?.role_mask ?? 0)) {
+      throw new ForbiddenException('Chỉ Giám đốc được xem và chỉnh sửa thông tin lương');
+    }
   }
 
   private async ensureHubsExist(hubIds: string[]): Promise<void> {

@@ -33,7 +33,7 @@ export const sidebarMenu: SidebarItem[] = [
   { id: 'transport', icon: PackageSearch, label: 'Vận tải mở rộng', path: '/transport', requiredRoleMask: 8 | 32 | 64 },
   { id: 'customers', icon: Users, label: 'Khách hàng', path: '/customers', requiredRoleMask: 1 | 2 | 16 | 32 | 64 },
   { id: 'search', icon: Search, label: 'Tìm kiếm', path: '/search' },
-  { id: 'finance', icon: Calculator, label: 'Tài chính', path: '/finance', requiredRoleMask: 16 },
+  { id: 'finance', icon: Calculator, label: 'Tài chính', path: '/finance', requiredRoleMask: 16 | 64 },
   { id: 'finance-cashflow-dashboard', icon: BarChart3, label: 'Dashboard thu chi', path: '/finance/cashflow-dashboard', requiredRoleMask: 16 | 32 | 64 },
   { id: 'hr', icon: Users, label: 'Nhân sự', path: '/hr', requiredRoleMask: 32 | 64 },
   { id: 'dashboard', icon: BarChart3, label: 'Dashboard BGĐ', path: '/dashboard', requiredRoleMask: 32 | 64 },

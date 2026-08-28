@@ -365,7 +365,37 @@ const ensureSalaryAdvanceSchema = async (dataSource: DataSource) => {
   await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "dimension_file_name" varchar(255)`);
   await dataSource.query(`CREATE TABLE IF NOT EXISTS "staff_payroll_adjustments" ("id" bigserial PRIMARY KEY, "staff_member_id" bigint NOT NULL REFERENCES "staff_members"("id") ON DELETE CASCADE, "payroll_month" varchar(7) NOT NULL, "reward_amount" numeric(14,2) NOT NULL DEFAULT 0, "note" varchar(1000), "updated_at" timestamp NOT NULL DEFAULT now(), CONSTRAINT "UQ_staff_payroll_adjustment_month" UNIQUE ("staff_member_id", "payroll_month"))`);
   await dataSource.query(`CREATE TABLE IF NOT EXISTS "salary_advances" ("id" bigserial PRIMARY KEY, "staff_member_id" bigint NOT NULL REFERENCES "staff_members"("id") ON DELETE RESTRICT, "advance_date" date NOT NULL, "amount" numeric(14,2) NOT NULL, "fund_id" bigint NOT NULL REFERENCES "cash_funds"("id") ON DELETE RESTRICT, "hub_id" bigint REFERENCES "hubs"("id") ON DELETE SET NULL, "note" varchar(1000), "cash_journal_entry_id" bigint NOT NULL REFERENCES "cash_journal_entries"("id") ON DELETE RESTRICT, "created_by" bigint REFERENCES "users"("id") ON DELETE SET NULL, "created_at" timestamp NOT NULL DEFAULT now())`);
+  await dataSource.query(`ALTER TABLE "salary_advances" ADD COLUMN IF NOT EXISTS "updated_at" timestamp NOT NULL DEFAULT now()`);
   await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_salary_advances_staff_date" ON "salary_advances" ("staff_member_id", "advance_date")`);
+  await dataSource.query(`CREATE TABLE IF NOT EXISTS "salary_advance_change_logs" ("id" bigserial PRIMARY KEY, "salary_advance_id" bigint NOT NULL REFERENCES "salary_advances"("id") ON DELETE CASCADE, "action" varchar(32) NOT NULL, "changes" jsonb NOT NULL DEFAULT '{}'::jsonb, "changed_by_id" bigint REFERENCES "users"("id") ON DELETE SET NULL, "changed_by_name" varchar(255), "created_at" timestamp NOT NULL DEFAULT now())`);
+  await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_salary_advance_change_logs_advance_created" ON "salary_advance_change_logs" ("salary_advance_id", "created_at" DESC)`);
+  await dataSource.query(`
+    INSERT INTO "salary_advance_change_logs"
+      ("salary_advance_id", "action", "changes", "changed_by_id", "changed_by_name", "created_at")
+    SELECT
+      advance."id",
+      'CREATED',
+      jsonb_build_object(
+        'staff_member', jsonb_build_object('old_value', NULL, 'new_value', CONCAT(staff."employee_code", ' · ', staff."full_name")),
+        'advance_date', jsonb_build_object('old_value', NULL, 'new_value', advance."advance_date"),
+        'amount', jsonb_build_object('old_value', NULL, 'new_value', advance."amount"),
+        'fund', jsonb_build_object('old_value', NULL, 'new_value', CONCAT_WS(' · ', fund."code", fund."name")),
+        'hub', jsonb_build_object('old_value', NULL, 'new_value', COALESCE(hub."code", '—')),
+        'note', jsonb_build_object('old_value', NULL, 'new_value', advance."note")
+      ),
+      advance."created_by",
+      COALESCE(NULLIF(BTRIM("user"."full_name"), ''), NULLIF(BTRIM("user"."username"), ''), 'Hệ thống'),
+      advance."created_at"
+    FROM "salary_advances" advance
+    JOIN "staff_members" staff ON staff."id" = advance."staff_member_id"
+    JOIN "cash_funds" fund ON fund."id" = advance."fund_id"
+    LEFT JOIN "hubs" hub ON hub."id" = advance."hub_id"
+    LEFT JOIN "users" "user" ON "user"."id" = advance."created_by"
+    WHERE NOT EXISTS (
+      SELECT 1 FROM "salary_advance_change_logs" log
+      WHERE log."salary_advance_id" = advance."id" AND log."action" = 'CREATED'
+    )
+  `);
   await dataSource.query(`INSERT INTO "expense_categories" ("name", "description", "is_active", "sort_order") SELECT '334-Phải trả người lao động', 'Các khoản chi lương, tạm ứng lương', true, 5 WHERE NOT EXISTS (SELECT 1 FROM "expense_categories" WHERE LOWER("name") = LOWER('334-Phải trả người lao động'))`);
 };
 

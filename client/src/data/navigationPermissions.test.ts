@@ -4,6 +4,8 @@ import { getVisibleMenu } from './sidebarMenu';
 
 const ACCOUNTANT = 16;
 const DISPATCHER = 8;
+const MANAGER = 32;
+const DIRECTOR = 64;
 
 describe('accountant waybill navigation', () => {
   it('shows the orders module in the sidebar', () => {
@@ -16,6 +18,25 @@ describe('accountant waybill navigation', () => {
 
     expect(paths).toContain('/warehouse/orders');
     expect(paths).not.toContain('/orders/new');
+  });
+});
+
+describe('director-only payroll navigation', () => {
+  const financeGroup = moduleData['/finance'][0];
+
+  it('hides salary advances and payroll from accountants and managers', () => {
+    for (const roleMask of [ACCOUNTANT, MANAGER]) {
+      const paths = getVisibleItems(financeGroup, roleMask).map((item) => item.path);
+      expect(paths).not.toContain('/finance/salary-advances');
+      expect(paths).not.toContain('/finance/payroll');
+    }
+  });
+
+  it('shows salary advances and payroll to directors', () => {
+    const paths = getVisibleItems(financeGroup, DIRECTOR).map((item) => item.path);
+    expect(paths).toContain('/finance/salary-advances');
+    expect(paths).toContain('/finance/payroll');
+    expect(getVisibleMenu(DIRECTOR).map((item) => item.path)).toContain('/finance');
   });
 });
 

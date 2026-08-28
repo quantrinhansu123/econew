@@ -1,9 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, LessThanOrEqual, Repository } from 'typeorm';
 import { CashJournalEntryEntity } from '../cash-journal-entries/cash-journal-entry.entity';
 import { getAssignedHubIds } from '../common/user-hub-scope';
-import { isManager } from '../common/roles';
+import { isDirector, isManager } from '../common/roles';
 import { CashFundEntity } from '../finance/cash-fund.entity';
 import { HubEntity } from '../hubs/hub.entity';
 import { UserEntity } from '../users/user.entity';
@@ -13,12 +13,23 @@ import { CreateStaffDepartmentDto, UpdateStaffDepartmentDto } from './dto/staff-
 import { UpdateStaffMemberDto } from './dto/update-staff-member.dto';
 import { UpsertStaffAttendanceDto } from './dto/upsert-staff-attendance.dto';
 import { CreateSalaryAdvanceDto } from './dto/create-salary-advance.dto';
+import { UpdateSalaryAdvanceDto } from './dto/update-salary-advance.dto';
 import { UpsertPayrollAdjustmentDto } from './dto/upsert-payroll-adjustment.dto';
+import { SalaryAdvanceChangeLogEntity, SalaryAdvanceFieldChange } from './salary-advance-change-log.entity';
 import { SalaryAdvanceEntity } from './salary-advance.entity';
 import { StaffPayrollAdjustmentEntity } from './staff-payroll-adjustment.entity';
 import { StaffAttendanceEntity } from './staff-attendance.entity';
 import { StaffDepartmentEntity } from './staff-department.entity';
 import { StaffMemberEntity } from './staff-member.entity';
+
+const COMPENSATION_FIELDS = [
+  'base_salary',
+  'meal_allowance',
+  'transport_allowance',
+  'other_allowance',
+  'overtime_hourly_rate',
+  'opening_salary_debt',
+] as const;
 
 @Injectable()
 export class StaffMemberService {
@@ -27,11 +38,12 @@ export class StaffMemberService {
     @InjectRepository(StaffDepartmentEntity) private readonly departmentRepository: Repository<StaffDepartmentEntity>,
     @InjectRepository(StaffAttendanceEntity) private readonly attendanceRepository: Repository<StaffAttendanceEntity>,
     @InjectRepository(SalaryAdvanceEntity) private readonly salaryAdvanceRepository: Repository<SalaryAdvanceEntity>,
+    @InjectRepository(SalaryAdvanceChangeLogEntity) private readonly salaryAdvanceChangeLogRepository: Repository<SalaryAdvanceChangeLogEntity>,
     @InjectRepository(StaffPayrollAdjustmentEntity) private readonly payrollAdjustmentRepository: Repository<StaffPayrollAdjustmentEntity>,
     @InjectRepository(CashFundEntity) private readonly cashFundRepository: Repository<CashFundEntity>,
   ) {}
 
-  async list(query: QueryStaffMemberDto) {
+  async list(query: QueryStaffMemberDto, currentUser?: UserEntity, includeCompensation = false) {
     const page = query.page ?? 1;
     const limit = Math.min(query.limit ?? 50, 500);
     const qb = this.staffRepository.createQueryBuilder('staff')
@@ -54,16 +66,18 @@ export class StaffMemberService {
     if (query.department_id) qb.andWhere('staff.department_id = :departmentId', { departmentId: query.department_id });
     if (query.employment_status) qb.andWhere('staff.employment_status = :status', { status: query.employment_status });
     const [data, total] = await qb.getManyAndCount();
-    return { data: data.map((item) => this.toResponse(item)), total, page, limit };
+    const canViewCompensation = includeCompensation || isDirector(currentUser?.role_mask ?? 0);
+    return { data: data.map((item) => this.toResponse(item, canViewCompensation)), total, page, limit };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, currentUser?: UserEntity) {
     const entity = await this.staffRepository.findOne({ where: { id }, relations: ['department_record', 'hub', 'user'] });
     if (!entity) throw new NotFoundException('Không tìm thấy nhân sự');
-    return this.toResponse(entity);
+    return this.toResponse(entity, isDirector(currentUser?.role_mask ?? 0));
   }
 
-  async create(dto: CreateStaffMemberDto) {
+  async create(dto: CreateStaffMemberDto, currentUser: UserEntity) {
+    this.assertCanManageCompensation(dto, currentUser);
     const department = await this.getActiveDepartment(dto.department_id);
     await this.assertUnique(dto.employee_code, dto.phone, dto.user_id);
     await this.assertReferences(dto.hub_id, dto.user_id);
@@ -77,10 +91,11 @@ export class StaffMemberService {
       phone: dto.phone.trim(),
       password_hash: null,
     });
-    return this.toResponse(await this.staffRepository.save(entity));
+    return this.toResponse(await this.staffRepository.save(entity), isDirector(currentUser.role_mask));
   }
 
-  async update(id: string, dto: UpdateStaffMemberDto) {
+  async update(id: string, dto: UpdateStaffMemberDto, currentUser: UserEntity) {
+    this.assertCanManageCompensation(dto, currentUser);
     const entity = await this.staffRepository.findOne({ where: { id } });
     if (!entity) throw new NotFoundException('Không tìm thấy nhân sự');
     const department = dto.department_id ? await this.getActiveDepartment(dto.department_id) : null;
@@ -95,7 +110,7 @@ export class StaffMemberService {
       entity.department_id = department.id;
       entity.department = department.name;
     }
-    return this.toResponse(await this.staffRepository.save(entity));
+    return this.toResponse(await this.staffRepository.save(entity), isDirector(currentUser.role_mask));
   }
 
   async remove(id: string) {
@@ -168,7 +183,7 @@ export class StaffMemberService {
 
   async payroll(month: string) {
     const { to } = this.monthBounds(month);
-    const staffPage = await this.list({ page: 1, limit: 500, employment_status: 'ACTIVE' });
+    const staffPage = await this.list({ page: 1, limit: 500, employment_status: 'ACTIVE' }, undefined, true);
     const [attendanceRecords, advances, adjustments] = await Promise.all([
       this.attendanceRepository.find({ where: { work_date: LessThanOrEqual(to) }, order: { work_date: 'ASC' } }),
       this.salaryAdvanceRepository.find({ where: { advance_date: LessThanOrEqual(to) }, order: { advance_date: 'ASC' } }),
@@ -179,10 +194,21 @@ export class StaffMemberService {
 
   async listSalaryAdvances(month?: string) {
     const qb = this.salaryAdvanceRepository.createQueryBuilder('advance')
-      .leftJoinAndSelect('advance.staff_member', 'staff')
+      .leftJoin('advance.staff_member', 'staff')
+      .addSelect([
+        'staff.id',
+        'staff.employee_code',
+        'staff.full_name',
+        'staff.department_id',
+        'staff.department',
+        'staff.position',
+        'staff.hub_id',
+        'staff.employment_status',
+      ])
       .leftJoinAndSelect('advance.fund', 'fund')
       .leftJoinAndSelect('advance.hub', 'hub')
-      .leftJoinAndSelect('advance.creator', 'creator')
+      .leftJoin('advance.creator', 'creator')
+      .addSelect(['creator.id', 'creator.username', 'creator.full_name'])
       .orderBy('advance.advance_date', 'DESC').addOrderBy('advance.id', 'DESC');
     if (month) {
       const { from, to } = this.monthBounds(month);
@@ -222,7 +248,7 @@ export class StaffMemberService {
         created_by_id: currentUser.id,
         created_by_name: currentUser.full_name?.trim() || currentUser.username,
       }));
-      return manager.getRepository(SalaryAdvanceEntity).save(manager.getRepository(SalaryAdvanceEntity).create({
+      const advance = await manager.getRepository(SalaryAdvanceEntity).save(manager.getRepository(SalaryAdvanceEntity).create({
         staff_member_id: staff.id,
         advance_date: dto.advance_date,
         amount: String(dto.amount),
@@ -232,6 +258,111 @@ export class StaffMemberService {
         cash_journal_entry_id: journal.id,
         created_by: currentUser.id,
       }));
+      const hub = await manager.getRepository(HubEntity).findOne({ where: { id: String(hubId) } });
+      await manager.getRepository(SalaryAdvanceChangeLogEntity).save(manager.getRepository(SalaryAdvanceChangeLogEntity).create({
+        salary_advance_id: advance.id,
+        action: 'CREATED',
+        changes: this.buildSalaryAdvanceChanges(null, this.salaryAdvanceSnapshot(advance, staff, fund, hub)),
+        changed_by_id: currentUser.id,
+        changed_by_name: this.userDisplayName(currentUser),
+      }));
+      return advance;
+    });
+  }
+
+  async getSalaryAdvanceSummary(staffMemberId: string, month: string) {
+    if (!staffMemberId?.trim()) throw new BadRequestException('Vui lòng chọn nhân sự');
+    const { from, to } = this.monthBounds(month);
+    const result = await this.salaryAdvanceRepository.createQueryBuilder('advance')
+      .select('COALESCE(SUM(advance.amount), 0)', 'total_amount')
+      .addSelect('COUNT(advance.id)', 'advance_count')
+      .where('advance.staff_member_id = :staffMemberId', { staffMemberId })
+      .andWhere('advance.advance_date BETWEEN :from AND :to', { from, to })
+      .getRawOne<{ total_amount: string; advance_count: string }>();
+    return {
+      staff_member_id: String(staffMemberId),
+      month,
+      total_amount: Number(result?.total_amount || 0),
+      advance_count: Number(result?.advance_count || 0),
+    };
+  }
+
+  async updateSalaryAdvance(id: string, dto: UpdateSalaryAdvanceDto, currentUser: UserEntity) {
+    const advance = await this.salaryAdvanceRepository.findOne({ where: { id } });
+    if (!advance) throw new NotFoundException('Không tìm thấy khoản tạm ứng');
+
+    const staffMemberId = dto.staff_member_id ?? advance.staff_member_id;
+    const fundId = dto.fund_id ?? advance.fund_id;
+    const [oldStaff, oldFund, oldHub, staff, fund] = await Promise.all([
+      this.staffRepository.findOne({ where: { id: advance.staff_member_id } }),
+      this.cashFundRepository.findOne({ where: { id: advance.fund_id }, relations: ['hub'] }),
+      advance.hub_id ? this.staffRepository.manager.getRepository(HubEntity).findOne({ where: { id: advance.hub_id } }) : Promise.resolve(null),
+      this.staffRepository.findOne({ where: { id: staffMemberId }, relations: ['hub'] }),
+      this.cashFundRepository.findOne({ where: { id: fundId, is_active: true }, relations: ['hub'] }),
+    ]);
+    if (!oldStaff || !oldFund) throw new NotFoundException('Dữ liệu gốc của khoản tạm ứng không còn tồn tại');
+    if (!staff || staff.employment_status !== 'ACTIVE') throw new NotFoundException('Nhân sự không tồn tại hoặc đã nghỉ');
+    if (!fund) throw new NotFoundException('Sổ quỹ không tồn tại hoặc đã ngừng sử dụng');
+
+    const hubId = dto.hub_id !== undefined
+      ? dto.hub_id
+      : dto.fund_id !== undefined || dto.staff_member_id !== undefined
+        ? fund.hub_id || staff.hub_id
+        : advance.hub_id || fund.hub_id || staff.hub_id;
+    if (!hubId) throw new BadRequestException('Vui lòng chọn bưu cục cho khoản tạm ứng');
+    if (fund.hub_id && String(fund.hub_id) !== String(hubId)) throw new BadRequestException('Bưu cục không khớp với sổ quỹ');
+    if (!isManager(currentUser.role_mask) && !getAssignedHubIds(currentUser).includes(String(hubId))) {
+      throw new BadRequestException('Không được chi tạm ứng tại bưu cục khác');
+    }
+
+    const hub = await this.staffRepository.manager.getRepository(HubEntity).findOne({ where: { id: String(hubId) } });
+    const nextValues = {
+      staff_member_id: staff.id,
+      advance_date: dto.advance_date ?? advance.advance_date,
+      amount: String(dto.amount ?? advance.amount),
+      fund_id: fund.id,
+      hub_id: String(hubId),
+      note: dto.note === undefined ? advance.note : dto.note?.trim() || null,
+    };
+    const changes = this.buildSalaryAdvanceChanges(
+      this.salaryAdvanceSnapshot(advance, oldStaff, oldFund, oldHub),
+      this.salaryAdvanceSnapshot({ ...advance, ...nextValues }, staff, fund, hub),
+    );
+    if (!Object.keys(changes).length) throw new BadRequestException('Không có thay đổi để lưu');
+
+    return this.staffRepository.manager.transaction(async (manager) => {
+      const journal = await manager.getRepository(CashJournalEntryEntity).findOne({ where: { id: advance.cash_journal_entry_id } });
+      if (!journal) throw new NotFoundException('Không tìm thấy phiếu chi liên kết');
+      Object.assign(journal, {
+        entry_date: nextValues.advance_date,
+        fund_id: nextValues.fund_id,
+        hub_id: nextValues.hub_id,
+        detail: `${staff.employee_code} · ${staff.full_name}`,
+        note: nextValues.note,
+        content: `Tạm ứng lương ${staff.full_name}`,
+        expense_amount: nextValues.amount,
+      });
+      await manager.getRepository(CashJournalEntryEntity).save(journal);
+      Object.assign(advance, nextValues);
+      const saved = await manager.getRepository(SalaryAdvanceEntity).save(advance);
+      await manager.getRepository(SalaryAdvanceChangeLogEntity).save(manager.getRepository(SalaryAdvanceChangeLogEntity).create({
+        salary_advance_id: advance.id,
+        action: 'UPDATED',
+        changes,
+        changed_by_id: currentUser.id,
+        changed_by_name: this.userDisplayName(currentUser),
+      }));
+      return saved;
+    });
+  }
+
+  async listSalaryAdvanceHistory(id: string) {
+    if (!await this.salaryAdvanceRepository.exist({ where: { id } })) {
+      throw new NotFoundException('Không tìm thấy khoản tạm ứng');
+    }
+    return this.salaryAdvanceChangeLogRepository.find({
+      where: { salary_advance_id: id },
+      order: { created_at: 'DESC', id: 'DESC' },
     });
   }
 
@@ -257,9 +388,54 @@ export class StaffMemberService {
     return payload;
   }
 
-  private toResponse(entity: StaffMemberEntity) {
-    const { password_hash: _passwordHash, ...safe } = entity;
+  private toResponse(entity: StaffMemberEntity, includeCompensation = false) {
+    const { password_hash: _passwordHash, ...safeEntity } = entity;
+    const safe = { ...safeEntity } as Record<string, unknown>;
+    if (!includeCompensation) {
+      for (const field of COMPENSATION_FIELDS) delete safe[field];
+    }
     return safe;
+  }
+
+  private assertCanManageCompensation(dto: Partial<CreateStaffMemberDto>, currentUser: UserEntity) {
+    if (isDirector(currentUser.role_mask)) return;
+    if (COMPENSATION_FIELDS.some((field) => dto[field] !== undefined)) {
+      throw new ForbiddenException('Chỉ Giám đốc được xem và chỉnh sửa thông tin lương');
+    }
+  }
+
+  private salaryAdvanceSnapshot(
+    advance: Pick<SalaryAdvanceEntity, 'advance_date' | 'amount' | 'note'>,
+    staff: Pick<StaffMemberEntity, 'employee_code' | 'full_name'>,
+    fund: Pick<CashFundEntity, 'code' | 'name'>,
+    hub: Pick<HubEntity, 'code'> | null,
+  ) {
+    return {
+      staff_member: `${staff.employee_code} · ${staff.full_name}`,
+      advance_date: advance.advance_date,
+      amount: Number(advance.amount || 0),
+      fund: [fund.code, fund.name].filter(Boolean).join(' · '),
+      hub: hub?.code || '—',
+      note: advance.note || null,
+    };
+  }
+
+  private buildSalaryAdvanceChanges(
+    previous: ReturnType<StaffMemberService['salaryAdvanceSnapshot']> | null,
+    next: ReturnType<StaffMemberService['salaryAdvanceSnapshot']>,
+  ) {
+    const changes: Record<string, SalaryAdvanceFieldChange> = {};
+    for (const field of Object.keys(next) as Array<keyof typeof next>) {
+      const oldValue = previous?.[field] ?? null;
+      const newValue = next[field] ?? null;
+      if (previous && oldValue === newValue) continue;
+      changes[field] = { old_value: oldValue, new_value: newValue };
+    }
+    return changes;
+  }
+
+  private userDisplayName(user: UserEntity) {
+    return user.full_name?.trim() || user.username?.trim() || 'Hệ thống';
   }
 
   private async getActiveDepartment(id: string) {

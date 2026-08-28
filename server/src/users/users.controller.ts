@@ -25,16 +25,16 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Create an internal user' })
-  create(@Body() dto: CreateUserDto) {
-    return this.usersService.create(dto);
+  create(@Body() dto: CreateUserDto, @CurrentUser() currentUser: UserEntity) {
+    return this.usersService.create(dto, currentUser);
   }
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'List internal users with filters and pagination' })
-  findAll(@Query() query: QueryUsersDto) {
-    return this.usersService.findAll(query);
+  findAll(@Query() query: QueryUsersDto, @CurrentUser() currentUser: UserEntity) {
+    return this.usersService.findAll(query, currentUser);
   }
 
   @Get('drivers')
@@ -55,8 +55,8 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Update internal user information' })
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() currentUser: UserEntity) {
+    return this.usersService.update(id, dto, currentUser);
   }
 
   @Patch(':id/status')
@@ -79,8 +79,8 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @RequireRoles(Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Assign an internal user to a hub' })
-  assignHub(@Param('id') id: string, @Body() dto: AssignUserHubDto) {
-    return this.usersService.assignHub(id, dto);
+  assignHub(@Param('id') id: string, @Body() dto: AssignUserHubDto, @CurrentUser() currentUser: UserEntity) {
+    return this.usersService.assignHub(id, dto, currentUser);
   }
 
   @Delete(':id')

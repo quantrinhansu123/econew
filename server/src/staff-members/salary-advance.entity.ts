@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { CashJournalEntryEntity } from '../cash-journal-entries/cash-journal-entry.entity';
 import { CashFundEntity } from '../finance/cash-fund.entity';
 import { HubEntity } from '../hubs/hub.entity';
@@ -22,4 +22,5 @@ export class SalaryAdvanceEntity {
   @ManyToOne(() => CashJournalEntryEntity, { onDelete: 'RESTRICT' }) @JoinColumn({ name: 'cash_journal_entry_id' }) cash_journal_entry: CashJournalEntryEntity;
   @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' }) @JoinColumn({ name: 'created_by' }) creator: UserEntity | null;
   @CreateDateColumn({ type: 'timestamp' }) created_at: Date;
+  @UpdateDateColumn({ type: 'timestamp' }) updated_at: Date;
 }
