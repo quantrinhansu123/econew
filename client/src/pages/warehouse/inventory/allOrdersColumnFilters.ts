@@ -7,6 +7,7 @@ import {
   resolveCustomerName,
   resolveDeliveryStaff,
   resolveDeliveryProcessingSummary,
+  resolveFreight,
   resolveMaKh,
   resolveNoiDen,
   resolveOrderStatusBadge,
@@ -15,10 +16,13 @@ import {
   resolvePackageCountSl,
   resolvePaymentMethod,
   resolveReceiverAddress,
+  resolveReceiverDistrict,
   resolveReceiverPhone,
+  resolveReceiverWard,
   resolveRoute,
   resolveServiceType,
   resolveSurcharge,
+  resolveTransitFee,
   resolveTotalAmount,
   resolveUnitPrice,
   resolveUserNote,
@@ -29,6 +33,13 @@ import {
 import type { InventoryColumnId } from './inventoryColumns';
 
 export type AllOrdersColumnFilters = Partial<Record<InventoryColumnId, string>>;
+
+export type AllOrdersSortDirection = 'asc' | 'desc';
+
+export type AllOrdersSort = {
+  columnId: InventoryColumnId;
+  direction: AllOrdersSortDirection;
+};
 
 export type AllOrdersColumnFilterOption = {
   value: string;
@@ -110,6 +121,10 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
       return resolveNoiDen(waybill) || EMPTY_VALUE;
     case 'receiver_address':
       return resolveReceiverAddress(waybill) || EMPTY_VALUE;
+    case 'receiver_district':
+      return resolveReceiverDistrict(waybill) || EMPTY_VALUE;
+    case 'receiver_ward':
+      return resolveReceiverWard(waybill) || EMPTY_VALUE;
     case 'order_status':
       return resolveOrderStatusBadge(waybill).label || EMPTY_VALUE;
     case 'warehouse_intake': {
@@ -128,6 +143,10 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
       return moneyValue(resolveUnitPrice(waybill), true);
     case 'surcharge':
       return moneyValue(resolveSurcharge(waybill));
+    case 'transit_fee':
+      return moneyValue(resolveTransitFee(waybill));
+    case 'freight':
+      return moneyValue(resolveFreight(waybill));
     case 'total_amount':
       return moneyValue(resolveTotalAmount(waybill));
     case 'thu_ho_khach':
@@ -138,6 +157,8 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
       return paymentStatusLabel(waybill);
     case 'customer_payment_note':
       return waybill.customer_payment_note?.trim() || EMPTY_VALUE;
+    case 'order_code':
+      return String(waybill.order_code || waybill.order_id || EMPTY_VALUE);
     case 'stack_position':
       return String(waybill.loading_position ?? EMPTY_VALUE);
     case 'loaded_at':
@@ -171,6 +192,64 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
     default:
       return EMPTY_VALUE;
   }
+}
+
+const NUMBER_SORT_COLUMNS = new Set<InventoryColumnId>([
+  'package_count',
+  'billing_qty_detail',
+  'unit_price',
+  'surcharge',
+  'transit_fee',
+  'freight',
+  'total_amount',
+  'thu_ho_khach',
+  'stack_position',
+  'weight',
+  'volumetric_weight',
+  'volume',
+  'cod_amount',
+]);
+
+const DATE_SORT_COLUMNS = new Set<InventoryColumnId>(['received_at', 'loaded_at']);
+
+function parseSortableNumber(value: string): number | null {
+  const normalized = value
+    .replace(/\s*(đ|kg|m3)$/i, '')
+    .replace(/[^0-9,.-]/g, '')
+    .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+    .replace(',', '.');
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : null;
+}
+
+function parseSortableDate(value: string): number | null {
+  const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return null;
+  return Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+}
+
+export function sortAllOrders<T extends WaybillInventoryItem>(items: T[], sort: AllOrdersSort): T[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      const leftText = getAllOrdersColumnValue(left.item, sort.columnId);
+      const rightText = getAllOrdersColumnValue(right.item, sort.columnId);
+      const leftEmpty = leftText === EMPTY_VALUE || leftText.trim() === '';
+      const rightEmpty = rightText === EMPTY_VALUE || rightText.trim() === '';
+      if (leftEmpty !== rightEmpty) return leftEmpty ? 1 : -1;
+      if (leftEmpty && rightEmpty) return left.index - right.index;
+
+      let comparison: number;
+      if (NUMBER_SORT_COLUMNS.has(sort.columnId)) {
+        comparison = (parseSortableNumber(leftText) ?? 0) - (parseSortableNumber(rightText) ?? 0);
+      } else if (DATE_SORT_COLUMNS.has(sort.columnId)) {
+        comparison = (parseSortableDate(leftText) ?? 0) - (parseSortableDate(rightText) ?? 0);
+      } else {
+        comparison = leftText.localeCompare(rightText, 'vi', { numeric: true, sensitivity: 'base' });
+      }
+      return comparison === 0 ? left.index - right.index : comparison * (sort.direction === 'asc' ? 1 : -1);
+    })
+    .map(({ item }) => item);
 }
 
 const normalize = (value: string) => value.trim().toLocaleUpperCase('vi-VN');

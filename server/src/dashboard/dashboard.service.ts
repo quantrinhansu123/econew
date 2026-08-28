@@ -122,21 +122,37 @@ export class DashboardService {
   async getHubPerformance(query: QueryDashboardDto, currentUser: UserEntity) {
     this.assertAnyRole(currentUser, [Roles.MANAGER, Roles.DIRECTOR]);
     const range = await this.normalizeQuery(query, currentUser);
-    const hubs = await this.hubsRepository.createQueryBuilder('hub').select(['hub.id', 'hub.code', 'hub.name']).getMany();
+    const hubsQb = this.hubsRepository.createQueryBuilder('hub').select(['hub.id', 'hub.code', 'hub.name']);
+    if (range.hub_id) hubsQb.where('hub.id = :hubId', { hubId: range.hub_id });
+    const hubs = await hubsQb.orderBy('hub.code', 'ASC').getMany();
     const scope = this.buildDashboardScope(currentUser);
     return Promise.all(hubs.map(async (hub) => {
-      const hubScope = { ...scope, hubId: hub.id };
-      const waybillQb = this.baseWaybillQuery(range, hubScope);
+      const hubRange = { ...range, hub_id: String(hub.id) };
+      const hubScope = { ...scope, hubId: String(hub.id) };
+      const waybillQb = this.baseWaybillQuery(hubRange, hubScope);
+      const tripQb = this.baseTripQuery(hubRange, hubScope);
+      const [totalWaybills, totalTrips, totalInbound, totalOutbound, deliveredWaybills, returnedWaybills, overdueWaybills, codRow] = await Promise.all([
+        waybillQb.clone().getCount(),
+        tripQb.clone().getCount(),
+        waybillQb.clone().andWhere('waybill.dest_hub_id = :destinationHubId', { destinationHubId: hub.id }).getCount(),
+        waybillQb.clone().andWhere('waybill.origin_hub_id = :originHubId', { originHubId: hub.id }).getCount(),
+        waybillQb.clone().andWhere('waybill.current_state = :deliveredStatus', { deliveredStatus: WaybillState.DELIVERED }).getCount(),
+        waybillQb.clone().andWhere('waybill.current_state = :returnedStatus', { returnedStatus: WaybillState.RETURNED }).getCount(),
+        this.countOverdueWaybills(hubRange, hubScope),
+        waybillQb.clone().select('COALESCE(SUM(CASE WHEN waybill.payment_type = :cod THEN waybill.cost_amount ELSE 0 END), 0)', 'amount').setParameter('cod', PaymentType.COD).getRawOne<RawCount>(),
+      ]);
       return {
         hub_id: hub.id,
         hub_code: hub.code,
         hub_name: hub.name,
-        total_inbound: await waybillQb.clone().andWhere('waybill.dest_hub_id = :hubId', { hubId: hub.id }).getCount(),
-        total_outbound: await waybillQb.clone().andWhere('waybill.origin_hub_id = :hubId', { hubId: hub.id }).getCount(),
-        delivered_count: await waybillQb.clone().andWhere('waybill.current_state = :status', { status: WaybillState.DELIVERED }).getCount(),
-        returned_count: await waybillQb.clone().andWhere('waybill.current_state = :status', { status: WaybillState.RETURNED }).getCount(),
-        overdue_count: await this.countOverdueWaybills(range, hubScope),
-        cod_pending: Number((await waybillQb.clone().select('COALESCE(SUM(CASE WHEN waybill.payment_type = :cod THEN waybill.cost_amount ELSE 0 END), 0)', 'amount').setParameter('cod', PaymentType.COD).getRawOne<RawCount>())?.amount ?? 0),
+        total_waybills: totalWaybills,
+        total_trips: totalTrips,
+        delivered_waybills: deliveredWaybills,
+        returned_waybills: returnedWaybills,
+        overdue_waybills: overdueWaybills,
+        total_inbound: totalInbound,
+        total_outbound: totalOutbound,
+        cod_pending: Number(codRow?.amount ?? 0),
       };
     }));
   }
@@ -183,8 +199,10 @@ export class DashboardService {
   }
 
   private async normalizeQuery<T extends QueryDashboardDto>(query: T, currentUser: UserEntity): Promise<T> {
-    const dateTo = query.date_to ?? new Date();
-    const dateFrom = query.date_from ?? new Date(dateTo.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const dateTo = query.date_to ? this.normalizeCalendarBoundary(query.date_to, 'end') : new Date();
+    const dateFrom = query.date_from
+      ? this.normalizeCalendarBoundary(query.date_from, 'start')
+      : new Date(dateTo.getTime() - 30 * 24 * 60 * 60 * 1000);
     if (Number.isNaN(dateFrom.getTime())) throw new BadRequestException('Invalid date_from');
     if (Number.isNaN(dateTo.getTime())) throw new BadRequestException('Invalid date_to');
     if (dateFrom.getTime() > dateTo.getTime()) throw new BadRequestException('date_from must be before or equal to date_to');
@@ -195,6 +213,22 @@ export class DashboardService {
       if (!isManager(currentUser.role_mask) && getAssignedHubIds(currentUser).length && !getAssignedHubIds(currentUser).includes(String(query.hub_id))) throw new ForbiddenException('User cannot view dashboard outside assigned hub');
     }
     return { ...query, date_from: dateFrom, date_to: dateTo, limit: this.resolveLimit(query.limit) };
+  }
+
+  private normalizeCalendarBoundary(value: Date, boundary: 'start' | 'end') {
+    const date = new Date(value);
+    const isDateOnlyUtc = date.getUTCHours() === 0
+      && date.getUTCMinutes() === 0
+      && date.getUTCSeconds() === 0
+      && date.getUTCMilliseconds() === 0;
+    if (!isDateOnlyUtc) return date;
+    if (boundary === 'end') {
+      date.setUTCHours(16, 59, 59, 999);
+      return date;
+    }
+    date.setUTCDate(date.getUTCDate() - 1);
+    date.setUTCHours(17, 0, 0, 0);
+    return date;
   }
 
   private baseWaybillQuery(query: QueryDashboardDto, scope: Scope): SelectQueryBuilder<WaybillEntity> {

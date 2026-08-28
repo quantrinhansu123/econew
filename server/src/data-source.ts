@@ -43,6 +43,7 @@ import { WaybillCashVoucherEntity } from './waybills/waybill-cash-voucher.entity
 import { WaybillChangeLogEntity } from './waybills/waybill-change-log.entity';
 import { WaybillSplitEntity } from './waybills/waybill-split.entity';
 import { WaybillEntity } from './waybills/waybill.entity';
+import { OperationalReminderEntity } from './reminders/operational-reminder.entity';
 
 const getPositiveInteger = (value: string | undefined, fallback: number) => {
   const parsed = Number(value);
@@ -100,6 +101,7 @@ export default new DataSource({
     WaybillChangeLogEntity,
     WaybillEntity,
     WaybillSplitEntity,
+    OperationalReminderEntity,
   ],
   migrations: [__filename.endsWith('.js') ? 'dist/migrations/*.js' : 'src/migrations/*.ts'],
   synchronize: false,

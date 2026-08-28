@@ -4,6 +4,7 @@ import {
   applyAllOrdersGlobalSearch,
   buildAllOrdersColumnFilterOptions,
   getAllOrdersColumnValue,
+  sortAllOrders,
 } from './allOrdersColumnFilters';
 import type { WaybillInventoryItem } from './types';
 
@@ -72,5 +73,27 @@ describe('all-orders column filters', () => {
     expect(applyAllOrdersGlobalSearch(rows, 'xe đạp').map((row) => row.id)).toEqual([1]);
     expect(applyAllOrdersGlobalSearch(rows, 'xe dap').map((row) => row.id)).toEqual([1]);
     expect(applyAllOrdersGlobalSearch(rows, 'FY').map((row) => row.id)).toEqual([3]);
+  });
+
+  it('sorts filtered rows by bill sent date in either direction and keeps empty dates last', () => {
+    const datedRows: WaybillInventoryItem[] = [
+      { id: 1, sent_date: '2026-08-20' },
+      { id: 2, sent_date: '2026-08-22' },
+      { id: 3, sent_date: null },
+      { id: 4, sent_date: '2026-08-21' },
+    ];
+
+    expect(sortAllOrders(datedRows, { columnId: 'received_at', direction: 'asc' }).map((row) => row.id)).toEqual([1, 4, 2, 3]);
+    expect(sortAllOrders(datedRows, { columnId: 'received_at', direction: 'desc' }).map((row) => row.id)).toEqual([2, 4, 1, 3]);
+  });
+
+  it('sorts numeric columns as numbers instead of formatted text', () => {
+    const packageRows: WaybillInventoryItem[] = [
+      { id: 1, package_count: 10 },
+      { id: 2, package_count: 2 },
+      { id: 3, package_count: 100 },
+    ];
+
+    expect(sortAllOrders(packageRows, { columnId: 'package_count', direction: 'asc' }).map((row) => row.id)).toEqual([2, 1, 3]);
   });
 });

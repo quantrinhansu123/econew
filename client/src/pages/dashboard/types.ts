@@ -51,6 +51,9 @@ export type HubPerformance = {
   returned_waybills?: number | string | null;
   overdue_waybills?: number | string | null;
   total_trips?: number | string | null;
+  total_inbound?: number | string | null;
+  total_outbound?: number | string | null;
+  cod_pending?: number | string | null;
 };
 
 export type FinanceSummary = {

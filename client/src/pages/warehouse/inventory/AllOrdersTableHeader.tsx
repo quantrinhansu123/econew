@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { Check, Filter, Search, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, Filter, Search, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover';
 import {
   ALL_ORDERS_FINANCIAL_COLUMN_IDS,
@@ -12,7 +12,7 @@ import {
   type InventoryColumnId,
   type InventoryColumnView,
 } from './inventoryColumns';
-import type { AllOrdersColumnFilterOption, AllOrdersColumnFilters } from './allOrdersColumnFilters';
+import type { AllOrdersColumnFilterOption, AllOrdersColumnFilters, AllOrdersSort, AllOrdersSortDirection } from './allOrdersColumnFilters';
 
 interface Props {
   columns: InventoryColumnView[];
@@ -22,6 +22,8 @@ interface Props {
   filterOptions?: Partial<Record<InventoryColumnId, AllOrdersColumnFilterOption[]>>;
   filterValues?: AllOrdersColumnFilters;
   onFilterChange?: (columnId: InventoryColumnId, value: string) => void;
+  sort?: AllOrdersSort;
+  onSortChange?: (columnId: InventoryColumnId, direction: AllOrdersSortDirection) => void;
   grouped?: boolean;
 }
 
@@ -30,11 +32,15 @@ function ColumnFilterLabel({
   options,
   value,
   onChange,
+  sort,
+  onSortChange,
 }: {
   column: InventoryColumnView;
   options: AllOrdersColumnFilterOption[];
   value: string;
   onChange?: (columnId: InventoryColumnId, value: string) => void;
+  sort?: AllOrdersSort;
+  onSortChange?: (columnId: InventoryColumnId, direction: AllOrdersSortDirection) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -44,9 +50,12 @@ function ColumnFilterLabel({
       ? options.filter((option) => option.label.toLocaleLowerCase('vi-VN').includes(query))
       : options;
   }, [keyword, options]);
-  const active = Boolean(value);
+  const activeSort = sort?.columnId === column.id ? sort.direction : null;
+  const filterActive = Boolean(value);
+  const active = filterActive || Boolean(activeSort);
+  const canSort = Boolean(onSortChange) && !['stt', 'actions', 'bill_images'].includes(column.id);
 
-  if (!options.length || !onChange) return <>{column.label}</>;
+  if ((!options.length || !onChange) && !canSort) return <>{column.label}</>;
 
   return (
     <div className="flex min-w-0 items-center justify-between gap-1">
@@ -68,14 +77,18 @@ function ColumnFilterLabel({
                 ? 'border-primary bg-primary text-white'
                 : 'border-border bg-white text-slate-500 hover:border-primary hover:text-primary',
             )}
-            title={`Lọc theo ${column.label}`}
-            aria-label={`Lọc theo ${column.label}`}
+            title={`Lọc hoặc sắp xếp theo ${column.label}`}
+            aria-label={`Lọc hoặc sắp xếp theo ${column.label}`}
           >
-            <Filter size={11} fill={active ? 'currentColor' : 'none'} />
+            {activeSort === 'asc' ? <ArrowUp size={12} /> : activeSort === 'desc' ? <ArrowDown size={12} /> : <Filter size={11} fill={value ? 'currentColor' : 'none'} />}
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" sideOffset={6} collisionPadding={12} className="w-[280px] overflow-hidden rounded-xl border-border p-0 shadow-xl">
-          <div className="border-b border-border p-2">
+          {canSort && <div className="grid grid-cols-2 gap-1.5 border-b border-border p-2 normal-case">
+            <button type="button" onClick={() => { onSortChange?.(column.id, 'asc'); setOpen(false); }} className={clsx('inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-[12px] font-bold', activeSort === 'asc' ? 'border-primary bg-blue-50 text-primary' : 'border-border bg-white text-slate-600 hover:bg-muted')}><ArrowUp size={14} />Tăng dần</button>
+            <button type="button" onClick={() => { onSortChange?.(column.id, 'desc'); setOpen(false); }} className={clsx('inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-[12px] font-bold', activeSort === 'desc' ? 'border-primary bg-blue-50 text-primary' : 'border-border bg-white text-slate-600 hover:bg-muted')}><ArrowDown size={14} />Giảm dần</button>
+          </div>}
+          {options.length > 0 && onChange && <div className="border-b border-border p-2">
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -90,18 +103,18 @@ function ColumnFilterLabel({
                 </button>
               )}
             </div>
-          </div>
-          <div className="custom-scrollbar max-h-64 overflow-y-auto p-1.5 normal-case">
+          </div>}
+          {options.length > 0 && onChange && <div className="custom-scrollbar max-h-64 overflow-y-auto p-1.5 normal-case">
             <button
               type="button"
               onClick={() => {
                 onChange(column.id, '');
                 setOpen(false);
               }}
-              className={clsx('flex h-9 w-full items-center justify-between rounded-lg px-2.5 text-left text-[13px] font-bold hover:bg-muted', !active && 'bg-blue-50 text-primary')}
+              className={clsx('flex h-9 w-full items-center justify-between rounded-lg px-2.5 text-left text-[13px] font-bold hover:bg-muted', !filterActive && 'bg-blue-50 text-primary')}
             >
               <span>Tất cả</span>
-              {!active && <Check size={14} />}
+              {!filterActive && <Check size={14} />}
             </button>
             {filteredOptions.map((option) => {
               const selected = option.value === value;
@@ -124,7 +137,7 @@ function ColumnFilterLabel({
               );
             })}
             {!filteredOptions.length && <p className="px-3 py-6 text-center text-[12px] font-medium text-muted-foreground">Không có dữ liệu phù hợp.</p>}
-          </div>
+          </div>}
         </PopoverContent>
       </Popover>
     </div>
@@ -139,6 +152,8 @@ export default function AllOrdersTableHeader({
   filterOptions = {},
   filterValues = {},
   onFilterChange,
+  sort,
+  onSortChange,
   grouped = true,
 }: Props) {
   if (!grouped) {
@@ -151,7 +166,7 @@ export default function AllOrdersTableHeader({
         )}
         {columns.map((column) => (
           <th key={column.id} className={clsx('border-b border-r border-border px-2 py-2 font-bold last:border-r-0 whitespace-nowrap', column.headerClass)}>
-            <ColumnFilterLabel column={column} options={filterOptions[column.id] || []} value={filterValues[column.id] || ''} onChange={onFilterChange} />
+            <ColumnFilterLabel column={column} options={filterOptions[column.id] || []} value={filterValues[column.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} />
           </th>
         ))}
       </tr>
@@ -192,7 +207,7 @@ export default function AllOrdersTableHeader({
               col.id === 'stt' && 'sticky z-30',
             )}
           >
-            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} />
+            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} />
           </th>
         ))}
         {senderColumns.length > 0 && (
@@ -220,7 +235,7 @@ export default function AllOrdersTableHeader({
               col.id === 'actions' && 'sticky right-0 z-20 w-[112px] border-l bg-slate-100 shadow-[-4px_0_8px_rgba(15,23,42,0.08)]',
             )}
           >
-            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} />
+            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} />
           </th>
         ))}
       </tr>
@@ -235,7 +250,7 @@ export default function AllOrdersTableHeader({
               col.id === ALL_ORDERS_STICKY_COLUMN_IDS.at(-1) && 'shadow-[5px_0_8px_rgba(15,23,42,0.10)]',
             )}
           >
-            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} />
+            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} />
           </th>
         ))}
         {financialColumns.map((col) => (
@@ -246,7 +261,7 @@ export default function AllOrdersTableHeader({
               col.headerClass,
             )}
           >
-            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} />
+            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} />
           </th>
         ))}
       </tr>

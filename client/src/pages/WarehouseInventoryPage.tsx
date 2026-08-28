@@ -26,8 +26,11 @@ import {
   applyAllOrdersColumnFilters,
   applyAllOrdersGlobalSearch,
   buildAllOrdersColumnFilterOptions,
+  sortAllOrders,
   type AllOrdersColumnFilterOption,
   type AllOrdersColumnFilters,
+  type AllOrdersSort,
+  type AllOrdersSortDirection,
 } from './warehouse/inventory/allOrdersColumnFilters';
 import { downloadInventoryExcel } from './warehouse/inventory/inventoryExcelUtils';
 import {
@@ -257,6 +260,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [releaseConfirm, setReleaseConfirm] = useState<ConfirmDialogState>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
   const [columnFilters, setColumnFilters] = useState<AllOrdersColumnFilters>({});
+  const [sort, setSort] = useState<AllOrdersSort>({ columnId: 'received_at', direction: 'desc' });
   const [customerCodeOptions, setCustomerCodeOptions] = useState<AllOrdersColumnFilterOption[]>([]);
   const [ledgerCustomer, setLedgerCustomer] = useState<CustomerRecord | null>(null);
   const [isLedgerCustomerLoading, setIsLedgerCustomerLoading] = useState(false);
@@ -308,8 +312,9 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   );
   const displayedWaybills = useMemo(() => {
     const searchResults = isAllOrders ? applyAllOrdersGlobalSearch(waybills, filters.keyword) : waybills;
-    return applyAllOrdersColumnFilters(searchResults, columnFilters);
-  }, [columnFilters, filters.keyword, isAllOrders, waybills]);
+    const filteredResults = applyAllOrdersColumnFilters(searchResults, columnFilters);
+    return isAllOrders ? sortAllOrders(filteredResults, sort) : filteredResults;
+  }, [columnFilters, filters.keyword, isAllOrders, sort, waybills]);
   useEffect(() => {
     if (!isAllOrders) return undefined;
     const scrollElement = tableScrollRef.current;
@@ -579,6 +584,9 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     setCashVoucherWaybill(waybill);
     setIsCashVoucherOpen(true);
   };
+  const updateSort = (columnId: InventoryColumnId, direction: AllOrdersSortDirection) => {
+    setSort({ columnId, direction });
+  };
 
   const confirmReleaseUnscheduledSplit = (waybill: WaybillInventoryItem) => {
     setReleaseConfirm({
@@ -705,7 +713,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     try {
       const loadedRows = await loadAllInventoryRows(isAllOrders ? { ...filters, keyword: '' } : filters, variant);
       const exportRows = isAllOrders
-        ? applyAllOrdersColumnFilters(applyAllOrdersGlobalSearch(loadedRows, filters.keyword), columnFilters)
+        ? sortAllOrders(
+          applyAllOrdersColumnFilters(applyAllOrdersGlobalSearch(loadedRows, filters.keyword), columnFilters),
+          sort,
+        )
         : loadedRows;
       const exported = downloadInventoryExcel(
         exportRows,
@@ -1011,6 +1022,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                     filterOptions={allOrdersColumnFilterOptions}
                     filterValues={columnFilterValues}
                     onFilterChange={updateColumnFilter}
+                    sort={isAllOrders ? sort : undefined}
+                    onSortChange={isAllOrders ? updateSort : undefined}
                     grouped={isAllOrders}
                   />
                 </thead>

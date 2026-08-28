@@ -5,13 +5,13 @@ import { PaymentType } from '../../common/enums';
 import { normalizePaginationLimit } from '../../common/pagination';
 
 export class QueryDashboardDto {
-  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  @ApiPropertyOptional({ type: String, format: 'date', description: 'Ngày bắt đầu theo múi giờ Việt Nam' })
   @IsOptional()
   @Type(() => Date)
   @IsDate()
   date_from?: Date;
 
-  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  @ApiPropertyOptional({ type: String, format: 'date', description: 'Ngày kết thúc theo múi giờ Việt Nam (tính hết ngày)' })
   @IsOptional()
   @Type(() => Date)
   @IsDate()

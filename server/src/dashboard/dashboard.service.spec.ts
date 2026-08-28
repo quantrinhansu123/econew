@@ -167,8 +167,19 @@ describe('DashboardService', () => {
   it('getHubPerformance applies hub scope and returns metrics', async () => {
     hubsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ many: [hub] }));
     waybillsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ count: 1, rawOne: { amount: '75' } }));
+    tripsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ count: 2 }));
     const result = await service.getHubPerformance({}, manager);
-    expect(result[0]).toMatchObject({ hub_id: '10', total_inbound: 1, total_outbound: 1, cod_pending: 75 });
+    expect(result[0]).toMatchObject({
+      hub_id: '10',
+      total_waybills: 1,
+      total_trips: 2,
+      delivered_waybills: 1,
+      returned_waybills: 1,
+      overdue_waybills: 1,
+      total_inbound: 1,
+      total_outbound: 1,
+      cod_pending: 75,
+    });
   });
 
   it('getFinanceSummary aggregates COD/CC/remittance/cost', async () => {
@@ -181,6 +192,20 @@ describe('DashboardService', () => {
 
   it('date_from > date_to is blocked', async () => {
     await expect(service.getOverdueWaybills({ date_from: new Date('2026-01-02'), date_to: new Date('2026-01-01') }, dispatcher)).rejects.toThrow(BadRequestException);
+  });
+
+  it('treats date-only filters as full calendar days in Vietnam', async () => {
+    const qb = createQueryBuilder({ rawMany: [] });
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.getWaybillStatusStats({
+      date_from: new Date('2026-08-28'),
+      date_to: new Date('2026-08-28'),
+    }, manager);
+
+    const range = qb.where.mock.calls[0][1];
+    expect(range.dateFrom.toISOString()).toBe('2026-08-27T17:00:00.000Z');
+    expect(range.dateTo.toISOString()).toBe('2026-08-28T16:59:59.999Z');
   });
 
   it('limit over 100 is capped', async () => {
