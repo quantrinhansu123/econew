@@ -178,7 +178,7 @@ export default function StackOntoTruckDialog({
     setIsLoading(true);
     setError('');
     try {
-      const trucksRes = await apiRequest<TruckListResponse>('/trucks?ownership_type=VENDOR&limit=200');
+      const trucksRes = await apiRequest<TruckListResponse>('/trucks?ownership_type=VENDOR&limit=100');
       const trucks = normalizeTruckList(trucksRes)
         .map(toTruckOption)
         .sort((a, b) => (a.bks || a.license_plate || '').localeCompare(b.bks || b.license_plate || '', 'vi'));

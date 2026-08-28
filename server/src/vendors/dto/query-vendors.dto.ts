@@ -37,6 +37,7 @@ export class QueryVendorsDto {
 
   @ApiPropertyOptional({ default: 20 })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(500)
