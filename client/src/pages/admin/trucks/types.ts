@@ -26,6 +26,8 @@ export interface Truck {
   hub_id?: string | number | null;
   hub?: { id?: string | number; code?: string | null; name?: string | null } | null;
   document_image_urls?: string[] | null;
+  registration_expiry_date?: string | null;
+  insurance_expiry_date?: string | null;
 }
 
 export interface TruckListResponse {
@@ -65,6 +67,42 @@ export interface TruckFormState {
   hub_id: string;
   vendor_id: string;
   document_image_urls: string[];
+  registration_expiry_date: string;
+  insurance_expiry_date: string;
+}
+
+export interface TruckComplianceAlert {
+  type: 'REGISTRATION' | 'INSURANCE';
+  label: string;
+  expiry_date: string;
+  days_remaining: number;
+  status: 'EXPIRED' | 'DUE_SOON';
+}
+
+export interface TruckComplianceAlertItem {
+  id: string;
+  license_plate: string;
+  hub_id?: string | number | null;
+  hub_code?: string | null;
+  hub_name?: string | null;
+  registration_expiry_date?: string | null;
+  insurance_expiry_date?: string | null;
+  alerts: TruckComplianceAlert[];
+}
+
+export interface TruckComplianceResponse {
+  as_of: string;
+  warning_days: number;
+  items: TruckComplianceAlertItem[];
+  meta: {
+    tracked_trucks: number;
+    registration_tracked: number;
+    insurance_tracked: number;
+    warning_trucks: number;
+    total_alerts: number;
+    expired_alerts: number;
+    due_soon_alerts: number;
+  };
 }
 
 export interface FilterOption {

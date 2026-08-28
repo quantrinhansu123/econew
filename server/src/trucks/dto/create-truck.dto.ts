@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, IsUrl, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsDateString, IsEnum, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, IsUrl, Min } from 'class-validator';
 import { TruckStatus } from './truck.enums';
 
 export class CreateTruckDto {
@@ -78,4 +78,14 @@ export class CreateTruckDto {
   @ArrayMaxSize(10)
   @IsUrl({}, { each: true })
   document_image_urls?: string[];
+
+  @ApiPropertyOptional({ example: '2027-08-28', description: 'Ngày hết hạn đăng kiểm xe nội bộ' })
+  @IsOptional()
+  @IsDateString()
+  registration_expiry_date?: string | null;
+
+  @ApiPropertyOptional({ example: '2027-08-28', description: 'Ngày hết hạn bảo hiểm xe nội bộ' })
+  @IsOptional()
+  @IsDateString()
+  insurance_expiry_date?: string | null;
 }

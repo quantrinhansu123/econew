@@ -1,95 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BarChart3, Building2, Calculator, PackagePlus, ScanBarcode, Search, Settings, Truck, Users, Warehouse } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarClock } from 'lucide-react';
 import { clsx } from 'clsx';
+import { Link } from 'react-router-dom';
 import { ActionCard } from '../components/ui/ActionCard';
 import { getGreetingPeriod, getLoginDisplayName, getStoredAuthUser } from '../lib/authUser';
+import { apiRequest } from '../lib/api';
 import type { AuthUserProfile } from './login/types';
-
-const MANAGER_ROLES = 32 | 64;
-
-const WAREHOUSE_ORDER_ROLES = 1 | 2 | 32 | 64;
-const DELIVERY_ROLES = 1 | 2 | 4 | 8 | 32 | 64;
-
-export const dashboardModules = [
-  {
-    icon: Warehouse,
-    title: 'Quản lý kho & bưu cục',
-    description: 'Tồn kho, nhập đơn, tiếp nhận, manifest và đóng xếp hàng.',
-    href: '/warehouse',
-    colorScheme: 'blue' as const,
-  },
-  {
-    icon: PackagePlus,
-    title: 'Quản lý Đơn hàng',
-    description: 'Tạo đơn, tồn kho, tiếp nhận, ưu tiên giao và khách hàng.',
-    href: '/orders',
-    colorScheme: 'green' as const,
-    requiredRoleMask: WAREHOUSE_ORDER_ROLES,
-  },
-  {
-    icon: ScanBarcode,
-    title: 'Quản lý giao hàng',
-    description: 'Báo phát bằng ảnh, nhận diện mã vận đơn và lưu bằng chứng giao hàng.',
-    href: '/delivery',
-    colorScheme: 'green' as const,
-    requiredRoleMask: DELIVERY_ROLES,
-  },
-  {
-    icon: Truck,
-    title: 'Quản lý xe vận tải',
-    description: 'Chi phí chuyến, xe đường trục và đội xe nội bộ.',
-    href: '/trips',
-    colorScheme: 'teal' as const,
-  },
-  {
-    icon: Search,
-    title: 'Tìm kiếm chuyên sâu',
-    description: 'Tra cứu tổng hợp vận đơn, chuyến xe và dữ liệu liên quan.',
-    href: '/search',
-    colorScheme: 'purple' as const,
-  },
-  {
-    icon: Calculator,
-    title: 'Tài chính kế toán',
-    description: 'Đối soát COD, duyệt chi phí và tiền mặt bưu cục.',
-    href: '/finance',
-    colorScheme: 'amber' as const,
-  },
-  {
-    icon: Users,
-    title: 'Nhân sự',
-    description: 'Danh sách nhân viên và chấm công theo ngày.',
-    href: '/hr',
-    colorScheme: 'purple' as const,
-  },
-  {
-    icon: BarChart3,
-    title: 'Dashboard BGĐ',
-    description: 'KPI toàn công ty, quá hạn SLA và báo cáo doanh thu.',
-    href: '/dashboard',
-    colorScheme: 'orange' as const,
-  },
-  {
-    icon: Building2,
-    title: 'Dùng chung',
-    description: 'Bưu cục, xe & tài xế, NCC, in phiếu và hồ sơ cá nhân.',
-    href: '/admin',
-    colorScheme: 'blue' as const,
-    requiredRoleMask: MANAGER_ROLES,
-  },
-  {
-    icon: Settings,
-    title: 'Nhà cung cấp (NCC)',
-    description: 'Danh sách nhà cung cấp vận tải đường trục, tuyến và bảng giá.',
-    href: '/admin/vendors',
-    colorScheme: 'purple' as const,
-    requiredRoleMask: MANAGER_ROLES,
-  },
-];
+import type { TruckComplianceResponse } from './admin/trucks/types';
+import { formatDateKey } from './admin/trucks/truckCompliance';
+import { dashboardModules } from './dashboardModules';
 
 const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'chuc-nang' | 'danh-dau' | 'tat-ca'>('chuc-nang');
   const [user, setUser] = useState<AuthUserProfile | null>(() => getStoredAuthUser());
+  const [truckCompliance, setTruckCompliance] = useState<TruckComplianceResponse | null>(null);
   const loginName = getLoginDisplayName(user);
   const greetingPeriod = getGreetingPeriod();
   const roleMask = user?.role_mask ?? 0;
@@ -112,6 +36,21 @@ const Dashboard: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const loadComplianceAlerts = async () => {
+      try {
+        const response = await apiRequest<TruckComplianceResponse>('/trucks/compliance-alerts');
+        if (active) setTruckCompliance(response);
+      } catch {
+        if (active) setTruckCompliance(null);
+      }
+    };
+    void loadComplianceAlerts();
+    window.addEventListener('focus', loadComplianceAlerts);
+    return () => { active = false; window.removeEventListener('focus', loadComplianceAlerts); };
+  }, []);
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 w-full">
       <div className="mb-8">
@@ -120,6 +59,8 @@ const Dashboard: React.FC = () => {
           <span className="text-primary">{loginName}</span> 👋
         </h1>
       </div>
+
+      {truckCompliance && truckCompliance.meta.total_alerts > 0 && <TruckComplianceAlertPanel compliance={truckCompliance} />}
 
       <div className="bg-card rounded-xl shadow-sm border border-border p-1 flex items-center gap-1 mb-6 w-fit">
         {[
@@ -158,3 +99,7 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
+
+function TruckComplianceAlertPanel({ compliance }: { compliance: TruckComplianceResponse }) {
+  return <section className="mb-6 overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 shadow-sm"><div className="flex flex-col gap-3 border-b border-amber-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800"><AlertTriangle size={20} /></div><div><h2 className="text-[14px] font-extrabold text-amber-950">Cảnh báo hạn đăng kiểm, bảo hiểm xe nội bộ</h2><p className="mt-0.5 text-[12px] font-medium text-amber-800">{compliance.meta.expired_alerts} quá hạn · {compliance.meta.due_soon_alerts} sắp hết hạn trong {compliance.warning_days} ngày</p></div></div><Link to="/fleet/internal-vehicles" className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-amber-700 px-3 text-[12px] font-bold text-white hover:bg-amber-800">Xem danh sách xe <ArrowRight size={14} /></Link></div><div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-3">{compliance.items.slice(0, 6).map((truck) => <div key={truck.id} className="rounded-xl border border-amber-200 bg-white px-3 py-2.5"><div className="flex items-center justify-between gap-2"><p className="text-[13px] font-extrabold text-slate-900">{truck.license_plate}</p><span className="text-[10px] font-bold text-slate-500">{truck.hub_code || 'Nội bộ'}</span></div><div className="mt-2 space-y-1">{truck.alerts.map((alert) => <div key={alert.type} className={clsx('flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-[11px] font-bold', alert.status === 'EXPIRED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800')}><span className="inline-flex items-center gap-1"><CalendarClock size={12} />{alert.label}: {formatDateKey(alert.expiry_date)}</span><span>{alert.days_remaining < 0 ? `Quá ${Math.abs(alert.days_remaining)} ngày` : alert.days_remaining === 0 ? 'Hôm nay' : `Còn ${alert.days_remaining} ngày`}</span></div>)}</div></div>)}</div></section>;
+}

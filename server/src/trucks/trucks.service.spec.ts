@@ -133,6 +133,20 @@ describe('TrucksService canonical schema', () => {
     expect(new Set(result.document_image_urls).size).toBe(10);
   });
 
+  it('xe nội bộ lưu ngày hết hạn đăng kiểm và bảo hiểm khi có nhập', async () => {
+    mockUniquePlate(null);
+    const result = await service.create({
+      license_plate: '29H-88891',
+      payload: 2500,
+      ownership_type: 'INTERNAL',
+      hub_id: 'hub-1',
+      registration_expiry_date: '2027-08-28',
+      insurance_expiry_date: '2027-09-30',
+    }, manager);
+
+    expect(result).toMatchObject({ registration_expiry_date: '2027-08-28', insurance_expiry_date: '2027-09-30' });
+  });
+
   it('BKS đối tác không lưu ảnh giấy tờ xe nội bộ', async () => {
     mockUniquePlate(null);
     const result = await service.create({
@@ -144,6 +158,8 @@ describe('TrucksService canonical schema', () => {
     }, manager);
 
     expect(result.document_image_urls).toEqual([]);
+    expect(result.registration_expiry_date).toBeNull();
+    expect(result.insurance_expiry_date).toBeNull();
   });
 
   it('xe nội bộ không được gán ngoài HAN và HCM', async () => {
@@ -220,6 +236,29 @@ describe('TrucksService canonical schema', () => {
     expect(result.document_image_urls).toEqual(['https://example.com/registration.jpg']);
   });
 
+  it('update cho phép xóa ngày hết hạn không bắt buộc', async () => {
+    trucksRepo.findOne.mockResolvedValue(truck({ ownership_type: 'INTERNAL', hub_id: 'hub-1', registration_expiry_date: '2027-08-28', insurance_expiry_date: '2027-09-30' }));
+    const result = await service.update('10', { registration_expiry_date: null, insurance_expiry_date: null }, manager);
+    expect(result).toMatchObject({ registration_expiry_date: null, insurance_expiry_date: null });
+  });
+
+  it('tổng hợp cảnh báo giấy tờ quá hạn và còn đúng 15 ngày', async () => {
+    const qb = mockQb();
+    const yesterday = relativeVietnamDate(-1);
+    const inFifteenDays = relativeVietnamDate(15);
+    const inSixteenDays = relativeVietnamDate(16);
+    trucksRepo.createQueryBuilder.mockReturnValue(qb);
+    qb.getMany.mockResolvedValue([
+      truck({ id: '1', ownership_type: 'INTERNAL', hub_id: 'hub-1', hub: { code: 'HAN', name: 'Hà Nội' }, registration_expiry_date: yesterday, insurance_expiry_date: inSixteenDays }),
+      truck({ id: '2', license_plate: '29H-67890', ownership_type: 'INTERNAL', hub_id: 'hub-1', hub: { code: 'HAN', name: 'Hà Nội' }, registration_expiry_date: null, insurance_expiry_date: inFifteenDays }),
+    ]);
+
+    const result = await service.getComplianceAlerts(manager);
+
+    expect(result.meta).toMatchObject({ tracked_trucks: 2, registration_tracked: 1, insurance_tracked: 2, warning_trucks: 2, total_alerts: 2, expired_alerts: 1, due_soon_alerts: 1 });
+    expect(result.items[0].alerts[0]).toMatchObject({ status: 'EXPIRED', days_remaining: -1 });
+  });
+
   it('khôi phục xe cũ và giữ thông tin NCC, tài xế trong chuyến lịch sử', async () => {
     const legacyTruck = truck({
       ownership_type: 'VENDOR',
@@ -285,5 +324,11 @@ describe('TrucksService canonical schema', () => {
 });
 
 function mockQb() {
-  return { leftJoinAndSelect: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), andWhere: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), skip: jest.fn().mockReturnThis(), take: jest.fn().mockReturnThis(), getManyAndCount: jest.fn() } as any;
+  return { leftJoinAndSelect: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), andWhere: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), skip: jest.fn().mockReturnThis(), take: jest.fn().mockReturnThis(), getMany: jest.fn(), getManyAndCount: jest.fn() } as any;
+}
+
+function relativeVietnamDate(days: number) {
+  const vietnamNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  vietnamNow.setUTCDate(vietnamNow.getUTCDate() + days);
+  return vietnamNow.toISOString().slice(0, 10);
 }

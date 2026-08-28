@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { Building2, Fuel, Gauge, Images, Tag, Truck, X } from 'lucide-react';
+import { Building2, CalendarDays, Fuel, Gauge, Images, ShieldCheck, Tag, Truck, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { ReactNode } from 'react';
 import { SearchableSelect } from '../../../../components/ui/SearchableSelect';
@@ -59,6 +59,13 @@ export default function AddEditTruckDialog({ isOpen, isClosing, isEditMode, isSu
               <>
                 <Section title="Bưu cục hoạt động" icon={<Tag size={16} />}>
                   <SelectField label="Gán bưu cục" value={formState.hub_id} options={hubOptions} onChange={value => setFormField('hub_id', value)} icon={<Tag size={16} />} />
+                </Section>
+                <Section title="Hạn giấy tờ (không bắt buộc)" icon={<CalendarDays size={16} />}>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field label="Ngày hết hạn đăng kiểm" icon={<CalendarDays size={16} />}><input type="date" value={formState.registration_expiry_date} onChange={event => setFormField('registration_expiry_date', event.target.value)} className={inputClass} /></Field>
+                    <Field label="Ngày hết hạn bảo hiểm" icon={<ShieldCheck size={16} />}><input type="date" value={formState.insurance_expiry_date} onChange={event => setFormField('insurance_expiry_date', event.target.value)} className={inputClass} /></Field>
+                  </div>
+                  <p className="mt-3 text-[12px] font-medium text-muted-foreground">Có thể bỏ trống. Hệ thống cảnh báo trên trang chủ khi còn 15 ngày hoặc đã quá hạn.</p>
                 </Section>
                 <Section title="Giấy tờ xe" icon={<Images size={16} />}>
                   <TruckDocumentImagePicker value={formState.document_image_urls} onChange={value => setFormField('document_image_urls', value)} onUploadingChange={onUploadingChange} disabled={isSubmitting} />

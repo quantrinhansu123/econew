@@ -54,6 +54,12 @@ export class TrucksController {
     return this.trucksService.findLegacy(query, currentUser);
   }
 
+  @Get('compliance-alerts')
+  @ApiOperation({ summary: 'Summarize internal truck registration and insurance expiry alerts' })
+  getComplianceAlerts(@CurrentUser() currentUser: UserEntity) {
+    return this.trucksService.getComplianceAlerts(currentUser);
+  }
+
   @Get(':id')
   @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Get truck detail' })

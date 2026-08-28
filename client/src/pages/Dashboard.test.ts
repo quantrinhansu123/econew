@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dashboardModules } from './Dashboard';
+import { dashboardModules } from './dashboardModules';
 
 describe('dashboard delivery navigation', () => {
   it('shows a delivery module card that opens the delivery module page', () => {

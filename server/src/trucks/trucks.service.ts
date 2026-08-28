@@ -20,6 +20,7 @@ const ACTIVE_TRIP_STATUSES = [TripStatus.PLANNED, 'LOADING', TripStatus.IN_TRANS
 const TRIP_LOCK_STATUSES = [TripStatus.PLANNED, 'LOADING', TripStatus.IN_TRANSIT, TripStatus.ARRIVED, 'ARRIVED_PENDING_CONFIRM'];
 const INTERNAL_HUB_CODES = new Set(['HAN', 'HCM']);
 const DUPLICATE_PLATE_MESSAGE = 'BKS đã tồn tại. Hãy tìm BKS trong danh sách xe và chọn Chỉnh sửa.';
+const COMPLIANCE_WARNING_DAYS = 15;
 
 @Injectable()
 export class TrucksService {
@@ -64,6 +65,8 @@ export class TrucksService {
       khu_vuc: dto.khu_vuc?.trim() || null,
       vendor_id: vendorId,
       document_image_urls: ownershipType === 'INTERNAL' ? this.normalizeDocumentImages(dto.document_image_urls) : [],
+      registration_expiry_date: ownershipType === 'INTERNAL' ? dto.registration_expiry_date ?? null : null,
+      insurance_expiry_date: ownershipType === 'INTERNAL' ? dto.insurance_expiry_date ?? null : null,
     });
 
     try {
@@ -116,6 +119,51 @@ export class TrucksService {
     return { items, meta: { total, page, limit, total_pages: Math.ceil(total / limit) } };
   }
 
+  async getComplianceAlerts(_currentUser: UserEntity) {
+    const today = this.getVietnamDateKey();
+    const trackedTrucks = await this.trucksRepository
+      .createQueryBuilder('truck')
+      .leftJoinAndSelect('truck.hub', 'hub')
+      .where("truck.ownership_type = 'INTERNAL'")
+      .andWhere('(truck.registration_expiry_date IS NOT NULL OR truck.insurance_expiry_date IS NOT NULL)')
+      .orderBy('truck.license_plate', 'ASC')
+      .getMany();
+
+    const warningItems = trackedTrucks.map((truck) => {
+      const alerts = [
+        this.toComplianceAlert('REGISTRATION', 'Đăng kiểm', truck.registration_expiry_date, today),
+        this.toComplianceAlert('INSURANCE', 'Bảo hiểm', truck.insurance_expiry_date, today),
+      ].filter((alert): alert is NonNullable<typeof alert> => Boolean(alert && alert.days_remaining <= COMPLIANCE_WARNING_DAYS));
+      return {
+        id: String(truck.id),
+        license_plate: truck.license_plate,
+        hub_id: truck.hub_id,
+        hub_code: truck.hub?.code ?? null,
+        hub_name: truck.hub?.name ?? null,
+        registration_expiry_date: truck.registration_expiry_date,
+        insurance_expiry_date: truck.insurance_expiry_date,
+        alerts,
+      };
+    }).filter((truck) => truck.alerts.length > 0)
+      .sort((left, right) => Math.min(...left.alerts.map((alert) => alert.days_remaining)) - Math.min(...right.alerts.map((alert) => alert.days_remaining)));
+    const alerts = warningItems.flatMap((truck) => truck.alerts);
+
+    return {
+      as_of: today,
+      warning_days: COMPLIANCE_WARNING_DAYS,
+      items: warningItems,
+      meta: {
+        tracked_trucks: trackedTrucks.length,
+        registration_tracked: trackedTrucks.filter((truck) => Boolean(truck.registration_expiry_date)).length,
+        insurance_tracked: trackedTrucks.filter((truck) => Boolean(truck.insurance_expiry_date)).length,
+        warning_trucks: warningItems.length,
+        total_alerts: alerts.length,
+        expired_alerts: alerts.filter((alert) => alert.status === 'EXPIRED').length,
+        due_soon_alerts: alerts.filter((alert) => alert.status === 'DUE_SOON').length,
+      },
+    };
+  }
+
   async findOne(id: string, _currentUser: UserEntity): Promise<TruckEntity> {
     const truck = await this.trucksRepository.findOne({ where: { id } as any, relations: ['driver', 'trips', 'vendor', 'hub'] });
     if (!truck) throw new NotFoundException('Truck not found');
@@ -164,6 +212,12 @@ export class TrucksService {
       document_image_urls: nextOwnershipType === 'INTERNAL'
         ? dto.document_image_urls === undefined ? truck.document_image_urls : this.normalizeDocumentImages(dto.document_image_urls)
         : [],
+      registration_expiry_date: nextOwnershipType === 'INTERNAL'
+        ? dto.registration_expiry_date === undefined ? truck.registration_expiry_date : dto.registration_expiry_date
+        : null,
+      insurance_expiry_date: nextOwnershipType === 'INTERNAL'
+        ? dto.insurance_expiry_date === undefined ? truck.insurance_expiry_date : dto.insurance_expiry_date
+        : null,
     });
     return this.trucksRepository.save(truck);
   }
@@ -301,6 +355,22 @@ export class TrucksService {
 
   private normalizeDocumentImages(urls?: string[]): string[] {
     return [...new Set((urls ?? []).map((url) => url.trim()).filter(Boolean))].slice(0, 10);
+  }
+
+  private toComplianceAlert(type: 'REGISTRATION' | 'INSURANCE', label: string, expiryDate: string | null, today: string) {
+    if (!expiryDate) return null;
+    const daysRemaining = Math.round((Date.parse(`${expiryDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+    return {
+      type,
+      label,
+      expiry_date: expiryDate,
+      days_remaining: daysRemaining,
+      status: daysRemaining < 0 ? 'EXPIRED' as const : 'DUE_SOON' as const,
+    };
+  }
+
+  private getVietnamDateKey(): string {
+    return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
   }
 
   private assertRole(currentUser: UserEntity, roles: number[]) {

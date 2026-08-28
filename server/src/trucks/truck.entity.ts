@@ -51,6 +51,12 @@ export class TruckEntity {
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   document_image_urls: string[];
 
+  @Column({ type: 'date', nullable: true })
+  registration_expiry_date: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  insurance_expiry_date: string | null;
+
   @ManyToOne(() => VendorEntity, (vendor) => vendor.trucks, { nullable: true })
   @JoinColumn({ name: 'vendor_id' })
   vendor: VendorEntity | null;
