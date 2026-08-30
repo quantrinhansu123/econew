@@ -42,6 +42,9 @@ export class StaffMemberEntity {
   @Column({ type: 'date', nullable: true })
   hire_date: string | null;
 
+  @Column({ type: 'date', nullable: true })
+  termination_date: string | null;
+
   @Column({ type: 'varchar', length: 16, default: 'ACTIVE' })
   employment_status: string;
 

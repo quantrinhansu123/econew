@@ -15,12 +15,14 @@ import { UpsertStaffAttendanceDto } from './dto/upsert-staff-attendance.dto';
 import { CreateSalaryAdvanceDto } from './dto/create-salary-advance.dto';
 import { UpdateSalaryAdvanceDto } from './dto/update-salary-advance.dto';
 import { UpsertPayrollAdjustmentDto } from './dto/upsert-payroll-adjustment.dto';
+import { CreateSalaryPaymentDto } from './dto/create-salary-payment.dto';
 import { SalaryAdvanceChangeLogEntity, SalaryAdvanceFieldChange } from './salary-advance-change-log.entity';
 import { SalaryAdvanceEntity } from './salary-advance.entity';
 import { StaffPayrollAdjustmentEntity } from './staff-payroll-adjustment.entity';
 import { StaffAttendanceEntity } from './staff-attendance.entity';
 import { StaffDepartmentEntity } from './staff-department.entity';
 import { StaffMemberEntity } from './staff-member.entity';
+import { StaffSalaryPaymentEntity } from './staff-salary-payment.entity';
 
 const COMPENSATION_FIELDS = [
   'base_salary',
@@ -41,6 +43,7 @@ export class StaffMemberService {
     @InjectRepository(SalaryAdvanceChangeLogEntity) private readonly salaryAdvanceChangeLogRepository: Repository<SalaryAdvanceChangeLogEntity>,
     @InjectRepository(StaffPayrollAdjustmentEntity) private readonly payrollAdjustmentRepository: Repository<StaffPayrollAdjustmentEntity>,
     @InjectRepository(CashFundEntity) private readonly cashFundRepository: Repository<CashFundEntity>,
+    @InjectRepository(StaffSalaryPaymentEntity) private readonly salaryPaymentRepository: Repository<StaffSalaryPaymentEntity>,
   ) {}
 
   async list(query: QueryStaffMemberDto, currentUser?: UserEntity, includeCompensation = false) {
@@ -78,6 +81,7 @@ export class StaffMemberService {
 
   async create(dto: CreateStaffMemberDto, currentUser: UserEntity) {
     this.assertCanManageCompensation(dto, currentUser);
+    this.assertEmploymentDates(dto.hire_date, dto.termination_date);
     const department = await this.getActiveDepartment(dto.department_id);
     await this.assertUnique(dto.employee_code, dto.phone, dto.user_id);
     await this.assertReferences(dto.hub_id, dto.user_id);
@@ -98,6 +102,7 @@ export class StaffMemberService {
     this.assertCanManageCompensation(dto, currentUser);
     const entity = await this.staffRepository.findOne({ where: { id } });
     if (!entity) throw new NotFoundException('Không tìm thấy nhân sự');
+    this.assertEmploymentDates(dto.hire_date === undefined ? entity.hire_date : dto.hire_date, dto.termination_date === undefined ? entity.termination_date : dto.termination_date);
     const department = dto.department_id ? await this.getActiveDepartment(dto.department_id) : null;
     await this.assertUnique(dto.employee_code ?? entity.employee_code, dto.phone ?? entity.phone, dto.user_id === undefined ? entity.user_id ?? undefined : dto.user_id, id);
     await this.assertReferences(dto.hub_id, dto.user_id);
@@ -157,14 +162,17 @@ export class StaffMemberService {
 
   async listAttendance(month: string) {
     const { from, to } = this.monthBounds(month);
-    const [staffPage, monthRecords] = await Promise.all([
-      this.list({ page: 1, limit: 500, employment_status: 'ACTIVE' }),
+    const [staff, monthRecords] = await Promise.all([
+      this.listStaffEmployedDuring(from, to),
       this.attendanceRepository.createQueryBuilder('attendance')
         .where('attendance.work_date BETWEEN :from AND :to', { from, to })
         .orderBy('attendance.work_date', 'ASC')
         .getMany(),
     ]);
-    return { staff: staffPage.data, records: monthRecords };
+    return {
+      staff: staff.map((item) => this.toResponse(item)),
+      records: staff.flatMap((item) => this.attendanceRecordsWithDefaults(item, month, monthRecords)),
+    };
   }
 
   async upsertAttendance(staffId: string, date: string, dto: UpsertStaffAttendanceDto, currentUser: UserEntity) {
@@ -182,14 +190,68 @@ export class StaffMemberService {
   }
 
   async payroll(month: string) {
-    const { to } = this.monthBounds(month);
-    const staffPage = await this.list({ page: 1, limit: 500, employment_status: 'ACTIVE' }, undefined, true);
-    const [attendanceRecords, advances, adjustments] = await Promise.all([
+    const { from, to } = this.monthBounds(month);
+    const [staff, attendanceRecords, advances, adjustments, payments] = await Promise.all([
+      this.listStaffEmployedDuring(from, to),
       this.attendanceRepository.find({ where: { work_date: LessThanOrEqual(to) }, order: { work_date: 'ASC' } }),
       this.salaryAdvanceRepository.find({ where: { advance_date: LessThanOrEqual(to) }, order: { advance_date: 'ASC' } }),
       this.payrollAdjustmentRepository.createQueryBuilder('adjustment').where('adjustment.payroll_month <= :month', { month }).getMany(),
+      this.salaryPaymentRepository.find({ where: { payroll_month: month } }),
     ]);
-    return staffPage.data.map((staff) => this.calculatePayrollRow(staff, month, attendanceRecords, advances, adjustments));
+    return staff.map((item) => this.calculatePayrollRow(this.toResponse(item, true), month, attendanceRecords, advances, adjustments, payments));
+  }
+
+  async createSalaryPayment(staffId: string, month: string, dto: CreateSalaryPaymentDto, currentUser: UserEntity) {
+    this.monthBounds(month);
+    if (await this.salaryPaymentRepository.exist({ where: { staff_member_id: staffId, payroll_month: month } })) {
+      throw new ConflictException('Lương tháng này của nhân sự đã được thanh toán');
+    }
+    const [staff, fund, payrollRows] = await Promise.all([
+      this.staffRepository.findOne({ where: { id: staffId }, relations: ['hub'] }),
+      this.cashFundRepository.findOne({ where: { id: dto.fund_id, is_active: true }, relations: ['hub'] }),
+      this.payroll(month),
+    ]);
+    if (!staff) throw new NotFoundException('Không tìm thấy nhân sự');
+    if (!fund) throw new NotFoundException('Sổ quỹ không tồn tại hoặc đã ngừng sử dụng');
+    const payrollRow = payrollRows.find((row) => String(row.id) === String(staffId));
+    if (!payrollRow) throw new BadRequestException('Nhân sự không thuộc kỳ lương này');
+    const amount = Math.round(Number(payrollRow.net_salary || 0));
+    if (amount <= 0) throw new BadRequestException('Số tiền thực lĩnh phải lớn hơn 0');
+    const hubId = fund.hub_id || staff.hub_id;
+    if (!hubId) throw new BadRequestException('Vui lòng dùng sổ quỹ có bưu cục hoặc gán bưu cục cho nhân sự');
+    if (!isManager(currentUser.role_mask) && !getAssignedHubIds(currentUser).includes(String(hubId))) {
+      throw new BadRequestException('Không được thanh toán lương tại bưu cục khác');
+    }
+    const paymentDate = new Date().toISOString().slice(0, 10);
+    return this.staffRepository.manager.transaction(async (manager) => {
+      const journal = await manager.getRepository(CashJournalEntryEntity).save(manager.getRepository(CashJournalEntryEntity).create({
+        entry_date: paymentDate,
+        voucher_type: 'Chi',
+        source: 'Thanh toán lương',
+        fund_id: fund.id,
+        vendor_id: null,
+        hub_id: String(hubId),
+        cost_category: '334-Phải trả người lao động',
+        detail: `${staff.employee_code} · ${staff.full_name}`,
+        note: `Thanh toán lương tháng ${month}`,
+        content: `Thanh toán lương ${month} cho ${staff.full_name}`,
+        income_amount: '0',
+        expense_amount: String(amount),
+        attachment_urls: [],
+        created_by_id: currentUser.id,
+        created_by_name: this.userDisplayName(currentUser),
+      }));
+      return manager.getRepository(StaffSalaryPaymentEntity).save(manager.getRepository(StaffSalaryPaymentEntity).create({
+        staff_member_id: staff.id,
+        payroll_month: month,
+        payment_date: paymentDate,
+        amount: String(amount),
+        fund_id: fund.id,
+        hub_id: String(hubId),
+        cash_journal_entry_id: journal.id,
+        created_by: currentUser.id,
+      }));
+    });
   }
 
   async listSalaryAdvances(month?: string) {
@@ -480,7 +542,7 @@ export class StaffMemberService {
     return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, '0')}` };
   }
 
-  private calculatePayrollRow(staff: any, selectedMonth: string, attendance: StaffAttendanceEntity[], advances: SalaryAdvanceEntity[], adjustments: StaffPayrollAdjustmentEntity[]) {
+  private calculatePayrollRow(staff: any, selectedMonth: string, attendance: StaffAttendanceEntity[], advances: SalaryAdvanceEntity[], adjustments: StaffPayrollAdjustmentEntity[], payments: StaffSalaryPaymentEntity[] = []) {
     const staffAttendance = attendance.filter((item) => String(item.staff_member_id) === String(staff.id));
     const staffAdvances = advances.filter((item) => String(item.staff_member_id) === String(staff.id));
     const staffAdjustments = adjustments.filter((item) => String(item.staff_member_id) === String(staff.id));
@@ -488,25 +550,69 @@ export class StaffMemberService {
     let carry = -Number(staff.opening_salary_debt || 0);
     let selected: Record<string, number | string | null> = {};
     for (const cursor of this.monthSequence(firstDataMonth, selectedMonth)) {
-      const monthAttendance = staffAttendance.filter((item) => item.work_date.startsWith(cursor));
+      const monthAttendance = this.attendanceRecordsWithDefaults(staff, cursor, staffAttendance);
       const workDays = monthAttendance.reduce((sum, item) => sum + Number(item.work_days || 0), 0);
       const overtimeHours = monthAttendance.reduce((sum, item) => sum + Number(item.overtime_hours || 0), 0);
       const standardDays = Math.max(1, Number(staff.standard_work_days || 26));
       const baseSalary = Number(staff.base_salary || 0);
       const allowanceTotal = Number(staff.meal_allowance || 0) + Number(staff.transport_allowance || 0) + Number(staff.other_allowance || 0);
-      const baseByAttendance = baseSalary / standardDays * workDays;
-      const allowanceByAttendance = allowanceTotal / standardDays * workDays;
-      const overtimePay = Number(staff.overtime_hourly_rate || 0) * overtimeHours;
+      const baseByAttendance = Math.round(baseSalary / standardDays * workDays);
+      const allowanceByAttendance = Math.round(allowanceTotal / standardDays * workDays);
+      const overtimePay = Math.round(Number(staff.overtime_hourly_rate || 0) * overtimeHours);
       const adjustment = staffAdjustments.find((item) => item.payroll_month === cursor);
       const rewardAmount = Number(adjustment?.reward_amount || 0);
       const advanceAmount = staffAdvances.filter((item) => item.advance_date.startsWith(cursor)).reduce((sum, item) => sum + Number(item.amount || 0), 0);
       const carryIn = carry;
-      const salaryBeforeAdvance = baseByAttendance + allowanceByAttendance + overtimePay + rewardAmount;
-      const netSalary = salaryBeforeAdvance + carryIn - advanceAmount;
+      const salaryBeforeAdvance = Math.round(baseByAttendance + allowanceByAttendance + overtimePay + rewardAmount);
+      const netSalary = Math.round(salaryBeforeAdvance + carryIn - advanceAmount);
       carry = Math.min(0, netSalary);
-      if (cursor === selectedMonth) selected = { work_days: workDays, overtime_hours: overtimeHours, base_by_attendance: baseByAttendance, allowance_total: allowanceTotal, allowance_by_attendance: allowanceByAttendance, overtime_pay: overtimePay, reward_amount: rewardAmount, advance_amount: advanceAmount, carry_in: carryIn, gross_salary: salaryBeforeAdvance, net_salary: netSalary, carry_out: carry, payroll_note: adjustment?.note ?? null };
+      if (cursor === selectedMonth) {
+        const payment = payments.find((item) => String(item.staff_member_id) === String(staff.id) && item.payroll_month === cursor);
+        selected = { work_days: workDays, overtime_hours: overtimeHours, base_by_attendance: baseByAttendance, allowance_total: allowanceTotal, allowance_by_attendance: allowanceByAttendance, overtime_pay: overtimePay, reward_amount: rewardAmount, advance_amount: advanceAmount, carry_in: carryIn, gross_salary: salaryBeforeAdvance, net_salary: netSalary, carry_out: carry, payroll_note: adjustment?.note ?? null, salary_paid_amount: Number(payment?.amount || 0), salary_payment_id: payment?.id || null };
+      }
     }
     return { ...staff, month: selectedMonth, ...selected };
+  }
+
+  private listStaffEmployedDuring(from: string, to: string) {
+    return this.staffRepository.createQueryBuilder('staff')
+      .leftJoinAndSelect('staff.department_record', 'department')
+      .leftJoinAndSelect('staff.hub', 'hub')
+      .leftJoin('staff.user', 'user')
+      .addSelect(['user.id', 'user.username', 'user.full_name'])
+      .where('(staff.hire_date IS NULL OR staff.hire_date <= :to)', { to })
+      .andWhere("((staff.termination_date IS NULL AND staff.employment_status = 'ACTIVE') OR staff.termination_date >= :from)", { from })
+      .orderBy('staff.employee_code', 'ASC')
+      .getMany();
+  }
+
+  private attendanceRecordsWithDefaults(staff: Pick<StaffMemberEntity, 'id' | 'hire_date' | 'termination_date'>, month: string, records: StaffAttendanceEntity[]) {
+    const { from, to } = this.monthBounds(month);
+    const start = staff.hire_date && staff.hire_date > from ? staff.hire_date : from;
+    const end = staff.termination_date && staff.termination_date < to ? staff.termination_date : to;
+    if (start > end) return [];
+    const saved = new Map(records
+      .filter((item) => String(item.staff_member_id) === String(staff.id) && item.work_date >= start && item.work_date <= end)
+      .map((item) => [item.work_date, item]));
+    const result: Array<StaffAttendanceEntity | Record<string, unknown>> = [];
+    for (let day = new Date(`${start}T00:00:00Z`); day <= new Date(`${end}T00:00:00Z`); day.setUTCDate(day.getUTCDate() + 1)) {
+      const date = day.toISOString().slice(0, 10);
+      result.push(saved.get(date) || {
+        id: `default-${staff.id}-${date}`,
+        staff_member_id: staff.id,
+        work_date: date,
+        work_days: '1',
+        overtime_hours: '0',
+        note: null,
+      });
+    }
+    return result as StaffAttendanceEntity[];
+  }
+
+  private assertEmploymentDates(hireDate?: string | null, terminationDate?: string | null) {
+    if (hireDate && terminationDate && terminationDate < hireDate) {
+      throw new BadRequestException('Ngày nghỉ việc không được trước ngày vào làm');
+    }
   }
 
   private monthSequence(from: string, to: string): string[] {

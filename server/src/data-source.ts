@@ -30,6 +30,7 @@ import { StaffAttendanceEntity } from './staff-members/staff-attendance.entity';
 import { SalaryAdvanceEntity } from './staff-members/salary-advance.entity';
 import { SalaryAdvanceChangeLogEntity } from './staff-members/salary-advance-change-log.entity';
 import { StaffPayrollAdjustmentEntity } from './staff-members/staff-payroll-adjustment.entity';
+import { StaffSalaryPaymentEntity } from './staff-members/staff-salary-payment.entity';
 import { TripEntity } from './trips/trip.entity';
 import { TruckEntity } from './trucks/truck.entity';
 import { UserEntity } from './users/user.entity';
@@ -89,6 +90,7 @@ export default new DataSource({
     SalaryAdvanceEntity,
     SalaryAdvanceChangeLogEntity,
     StaffPayrollAdjustmentEntity,
+    StaffSalaryPaymentEntity,
     TripEntity,
     TruckEntity,
     UserEntity,

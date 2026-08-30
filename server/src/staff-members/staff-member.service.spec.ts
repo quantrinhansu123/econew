@@ -74,6 +74,7 @@ describe('StaffMemberService', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
     );
   });
 
@@ -118,5 +119,43 @@ describe('StaffMemberService', () => {
   it('rejects compensation changes from non-directors', async () => {
     await expect(service.update('1', { base_salary: 9_000_000 }, { id: '99', role_mask: 16 } as any))
       .rejects.toThrow('Chỉ Giám đốc');
+  });
+
+  it('defaults attendance to one work day only inside the employment period', () => {
+    const records = (service as any).attendanceRecordsWithDefaults({
+      id: '1',
+      hire_date: '2026-08-10',
+      termination_date: '2026-08-12',
+    }, '2026-08', []);
+
+    expect(records.map((item: any) => [item.work_date, Number(item.work_days)])).toEqual([
+      ['2026-08-10', 1],
+      ['2026-08-11', 1],
+      ['2026-08-12', 1],
+    ]);
+  });
+
+  it('rounds payroll amounts to whole dong while keeping the existing formula', () => {
+    const attendance = Array.from({ length: 31 }, (_, index) => ({
+      staff_member_id: '1',
+      work_date: `2026-08-${String(index + 1).padStart(2, '0')}`,
+      work_days: index < 22 ? '1' : index === 22 ? '0.5' : '0',
+      overtime_hours: '0',
+    }));
+    const row = (service as any).calculatePayrollRow({
+      id: '1',
+      hire_date: '2026-08-01',
+      termination_date: null,
+      base_salary: '5310000',
+      meal_allowance: '0',
+      transport_allowance: '0',
+      other_allowance: '0',
+      overtime_hourly_rate: '0',
+      standard_work_days: '26',
+      opening_salary_debt: '0',
+    }, '2026-08', attendance, [], []);
+
+    expect(row.base_by_attendance).toBe(4_595_192);
+    expect(row.net_salary).toBe(4_595_192);
   });
 });

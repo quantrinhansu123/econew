@@ -18,6 +18,7 @@ export interface StaffRecord {
   identity_number?: string | null;
   address?: string | null;
   hire_date?: string | null;
+  termination_date?: string | null;
   employment_status: string;
   hub_id?: string | number | null;
   hub?: { id?: string | number; code?: string; name?: string } | null;

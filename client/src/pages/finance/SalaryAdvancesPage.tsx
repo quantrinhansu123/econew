@@ -123,11 +123,22 @@ export default function SalaryAdvancesPage() {
       setSummaryLoading(true);
       apiRequest<AdvanceSummary>(`/staff-members/salary-advances/summary?staff_member_id=${encodeURIComponent(form.staff_member_id)}&month=${selectedMonth}`)
         .then((value) => { if (!cancelled) setSummary(value); })
-        .catch(() => { if (!cancelled) setSummary(null); })
+        .catch(() => {
+          if (cancelled) return;
+          const matching = selectedMonth === month ? rows.filter((row) =>
+            String(row.staff_member_id || row.staff_member?.id || '') === form.staff_member_id
+            && row.advance_date.slice(0, 7) === selectedMonth) : [];
+          setSummary({
+            staff_member_id: form.staff_member_id,
+            month: selectedMonth,
+            total_amount: matching.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+            advance_count: matching.length,
+          });
+        })
         .finally(() => { if (!cancelled) setSummaryLoading(false); });
     });
     return () => { cancelled = true; };
-  }, [form.advance_date, form.staff_member_id, formOpen]);
+  }, [form.advance_date, form.staff_member_id, formOpen, month, rows]);
 
   const total = useMemo(() => rows.reduce((sum, row) => sum + Number(row.amount || 0), 0), [rows]);
 

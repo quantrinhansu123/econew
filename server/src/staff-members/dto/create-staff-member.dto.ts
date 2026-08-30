@@ -47,6 +47,10 @@ export class CreateStaffMemberDto {
   hire_date?: string | null;
 
   @IsOptional()
+  @IsDateString()
+  termination_date?: string | null;
+
+  @IsOptional()
   @IsIn(['ACTIVE', 'INACTIVE'])
   employment_status?: string;
 

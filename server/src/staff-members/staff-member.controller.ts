@@ -15,6 +15,7 @@ import { CreateSalaryAdvanceDto } from './dto/create-salary-advance.dto';
 import { UpdateSalaryAdvanceDto } from './dto/update-salary-advance.dto';
 import { UpsertPayrollAdjustmentDto } from './dto/upsert-payroll-adjustment.dto';
 import { StaffMemberService } from './staff-member.service';
+import { CreateSalaryPaymentDto } from './dto/create-salary-payment.dto';
 
 @ApiTags('Staff Members')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -115,6 +116,17 @@ export class StaffMemberController {
   @RequireRoles(Roles.DIRECTOR)
   upsertPayrollAdjustment(@Param('staffId') staffId: string, @Param('month') month: string, @Body() dto: UpsertPayrollAdjustmentDto) {
     return this.staffMemberService.upsertPayrollAdjustment(staffId, month, dto);
+  }
+
+  @Post('payroll/:staffId/:month/payment')
+  @RequireRoles(Roles.DIRECTOR)
+  createSalaryPayment(
+    @Param('staffId') staffId: string,
+    @Param('month') month: string,
+    @Body() dto: CreateSalaryPaymentDto,
+    @CurrentUser() currentUser: UserEntity,
+  ) {
+    return this.staffMemberService.createSalaryPayment(staffId, month, dto, currentUser);
   }
 
   @Get(':id')
