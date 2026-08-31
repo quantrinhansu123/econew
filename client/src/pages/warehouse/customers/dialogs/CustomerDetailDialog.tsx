@@ -211,6 +211,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   const [isCollectOpen, setIsCollectOpen] = useState(false);
   const [collectWaybillIds, setCollectWaybillIds] = useState<string[]>([]);
   const [collectAmounts, setCollectAmounts] = useState<Record<string, string>>({});
+  const [collectOpeningDebt, setCollectOpeningDebt] = useState(false);
+  const [collectOpeningDebtAmount, setCollectOpeningDebtAmount] = useState('');
   const [collectNote, setCollectNote] = useState('');
   const [collectFundId, setCollectFundId] = useState('');
   const [collectSubmitting, setCollectSubmitting] = useState(false);
@@ -249,6 +251,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
         setIsCollectOpen(false);
         setCollectWaybillIds([]);
         setCollectAmounts({});
+        setCollectOpeningDebt(false);
+        setCollectOpeningDebtAmount('');
         setCollectNote('');
         setCollectError('');
         setIsStatementOpen(false);
@@ -276,7 +280,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   )), [collectWaybillIds, collectableBills]);
   const collectTotal = selectedCollectBills.reduce((sum, { item }) => (
     sum + parseAmountInput(collectAmounts[String(item.id)] || '')
-  ), 0);
+  ), 0) + (collectOpeningDebt ? parseAmountInput(collectOpeningDebtAmount) : 0);
+  const collectSelectionCount = selectedCollectBills.length + (collectOpeningDebt ? 1 : 0);
   const creditBills = useMemo(() => inventoryItems.map((item) => {
     const freight = getBillFreight(item);
     const paid = resolvePaidForBill(item, statementData.paidMaps);
@@ -410,6 +415,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   const openCollectDialog = () => {
     setCollectWaybillIds([]);
     setCollectAmounts({});
+    setCollectOpeningDebt(false);
+    setCollectOpeningDebtAmount('');
     setCollectNote('');
     setCollectFundId('');
     setCollectError('');
@@ -423,6 +430,10 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       amounts[id] = current[id] || formatAmountInputFromNumber(remaining);
       return amounts;
     }, {}));
+    if (statementData.openingDebtRemaining > 0) {
+      setCollectOpeningDebt(true);
+      setCollectOpeningDebtAmount((current) => current || formatAmountInputFromNumber(statementData.openingDebtRemaining));
+    }
     setCollectError('');
   };
 
@@ -442,8 +453,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
 
   const submitCollectVoucher = async () => {
     const maKh = customer?.code?.trim();
-    if (!selectedCollectBills.length) {
-      setCollectError('Chọn ít nhất một bill cần thanh toán.');
+    if (!collectSelectionCount) {
+      setCollectError('Chọn ít nhất một bill hoặc công nợ tồn cũ cần thanh toán.');
       return;
     }
     if (!collectFundId) {
@@ -465,6 +476,15 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       );
       return;
     }
+    const openingDebtAmount = collectOpeningDebt ? parseAmountInput(collectOpeningDebtAmount) : 0;
+    if (collectOpeningDebt && (openingDebtAmount <= 0 || openingDebtAmount > statementData.openingDebtRemaining)) {
+      setCollectError(
+        openingDebtAmount <= 0
+          ? 'Nhập số tiền thanh toán công nợ tồn cũ.'
+          : `Số tiền công nợ tồn cũ không được vượt quá ${formatMoney(statementData.openingDebtRemaining)}.`,
+      );
+      return;
+    }
     setCollectSubmitting(true);
     setCollectError('');
     try {
@@ -476,6 +496,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
             waybill_code: item.waybill_code || item.code || String(item.id),
             amount,
           })),
+          customer_code: maKh,
+          opening_debt_amount: openingDebtAmount || undefined,
           fund_id: collectFundId,
           note: collectNote.trim() || `Thanh toán khách hàng ${maKh || customer?.name || ''}`.trim(),
         },
@@ -914,12 +936,16 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                   <tr key={String(voucher.id)}>
                     <td className="border border-slate-300 px-2 py-2">{index + 1}</td>
                     <td className="border border-slate-300 px-2 py-2">{formatDate(voucher.created_at)}</td>
-                    <td className="border border-slate-300 px-2 py-2 font-bold">{voucher.waybill_code || voucher.waybill_id || '—'}</td>
+                    <td className="border border-slate-300 px-2 py-2 font-bold">
+                      {voucher.source_type === 'OPENING_DEBT' ? 'Công nợ tồn cũ' : voucher.waybill_code || voucher.waybill_id || '—'}
+                    </td>
                     <td className="border border-slate-300 px-2 py-2">
                       {voucher.source_type === 'COD_COLLECTION'
                         ? 'Phiếu thu COD'
                         : voucher.source_type === 'CUSTOMER_PAYOUT'
                           ? 'Chi trả khách'
+                          : voucher.source_type === 'OPENING_DEBT'
+                            ? 'Thu công nợ tồn cũ'
                           : String(voucher.voucher_type).toLowerCase() === 'thu'
                             ? 'Khách thanh toán'
                             : 'Điều chỉnh giảm'}
@@ -1019,7 +1045,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
 
               <div className="mb-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Chọn bill thanh toán</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Chọn khoản thanh toán</span>
                   <div className="flex gap-1.5">
                     <button
                       type="button"
@@ -1032,6 +1058,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                       type="button"
                       onClick={() => {
                         setCollectWaybillIds([]);
+                        setCollectOpeningDebt(false);
                         setCollectError('');
                       }}
                       className="rounded-lg border border-border bg-white px-2 py-1 text-[11px] font-extrabold text-muted-foreground"
@@ -1041,6 +1068,49 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                   </div>
                 </div>
                 <div className="custom-scrollbar max-h-52 space-y-2 overflow-y-auto rounded-xl border border-border bg-muted/10 p-2">
+                  {statementData.openingDebtRemaining > 0 && (
+                    <div
+                      className={clsx(
+                        'rounded-lg border px-3 py-2.5 transition-colors',
+                        collectOpeningDebt ? 'border-amber-300 bg-amber-50' : 'border-border bg-white hover:bg-muted/30',
+                      )}
+                    >
+                      <label className="flex cursor-pointer items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={collectOpeningDebt}
+                          onChange={() => {
+                            setCollectOpeningDebt((current) => !current);
+                            setCollectOpeningDebtAmount((current) => current || formatAmountInputFromNumber(statementData.openingDebtRemaining));
+                            setCollectError('');
+                          }}
+                          className="mt-0.5 h-4 w-4 rounded border-border text-amber-600 focus:ring-amber-300"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[13px] font-extrabold text-foreground">Công nợ tồn cũ</span>
+                          <span className="mt-0.5 block text-[11px] font-medium text-muted-foreground">
+                            Còn lại: {formatMoney(statementData.openingDebtRemaining)}
+                          </span>
+                        </span>
+                      </label>
+                      {collectOpeningDebt && (
+                        <label className="mt-2 block border-t border-amber-200 pt-2">
+                          <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-amber-800">Số tiền thanh toán</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={collectOpeningDebtAmount}
+                            onChange={(event) => {
+                              setCollectOpeningDebtAmount(formatAmountInput(event.target.value));
+                              setCollectError('');
+                            }}
+                            placeholder="0"
+                            className="h-10 w-full rounded-lg border border-amber-200 bg-white px-3 text-[14px] font-extrabold outline-none focus:ring-2 focus:ring-amber-200"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  )}
                   {collectableBills.length ? collectableBills.map(({ item, remaining }) => {
                     const id = String(item.id);
                     const checked = collectWaybillIds.includes(id);
@@ -1092,7 +1162,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                         )}
                       </div>
                     );
-                  }) : (
+                  }) : statementData.openingDebtRemaining <= 0 && (
                     <p className="px-3 py-6 text-center text-[12px] font-bold text-muted-foreground">Không còn bill cần thanh toán.</p>
                   )}
                 </div>
@@ -1100,10 +1170,10 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
 
               <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[12px] font-bold text-emerald-800">{selectedCollectBills.length} bill đã chọn</span>
+                  <span className="text-[12px] font-bold text-emerald-800">{collectSelectionCount} khoản đã chọn</span>
                   <span className="text-[16px] font-black text-emerald-800">{formatMoney(collectTotal)}</span>
                 </div>
-                <p className="mt-1 text-[11px] font-medium text-emerald-700">Mỗi bill được ghi đúng số tiền thanh toán đã nhập cho bill đó.</p>
+                <p className="mt-1 text-[11px] font-medium text-emerald-700">Mỗi khoản được ghi đúng số tiền thanh toán đã nhập.</p>
               </div>
 
               <CashFundSelect value={collectFundId} onChange={(value) => { setCollectFundId(value); setCollectError(''); }} className="mb-3" />
@@ -1124,12 +1194,12 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
 
               <button
                 type="button"
-                disabled={collectSubmitting || inventoryLoading || selectedCollectBills.length === 0 || collectTotal <= 0}
+                disabled={collectSubmitting || inventoryLoading || collectSelectionCount === 0 || collectTotal <= 0}
                 onClick={() => void submitCollectVoucher()}
                 className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 text-[13px] font-extrabold text-white hover:bg-emerald-700 disabled:opacity-60"
               >
                 {collectSubmitting ? <Loader2 className="animate-spin" size={16} /> : <Receipt size={16} />}
-                Thanh toán {selectedCollectBills.length} bill · {formatMoney(collectTotal)}
+                Thanh toán {collectSelectionCount} khoản · {formatMoney(collectTotal)}
               </button>
             </div>
           </div>

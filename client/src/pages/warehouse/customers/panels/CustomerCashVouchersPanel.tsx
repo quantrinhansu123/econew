@@ -197,10 +197,13 @@ export default function CustomerCashVouchersPanel({
                     const isThu = String(voucher.voucher_type).toLowerCase() === 'thu';
                     const isCodOffset = voucher.source_type === 'COD_COLLECTION';
                     const isCustomerPayout = voucher.source_type === 'CUSTOMER_PAYOUT';
+                    const isOpeningDebt = voucher.source_type === 'OPENING_DEBT';
                     const voucherLabel = isCodOffset
                       ? 'Phiếu thu COD'
                       : isCustomerPayout
                         ? 'Chi trả khách'
+                        : isOpeningDebt
+                          ? 'Thu công nợ tồn cũ'
                         : isThu
                           ? 'Khách thanh toán'
                           : 'Điều chỉnh giảm';
@@ -216,6 +219,8 @@ export default function CustomerCashVouchersPanel({
                                     ? 'bg-blue-100 text-blue-800'
                                     : isCustomerPayout
                                       ? 'bg-amber-100 text-amber-800'
+                                      : isOpeningDebt
+                                        ? 'bg-violet-100 text-violet-800'
                                       : isThu
                                         ? 'bg-emerald-100 text-emerald-800'
                                         : 'bg-red-100 text-red-700',
@@ -225,7 +230,9 @@ export default function CustomerCashVouchersPanel({
                               </span>
                               <span className="text-[15px] font-extrabold text-foreground">{displayMoney(voucher.amount)}</span>
                             </div>
-                            <p className="mt-1 text-[12px] font-bold text-primary">Bill: {voucher.waybill_code || '—'}</p>
+                            <p className="mt-1 text-[12px] font-bold text-primary">
+                              {isOpeningDebt ? 'Công nợ tồn cũ' : `Bill: ${voucher.waybill_code || '—'}`}
+                            </p>
                           </div>
                           <div className="text-right text-[11px] text-muted-foreground">
                             <p>{formatDateTime(voucher.created_at)}</p>

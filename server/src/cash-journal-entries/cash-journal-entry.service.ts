@@ -249,12 +249,16 @@ export class CashJournalEntryService {
         CASE
           WHEN voucher.source_type = 'COD_COLLECTION' THEN 'Thu COD/CC'
           WHEN voucher.source_type = 'CUSTOMER_PAYOUT' THEN 'Chi trả khách hàng'
+          WHEN voucher.source_type = 'OPENING_DEBT' THEN 'Thu công nợ tồn cũ'
           WHEN LOWER(voucher.voucher_type) = 'thu' THEN 'Thu cước vận đơn'
           ELSE 'Điều chỉnh vận đơn'
         END::varchar AS cost_category,
-        voucher.waybill_code::varchar AS detail,
+        COALESCE(voucher.waybill_code, voucher.customer_code, 'Công nợ tồn cũ')::varchar AS detail,
         voucher.note,
-        COALESCE(voucher.note, CONCAT('Thanh toán bill ', voucher.waybill_code))::varchar AS content,
+        COALESCE(voucher.note, CASE
+          WHEN voucher.source_type = 'OPENING_DEBT' THEN CONCAT('Thanh toán công nợ tồn cũ ', voucher.customer_code)
+          ELSE CONCAT('Thanh toán bill ', voucher.waybill_code)
+        END)::varchar AS content,
         CASE WHEN LOWER(voucher.voucher_type) = 'thu' THEN voucher.amount ELSE 0 END AS income_amount,
         CASE WHEN LOWER(voucher.voucher_type) = 'chi' THEN voucher.amount ELSE 0 END AS expense_amount,
         voucher.fund_id,

@@ -23,7 +23,7 @@ export interface WaybillCashVoucher {
   waybill_code?: string | null;
   voucher_type?: string | null;
   amount?: number | string | null;
-  source_type?: 'MANUAL' | 'COD_COLLECTION' | 'CUSTOMER_PAYOUT' | string | null;
+  source_type?: 'MANUAL' | 'COD_COLLECTION' | 'CUSTOMER_PAYOUT' | 'OPENING_DEBT' | string | null;
   fund_id?: string | number | null;
   fund?: { id?: string | number; code?: string | null; name?: string | null } | null;
   note?: string | null;

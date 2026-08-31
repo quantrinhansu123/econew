@@ -167,6 +167,10 @@ const ensureCodCashFundSchema = async (dataSource: DataSource) => {
   await dataSource.query(`ALTER TABLE "waybills" ADD COLUMN IF NOT EXISTS "cod_collected_amount" numeric(14,2) NOT NULL DEFAULT 0`);
   await dataSource.query(`ALTER TABLE "waybill_cash_vouchers" ADD COLUMN IF NOT EXISTS "source_type" varchar(32) NOT NULL DEFAULT 'MANUAL'`);
   await dataSource.query(`ALTER TABLE "waybill_cash_vouchers" ADD COLUMN IF NOT EXISTS "fund_id" bigint NULL`);
+  await dataSource.query(`ALTER TABLE "waybill_cash_vouchers" ALTER COLUMN "waybill_id" DROP NOT NULL`);
+  await dataSource.query(`ALTER TABLE "waybill_cash_vouchers" ALTER COLUMN "waybill_code" DROP NOT NULL`);
+  await dataSource.query(`ALTER TABLE "waybill_cash_vouchers" ADD COLUMN IF NOT EXISTS "customer_id" bigint NULL`);
+  await dataSource.query(`ALTER TABLE "waybill_cash_vouchers" ADD COLUMN IF NOT EXISTS "customer_code" varchar(64) NULL`);
   await dataSource.query(`
     DO $$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_cash_funds_hub') THEN
@@ -181,10 +185,15 @@ const ensureCodCashFundSchema = async (dataSource: DataSource) => {
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_waybill_cash_vouchers_fund') THEN
         ALTER TABLE "waybill_cash_vouchers" ADD CONSTRAINT "FK_waybill_cash_vouchers_fund" FOREIGN KEY ("fund_id") REFERENCES "cash_funds"("id") ON DELETE SET NULL;
       END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_waybill_cash_vouchers_customer') THEN
+        ALTER TABLE "waybill_cash_vouchers" ADD CONSTRAINT "FK_waybill_cash_vouchers_customer" FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE SET NULL;
+      END IF;
     END $$
   `);
   await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_waybills_cod_fund_id" ON "waybills" ("cod_fund_id") WHERE "cod_reconciled_at" IS NOT NULL`);
   await dataSource.query(`CREATE UNIQUE INDEX IF NOT EXISTS "UQ_waybill_cod_collection_voucher" ON "waybill_cash_vouchers" ("waybill_id") WHERE "source_type" = 'COD_COLLECTION'`);
+  await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_waybill_cash_vouchers_customer" ON "waybill_cash_vouchers" ("customer_id", "source_type")`);
+  await dataSource.query(`CREATE INDEX IF NOT EXISTS "IDX_waybill_cash_vouchers_customer_code" ON "waybill_cash_vouchers" (UPPER(TRIM("customer_code")))`);
   await dataSource.query(`
     UPDATE "waybills"
     SET "cod_reconciled_at" = NULL,

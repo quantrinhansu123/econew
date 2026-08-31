@@ -49,6 +49,7 @@ import { ProofOfDeliveryDto } from './dto/proof-of-delivery.dto';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
 import { UpdateWaybillPricingDto, WaybillPricingField } from './dto/update-waybill-pricing.dto';
 import { VendorEntity } from '../vendors/vendor.entity';
+import { CustomerEntity } from '../customers/customer.entity';
 
 type WaybillRecord = WaybillEntity & Record<string, any>;
 type WaybillAuditValue = string | number | boolean | null;
@@ -1651,7 +1652,15 @@ export class WaybillsService {
   }
 
   async createBulkCashPayment(dto: CreateBulkWaybillPaymentDto, currentUser: UserEntity) {
-    const waybillIds = dto.items.map((item) => String(item.waybill_id));
+    const paymentItems = dto.items ?? [];
+    const openingDebtAmount = Number(dto.opening_debt_amount) || 0;
+    if (!paymentItems.length && openingDebtAmount <= 0) {
+      throw new BadRequestException('Chọn ít nhất một bill hoặc công nợ tồn cũ để thanh toán');
+    }
+    if (openingDebtAmount > 0 && !dto.customer_code?.trim()) {
+      throw new BadRequestException('Thiếu mã khách hàng khi thanh toán công nợ tồn cũ');
+    }
+    const waybillIds = paymentItems.map((item) => String(item.waybill_id));
     if (new Set(waybillIds).size !== waybillIds.length) {
       throw new BadRequestException('Mỗi bill chỉ được chọn một lần trong một lượt thanh toán');
     }
@@ -1659,6 +1668,7 @@ export class WaybillsService {
     return this.dataSource.transaction(async (manager) => {
       const cashVouchersRepository = manager.getRepository(WaybillCashVoucherEntity);
       const waybillsRepository = manager.getRepository(WaybillEntity);
+      const customersRepository = manager.getRepository(CustomerEntity);
       const fund = await this.findActiveCashFund(manager, dto.fund_id, currentUser);
       const waybills = await waybillsRepository.find({
         where: { id: In(waybillIds), deleted_at: IsNull() } as any,
@@ -1685,7 +1695,7 @@ export class WaybillsService {
         return totals;
       }, new Map());
 
-      const records = dto.items.map((item) => {
+      const records = paymentItems.map((item) => {
         const waybill = waybillById.get(String(item.waybill_id));
         if (!waybill) throw new NotFoundException(`Bill ${item.waybill_code} không tồn tại`);
         this.assertWaybillAccess(waybill, currentUser);
@@ -1721,6 +1731,47 @@ export class WaybillsService {
           created_by_name: currentUser.full_name?.trim() || currentUser.username,
         });
       });
+
+      if (openingDebtAmount > 0) {
+        const customerCode = dto.customer_code!.trim();
+        const customer = await customersRepository.createQueryBuilder('customer')
+          .where('UPPER(TRIM(customer.code)) = UPPER(TRIM(:customerCode))', { customerCode })
+          .andWhere('customer.deleted_at IS NULL')
+          .setLock('pessimistic_write')
+          .getOne();
+        if (!customer) throw new NotFoundException(`Khách hàng ${customerCode} không tồn tại`);
+
+        const openingPaidRaw = await cashVouchersRepository.createQueryBuilder('voucher')
+          .select('COALESCE(SUM(voucher.amount), 0)', 'total')
+          .where('voucher.customer_id = :customerId', { customerId: String(customer.id) })
+          .andWhere("voucher.source_type = 'OPENING_DEBT'")
+          .andWhere("LOWER(voucher.voucher_type) = 'thu'")
+          .getRawOne<{ total: string }>();
+        const openingDebtRemaining = Math.max(
+          0,
+          (Number(customer.opening_debt) || 0) - (Number(openingPaidRaw?.total) || 0),
+        );
+        if (openingDebtAmount > openingDebtRemaining) {
+          throw new BadRequestException(
+            `Số tiền vượt quá công nợ tồn cũ còn lại ${openingDebtRemaining.toLocaleString('vi-VN')} đ`,
+          );
+        }
+
+        records.push(cashVouchersRepository.create({
+          waybill_id: null,
+          waybill_code: null,
+          customer_id: String(customer.id),
+          customer_code: customer.code,
+          voucher_type: 'Thu',
+          source_type: 'OPENING_DEBT',
+          amount: String(openingDebtAmount),
+          fund_id: String(fund.id),
+          note: dto.note?.trim() || null,
+          image_url: null,
+          created_by_id: currentUser.id,
+          created_by_name: currentUser.full_name?.trim() || currentUser.username,
+        }));
+      }
 
       const saved = await cashVouchersRepository.save(records);
       const reconciliationBeforeById = new Map(waybills.map((waybill) => [
@@ -1776,9 +1827,10 @@ export class WaybillsService {
     const limit = clampPaginationLimit(query.limit, 200);
 
     const qb = this.cashVouchersRepository.createQueryBuilder('voucher')
-      .innerJoinAndSelect('voucher.waybill', 'waybill')
+      .leftJoinAndSelect('voucher.waybill', 'waybill')
+      .leftJoinAndSelect('voucher.customer', 'customer')
       .leftJoinAndSelect('voucher.fund', 'fund')
-      .where('waybill.deleted_at IS NULL');
+      .where('(waybill.deleted_at IS NULL OR voucher.source_type = :openingDebtSource)', { openingDebtSource: 'OPENING_DEBT' });
 
     this.applyHubScope(qb, currentUser);
 
@@ -1786,7 +1838,8 @@ export class WaybillsService {
       const maKh = query.ma_kh.trim();
       qb.andWhere(new Brackets((builder) => builder
         .where('UPPER(TRIM(waybill.ma_kh)) = UPPER(TRIM(:maKh))', { maKh })
-        .orWhere('waybill.note ILIKE :maKhNotePattern', { maKhNotePattern: `%ma_kh=${maKh}%` })));
+        .orWhere('waybill.note ILIKE :maKhNotePattern', { maKhNotePattern: `%ma_kh=${maKh}%` })
+        .orWhere('UPPER(TRIM(voucher.customer_code)) = UPPER(TRIM(:maKh))', { maKh })));
     }
 
     if (query.keyword?.trim()) {
@@ -1798,6 +1851,7 @@ export class WaybillsService {
           .where('voucher.waybill_code ILIKE :keyword', { keyword })
           .orWhere('waybill.waybill_code ILIKE :keyword', { keyword })
           .orWhere('waybill.ma_kh ILIKE :keyword', { keyword })
+          .orWhere('voucher.customer_code ILIKE :keyword', { keyword })
           .orWhere('voucher.note ILIKE :keyword', { keyword });
         if (normalizedWaybillKeyword) {
           builder

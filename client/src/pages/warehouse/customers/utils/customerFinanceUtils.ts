@@ -16,6 +16,7 @@ export interface BillFilters {
 export interface PaidByWaybillMaps {
   byWaybillId: Map<string, number>;
   byBillCode: Map<string, number>;
+  openingDebtPaid: number;
 }
 
 export function isDateInRange(value: string | null | undefined, fromDate: string, toDate: string) {
@@ -73,10 +74,15 @@ export function computeVoucherMeta(vouchers: WaybillCashVoucher[]): CashVoucherM
 export function buildPaidByWaybill(vouchers: WaybillCashVoucher[]): PaidByWaybillMaps {
   const byWaybillId = new Map<string, number>();
   const byBillCode = new Map<string, number>();
+  let openingDebtPaid = 0;
 
   for (const voucher of vouchers) {
     const amount = Number(voucher.amount) || 0;
     const delta = String(voucher.voucher_type).toLowerCase() === 'thu' ? amount : -amount;
+    if (voucher.source_type === 'OPENING_DEBT') {
+      openingDebtPaid += delta;
+      continue;
+    }
     if (voucher.waybill_id != null) {
       const key = String(voucher.waybill_id);
       byWaybillId.set(key, (byWaybillId.get(key) ?? 0) + delta);
@@ -86,7 +92,7 @@ export function buildPaidByWaybill(vouchers: WaybillCashVoucher[]): PaidByWaybil
     }
   }
 
-  return { byWaybillId, byBillCode };
+  return { byWaybillId, byBillCode, openingDebtPaid };
 }
 
 export function resolvePaidForBill(item: WaybillInventoryItem, maps: PaidByWaybillMaps) {
@@ -113,11 +119,15 @@ export function computeCustomerDebtSummary(
     if (includePayments) totalPaid += resolvePaidForBill(item, paidMaps);
   }
   const normalizedOpeningDebt = Math.max(0, Number(openingDebt) || 0);
+  const openingDebtPaid = Math.max(0, paidMaps.openingDebtPaid || 0);
+  const openingDebtRemaining = Math.max(0, normalizedOpeningDebt - openingDebtPaid);
   return {
     openingDebt: normalizedOpeningDebt,
+    openingDebtPaid,
+    openingDebtRemaining,
     totalFreight,
     totalPaid,
-    totalDebt: normalizedOpeningDebt + totalFreight - totalPaid,
+    totalDebt: openingDebtRemaining + totalFreight - totalPaid,
     count: items.length,
   };
 }

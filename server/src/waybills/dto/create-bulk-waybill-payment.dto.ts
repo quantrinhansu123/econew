@@ -33,12 +33,26 @@ export class BulkWaybillPaymentItemDto {
 }
 
 export class CreateBulkWaybillPaymentDto {
-  @ApiProperty({ type: [BulkWaybillPaymentItemDto] })
+  @ApiPropertyOptional({ type: [BulkWaybillPaymentItemDto] })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
+  @ArrayMinSize(0)
   @ValidateNested({ each: true })
   @Type(() => BulkWaybillPaymentItemDto)
-  items: BulkWaybillPaymentItemDto[];
+  items?: BulkWaybillPaymentItemDto[];
+
+  @ApiPropertyOptional({ description: 'Mã khách hàng khi thanh toán công nợ tồn cũ' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  customer_code?: string;
+
+  @ApiPropertyOptional({ description: 'Số tiền thanh toán công nợ tồn cũ' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  opening_debt_amount?: number;
 
   @ApiProperty({ description: 'Sổ quỹ nhận tiền' })
   @Transform(({ value }) => String(value))

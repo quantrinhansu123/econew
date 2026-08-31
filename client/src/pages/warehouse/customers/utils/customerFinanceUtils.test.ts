@@ -58,10 +58,31 @@ describe('customer payment statement allocation', () => {
 
     expect(computeCustomerDebtSummary(bills, paidMaps, 8_000_000)).toEqual({
       openingDebt: 8_000_000,
+      openingDebtPaid: 0,
+      openingDebtRemaining: 8_000_000,
       totalFreight: 7_000_000,
       totalPaid: 1_500_000,
       totalDebt: 13_500_000,
       count: 2,
+    });
+  });
+
+  it('subtracts opening-debt receipts without assigning them to a bill', () => {
+    const paidMaps = buildPaidByWaybill([{
+      id: 'opening-1',
+      voucher_type: 'Thu',
+      source_type: 'OPENING_DEBT',
+      amount: 1_800_000,
+    }]);
+
+    expect(computeCustomerDebtSummary([], paidMaps, 3_000_000)).toEqual({
+      openingDebt: 3_000_000,
+      openingDebtPaid: 1_800_000,
+      openingDebtRemaining: 1_200_000,
+      totalFreight: 0,
+      totalPaid: 0,
+      totalDebt: 1_200_000,
+      count: 0,
     });
   });
 
