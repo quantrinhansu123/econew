@@ -151,13 +151,13 @@ describe('all orders visible columns', () => {
     });
   });
 
-  it('keeps required columns and preserves the canonical order for selected details', () => {
+  it('keeps required columns and preserves the user-selected order', () => {
     expect(normalizeAllOrdersVisibleColumnIds(['volume', 'trip_label', 'package_count'])).toEqual([
       'stt',
       'waybill_code',
-      'package_count',
-      'trip_label',
       'volume',
+      'trip_label',
+      'package_count',
       'actions',
     ]);
   });

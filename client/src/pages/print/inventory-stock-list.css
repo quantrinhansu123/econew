@@ -302,6 +302,14 @@
   vertical-align: middle;
 }
 
+.inventory-stock-table .col-images,
+.inventory-stock-table .col-inv-bill_images {
+  width: 9%;
+  padding: 1px;
+  text-align: center;
+  vertical-align: top;
+}
+
 .dispatch-barcode-cell {
   display: flex;
   min-width: 0;
@@ -316,6 +324,26 @@
   height: 9mm;
   margin: 0 auto;
   object-fit: fill;
+}
+
+.print-image-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  width: 100%;
+  padding: 1px;
+}
+
+.print-image-thumbnail {
+  display: block;
+  width: 100%;
+  height: 12mm;
+  border: 0.4px solid #888;
+  border-radius: 1px;
+  object-fit: cover;
+  object-position: center;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .dispatch-print-group + .dispatch-print-group {
@@ -353,6 +381,7 @@
 .inventory-stock-table .col-driver { width: 4.5%; }
 .inventory-stock-table .col-post { width: 4.5%; }
 .inventory-stock-table .col-bill { width: 9.5%; }
+.inventory-stock-table .col-images { width: 9%; }
 .inventory-stock-table .col-weight,
 .inventory-stock-table .col-volume {
   width: 3.5%;

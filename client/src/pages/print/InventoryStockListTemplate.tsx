@@ -1,6 +1,7 @@
 import type { InventoryPrintPayload } from './inventoryPrintUtils';
 import { getInventoryPrintColumnWidth } from '../warehouse/inventory/inventoryColumns';
 import { buildDispatchBarcodeUrl } from './dispatchBarcode';
+import PrintImageGrid from './PrintImageGrid';
 
 interface Props {
   data: InventoryPrintPayload;
@@ -60,7 +61,9 @@ export default function InventoryStockListTemplate({ data }: Props) {
                 >
                   {col.id === 'barcode' && row[col.id]
                     ? <img src={buildDispatchBarcodeUrl(row[col.id])} alt={`Mã vạch ${row[col.id]}`} className="dispatch-barcode-image" />
-                    : row[col.id] ?? ''}
+                    : col.id === 'bill_images'
+                      ? <PrintImageGrid value={row[col.id]} altPrefix="Ảnh vận đơn" />
+                      : row[col.id] ?? ''}
                 </td>
               ))}
             </tr>

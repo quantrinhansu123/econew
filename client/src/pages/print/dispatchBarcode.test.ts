@@ -13,6 +13,17 @@ describe('dispatch bill barcode column', () => {
     expect(resolveVisibleDispatchColumnIds(['viTriHang', 'maVach'], true)).toContain('maVach');
   });
 
+  it('offers images and preserves the dragged print-column order', () => {
+    expect(getSelectableDispatchColumns(true).map((column) => column.id)).toContain('hinhAnh');
+    expect(getDefaultVisibleDispatchColumnIds(true)).not.toContain('hinhAnh');
+    expect(resolveVisibleDispatchColumnIds(['viTriHang', 'hinhAnh', 'maBill', 'soLuong'], true)).toEqual([
+      'viTriHang',
+      'hinhAnh',
+      'maBill',
+      'soLuong',
+    ]);
+  });
+
   it('builds an encoded Code 128 image URL from the bill code', () => {
     const url = buildDispatchBarcodeUrl('ECO HAN/109178');
 

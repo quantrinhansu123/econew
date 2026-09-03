@@ -24,6 +24,7 @@ export interface DispatchPrintRow {
   laiXeThuHo: string;
   bcThuHo: string;
   maBill: string;
+  hinhAnh: string;
   ghiChu: string;
   ghiChu1: string;
   ghiChu2: string;
@@ -84,6 +85,7 @@ export function buildEmptyDispatchRow(position: number): DispatchPrintRow {
     laiXeThuHo: '',
     bcThuHo: '',
     maBill: '',
+    hinhAnh: '',
     ghiChu: '',
     ghiChu1: '',
     ghiChu2: '',

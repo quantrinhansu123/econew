@@ -2698,6 +2698,7 @@ export class WaybillsService {
       current_state: waybill.current_state,
       delivered_at: waybill.delivered_at,
       delivery_time: waybill.delivery_time,
+      delivery_photo_url: waybill.delivery_photo_url,
     };
   }
 

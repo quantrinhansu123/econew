@@ -1,4 +1,7 @@
-import { SlidersHorizontal, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { GripVertical, SlidersHorizontal, X } from 'lucide-react';
+import { clsx } from 'clsx';
+import { moveItemBefore } from '../../../lib/columnOrder';
 import type { InventoryColumnId } from './inventoryColumns';
 import {
   ALL_ORDERS_SELECTABLE_COLUMN_IDS,
@@ -17,6 +20,31 @@ interface Props {
 }
 
 export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPricing, mode = 'inventory', onChange, onClose }: Props) {
+  const [draggedId, setDraggedId] = useState<InventoryColumnId | null>(null);
+
+  const orderedInventoryColumns = useMemo(() => [
+    ...INVENTORY_DEFAULT_COLUMN_IDS
+      .map((id) => INVENTORY_COLUMNS.find((column) => column.id === id))
+      .filter((column): column is (typeof INVENTORY_COLUMNS)[number] => Boolean(column)),
+    ...INVENTORY_COLUMNS.filter((column) => !INVENTORY_DEFAULT_COLUMN_IDS.includes(column.id)),
+  ], []);
+  const baseOptions = useMemo(() => mode === 'all-orders'
+    ? ALL_ORDERS_SELECTABLE_COLUMN_IDS
+      .map((id) => INVENTORY_COLUMNS.find((column) => column.id === id))
+      .filter((column): column is (typeof INVENTORY_COLUMNS)[number] => Boolean(column))
+    : orderedInventoryColumns.filter((col) => (
+      col.id !== 'actions'
+      && col.id !== 'stt'
+      && (!col.managerOnly || canViewPricing)
+    )), [canViewPricing, mode, orderedInventoryColumns]);
+  const options = useMemo(() => {
+    const optionMap = new Map(baseOptions.map((option) => [option.id, option]));
+    return [
+      ...visibleIds.map((id) => optionMap.get(id)).filter((option): option is (typeof baseOptions)[number] => Boolean(option)),
+      ...baseOptions.filter((option) => !visibleIds.includes(option.id)),
+    ];
+  }, [baseOptions, visibleIds]);
+
   if (!isOpen) return null;
 
   const toggle = (id: InventoryColumnId) => {
@@ -30,22 +58,6 @@ export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPrici
     else set.add(id);
     onChange(Array.from(set));
   };
-
-  const orderedInventoryColumns = [
-    ...INVENTORY_DEFAULT_COLUMN_IDS
-      .map((id) => INVENTORY_COLUMNS.find((column) => column.id === id))
-      .filter((column): column is (typeof INVENTORY_COLUMNS)[number] => Boolean(column)),
-    ...INVENTORY_COLUMNS.filter((column) => !INVENTORY_DEFAULT_COLUMN_IDS.includes(column.id)),
-  ];
-  const options = mode === 'all-orders'
-    ? ALL_ORDERS_SELECTABLE_COLUMN_IDS
-      .map((id) => INVENTORY_COLUMNS.find((column) => column.id === id))
-      .filter((column): column is (typeof INVENTORY_COLUMNS)[number] => Boolean(column))
-    : orderedInventoryColumns.filter((col) => (
-      col.id !== 'actions'
-      && col.id !== 'stt'
-      && (!col.managerOnly || canViewPricing)
-    ));
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4">
@@ -62,17 +74,51 @@ export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPrici
         </div>
         <p className="mb-3 text-[12px] font-medium text-muted-foreground">
           Chỉ các cột được tick mới hiện trên bảng và bản in A4. Lựa chọn được giữ khi mở lại trang hoặc F5.
-          Cột cước chỉ hiện với quyền quản lý.
+          Giữ biểu tượng kéo để đổi vị trí; bản in dùng đúng thứ tự này. Cột cước chỉ hiện với quyền quản lý.
         </p>
         <div className="max-h-[50vh] space-y-2 overflow-y-auto custom-scrollbar">
-          {options.map((col) => (
+          {options.map((col) => {
+            const checked = visibleIds.includes(col.id);
+            return (
             <label
               key={col.id}
-              className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-3 py-2.5 hover:bg-muted/30"
+              onDragOver={(event) => {
+                if (!checked || !draggedId) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (checked && draggedId) onChange(moveItemBefore(visibleIds, draggedId, col.id));
+                setDraggedId(null);
+              }}
+              className={clsx(
+                'flex cursor-pointer items-center gap-2 rounded-xl border px-2 py-2.5 transition-colors',
+                draggedId === col.id ? 'border-primary bg-primary/5 opacity-70' : 'border-border hover:bg-muted/30',
+              )}
             >
+              <span
+                draggable={checked}
+                onClick={(event) => event.preventDefault()}
+                onDragStart={(event) => {
+                  if (!checked) return;
+                  setDraggedId(col.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', col.id);
+                }}
+                onDragEnd={() => setDraggedId(null)}
+                className={clsx(
+                  'inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground',
+                  checked ? 'cursor-grab hover:bg-muted active:cursor-grabbing' : 'cursor-not-allowed opacity-25',
+                )}
+                title={checked ? `Kéo để đổi vị trí cột ${col.label}` : 'Tick cột trước khi sắp xếp'}
+                aria-label={checked ? `Kéo để đổi vị trí cột ${col.label}` : undefined}
+              >
+                <GripVertical size={16} />
+              </span>
               <input
                 type="checkbox"
-                checked={visibleIds.includes(col.id)}
+                checked={checked}
                 disabled={
                   mode === 'all-orders' && col.id === 'waybill_code'
                 }
@@ -88,7 +134,8 @@ export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPrici
                 </span>
               )}
             </label>
-          ))}
+            );
+          })}
         </div>
         <button
           type="button"

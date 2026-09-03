@@ -1,6 +1,7 @@
 import { clsx } from 'clsx';
-import { ChevronDown, Columns3 } from 'lucide-react';
+import { ChevronDown, Columns3, GripVertical } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { moveItemBefore } from '../../lib/columnOrder';
 import type { DispatchPrintColumnId } from './dispatchPrintColumns';
 import {
   getDispatchColumnDef,
@@ -22,14 +23,22 @@ export default function DispatchPrintColumnDropdown({
   className,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
+  const [draggedId, setDraggedId] = useState<DispatchPrintColumnId | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const options = useMemo(() => getSelectableDispatchColumns(canViewPricing), [canViewPricing]);
+  const selectableOptions = useMemo(() => getSelectableDispatchColumns(canViewPricing), [canViewPricing]);
+  const options = useMemo(() => {
+    const optionMap = new Map(selectableOptions.map((option) => [option.id, option]));
+    return [
+      ...value.map((id) => optionMap.get(id)).filter((option): option is (typeof selectableOptions)[number] => Boolean(option)),
+      ...selectableOptions.filter((option) => !value.includes(option.id)),
+    ];
+  }, [selectableOptions, value]);
 
   const summary = useMemo(() => {
     if (!value.length) return 'Chọn cột in';
-    if (value.length === options.length) return 'Tất cả cột';
+    if (value.length === selectableOptions.length) return 'Tất cả cột';
     return `${value.length} cột`;
-  }, [options.length, value.length]);
+  }, [selectableOptions.length, value.length]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -54,9 +63,9 @@ export default function DispatchPrintColumnDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 z-50 mt-1 w-[min(100vw-2rem,280px)] rounded-xl border border-border bg-white p-2 shadow-xl">
+        <div className="absolute right-0 z-50 mt-1 w-[min(100vw-2rem,320px)] rounded-xl border border-border bg-white p-2 shadow-xl">
           <p className="px-2 pb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-            Cột in phiếu kê
+            Cột in · giữ biểu tượng để kéo
           </p>
           <div className="max-h-64 space-y-0.5 overflow-y-auto custom-scrollbar">
             {options.map((col) => {
@@ -64,12 +73,41 @@ export default function DispatchPrintColumnDropdown({
               return (
                 <label
                   key={col.id}
+                  onDragOver={(event) => {
+                    if (!checked || !draggedId || col.required) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (checked && draggedId && !col.required) onChange(moveItemBefore(value, draggedId, col.id));
+                    setDraggedId(null);
+                  }}
                   className={clsx(
                     'flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-[12px] font-bold transition-colors',
                     checked ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted/40',
                     col.required && 'opacity-80',
+                    draggedId === col.id && 'opacity-60',
                   )}
                 >
+                  <span
+                    draggable={checked && !col.required}
+                    onClick={(event) => event.preventDefault()}
+                    onDragStart={(event) => {
+                      if (!checked || col.required) return;
+                      setDraggedId(col.id);
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', col.id);
+                    }}
+                    onDragEnd={() => setDraggedId(null)}
+                    className={clsx(
+                      'inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-md',
+                      checked && !col.required ? 'cursor-grab hover:bg-white/70 active:cursor-grabbing' : 'cursor-not-allowed opacity-25',
+                    )}
+                    title={checked && !col.required ? `Kéo để đổi vị trí cột ${col.label}` : undefined}
+                  >
+                    <GripVertical size={14} />
+                  </span>
                   <input
                     type="checkbox"
                     checked={checked}
@@ -85,7 +123,7 @@ export default function DispatchPrintColumnDropdown({
           <div className="mt-2 flex gap-2 border-t border-border pt-2">
             <button
               type="button"
-              onClick={() => onChange(options.map((col) => col.id))}
+              onClick={() => onChange(selectableOptions.map((col) => col.id))}
               className="h-8 flex-1 rounded-lg border border-border bg-white text-[11px] font-bold text-muted-foreground hover:bg-muted"
             >
               Chọn tất cả

@@ -129,6 +129,7 @@ export interface LoadPlanningBoardItem {
   current_state?: string | null;
   delivered_at?: string | null;
   delivery_time?: string | null;
+  delivery_photo_url?: string | null;
 }
 
 export interface LoadPlanningTruckGroup {

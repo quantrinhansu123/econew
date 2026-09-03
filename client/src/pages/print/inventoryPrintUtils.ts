@@ -352,10 +352,11 @@ export function loadInventoryPrintPayloads(): InventoryPrintPayload[] {
 /** Chỉ lọc các cột hợp lệ trong chính payload; không tự thêm lại cột người dùng đã ẩn. */
 export function reconcilePrintPayload(payload: InventoryPrintPayload): InventoryPrintPayload {
   const printColumnIds = resolvePrintColumnIds(payload.columns.map((column) => column.id));
+  const storedLabels = new Map(payload.columns.map((column) => [column.id, column.label]));
 
   const columns: InventoryPrintColumn[] = printColumnIds.map((id) => ({
     id,
-    label: INVENTORY_COLUMNS.find((c) => c.id === id)?.label ?? id,
+    label: storedLabels.get(id) ?? INVENTORY_COLUMNS.find((c) => c.id === id)?.label ?? id,
   }));
 
   const rows = payload.rows.map((row) => {

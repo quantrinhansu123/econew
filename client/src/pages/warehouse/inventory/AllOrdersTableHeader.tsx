@@ -4,9 +4,8 @@ import { ArrowDown, ArrowUp, Check, Filter, Search, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover';
 import {
   ALL_ORDERS_FINANCIAL_COLUMN_IDS,
+  getAllOrdersActiveStickyColumnIds,
   ALL_ORDERS_PREFIX_COLUMN_IDS,
-  ALL_ORDERS_SENDER_COLUMN_IDS,
-  ALL_ORDERS_STICKY_COLUMN_IDS,
   ALL_ORDERS_SUFFIX_COLUMN_IDS,
   getAllOrdersStickyLeft,
   type InventoryColumnId,
@@ -172,16 +171,21 @@ export default function AllOrdersTableHeader({
       </tr>
     );
   }
+  const columnIds = columns.map((column) => column.id);
   const prefixColumns = columns.filter((col) => ALL_ORDERS_PREFIX_COLUMN_IDS.includes(col.id));
-  const senderColumns = columns.filter((col) => ALL_ORDERS_SENDER_COLUMN_IDS.includes(col.id));
-  const financialColumns = columns.filter((col) => ALL_ORDERS_FINANCIAL_COLUMN_IDS.includes(col.id));
-  const otherColumns = columns.filter(
-    (col) =>
-      !ALL_ORDERS_PREFIX_COLUMN_IDS.includes(col.id) &&
-      !ALL_ORDERS_SENDER_COLUMN_IDS.includes(col.id) &&
-      !ALL_ORDERS_FINANCIAL_COLUMN_IDS.includes(col.id) &&
-      ALL_ORDERS_SUFFIX_COLUMN_IDS.includes(col.id),
-  );
+  const dataColumns = columns.filter((col) => (
+    !ALL_ORDERS_PREFIX_COLUMN_IDS.includes(col.id)
+    && !ALL_ORDERS_SUFFIX_COLUMN_IDS.includes(col.id)
+  ));
+  const suffixColumns = columns.filter((col) => ALL_ORDERS_SUFFIX_COLUMN_IDS.includes(col.id));
+  const activeStickyIds = getAllOrdersActiveStickyColumnIds(columnIds);
+  const groupRuns = dataColumns.reduce<Array<{ type: 'sender' | 'financial'; columns: InventoryColumnView[] }>>((runs, column) => {
+    const type = ALL_ORDERS_FINANCIAL_COLUMN_IDS.includes(column.id) ? 'financial' : 'sender';
+    const lastRun = runs.at(-1);
+    if (lastRun?.type === type) lastRun.columns.push(column);
+    else runs.push({ type, columns: [column] });
+    return runs;
+  }, []);
 
   return (
     <>
@@ -210,23 +214,19 @@ export default function AllOrdersTableHeader({
             <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} />
           </th>
         ))}
-        {senderColumns.length > 0 && (
+        {groupRuns.map((run, index) => (
           <th
-            colSpan={senderColumns.length}
-            className="border-b border-r border-border bg-sky-100 px-4 py-2 font-extrabold text-sky-900 text-center"
+            key={`${run.type}-${index}`}
+            colSpan={run.columns.length}
+            className={clsx(
+              'border-b border-r border-border px-4 py-2 text-center font-extrabold',
+              run.type === 'financial' ? 'bg-violet-50 text-violet-900' : 'bg-sky-100 text-sky-900',
+            )}
           >
-            Thông tin người gửi
+            {run.type === 'financial' ? 'Thanh toán / cước phí' : 'Thông tin đơn hàng'}
           </th>
-        )}
-        {financialColumns.length > 0 && (
-          <th
-            colSpan={financialColumns.length}
-            className="border-b border-r border-border bg-violet-50 px-4 py-2 font-extrabold text-violet-900 text-center"
-          >
-            &nbsp;
-          </th>
-        )}
-        {otherColumns.map((col) => (
+        ))}
+        {suffixColumns.map((col) => (
           <th
             key={col.id}
             rowSpan={2}
@@ -240,24 +240,14 @@ export default function AllOrdersTableHeader({
         ))}
       </tr>
       <tr className="bg-slate-100 text-[11px] uppercase tracking-wider text-slate-600">
-        {senderColumns.map((col) => (
+        {dataColumns.map((col) => (
           <th
             key={col.id}
-            style={ALL_ORDERS_STICKY_COLUMN_IDS.includes(col.id) ? { left: getAllOrdersStickyLeft(col.id) } : undefined}
+            style={activeStickyIds.includes(col.id) ? { left: getAllOrdersStickyLeft(col.id, columnIds) } : undefined}
             className={clsx(
               'overflow-hidden border-b border-r border-border px-1.5 py-2.5 font-bold whitespace-nowrap',
-              ALL_ORDERS_STICKY_COLUMN_IDS.includes(col.id) && 'sticky z-30 bg-slate-100',
-              col.id === ALL_ORDERS_STICKY_COLUMN_IDS.at(-1) && 'shadow-[5px_0_8px_rgba(15,23,42,0.10)]',
-            )}
-          >
-            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} />
-          </th>
-        ))}
-        {financialColumns.map((col) => (
-          <th
-            key={col.id}
-            className={clsx(
-              'overflow-hidden border-b border-r border-border px-1.5 py-2.5 font-bold whitespace-nowrap',
+              activeStickyIds.includes(col.id) && 'sticky z-30 bg-slate-100',
+              col.id === activeStickyIds.at(-1) && 'shadow-[5px_0_8px_rgba(15,23,42,0.10)]',
               col.headerClass,
             )}
           >

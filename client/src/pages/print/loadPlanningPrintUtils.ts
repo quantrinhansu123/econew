@@ -173,6 +173,7 @@ function mapItemToDispatchRow(item: LoadPlanningBoardItem, showPricing: boolean)
     laiXeThuHo: '',
     bcThuHo: '',
     maBill: fmt(item.waybill_code),
+    hinhAnh: fmt(item.delivery_photo_url),
     ghiChu: fmt(resolveWaybillDisplayNote(item.note) || extra(item, 'split_note') || item.mat_hang_note),
     ghiChu1: '',
     ghiChu2: '',
@@ -330,6 +331,7 @@ export function mapStackOntoTruckToPrintPayload(
         laiXeThuHo: '',
         bcThuHo: '',
         maBill: row.waybill_code,
+        hinhAnh: String(waybill?.delivery_photo_url || ''),
         ghiChu: [
           row.expected_arrival_label ? `Dự kiến tới ${row.expected_arrival_label}` : '',
           resolveWaybillDisplayNote(waybill?.note || waybill?.notes),

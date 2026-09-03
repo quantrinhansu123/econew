@@ -416,10 +416,24 @@ export const ALL_ORDERS_STICKY_COLUMN_IDS: InventoryColumnId[] = [
   'cong_sg',
 ];
 
-export function getAllOrdersStickyLeft(columnId: InventoryColumnId): number | undefined {
-  const index = ALL_ORDERS_STICKY_COLUMN_IDS.indexOf(columnId);
+export function getAllOrdersActiveStickyColumnIds(columnIds: InventoryColumnId[]): InventoryColumnId[] {
+  const dataColumns = columnIds.filter((id) => !ALL_ORDERS_PREFIX_COLUMN_IDS.includes(id));
+  const active: InventoryColumnId[] = [];
+  for (const id of dataColumns) {
+    if (!ALL_ORDERS_STICKY_COLUMN_IDS.includes(id)) break;
+    active.push(id);
+  }
+  return active;
+}
+
+export function getAllOrdersStickyLeft(
+  columnId: InventoryColumnId,
+  columnIds: InventoryColumnId[] = ALL_ORDERS_DEFAULT_COLUMN_IDS,
+): number | undefined {
+  const activeStickyIds = getAllOrdersActiveStickyColumnIds(columnIds);
+  const index = activeStickyIds.indexOf(columnId);
   if (index < 0) return undefined;
-  return ALL_ORDERS_STICKY_COLUMN_IDS
+  return activeStickyIds
     .slice(0, index)
     .reduce((left, id) => left + (ALL_ORDERS_COLUMN_WIDTHS[id] || 120), ALL_ORDERS_COLUMN_WIDTHS.stt || 0);
 }
@@ -543,11 +557,14 @@ export const ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v4'
 const LEGACY_ALL_ORDERS_COLUMN_STORAGE_KEYS = ['eco_all_orders_visible_columns_v3', 'eco_all_orders_visible_columns_v2', 'eco_all_orders_visible_columns_v1'];
 
 export function normalizeAllOrdersVisibleColumnIds(ids: InventoryColumnId[]): InventoryColumnId[] {
-  const selected = new Set(ids.filter((id) => ALL_ORDERS_SELECTABLE_COLUMN_IDS.includes(id)));
-  selected.add('waybill_code');
+  const selected = ids.filter((id, index) => (
+    ALL_ORDERS_SELECTABLE_COLUMN_IDS.includes(id)
+    && ids.indexOf(id) === index
+  ));
+  if (!selected.includes('waybill_code')) selected.unshift('waybill_code');
   return [
     ...ALL_ORDERS_PREFIX_COLUMN_IDS,
-    ...ALL_ORDERS_SELECTABLE_COLUMN_IDS.filter((id) => selected.has(id)),
+    ...selected,
     ...ALL_ORDERS_SUFFIX_COLUMN_IDS,
   ];
 }
@@ -633,8 +650,7 @@ export function resolvePrintColumnIds(visibleColumnIds: InventoryColumnId[]): In
   const selected = visibleColumnIds.filter(
     (id, index) => printable.has(id) && visibleColumnIds.indexOf(id) === index,
   );
-  const withoutBill = selected.filter((id) => id !== 'waybill_code');
-  return selected.includes('waybill_code') ? [...withoutBill, 'waybill_code'] : withoutBill;
+  return selected;
 }
 
 const parseNote = (note: string | null | undefined, key: string) => {

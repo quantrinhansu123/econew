@@ -9,6 +9,7 @@ import {
 } from './dispatchPrintColumns';
 import type { LoadPlanningPrintPayload } from './loadPlanningPrintUtils';
 import { buildDispatchBarcodeUrl } from './dispatchBarcode';
+import PrintImageGrid from './PrintImageGrid';
 
 interface Props {
   data: LoadPlanningPrintPayload;
@@ -108,6 +109,12 @@ function renderDispatchCell(id: DispatchPrintColumnId, row: DispatchPrintRow): R
         </td>
       );
     }
+    case 'hinhAnh':
+      return (
+        <td className={`${def.cssClass} col-center`}>
+          <PrintImageGrid value={row.hinhAnh} altPrefix={`Ảnh ${row.maBill || 'vận đơn'}`} />
+        </td>
+      );
     case 'ghiChu':
       return (
         <td className={def.cssClass}>

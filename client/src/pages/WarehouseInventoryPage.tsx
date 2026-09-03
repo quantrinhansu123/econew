@@ -37,7 +37,6 @@ import {
 import { downloadInventoryExcel } from './warehouse/inventory/inventoryExcelUtils';
 import {
   ALL_ORDERS_COLUMN_WIDTHS,
-  ALL_ORDERS_STICKY_COLUMN_IDS,
   canCollectCashPayment,
   computeGrandTotals,
   formatInventoryDate,
@@ -47,6 +46,7 @@ import {
   normalizeAllOrdersVisibleColumnIds,
   normalizeInventoryVisibleColumnIds,
   resolveVisibleColumnViews,
+  getAllOrdersActiveStickyColumnIds,
   getAllOrdersStickyLeft,
   resolveCongSg,
   resolvePackageCountSl,
@@ -1291,11 +1291,13 @@ function InventoryRow({
   const displayedPackages = Number(waybill.remaining_packages ?? waybill.trip_package_count ?? waybill.package_count ?? 0);
   const orderPackages = Number(waybill.order_total_packages ?? waybill.package_count ?? displayedPackages);
   const isPartialLine = displayedPackages > 0 && orderPackages > 0 && displayedPackages < orderPackages;
+  const orderedColumnIds = columns.map((column) => column.id);
+  const activeStickyColumnIds = isAllOrders ? getAllOrdersActiveStickyColumnIds(orderedColumnIds) : [];
 
   const renderCell = (colId: InventoryColumnId) => {
-    const stickyAllOrdersCellProps = isAllOrders && ALL_ORDERS_STICKY_COLUMN_IDS.includes(colId)
+    const stickyAllOrdersCellProps = isAllOrders && activeStickyColumnIds.includes(colId)
       ? {
-          style: { left: getAllOrdersStickyLeft(colId) },
+          style: { left: getAllOrdersStickyLeft(colId, orderedColumnIds) },
           className: clsx(
             cellClass,
             'sticky z-[5]',
@@ -1304,7 +1306,7 @@ function InventoryRow({
               : getStorageAgeRowClass(waybill).includes('amber')
                 ? 'bg-amber-50 group-hover:bg-amber-100'
                 : 'bg-white group-hover:bg-sky-50',
-            colId === ALL_ORDERS_STICKY_COLUMN_IDS.at(-1) && 'shadow-[5px_0_8px_rgba(15,23,42,0.10)]',
+            colId === activeStickyColumnIds.at(-1) && 'shadow-[5px_0_8px_rgba(15,23,42,0.10)]',
           ),
         }
       : { className: cellClass };

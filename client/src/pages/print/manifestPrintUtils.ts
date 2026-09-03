@@ -83,6 +83,7 @@ function mapLinkToRow(link: ManifestLink, index: number, showPricing: boolean): 
     laiXeThuHo: dispatchValue(fields, 'lai_xe_thu_ho'),
     bcThuHo: dispatchValue(fields, 'bc_thu_ho'),
     maBill: fieldOrDefault(link, 'ma_bill', fields) || fmt(waybill?.waybill_code),
+    hinhAnh: fmt(waybill?.delivery_photo_url),
     ghiChu: resolveWaybillDisplayNote(fieldOrDefault(link, 'ghi_chu_bill', fields)),
     ghiChu1: dispatchValue(fields, 'ghi_chu_1'),
     ghiChu2: dispatchValue(fields, 'ghi_chu_2'),

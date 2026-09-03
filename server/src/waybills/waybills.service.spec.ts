@@ -2305,6 +2305,17 @@ describe('WaybillsService', () => {
     expect(String(item.mat_hang_note || '')).not.toContain('ma_kh=');
   });
 
+  it('includes waybill images in load-planning rows so truck printouts can render thumbnails', () => {
+    const item = (service as any).mapLoadPlanningItem(
+      makeWaybill({ delivery_photo_url: 'https://example.com/one.jpg|https://example.com/two.jpg' }),
+      { id: 'split-1', package_count: 1, note: null },
+      0,
+      manager,
+    );
+
+    expect(item.delivery_photo_url).toBe('https://example.com/one.jpg|https://example.com/two.jpg');
+  });
+
   it('uses the decoded user note or a legacy plain note for load planning', () => {
     const encodedItem = (service as any).mapLoadPlanningItem(
       makeWaybill({ note: `content=Máy móc | user_note=${encodeURIComponent('Cần xe nâng khi dỡ')}` }),

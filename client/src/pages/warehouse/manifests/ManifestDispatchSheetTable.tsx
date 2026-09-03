@@ -18,6 +18,7 @@ import { dispatchSheetHeaderClass, DISPATCH_SHEET_PRINT_WIDTHS, getDispatchSheet
 import type { LoadPlanningManifest, ManifestDispatchFields } from './types';
 import { buildDispatchBarcodeUrl } from '../../print/dispatchBarcode';
 import { formatMoney, parseAmountInput } from '../../../lib/formatMoney';
+import PrintImageGrid from '../../print/PrintImageGrid';
 
 type EditableRows = Record<string, ManifestDispatchFields>;
 
@@ -177,6 +178,17 @@ export default function ManifestDispatchSheetTable({
           <img src={barcodeUrl} alt={`Mã vạch ${billCode}`} className="dispatch-barcode-image" />
         </div>
       ) : null;
+    }
+
+    if (columnId === 'hinhAnh') {
+      return (
+        <div className="min-h-[50px] p-1">
+          <PrintImageGrid
+            value={link.waybill?.delivery_photo_url}
+            altPrefix={`Ảnh ${link.waybill?.waybill_code || 'vận đơn'}`}
+          />
+        </div>
+      );
     }
 
     if (!fieldKey) return null;

@@ -154,12 +154,12 @@ describe('inventory stock-list print columns', () => {
     );
 
     expect(payload.columns).toEqual([
-      { id: 'noi_den', label: 'Nơi đến' },
       { id: 'waybill_code', label: 'Bill' },
+      { id: 'noi_den', label: 'Nơi đến' },
     ]);
   });
 
-  it('moves Mã bill to the final printable column', () => {
+  it('prints columns in the exact order selected on the source table', () => {
     const payload = mapWaybillsToPrintRows(
       [{ id: 1, waybill_code: 'ECOHAN1001', noi_den: 'HCM', package_count: 2 }],
       true,
@@ -167,10 +167,21 @@ describe('inventory stock-list print columns', () => {
     );
 
     expect(payload.columns.map((column) => column.id)).toEqual([
+      'waybill_code',
       'noi_den',
       'package_count',
-      'waybill_code',
     ]);
+  });
+
+  it('stores image URLs for the print template without rendering them as visible link text', () => {
+    const payload = mapWaybillsToPrintRows(
+      [{ id: 1, delivery_photo_url: 'https://example.com/one.jpg|https://example.com/two.jpg' }],
+      false,
+      ['bill_images'],
+    );
+
+    expect(payload.columns).toEqual([{ id: 'bill_images', label: 'Hình ảnh' }]);
+    expect(payload.rows[0].bill_images).toBe('https://example.com/one.jpg\nhttps://example.com/two.jpg');
   });
 
   it('splits HCM and provincial destination HUBs into separate print sheets with HCM first', () => {

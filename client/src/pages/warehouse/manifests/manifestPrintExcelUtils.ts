@@ -6,6 +6,7 @@ import {
   type WorkSheet,
 } from 'xlsx';
 import { parseAmountInput } from '../../../lib/formatMoney';
+import { parseWaybillImages } from '../../../lib/waybillImages';
 import {
   getDispatchColumnDef,
   type DispatchPrintColumnId,
@@ -52,6 +53,7 @@ const COLUMN_WIDTHS: Partial<Record<DispatchPrintColumnId, number>> = {
   bcThuHo: 15,
   maBill: 18,
   maVach: 20,
+  hinhAnh: 24,
   ghiChu: 24,
   ghiChu1: 22,
   ghiChu2: 22,
@@ -116,6 +118,9 @@ function resolveColumnValue(
   }
   if (columnId === 'maVach') {
     return getDispatchCellValue(rows, link, key, 'ma_bill') || String(link.waybill?.waybill_code || '');
+  }
+  if (columnId === 'hinhAnh') {
+    return parseWaybillImages(link.waybill?.delivery_photo_url).join('\n');
   }
 
   const meta = getDispatchSheetColumnMeta(columnId);
