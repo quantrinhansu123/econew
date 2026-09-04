@@ -1485,7 +1485,7 @@ export class WaybillsService {
     return this.findAll({ ...query, to_date: new Date().toISOString() }, currentUser);
   }
 
-  async bulkUpdateCustomerPaymentStatus(dto: BulkUpdateCustomerPaymentStatusDto, _currentUser: UserEntity) {
+  async bulkUpdateCustomerPaymentStatus(dto: BulkUpdateCustomerPaymentStatusDto, currentUser: UserEntity) {
     const ids = [...new Set((dto.waybill_ids ?? []).map((id) => String(id)).filter(Boolean))];
     if (!ids.length) throw new BadRequestException('waybill_ids is required');
 
@@ -1495,11 +1495,23 @@ export class WaybillsService {
     }) as WaybillRecord[];
     if (rows.length !== ids.length) throw new NotFoundException('One or more waybills not found');
 
-    const status = dto.status ?? null;
-    const note = dto.note?.trim() || null;
+    const status = dto.status !== undefined ? (dto.status ?? null) : undefined;
+    const note = dto.note !== undefined ? (dto.note?.trim() || null) : undefined;
     for (const row of rows) {
-      row.customer_payment_status = status;
-      row.customer_payment_note = note;
+      const oldNote = row.customer_payment_note;
+      const oldStatus = row.customer_payment_status;
+      const changes: Record<string, WaybillFieldChange> = {};
+      if (note !== undefined && oldNote !== note) {
+        changes.customer_payment_note = { old_value: oldNote, new_value: note };
+      }
+      if (status !== undefined && oldStatus !== status) {
+        changes.customer_payment_status = { old_value: oldStatus, new_value: status };
+      }
+      if (Object.keys(changes).length > 0 && currentUser) {
+        await this.recordWaybillChange(row.id, 'UPDATED', currentUser, undefined, undefined, changes);
+      }
+      if (status !== undefined) row.customer_payment_status = status;
+      if (note !== undefined) row.customer_payment_note = note;
     }
     await this.waybillsRepository.save(rows);
 

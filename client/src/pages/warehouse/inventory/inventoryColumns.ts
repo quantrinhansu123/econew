@@ -246,7 +246,7 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'thu_ho_khach', label: 'Thu hộ khách', defaultVisible: false, align: 'right' },
   { id: 'payment_method', label: 'Hình thức TT', defaultVisible: false },
   { id: 'customer_payment_status', label: 'Tình trạng TT', defaultVisible: false },
-  { id: 'customer_payment_note', label: 'Ghi chú TT', defaultVisible: false },
+  { id: 'customer_payment_note', label: 'Ghi chú TT', defaultVisible: true },
   { id: 'user_note', label: 'Ghi chú', defaultVisible: true },
   { id: 'route', label: 'Tuyến', defaultVisible: false },
   { id: 'delivery_staff', label: 'NV phát', defaultVisible: false },
@@ -507,7 +507,8 @@ const ALL_ORDERS_COLUMN_LABELS: Partial<Record<InventoryColumnId, string>> = {
   thu_ho_khach: 'Thu hộ khách',
   payment_method: 'Hình thức thanh toán',
   customer_payment_status: 'Tình trạng TT',
-  customer_payment_note: 'Ghi chú',
+  customer_payment_note: 'Ghi chú TT',
+  user_note: 'Ghi chú',
 };
 
 export type InventoryColumnView = InventoryColumnDef & {
@@ -553,8 +554,13 @@ export function getAllOrdersDefaultVisibleColumnIds(): InventoryColumnId[] {
   return [...ALL_ORDERS_DEFAULT_COLUMN_IDS];
 }
 
-export const ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v4';
-const LEGACY_ALL_ORDERS_COLUMN_STORAGE_KEYS = ['eco_all_orders_visible_columns_v3', 'eco_all_orders_visible_columns_v2', 'eco_all_orders_visible_columns_v1'];
+export const ALL_ORDERS_COLUMN_STORAGE_KEY = 'eco_all_orders_visible_columns_v5';
+const LEGACY_ALL_ORDERS_COLUMN_STORAGE_KEYS = [
+  'eco_all_orders_visible_columns_v4',
+  'eco_all_orders_visible_columns_v3',
+  'eco_all_orders_visible_columns_v2',
+  'eco_all_orders_visible_columns_v1',
+];
 
 export function normalizeAllOrdersVisibleColumnIds(ids: InventoryColumnId[]): InventoryColumnId[] {
   const selected = ids.filter((id, index) => (
@@ -578,8 +584,10 @@ export function loadAllOrdersVisibleColumnIds(): InventoryColumnId[] {
       .find(Boolean);
     if (!legacyRaw) return getAllOrdersDefaultVisibleColumnIds();
     try {
+      const parsed = JSON.parse(legacyRaw) as InventoryColumnId[];
       const migrated = normalizeAllOrdersVisibleColumnIds([
-        ...(JSON.parse(legacyRaw) as InventoryColumnId[]),
+        ...parsed,
+        'customer_payment_note',
         'delivery_staff',
         'warehouse_intake',
         'delivery_processing',

@@ -11,6 +11,7 @@ import { FilterSelect } from '../components/ui/FilterSelect';
 import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/ConfirmDialog';
 import { ImagePreviewModal } from '../components/ImagePreviewModal';
 import InlineMoneyInput from '../components/ui/InlineMoneyInput';
+import InlineTextInput from '../components/ui/InlineTextInput';
 import type { AuthUserProfile } from './login/types';
 import WaybillInventoryDetailDialog from './warehouse/inventory/dialogs/WaybillInventoryDetailDialog';
 import WaybillEditDialog from './warehouse/inventory/dialogs/WaybillEditDialog';
@@ -88,6 +89,7 @@ import { buildDispatchBarcodeUrl } from './print/dispatchBarcode';
 import CustomerDetailDialog from './warehouse/customers/dialogs/CustomerDetailDialog';
 import type { CustomerRecord } from './warehouse/customers/customerFormTypes';
 import type { CustomerListItem, CustomerListResponse } from './warehouse/customers/types';
+
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const WAREHOUSE = 1;
@@ -646,6 +648,26 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     });
   };
 
+  const saveInlinePaymentNote = async (waybill: WaybillInventoryItem, note: string) => {
+    setActionError('');
+    try {
+      await apiRequest('/waybills/inventory/customer-payment-status', {
+        method: 'PATCH',
+        body: {
+          waybill_ids: [String(waybill.id)],
+          status: waybill.customer_payment_status || null,
+          note: note.trim() || undefined,
+        },
+      });
+      setWaybills((current) => current.map((item) => (
+        String(item.id) === String(waybill.id) ? { ...item, customer_payment_note: note.trim() || null } : item
+      )));
+    } catch (error) {
+      setActionError(error instanceof ApiError ? error.message : 'Không lưu được ghi chú.');
+      throw error;
+    }
+  };
+
   const saveInlinePricing = async (
     waybill: WaybillInventoryItem,
     field: 'unit_price' | 'surcharge' | 'transit_fee' | 'total_amount' | 'freight_amount' | 'cod_amount',
@@ -1066,6 +1088,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       onReleaseUnscheduledSplit={confirmReleaseUnscheduledSplit}
                       onCustomerLedger={openCustomerLedger}
                       onPricingSave={saveInlinePricing}
+                      onPaymentNoteSave={saveInlinePaymentNote}
                       onOpenTripManifest={(trip) => {
                         if (trip.manifest_id) navigate(`/warehouse/manifests?openManifestId=${trip.manifest_id}&openExpense=1`);
                         else if (trip.trip_id) navigate(`/trips/${trip.trip_id}`);
@@ -1266,6 +1289,7 @@ function InventoryRow({
   onReleaseUnscheduledSplit,
   onCustomerLedger,
   onPricingSave,
+  onPaymentNoteSave,
   onOpenTripManifest,
 }: InventoryItemProps & {
   hubs: HubSummary[];
@@ -1278,6 +1302,7 @@ function InventoryRow({
     field: 'unit_price' | 'surcharge' | 'transit_fee' | 'total_amount' | 'freight_amount' | 'cod_amount',
     amount: number,
   ) => Promise<void>;
+  onPaymentNoteSave?: (waybill: WaybillInventoryItem, note: string) => Promise<void>;
   showSelection?: boolean;
   selected?: boolean;
   onToggleSelect?: (waybillId: string | number) => void;
@@ -1581,7 +1606,16 @@ function InventoryRow({
         );
       }
       case 'customer_payment_note':
-        return <td className={clsx(cellClass, isAllOrders && 'max-w-[120px]')}>{waybill.customer_payment_note || '—'}</td>;
+        return (
+          <td className={clsx(cellClass, isAllOrders && 'max-w-[200px]', 'p-0 align-top')}>
+            <InlineTextInput
+              value={waybill.customer_payment_note || ''}
+              editable={Boolean(isAllOrders && (canEdit || canPay))}
+              placeholder="Thêm ghi chú..."
+              onSave={(note) => (onPaymentNoteSave ? onPaymentNoteSave(waybill, note) : Promise.resolve())}
+            />
+          </td>
+        );
       case 'user_note':
         return <td className={cellClass}>{resolveUserNote(waybill) || '—'}</td>;
       case 'route':
