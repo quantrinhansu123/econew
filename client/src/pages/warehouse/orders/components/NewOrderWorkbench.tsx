@@ -417,7 +417,7 @@ export default function NewOrderWorkbench({
 
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2 border-t border-slate-300 pt-3">
             <ActionButton
-              label={isImageUploading ? 'Đang tải ảnh' : embedded ? 'Lưu thay đổi' : 'Nhập'}
+              label={isImageUploading ? 'Đang tải ảnh' : embedded || selectedBillId ? 'Lưu thay đổi' : 'Nhập'}
               onClick={onSave}
               disabled={!canManage || isBusy}
               primary

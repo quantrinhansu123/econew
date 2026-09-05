@@ -251,10 +251,15 @@ export class UsersService {
   }
 
   private async syncUserHubs(userId: string, hubIds: string[]): Promise<void> {
-    await this.userHubsRepository.delete({ user_id: userId });
-    if (!hubIds.length) return;
-    const rows = hubIds.map((hubId) => this.userHubsRepository.create({ user_id: userId, hub_id: hubId }));
-    await this.userHubsRepository.save(rows);
+    const replaceAssignments = async (repository: Repository<UserHubEntity>) => {
+      await repository.delete({ user_id: userId });
+      if (!hubIds.length) return;
+      const rows = hubIds.map((hubId) => repository.create({ user_id: userId, hub_id: hubId }));
+      await repository.save(rows);
+    };
+    const repositoryManager = this.userHubsRepository.manager;
+    if (!repositoryManager?.transaction) return replaceAssignments(this.userHubsRepository);
+    await repositoryManager.transaction((manager) => replaceAssignments(manager.getRepository(UserHubEntity)));
   }
 
   private assertNotSelf(id: string, actor: UserEntity | undefined, action: string): void {

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, IsNull, Repository } from 'typeorm';
+import { Brackets, EntityManager, In, IsNull, Repository } from 'typeorm';
 import { clampPaginationLimit } from '../common/pagination';
 import { Roles, isManager } from '../common/roles';
 import { getAssignedHubIds } from '../common/user-hub-scope';
@@ -293,23 +293,28 @@ export class ManifestsService {
       await allocatePackages(line, false);
     }
 
-    if (links.length) await this.manifestWaybillsRepository.save(links as any);
-    if (splitsToSave.length) await this.waybillSplitsRepository.save(splitsToSave);
+    await this.runInTransaction(async (manager) => {
+      const linksRepository = manager?.getRepository(ManifestWaybillEntity) ?? this.manifestWaybillsRepository;
+      const splitsRepository = manager?.getRepository(WaybillSplitEntity) ?? this.waybillSplitsRepository;
+      const waybillsRepository = manager?.getRepository(WaybillEntity) ?? this.waybillsRepository;
+      if (links.length) await linksRepository.save(links as any);
+      if (splitsToSave.length) await splitsRepository.save(splitsToSave);
 
-    for (const update of linkDispatchUpdates) {
-      const link = existingLinks.find((row) => String(row.waybill_id) === update.waybill_id);
-      if (!link) continue;
-      const currentQty = Number((link.dispatch_fields as Record<string, unknown> | null)?.so_luong ?? 0);
-      link.dispatch_fields = {
-        ...(link.dispatch_fields ?? {}),
-        so_luong: String(currentQty + update.package_count),
-      };
-      await this.manifestWaybillsRepository.save(link);
-    }
+      for (const update of linkDispatchUpdates) {
+        const link = existingLinks.find((row) => String(row.waybill_id) === update.waybill_id);
+        if (!link) continue;
+        const currentQty = Number((link.dispatch_fields as Record<string, unknown> | null)?.so_luong ?? 0);
+        link.dispatch_fields = {
+          ...(link.dispatch_fields ?? {}),
+          so_luong: String(currentQty + update.package_count),
+        };
+        await linksRepository.save(link);
+      }
 
-    const waybillsToSave = waybills.filter((waybill) => mutatedWaybillIds.has(String(waybill.id)));
-    if (waybillsToSave.length) await this.waybillsRepository.save(waybillsToSave as any);
-    await this.refreshTotals(manifest, waybills, currentUser.id);
+      const waybillsToSave = waybills.filter((waybill) => mutatedWaybillIds.has(String(waybill.id)));
+      if (waybillsToSave.length) await waybillsRepository.save(waybillsToSave as any);
+      await this.refreshTotals(manifest, waybills, currentUser.id, manager);
+    });
     return this.findOne(id, currentUser);
   }
 
@@ -320,28 +325,33 @@ export class ManifestsService {
     const trip = await this.resolveManifestTrip(manifest);
     const waybill = await this.waybillsRepository.findOne({ where: { id: waybillId, deleted_at: IsNull() } as any }) as WaybillRecord | null;
     if (!waybill) throw new NotFoundException('Waybill not found');
-    if (trip) {
-      await this.waybillSplitsRepository.delete({ waybill_id: waybillId, trip_id: String(trip.id) });
-    }
-    await this.manifestWaybillsRepository.delete({ manifest_id: id, waybill_id: waybillId });
-    await this.compactPersistedLoadingPositions(id, trip?.id);
-    if (waybill.manifest_id === id) {
-      waybill.manifest_id = null;
-    }
-    const remainingSplits = await this.waybillSplitsRepository.find({ where: { waybill_id: waybillId } });
-    const allocatedPackages = remainingSplits.reduce((sum, row) => sum + Number(row.package_count ?? 0), 0);
-    if (allocatedPackages < this.resolveTotalPackages(waybill)) {
-      waybill.current_state = WaybillState.IN_WAREHOUSE;
-      waybill.status = WaybillState.IN_WAREHOUSE;
-      waybill.current_hub_id = String(manifest.origin_hub_id ?? trip?.start_hub_id ?? waybill.origin_hub_id);
-      if (allocatedPackages === 0) waybill.loaded_at = null;
-    }
-    waybill.updated_by = currentUser.id;
-    waybill.last_audit_action = 'MANIFEST_REMOVE_WAYBILL';
-    waybill.last_audit_user_id = currentUser.id;
-    waybill.last_audit_at = new Date();
-    await this.waybillsRepository.save(waybill as any);
-    await this.refreshTotals(manifest, undefined, currentUser.id);
+    await this.runInTransaction(async (manager) => {
+      const linksRepository = manager?.getRepository(ManifestWaybillEntity) ?? this.manifestWaybillsRepository;
+      const splitsRepository = manager?.getRepository(WaybillSplitEntity) ?? this.waybillSplitsRepository;
+      const waybillsRepository = manager?.getRepository(WaybillEntity) ?? this.waybillsRepository;
+      if (trip) {
+        await splitsRepository.delete({ waybill_id: waybillId, trip_id: String(trip.id) });
+      }
+      await linksRepository.delete({ manifest_id: id, waybill_id: waybillId });
+      await this.compactPersistedLoadingPositions(id, trip?.id, manager);
+      if (waybill.manifest_id === id) {
+        waybill.manifest_id = null;
+      }
+      const remainingSplits = await splitsRepository.find({ where: { waybill_id: waybillId } });
+      const allocatedPackages = remainingSplits.reduce((sum, row) => sum + Number(row.package_count ?? 0), 0);
+      if (allocatedPackages < this.resolveTotalPackages(waybill)) {
+        waybill.current_state = WaybillState.IN_WAREHOUSE;
+        waybill.status = WaybillState.IN_WAREHOUSE;
+        waybill.current_hub_id = String(manifest.origin_hub_id ?? trip?.start_hub_id ?? waybill.origin_hub_id);
+        if (allocatedPackages === 0) waybill.loaded_at = null;
+      }
+      waybill.updated_by = currentUser.id;
+      waybill.last_audit_action = 'MANIFEST_REMOVE_WAYBILL';
+      waybill.last_audit_user_id = currentUser.id;
+      waybill.last_audit_at = new Date();
+      await waybillsRepository.save(waybill as any);
+      await this.refreshTotals(manifest, undefined, currentUser.id, manager);
+    });
     return this.findOne(id, currentUser);
   }
 
@@ -353,6 +363,7 @@ export class ManifestsService {
     if (!waybills.length) throw new BadRequestException('Manifest must have at least one waybill');
     if (waybills.some((waybill) => this.getWaybillStatus(waybill) !== WaybillState.IN_WAREHOUSE)) throw new BadRequestException('All waybills must be IN_WAREHOUSE');
 
+    const closedAt = new Date();
     waybills.forEach((waybill) => {
       waybill.current_state = WaybillState.MANIFEST_CLOSED;
       waybill.status = WaybillState.MANIFEST_CLOSED;
@@ -360,19 +371,24 @@ export class ManifestsService {
       waybill.updated_by = currentUser.id;
       waybill.last_audit_action = 'MANIFEST_CLOSE';
       waybill.last_audit_user_id = currentUser.id;
-      waybill.last_audit_at = new Date();
+      waybill.last_audit_at = closedAt;
     });
-    await this.waybillsRepository.save(waybills as any);
     Object.assign(manifest, {
       status: ManifestStatus.CLOSED,
       seal_code: dto.seal_code,
       note: dto.note ?? manifest.note,
-      closed_at: new Date(),
+      closed_at: closedAt,
       closed_by: currentUser.id,
       updated_by: currentUser.id,
     });
-    await this.refreshTotals(manifest, waybills, currentUser.id);
-    return await this.manifestsRepository.save(manifest) as ManifestRecord;
+    await this.runInTransaction(async (manager) => {
+      const waybillsRepository = manager?.getRepository(WaybillEntity) ?? this.waybillsRepository;
+      const manifestsRepository = manager?.getRepository(ManifestEntity) ?? this.manifestsRepository;
+      await waybillsRepository.save(waybills as any);
+      await this.refreshTotals(manifest, waybills, currentUser.id, manager);
+      await manifestsRepository.save(manifest);
+    });
+    return manifest;
   }
 
   async assignTrip(id: string, dto: AssignManifestTripDto, currentUser: UserEntity): Promise<ManifestRecord> {
@@ -388,22 +404,28 @@ export class ManifestsService {
     if (String(trip.end_hub_id) !== String(manifest.dest_hub_id)) {
       throw new BadRequestException('Trip destination hub must match manifest destination hub');
     }
-    trip.manifest_id = id;
-    await this.tripsRepository.save(trip as TripEntity);
-    const manifestLinks = await this.manifestWaybillsRepository.find({ where: { manifest_id: id } });
-    const manifestWaybillIds = manifestLinks.map((link) => String(link.waybill_id)).filter(Boolean);
-    if (manifestWaybillIds.length) {
-      const unassignedSplits = await this.waybillSplitsRepository.find({
-        where: { waybill_id: In(manifestWaybillIds), trip_id: IsNull() } as any,
-      });
-      unassignedSplits.forEach((split) => {
-        split.trip_id = String(trip.id);
-        split.truck_id = trip.truck_id ? String(trip.truck_id) : split.truck_id;
-      });
-      if (unassignedSplits.length) await this.waybillSplitsRepository.save(unassignedSplits);
-    }
     Object.assign(manifest, { trip_id: dto.trip_id, status: ManifestStatus.ASSIGNED_TO_TRIP, assigned_trip_at: new Date(), updated_by: currentUser.id });
-    const savedManifest = await this.manifestsRepository.save(manifest) as ManifestRecord;
+    const savedManifest = await this.runInTransaction(async (manager) => {
+      const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
+      const linksRepository = manager?.getRepository(ManifestWaybillEntity) ?? this.manifestWaybillsRepository;
+      const splitsRepository = manager?.getRepository(WaybillSplitEntity) ?? this.waybillSplitsRepository;
+      const manifestsRepository = manager?.getRepository(ManifestEntity) ?? this.manifestsRepository;
+      trip.manifest_id = id;
+      await tripsRepository.save(trip as TripEntity);
+      const manifestLinks = await linksRepository.find({ where: { manifest_id: id } });
+      const manifestWaybillIds = manifestLinks.map((link) => String(link.waybill_id)).filter(Boolean);
+      if (manifestWaybillIds.length) {
+        const unassignedSplits = await splitsRepository.find({
+          where: { waybill_id: In(manifestWaybillIds), trip_id: IsNull() } as any,
+        });
+        unassignedSplits.forEach((split) => {
+          split.trip_id = String(trip.id);
+          split.truck_id = trip.truck_id ? String(trip.truck_id) : split.truck_id;
+        });
+        if (unassignedSplits.length) await splitsRepository.save(unassignedSplits);
+      }
+      return await manifestsRepository.save(manifest) as ManifestRecord;
+    });
     await this.enrichTransportSummaries([savedManifest]);
     return savedManifest;
   }
@@ -623,8 +645,10 @@ export class ManifestsService {
     }
   }
 
-  private async compactPersistedLoadingPositions(manifestId: string, tripId?: string | number | null): Promise<void> {
-    const links = await this.manifestWaybillsRepository.find({
+  private async compactPersistedLoadingPositions(manifestId: string, tripId?: string | number | null, manager?: EntityManager): Promise<void> {
+    const linksRepository = manager?.getRepository(ManifestWaybillEntity) ?? this.manifestWaybillsRepository;
+    const splitsRepository = manager?.getRepository(WaybillSplitEntity) ?? this.waybillSplitsRepository;
+    const links = await linksRepository.find({
       where: { manifest_id: manifestId },
       order: { loading_position: 'ASC', waybill_id: 'ASC' },
     });
@@ -638,11 +662,11 @@ export class ManifestsService {
       link.loading_position = loadingPosition;
       changedLinks.push(link);
     });
-    if (changedLinks.length) await this.manifestWaybillsRepository.save(changedLinks);
+    if (changedLinks.length) await linksRepository.save(changedLinks);
 
     const waybillIds = [...positionByWaybill.keys()];
     if (!tripId || !waybillIds.length) return;
-    const splits = await this.waybillSplitsRepository.find({
+    const splits = await splitsRepository.find({
       where: { trip_id: String(tripId), waybill_id: In(waybillIds) },
     });
     const changedSplits = splits.filter((split) => {
@@ -651,7 +675,7 @@ export class ManifestsService {
       split.loading_position = loadingPosition;
       return true;
     });
-    if (changedSplits.length) await this.waybillSplitsRepository.save(changedSplits);
+    if (changedSplits.length) await splitsRepository.save(changedSplits);
   }
 
   private async enrichTransportSummaries(manifests: ManifestRecord[]): Promise<void> {
@@ -1103,16 +1127,26 @@ export class ManifestsService {
     return (manifest.manifest_waybills ?? []).map((link: ManifestWaybillEntity & Record<string, any>) => link.waybill).filter(Boolean) as WaybillRecord[];
   }
 
-  private async refreshTotals(manifest: ManifestRecord, _knownWaybills?: WaybillRecord[], userId?: string) {
-    const loaded = await this.loadManifest(manifest.id);
-    const waybills = this.extractWaybills(loaded);
+  private async refreshTotals(manifest: ManifestRecord, _knownWaybills?: WaybillRecord[], userId?: string, manager?: EntityManager) {
+    const manifestsRepository = manager?.getRepository(ManifestEntity) ?? this.manifestsRepository;
+    let waybills: WaybillRecord[];
+    if (manager) {
+      const links = await manager.getRepository(ManifestWaybillEntity).find({
+        where: { manifest_id: String(manifest.id) },
+        relations: ['waybill'],
+      });
+      waybills = links.map((link) => link.waybill).filter(Boolean) as WaybillRecord[];
+    } else {
+      const loaded = await this.loadManifest(manifest.id);
+      waybills = this.extractWaybills(loaded);
+    }
     const totals = {
       total_waybills: waybills.length,
       total_weight: waybills.reduce((sum, waybill) => sum + Number(waybill.weight ?? 0), 0),
       total_cod_amount: waybills.reduce((sum, waybill) => sum + Number(waybill.cod_amount ?? 0), 0),
       updated_by: userId ?? manifest.updated_by,
     };
-    await this.manifestsRepository.save({ id: loaded.id, ...totals } as any);
+    await manifestsRepository.save({ id: manifest.id, ...totals } as any);
     Object.assign(manifest, totals);
   }
 
@@ -1128,6 +1162,12 @@ export class ManifestsService {
       if (!existing) return code;
     }
     throw new ConflictException('Unable to generate unique manifest code');
+  }
+
+  private async runInTransaction<T>(work: (manager?: EntityManager) => Promise<T>): Promise<T> {
+    const repositoryManager = this.manifestsRepository.manager;
+    if (!repositoryManager?.transaction) return work(undefined);
+    return repositoryManager.transaction((manager) => work(manager));
   }
 
   private assertRole(currentUser: UserEntity, roles: number[]) {

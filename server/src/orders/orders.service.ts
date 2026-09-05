@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Like, Repository } from 'typeorm';
+import { EntityManager, Like, Repository } from 'typeorm';
 import { PaymentType } from '../common/enums';
 import { clampPaginationLimit } from '../common/pagination';
 import { UserEntity } from '../users/user.entity';
@@ -35,10 +35,11 @@ export class OrdersService {
     @InjectRepository(OrderEntity) private readonly ordersRepository: Repository<OrderEntity>,
   ) {}
 
-  async createFromWaybillEntry(dto: CreateWaybillDto, currentUser: UserEntity): Promise<OrderEntity> {
-    const orderCode = await this.generateUniqueCode();
+  async createFromWaybillEntry(dto: CreateWaybillDto, currentUser: UserEntity, manager?: EntityManager): Promise<OrderEntity> {
+    const ordersRepository = manager?.getRepository(OrderEntity) ?? this.ordersRepository;
+    const orderCode = await this.generateUniqueCode(ordersRepository);
     const paymentType = dto.cc_amount && dto.cc_amount > 0 ? PaymentType.CC : PaymentType.PP;
-    const order = this.ordersRepository.create({
+    const order = ordersRepository.create({
       order_code: orderCode,
       sender_name: dto.sender_name?.trim() || null,
       sender_phone: dto.sender_phone?.trim() || null,
@@ -61,7 +62,7 @@ export class OrdersService {
     });
 
     try {
-      return await this.ordersRepository.save(order);
+      return await ordersRepository.save(order);
     } catch (error) {
       if ((error as { code?: string }).code === '23505') throw new ConflictException('Order code already exists');
       throw error;
@@ -116,17 +117,17 @@ export class OrdersService {
     await this.ordersRepository.update({ id }, values);
   }
 
-  private async generateUniqueCode(): Promise<string> {
+  private async generateUniqueCode(ordersRepository: Repository<OrderEntity> = this.ordersRepository): Promise<string> {
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     const prefix = `DH${year}${month}${day}-`;
-    let sequence = await this.ordersRepository.count({ where: { order_code: Like(`${prefix}%`) } }) + 1;
+    let sequence = await ordersRepository.count({ where: { order_code: Like(`${prefix}%`) } }) + 1;
 
     for (let attempt = 0; attempt < 1000; attempt += 1) {
       const code = `${prefix}${String(sequence).padStart(3, '0')}`;
-      const existing = await this.ordersRepository.findOne({ where: { order_code: code } });
+      const existing = await ordersRepository.findOne({ where: { order_code: code } });
       if (!existing) return code;
       sequence += 1;
     }

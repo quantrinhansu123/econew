@@ -6,6 +6,8 @@ import { ManifestWaybillEntity } from '../manifests/manifest-waybill.entity';
 import { ManifestEntity } from '../manifests/manifest.entity';
 import { OrderEntity } from '../orders/order.entity';
 import { TripEntity } from '../trips/trip.entity';
+import { TruckEntity } from '../trucks/truck.entity';
+import { VendorEntity } from '../vendors/vendor.entity';
 import { WaybillPriority, WaybillStatus } from './dto/waybill.enums';
 import { WaybillSplitLoadStatus } from './dto/waybill-split-load-status.enum';
 import { WaybillSplitEntity } from './waybill-split.entity';
@@ -59,8 +61,10 @@ const createQueryBuilder = () => {
     groupBy: jest.fn().mockReturnThis(),
     clone: jest.fn().mockImplementation(() => qb),
     setParameters: jest.fn().mockReturnThis(),
+    setLock: jest.fn().mockReturnThis(),
     getRawOne: jest.fn().mockResolvedValue({ maxSeq: '0' }),
     getRawMany: jest.fn().mockResolvedValue([]),
+    getOne: jest.fn().mockResolvedValue(makeWaybill()),
     getMany: jest.fn().mockResolvedValue([makeWaybill()]),
     getCount: jest.fn().mockResolvedValue(1),
     getManyAndCount: jest.fn().mockResolvedValue([[makeWaybill()], 1]),
@@ -184,6 +188,8 @@ describe('WaybillsService', () => {
       [WaybillChangeLogEntity, changeLogsRepository],
       [CashFundEntity, cashFundsRepository],
       [TripEntity, tripsRepository],
+      [TruckEntity, trucksRepository],
+      [VendorEntity, vendorsRepository],
       [OrderEntity, transactionOrderRepository],
     ]);
     dataSource = {
@@ -234,6 +240,8 @@ describe('WaybillsService', () => {
     expect(result.waybill_code).toBe('ECOHAN109602');
     expect(result.order_code).toBe('DH20260101-001');
     expect(result.status).toBe(WaybillStatus.RECEIVED);
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(ordersService.createFromWaybillEntry).toHaveBeenCalledWith(expect.any(Object), manager, expect.anything());
     expect(waybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ waybill_code: 'ECOHAN109602', current_state: WaybillStatus.RECEIVED }));
     expect(waybillsRepository.findOne).toHaveBeenCalledWith({
       where: [
@@ -810,7 +818,7 @@ describe('WaybillsService', () => {
     }));
     expect(vendorsService.addPayableDebt).toHaveBeenCalledTimes(1);
     expect(vendorsService.addPayableDebt).toHaveBeenNthCalledWith(
-      1, 'vendor-1', 100.01, 't1', expect.stringContaining('Chi phí chuyến #t1'),
+      1, 'vendor-1', 100.01, 't1', expect.stringContaining('Chi phí chuyến #t1'), expect.anything(),
     );
     expect(vendorsService.resolveDefaultVendorId).not.toHaveBeenCalled();
     expect(vendorsService.addPayableDebt.mock.invocationCallOrder[0])
@@ -929,6 +937,22 @@ describe('WaybillsService', () => {
     expect(waybillsRepository.findOne).not.toHaveBeenCalled();
     expect(splitsRepository.find).not.toHaveBeenCalled();
     expect(splitsRepository.save).not.toHaveBeenCalled();
+    expect(tripsRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('bulk stack stops when package allocation changes after the waybill lock is acquired', async () => {
+    setupMixedDestinationBulkStack();
+    splitsRepository.find
+      .mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'other-split', waybill_id: 'w1', package_count: 1 }]);
+
+    await expect(service.bulkStackOntoTruck({
+      items: [{ waybill_id: 'w1', truck_id: 'truck-1', package_count: 1 }],
+    }, manager)).rejects.toBeInstanceOf(ConflictException);
+
+    expect(splitsRepository.save).not.toHaveBeenCalled();
+    expect(manifestsRepository.save).not.toHaveBeenCalled();
     expect(tripsRepository.save).not.toHaveBeenCalled();
   });
 

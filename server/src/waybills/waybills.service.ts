@@ -184,7 +184,6 @@ export class WaybillsService {
 
     const originHub = await this.getActiveHub(dto.origin_hub_id);
     const waybillCode = await this.resolveWaybillCode(dto.waybill_code, originHub.code);
-    const order = await this.ordersService.createFromWaybillEntry(dto, currentUser);
     const record = this.waybillsRepository.create({
       waybill_code: waybillCode,
       sender_info: this.packContact(dto.sender_name, dto.sender_phone, dto.sender_address),
@@ -232,12 +231,25 @@ export class WaybillsService {
       received_at: null,
       received_by: null,
       created_by: currentUser.id,
-      order_id: order.id,
+      order_id: null,
     });
 
     try {
-      const saved = await this.waybillsRepository.save(record);
-      await this.recordWaybillChange(String(saved.id), 'CREATED', currentUser);
+      const { saved, order } = await this.dataSource.transaction(async (manager) => {
+        const order = await this.ordersService.createFromWaybillEntry(dto, currentUser, manager);
+        record.order_id = order.id;
+        const saved = await manager.getRepository(WaybillEntity).save(record);
+        await this.recordWaybillChange(
+          String(saved.id),
+          'CREATED',
+          currentUser,
+          undefined,
+          undefined,
+          {},
+          manager.getRepository(WaybillChangeLogEntity),
+        );
+        return { saved, order };
+      });
       return this.sanitize({ ...saved, order } as WaybillRecord, currentUser);
     } catch (error) {
       if ((error as { code?: string }).code === '23505') throw new ConflictException('Waybill code already exists');
@@ -1966,24 +1978,27 @@ export class WaybillsService {
     const existingRows = await this.splitsRepository.find({ where: { waybill_id: id } });
     const statusById = new Map(existingRows.map((row) => [String(row.id), row.load_status]));
 
-    await this.splitsRepository.delete({ waybill_id: id });
-    const rows = dto.splits.map((line) => this.splitsRepository.create({
-      waybill_id: id,
-      trip_id: line.trip_id ? String(line.trip_id) : null,
-      truck_id: line.truck_id ? String(line.truck_id) : null,
-      package_count: line.package_count,
-      loading_position: line.loading_position ?? null,
-      carrier_label: line.carrier_label?.trim() || null,
-      note: line.note?.trim() || null,
-      load_status: line.load_status
-        ?? (line.id ? statusById.get(String(line.id)) : null)
-        ?? WaybillSplitLoadStatus.WAITING_LOAD,
-      expected_arrival_at: line.expected_arrival_at
-        ? new Date(line.expected_arrival_at)
-        : null,
-      created_by: currentUser.id,
-    }));
-    if (rows.length) await this.splitsRepository.save(rows);
+    await this.dataSource.transaction(async (manager) => {
+      const splitsRepository = manager.getRepository(WaybillSplitEntity);
+      await splitsRepository.delete({ waybill_id: id });
+      const rows = dto.splits.map((line) => splitsRepository.create({
+        waybill_id: id,
+        trip_id: line.trip_id ? String(line.trip_id) : null,
+        truck_id: line.truck_id ? String(line.truck_id) : null,
+        package_count: line.package_count,
+        loading_position: line.loading_position ?? null,
+        carrier_label: line.carrier_label?.trim() || null,
+        note: line.note?.trim() || null,
+        load_status: line.load_status
+          ?? (line.id ? statusById.get(String(line.id)) : null)
+          ?? WaybillSplitLoadStatus.WAITING_LOAD,
+        expected_arrival_at: line.expected_arrival_at
+          ? new Date(line.expected_arrival_at)
+          : null,
+        created_by: currentUser.id,
+      }));
+      if (rows.length) await splitsRepository.save(rows);
+    });
 
     return this.getPackageSplits(id, currentUser);
   }
@@ -2082,6 +2097,7 @@ export class WaybillsService {
       truck: TruckEntity | null;
       package_count: number;
       total_packages: number;
+      allocated_packages: number;
       is_fully_allocated: boolean;
       expected_arrival_at: Date;
       carrier_label: string | null;
@@ -2137,17 +2153,38 @@ export class WaybillsService {
         truck,
         package_count: packageCount,
         total_packages: totalPackages,
+        allocated_packages: allocated,
         is_fully_allocated: allocated + packageCount >= totalPackages,
         expected_arrival_at: expectedArrivalAt,
         carrier_label: carrierLabel,
       });
     }
 
-    for (const truck of trucksPendingVendorLink) {
-      await this.trucksRepository.save(truck);
-    }
+    return this.dataSource.transaction(async (manager) => {
+      const waybillsRepository = manager.getRepository(WaybillEntity);
+      const splitsRepository = manager.getRepository(WaybillSplitEntity);
+      const trucksRepository = manager.getRepository(TruckEntity);
+      for (const waybillId of [...new Set(requestedWaybillIds)].sort((left, right) => left.localeCompare(right, 'en', { numeric: true }))) {
+        const lockedWaybill = await waybillsRepository.createQueryBuilder('waybill')
+          .setLock('pessimistic_write')
+          .where('waybill.id = :waybillId', { waybillId })
+          .andWhere('waybill.deleted_at IS NULL')
+          .getOne();
+        if (!lockedWaybill) throw new NotFoundException(`Waybill ${waybillId} not found`);
+      }
+      for (const prepared of preparedRows) {
+        const currentSplits = await splitsRepository.find({ where: { waybill_id: String(prepared.waybill.id) } });
+        const currentAllocated = currentSplits.reduce((sum, row) => sum + Number(row.package_count ?? 0), 0);
+        if (currentAllocated !== prepared.allocated_packages) {
+          throw new ConflictException(`Vận đơn ${prepared.waybill.waybill_code} vừa được phân xe ở thao tác khác; hãy làm mới danh sách`);
+        }
+      }
 
-    for (const prepared of preparedRows) {
+      for (const truck of trucksPendingVendorLink) {
+        await trucksRepository.save(truck);
+      }
+
+      for (const prepared of preparedRows) {
       const {
         line,
         line_index: lineIndex,
@@ -2160,7 +2197,7 @@ export class WaybillsService {
         carrier_label: carrierLabel,
       } = prepared;
 
-      const split = await this.splitsRepository.save(this.splitsRepository.create({
+      const split = await splitsRepository.save(splitsRepository.create({
         waybill_id: String(line.waybill_id),
         truck_id: line.truck_id ? String(line.truck_id) : null,
         package_count: packageCount,
@@ -2179,7 +2216,7 @@ export class WaybillsService {
 
       const ratio = packageCount / totalPackages;
       const totalFreight = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0);
-      saved.push({
+        saved.push({
         split_id: split.id,
         waybill_id: split.waybill_id,
         waybill_code: waybill.waybill_code,
@@ -2192,7 +2229,7 @@ export class WaybillsService {
         ...(isManager(currentUser.role_mask) ? { vendor_cost: vendorDebtAmount } : {}),
         allocated_freight: isManager(currentUser.role_mask) ? Math.round(totalFreight * ratio) : undefined,
       });
-      stackedRows.push({
+        stackedRows.push({
         waybill,
         loading_position: split.loading_position,
         package_count: Number(split.package_count),
@@ -2203,8 +2240,8 @@ export class WaybillsService {
         vendor_id: truck?.vendor_id ? String(truck.vendor_id) : selectedVendorId,
         vendor_cost: vendorDebtAmount ?? 0,
         license_plate: truck?.bks ?? truck?.license_plate ?? null,
-      });
-    }
+        });
+      }
 
     const routeGroups = [...stackedRows.reduce((groups, row) => {
       const key = [
@@ -2240,7 +2277,7 @@ export class WaybillsService {
     }> = [];
     for (const [groupIndex, group] of routeGroups.entries()) {
       group.sort((a, b) => (a.expected_arrival_at?.getTime() ?? 0) - (b.expected_arrival_at?.getTime() ?? 0));
-      const manifest = await this.createClosedManifestForStack(group, currentUser);
+      const manifest = await this.createClosedManifestForStack(group, currentUser, manager);
       if (!manifest) throw new ConflictException('Không thể tạo bảng kê cho nhóm HUB đến');
       let tripId: string | null = null;
       const vendorCost = sharedVendorCostProvided
@@ -2248,7 +2285,7 @@ export class WaybillsService {
         : group.reduce((sum, row) => sum + Math.round(row.vendor_cost * 100), 0) / 100;
       const tripVendorId = selectedVendorId
         ?? group.find((row) => row.vendor_id)?.vendor_id
-        ?? (vendorCost > 0 ? await this.vendorsService.resolveDefaultVendorId() : null);
+        ?? (vendorCost > 0 ? await this.vendorsService.resolveDefaultVendorId(manager) : null);
       const trip = await this.createInTransitTripForStack(
         manifest,
         group[0].truck_id,
@@ -2264,17 +2301,19 @@ export class WaybillsService {
           trip_cost: vendorCost,
           vendor_id: tripVendorId,
         },
+        manager,
       );
       tripId = trip.id;
       if (vendorCost > 0) {
         const pricedRow = group.find((row) => row.vendor_cost > 0) ?? group[0];
         const vendorId = tripVendorId
-          ?? await this.vendorsService.resolveDefaultVendorId();
+          ?? await this.vendorsService.resolveDefaultVendorId(manager);
         await this.vendorsService.addPayableDebt(
           vendorId,
           vendorCost,
           trip.id,
           `Chi phí chuyến #${trip.id} · ${pricedRow.license_plate ?? ''} · bảng kê ${manifest.manifest_code}`,
+          manager,
         );
       }
       manifestResults.push({
@@ -2288,14 +2327,15 @@ export class WaybillsService {
     }
 
     const firstManifest = manifestResults[0] ?? null;
-    return {
-      saved_count: saved.length,
-      manifest_id: firstManifest?.id ?? null,
-      manifest_code: firstManifest?.manifest_code ?? null,
-      trip_id: firstManifest?.trip_id ?? null,
-      manifests: manifestResults,
-      items: saved,
-    };
+      return {
+        saved_count: saved.length,
+        manifest_id: firstManifest?.id ?? null,
+        manifest_code: firstManifest?.manifest_code ?? null,
+        trip_id: firstManifest?.trip_id ?? null,
+        manifests: manifestResults,
+        items: saved,
+      };
+    });
   }
 
   async backfillInTransitTripsForDestHub(destHubId: string) {
@@ -2365,7 +2405,11 @@ export class WaybillsService {
       trip_cost?: number;
       vendor_id?: string | null;
     } = {},
+    manager?: EntityManager,
   ): Promise<TripEntity> {
+    const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
+    const manifestsRepository = manager?.getRepository(ManifestEntity) ?? this.manifestsRepository;
+    const splitsRepository = manager?.getRepository(WaybillSplitEntity) ?? this.splitsRepository;
     const expectedTimes = splitRows
       .map((row) => (row.expected_arrival_at ? new Date(row.expected_arrival_at) : null))
       .filter((value): value is Date => value != null && !Number.isNaN(value.getTime()));
@@ -2373,22 +2417,22 @@ export class WaybillsService {
       ? new Date(Math.max(...expectedTimes.map((value) => value.getTime())))
       : null;
 
-    const existingTrip = await this.tripsRepository.findOne({
+    const existingTrip = await tripsRepository.findOne({
       where: { manifest_id: String(manifest.id) } as any,
     });
     if (existingTrip) {
       if (!existingTrip.vendor_id && tripDetails.vendor_id) {
         existingTrip.vendor_id = String(tripDetails.vendor_id);
-        await this.tripsRepository.save(existingTrip);
+        await tripsRepository.save(existingTrip);
       }
       const splitIds = splitRows.map((row) => String(row.split_id)).filter(Boolean);
       if (splitIds.length) {
-        await this.splitsRepository.update({ id: In(splitIds) }, { trip_id: existingTrip.id });
+        await splitsRepository.update({ id: In(splitIds) }, { trip_id: existingTrip.id });
       }
       return existingTrip;
     }
 
-    const trip = await this.tripsRepository.save(this.tripsRepository.create({
+    const trip = await tripsRepository.save(tripsRepository.create({
       truck_id: truckId,
       manifest_id: String(manifest.id),
       start_hub_id: String(manifest.origin_hub_id),
@@ -2407,22 +2451,25 @@ export class WaybillsService {
     }));
 
     manifest.status = ManifestStatus.CLOSED;
-    await this.manifestsRepository.save(manifest);
+    await manifestsRepository.save(manifest);
 
     const splitIds = splitRows.map((row) => String(row.split_id)).filter(Boolean);
     if (splitIds.length) {
-      await this.splitsRepository.update({ id: In(splitIds) }, { trip_id: trip.id });
+      await splitsRepository.update({ id: In(splitIds) }, { trip_id: trip.id });
     }
 
     return trip;
   }
 
-  private async createClosedManifestForStack(rows: Array<{ waybill: WaybillRecord; loading_position: number | null; package_count: number; expected_arrival_at?: Date | null; is_fully_allocated?: boolean }>, currentUser: UserEntity) {
+  private async createClosedManifestForStack(rows: Array<{ waybill: WaybillRecord; loading_position: number | null; package_count: number; expected_arrival_at?: Date | null; is_fully_allocated?: boolean }>, currentUser: UserEntity, manager?: EntityManager) {
+    const manifestsRepository = manager?.getRepository(ManifestEntity) ?? this.manifestsRepository;
+    const manifestWaybillsRepository = manager?.getRepository(ManifestWaybillEntity) ?? this.manifestWaybillsRepository;
+    const waybillsRepository = manager?.getRepository(WaybillEntity) ?? this.waybillsRepository;
     const firstWaybill = rows[0]?.waybill;
     if (!firstWaybill) return null;
 
-    const manifest = this.manifestsRepository.create({
-      manifest_code: await this.generateInventoryManifestCode(),
+    const manifest = manifestsRepository.create({
+      manifest_code: await this.generateInventoryManifestCode(manifestsRepository),
       seal_code: `AUTO-${Date.now()}`,
       origin_hub_id: String(firstWaybill.origin_hub_id),
       dest_hub_id: String(rows[rows.length - 1]?.waybill.dest_hub_id ?? firstWaybill.dest_hub_id),
@@ -2441,9 +2488,9 @@ export class WaybillsService {
       updated_by: currentUser.id,
     });
 
-    const savedManifest = await this.manifestsRepository.save(manifest) as ManifestEntity & Record<string, any>;
+    const savedManifest = await manifestsRepository.save(manifest) as ManifestEntity & Record<string, any>;
 
-    await this.manifestWaybillsRepository.save(rows.map((row, index) => this.manifestWaybillsRepository.create({
+    await manifestWaybillsRepository.save(rows.map((row, index) => manifestWaybillsRepository.create({
       manifest_id: String(savedManifest.id),
       waybill_id: String(row.waybill.id),
       loading_position: row.loading_position ?? index + 1,
@@ -2459,7 +2506,7 @@ export class WaybillsService {
       row.waybill.loaded_at = row.waybill.loaded_at ?? new Date();
     });
     if (fullyAllocatedWaybills.length) {
-      await this.waybillsRepository.save(fullyAllocatedWaybills.map((row) => row.waybill as WaybillEntity));
+      await waybillsRepository.save(fullyAllocatedWaybills.map((row) => row.waybill as WaybillEntity));
     }
 
     return savedManifest;

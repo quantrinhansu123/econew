@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, Not, Repository } from 'typeorm';
+import { Brackets, EntityManager, In, Not, Repository } from 'typeorm';
 import { PaymentType, TripStatus, VendorTripPaymentStatus, WaybillState } from '../common/enums';
 import { clampPaginationLimit } from '../common/pagination';
 import { Roles, isManager } from '../common/roles';
@@ -89,24 +89,29 @@ export class TripsService {
       vendor_id: truck?.vendor_id ?? null,
     });
 
-    const savedTrip = await this.tripsRepository.save(trip);
-    if (truck?.vendor_id && tripCostAmount > 0) {
-      await this.vendorsService.addPayableDebt(
-        truck.vendor_id,
-        tripCostAmount,
-        savedTrip.id,
-        `Chi phí chuyến #${savedTrip.id}`,
-      );
-    }
-    if (manifest) {
-      manifest.status = ManifestStatus.ASSIGNED_TO_TRIP;
-      await this.manifestsRepository.save(manifest);
-    }
-    if (truck) {
-      truck.status = TruckStatus.ASSIGNED;
-      await this.trucksRepository.save(truck);
-    }
-    return savedTrip;
+    return this.runInTransaction(async (manager) => {
+      const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
+      const manifestsRepository = manager?.getRepository(ManifestEntity) ?? this.manifestsRepository;
+      const trucksRepository = manager?.getRepository(TruckEntity) ?? this.trucksRepository;
+      const savedTrip = await tripsRepository.save(trip);
+      if (truck?.vendor_id && tripCostAmount > 0) {
+        const description = `Chi phí chuyến #${savedTrip.id}`;
+        if (manager) {
+          await this.vendorsService.addPayableDebt(truck.vendor_id, tripCostAmount, savedTrip.id, description, manager);
+        } else {
+          await this.vendorsService.addPayableDebt(truck.vendor_id, tripCostAmount, savedTrip.id, description);
+        }
+      }
+      if (manifest) {
+        manifest.status = ManifestStatus.ASSIGNED_TO_TRIP;
+        await manifestsRepository.save(manifest);
+      }
+      if (truck) {
+        truck.status = TruckStatus.ASSIGNED;
+        await trucksRepository.save(truck);
+      }
+      return savedTrip;
+    });
   }
 
   async findAll(query: QueryTripsDto, currentUser: UserEntity) {
@@ -483,24 +488,29 @@ export class TripsService {
     }
 
     const vendorId = trip.vendor_id ? String(trip.vendor_id) : null;
-    await this.vendorDebtEntriesRepository.delete({ trip_id: String(trip.id) } as any);
-    await this.tripsRepository.delete(String(trip.id));
+    await this.runInTransaction(async (manager) => {
+      const debtEntriesRepository = manager?.getRepository(VendorDebtEntryEntity) ?? this.vendorDebtEntriesRepository;
+      const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
+      const manifestsRepository = manager?.getRepository(ManifestEntity) ?? this.manifestsRepository;
+      await debtEntriesRepository.delete({ trip_id: String(trip.id) } as any);
+      await tripsRepository.delete(String(trip.id));
 
-    if (trip.manifest_id) {
-      const remainingTrips = await this.tripsRepository.count({
-        where: { manifest_id: String(trip.manifest_id) },
-      });
-      if (remainingTrips === 0) {
-        await this.manifestsRepository.delete(String(trip.manifest_id));
+      if (trip.manifest_id) {
+        const remainingTrips = await tripsRepository.count({
+          where: { manifest_id: String(trip.manifest_id) },
+        });
+        if (remainingTrips === 0) {
+          await manifestsRepository.delete(String(trip.manifest_id));
+        }
       }
-    }
 
-    if (trip.truck_id) {
-      const activeTrips = await this.tripsRepository.count({
-        where: { truck_id: String(trip.truck_id), status: In(ACTIVE_TRIP_STATUSES) } as any,
-      });
-      if (activeTrips === 0) await this.setTruckStatus(String(trip.truck_id), TruckStatus.AVAILABLE);
-    }
+      if (trip.truck_id) {
+        const activeTrips = await tripsRepository.count({
+          where: { truck_id: String(trip.truck_id), status: In(ACTIVE_TRIP_STATUSES) } as any,
+        });
+        if (activeTrips === 0) await this.setTruckStatus(String(trip.truck_id), TruckStatus.AVAILABLE, manager);
+      }
+    });
     if (vendorId) await this.vendorsService.refreshPayableBalance(vendorId);
   }
 
@@ -533,53 +543,60 @@ export class TripsService {
       if (split.waybill) releasedWaybills.set(String(split.waybill.id), split.waybill);
     });
 
-    await this.waybillSplitsRepository.delete({ trip_id: String(trip.id) } as any);
-    if (trip.manifest_id) {
-      await this.manifestWaybillsRepository.delete({ manifest_id: trip.manifest_id } as any);
-    }
+    return this.runInTransaction(async (manager) => {
+      const splitsRepository = manager?.getRepository(WaybillSplitEntity) ?? this.waybillSplitsRepository;
+      const linksRepository = manager?.getRepository(ManifestWaybillEntity) ?? this.manifestWaybillsRepository;
+      const waybillsRepository = manager?.getRepository(WaybillEntity) ?? this.waybillsRepository;
+      const manifestsRepository = manager?.getRepository(ManifestEntity) ?? this.manifestsRepository;
+      const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
+      await splitsRepository.delete({ trip_id: String(trip.id) } as any);
+      if (trip.manifest_id) {
+        await linksRepository.delete({ manifest_id: trip.manifest_id } as any);
+      }
 
-    const releasedAt = new Date();
-    const waybillsToSave: WaybillEntity[] = [];
-    for (const waybill of releasedWaybills.values()) {
-      const remainingSplits = await this.waybillSplitsRepository.find({
-        where: { waybill_id: String(waybill.id) },
-      });
-      const allocatedPackages = remainingSplits.reduce(
-        (sum, split) => sum + Number(split.package_count ?? 0),
-        0,
-      );
-      const orderPackages = Number(waybill.order?.package_count ?? 0);
-      const totalPackages = Math.max(1, Number(waybill.package_count ?? 0), orderPackages);
-      if (allocatedPackages >= totalPackages) continue;
+      const releasedAt = new Date();
+      const waybillsToSave: WaybillEntity[] = [];
+      for (const waybill of releasedWaybills.values()) {
+        const remainingSplits = await splitsRepository.find({
+          where: { waybill_id: String(waybill.id) },
+        });
+        const allocatedPackages = remainingSplits.reduce(
+          (sum, split) => sum + Number(split.package_count ?? 0),
+          0,
+        );
+        const orderPackages = Number(waybill.order?.package_count ?? 0);
+        const totalPackages = Math.max(1, Number(waybill.package_count ?? 0), orderPackages);
+        if (allocatedPackages >= totalPackages) continue;
 
-      waybill.current_state = WaybillState.IN_WAREHOUSE;
-      waybill.current_hub_id = String(trip.start_hub_id || waybill.origin_hub_id);
-      if (allocatedPackages === 0) waybill.loaded_at = null;
-      waybill.updated_by = currentUser.id;
-      waybill.last_audit_action = 'TRIP_CANCEL_RELEASE_TO_INVENTORY';
-      waybill.last_audit_user_id = currentUser.id;
-      waybill.last_audit_at = releasedAt;
-      waybillsToSave.push(waybill);
-    }
-    if (waybillsToSave.length) await this.waybillsRepository.save(waybillsToSave);
+        waybill.current_state = WaybillState.IN_WAREHOUSE;
+        waybill.current_hub_id = String(trip.start_hub_id || waybill.origin_hub_id);
+        if (allocatedPackages === 0) waybill.loaded_at = null;
+        waybill.updated_by = currentUser.id;
+        waybill.last_audit_action = 'TRIP_CANCEL_RELEASE_TO_INVENTORY';
+        waybill.last_audit_user_id = currentUser.id;
+        waybill.last_audit_at = releasedAt;
+        waybillsToSave.push(waybill);
+      }
+      if (waybillsToSave.length) await waybillsRepository.save(waybillsToSave);
 
-    if (manifest) {
-      manifest.status = ManifestStatus.CANCELLED;
-      await this.manifestsRepository.save(manifest);
-    }
-    if (trip.truck_id) {
-      const activeTrips = await this.tripsRepository.count({
-        where: {
-          truck_id: trip.truck_id,
-          status: In(ACTIVE_TRIP_STATUSES),
-          id: Not(trip.id),
-        } as any,
-      });
-      if (activeTrips === 0) await this.setTruckStatus(trip.truck_id, TruckStatus.AVAILABLE);
-    }
+      if (manifest) {
+        manifest.status = ManifestStatus.CANCELLED;
+        await manifestsRepository.save(manifest);
+      }
+      if (trip.truck_id) {
+        const activeTrips = await tripsRepository.count({
+          where: {
+            truck_id: trip.truck_id,
+            status: In(ACTIVE_TRIP_STATUSES),
+            id: Not(trip.id),
+          } as any,
+        });
+        if (activeTrips === 0) await this.setTruckStatus(trip.truck_id, TruckStatus.AVAILABLE, manager);
+      }
 
-    trip.status = TripStatus.CANCELLED;
-    return this.tripsRepository.save(trip);
+      trip.status = TripStatus.CANCELLED;
+      return tripsRepository.save(trip);
+    });
   }
 
   async updateCosts(id: string, dto: UpdateTripCostsDto, currentUser: UserEntity): Promise<TripEntity> {
@@ -1046,6 +1063,12 @@ export class TripsService {
     return truck;
   }
 
+  private async runInTransaction<T>(work: (manager?: EntityManager) => Promise<T>): Promise<T> {
+    const repositoryManager = this.tripsRepository.manager;
+    if (!repositoryManager?.transaction) return work(undefined);
+    return repositoryManager.transaction((manager) => work(manager));
+  }
+
   private async validateTruckForTripUpdate(truckId: number, tripStatus: TripStatus): Promise<TruckEntity> {
     const truck = await this.trucksRepository.findOne({
       where: { id: String(truckId) },
@@ -1315,12 +1338,13 @@ export class TripsService {
     return cod;
   }
 
-  private async setTruckStatus(truckId: string | null, status: TruckStatus): Promise<void> {
+  private async setTruckStatus(truckId: string | null, status: TruckStatus, manager?: EntityManager): Promise<void> {
     if (!truckId) return;
-    const truck = await this.trucksRepository.findOne({ where: { id: truckId } });
+    const trucksRepository = manager?.getRepository(TruckEntity) ?? this.trucksRepository;
+    const truck = await trucksRepository.findOne({ where: { id: truckId } });
     if (!truck) return;
     truck.status = status;
-    await this.trucksRepository.save(truck);
+    await trucksRepository.save(truck);
   }
 
   private async enrichRouteLabels(trips: TripEntity[]): Promise<void> {

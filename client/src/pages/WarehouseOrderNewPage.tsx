@@ -461,13 +461,13 @@ export default function WarehouseOrderNewPage({
           current_state: response.current_state || 'RECEIVED',
           payment_type: (response.payment_type as PaymentType) || 'PP',
         });
+        setSelectedBillId(null);
         setForm((prev) => ({
           ...prev,
           soBill: response.waybill_code || response.code || prev.soBill,
         }));
         setIsSuccessOpen(true);
         await loadBills(billFilterDate, billListLimitRef.current);
-        if (response.id) setSelectedBillId(String(response.id));
       }
     } catch (error) {
       setActionError(error instanceof ApiError ? error.message : 'Không thể lưu đơn hàng.');
@@ -572,6 +572,8 @@ export default function WarehouseOrderNewPage({
     window.setTimeout(() => {
       setIsSuccessOpen(false);
       setIsSuccessClosing(false);
+      setCreatedWaybill(null);
+      void handleNew();
     }, 250);
   };
 

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, IsNull, Repository } from 'typeorm';
+import { Brackets, EntityManager, In, IsNull, Repository } from 'typeorm';
 import { clampPaginationLimit } from '../common/pagination';
 import { TripStatus, VendorTripPaymentStatus } from '../common/enums';
 import { Roles, isManager } from '../common/roles';
@@ -283,49 +283,54 @@ export class VendorsService {
     }
 
     const fund = dto.fund_id ? await this.findActiveCashFund(dto.fund_id, currentUser) : null;
-    const changedVendorIds = new Set<string>();
-    for (const trip of trips) {
-      const payable = this.tripCost(trip);
-      const currentPaid = Number(trip.vendor_paid_amount ?? 0) || 0;
-      let paid = dto.paid_amount;
-      if (paid == null) {
-        if (dto.payment_status === VendorTripPaymentStatus.UNPAID) paid = 0;
-        else paid = Number(trip.vendor_paid_amount ?? 0);
+    await this.runInTransaction(async (manager) => {
+      const paymentsRepository = manager?.getRepository(VendorPaymentEntity) ?? this.paymentsRepository;
+      const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
+      const transactionTrips = await this.lockTripsForPaymentUpdate(trips, manager);
+      const changedVendorIds = new Set<string>();
+      for (const trip of transactionTrips) {
+        const payable = this.tripCost(trip);
+        const currentPaid = Number(trip.vendor_paid_amount ?? 0) || 0;
+        let paid = dto.paid_amount;
+        if (paid == null) {
+          if (dto.payment_status === VendorTripPaymentStatus.UNPAID) paid = 0;
+          else paid = Number(trip.vendor_paid_amount ?? 0);
+        }
+        if (paid > payable && payable > 0) paid = payable;
+        const paymentIncrease = paid - currentPaid;
+        if (paymentIncrease < 0) {
+          throw new BadRequestException(`Không thể giảm số tiền đã chi của chuyến #${trip.id}; hãy xóa phiếu chi liên quan trước`);
+        }
+        if (paymentIncrease > 0) {
+          if (!fund) throw new BadRequestException('Vui lòng chọn sổ quỹ chi tiền');
+          if (!trip.vendor_id) throw new BadRequestException(`Chuyến #${trip.id} chưa gán nhà cung cấp`);
+          await paymentsRepository.save(paymentsRepository.create({
+            vendor_id: String(trip.vendor_id),
+            amount: String(paymentIncrease),
+            payment_date: new Date(),
+            fund_id: String(fund.id),
+            cost_category: dto.cost_category?.trim() || 'Thanh toán cước chuyến',
+            description: dto.payment_note?.trim() || `Thanh toán cước chuyến #${trip.id}`,
+            created_by: currentUser.id,
+            trips: [trip],
+          }));
+          changedVendorIds.add(String(trip.vendor_id));
+        }
+        trip.vendor_paid_amount = String(paid);
+        trip.vendor_payment_status = this.resolveVendorPaymentStatus(paid, payable, dto.payment_status);
+        if (dto.payment_status === VendorTripPaymentStatus.PAID && dto.proof_image_url?.trim()) {
+          trip.vendor_payment_proof_url = dto.proof_image_url.trim();
+        } else if (dto.payment_status !== VendorTripPaymentStatus.PAID) {
+          trip.vendor_payment_proof_url = null;
+        }
+        if (dto.payment_note !== undefined) {
+          trip.vendor_payment_note = dto.payment_note.trim() || null;
+        }
+        await tripsRepository.save(trip);
       }
-      if (paid > payable && payable > 0) paid = payable;
-      const paymentIncrease = paid - currentPaid;
-      if (paymentIncrease < 0) {
-        throw new BadRequestException(`Không thể giảm số tiền đã chi của chuyến #${trip.id}; hãy xóa phiếu chi liên quan trước`);
-      }
-      if (paymentIncrease > 0) {
-        if (!fund) throw new BadRequestException('Vui lòng chọn sổ quỹ chi tiền');
-        if (!trip.vendor_id) throw new BadRequestException(`Chuyến #${trip.id} chưa gán nhà cung cấp`);
-        await this.paymentsRepository.save(this.paymentsRepository.create({
-          vendor_id: String(trip.vendor_id),
-          amount: String(paymentIncrease),
-          payment_date: new Date(),
-          fund_id: String(fund.id),
-          cost_category: dto.cost_category?.trim() || 'Thanh toán cước chuyến',
-          description: dto.payment_note?.trim() || `Thanh toán cước chuyến #${trip.id}`,
-          created_by: currentUser.id,
-          trips: [trip],
-        }));
-        changedVendorIds.add(String(trip.vendor_id));
-      }
-      trip.vendor_paid_amount = String(paid);
-      trip.vendor_payment_status = this.resolveVendorPaymentStatus(paid, payable, dto.payment_status);
-      if (dto.payment_status === VendorTripPaymentStatus.PAID && dto.proof_image_url?.trim()) {
-        trip.vendor_payment_proof_url = dto.proof_image_url.trim();
-      } else if (dto.payment_status !== VendorTripPaymentStatus.PAID) {
-        trip.vendor_payment_proof_url = null;
-      }
-      if (dto.payment_note !== undefined) {
-        trip.vendor_payment_note = dto.payment_note.trim() || null;
-      }
-      await this.tripsRepository.save(trip);
-    }
 
-    for (const vendorId of changedVendorIds) await this.refreshPayableBalance(vendorId);
+      for (const vendorId of changedVendorIds) await this.refreshPayableBalance(vendorId, manager);
+    });
 
     return { updated_count: trips.length, trip_ids: tripIds };
   }
@@ -403,34 +408,38 @@ export class VendorsService {
       linkedTrips = await this.validateTripsForVendor(vendorId, dto.trip_ids.map(String));
     }
 
-    const payment = await this.paymentsRepository.save(
-      this.paymentsRepository.create({
-        vendor_id: vendorId,
-        amount: String(dto.amount),
-        payment_date: dto.payment_date,
-        fund_id: String(fund.id),
-        cost_category: dto.cost_category.trim(),
-        description: dto.description?.trim() || null,
-        created_by: currentUser.id,
-        trips: linkedTrips,
-      }),
-    );
+    const payment = await this.runInTransaction(async (manager) => {
+      const paymentsRepository = manager?.getRepository(VendorPaymentEntity) ?? this.paymentsRepository;
+      const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
+      const transactionTrips = await this.lockTripsForPaymentUpdate(linkedTrips, manager);
+      const savedPayment = await paymentsRepository.save(
+        paymentsRepository.create({
+          vendor_id: vendorId,
+          amount: String(dto.amount),
+          payment_date: dto.payment_date,
+          fund_id: String(fund.id),
+          cost_category: dto.cost_category.trim(),
+          description: dto.description?.trim() || null,
+          created_by: currentUser.id,
+          trips: transactionTrips,
+        }),
+      );
 
-    if (linkedTrips.length) {
-      const perTrip = dto.amount / linkedTrips.length;
-      for (const trip of linkedTrips) {
-        const payable = this.tripCost(trip);
-        const currentPaid = Number(trip.vendor_paid_amount ?? 0);
-        const nextPaid = Math.min(payable, currentPaid + perTrip);
-        trip.vendor_paid_amount = String(nextPaid);
-        trip.vendor_payment_status = this.resolveVendorPaymentStatus(nextPaid, payable);
-        await this.tripsRepository.save(trip);
+      if (transactionTrips.length) {
+        const perTrip = dto.amount / transactionTrips.length;
+        for (const trip of transactionTrips) {
+          const payable = this.tripCost(trip);
+          const currentPaid = Number(trip.vendor_paid_amount ?? 0);
+          const nextPaid = Math.min(payable, currentPaid + perTrip);
+          trip.vendor_paid_amount = String(nextPaid);
+          trip.vendor_payment_status = this.resolveVendorPaymentStatus(nextPaid, payable);
+          await tripsRepository.save(trip);
+        }
       }
-    }
 
-    const balance = (await this.computeBalancesForVendors([vendorId])).get(vendorId)!;
-    vendor.payable_balance = String(Math.max(0, balance.remaining));
-    await this.vendorsRepository.save(vendor);
+      await this.refreshPayableBalance(vendorId, manager);
+      return savedPayment;
+    });
 
     return this.paymentsRepository.findOne({
       where: { id: payment.id },
@@ -439,7 +448,7 @@ export class VendorsService {
   }
 
   async deletePayments(paymentIds: string[], currentUser: UserEntity) {
-    this.assertRole(currentUser, [Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR]);
+    this.assertRole(currentUser, [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR]);
     const ids = [...new Set(paymentIds.map((id) => String(id).trim()).filter(Boolean))];
     if (!ids.length) throw new BadRequestException('Payment ids are required');
 
@@ -452,25 +461,54 @@ export class VendorsService {
     }
 
     const vendorIds = [...new Set(payments.map((payment) => String(payment.vendor_id)))];
-    await this.paymentsRepository.remove(payments);
+    await this.runInTransaction(async (manager) => {
+      const paymentsRepository = manager?.getRepository(VendorPaymentEntity) ?? this.paymentsRepository;
+      const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
+      const lockedTrips = await this.lockTripsForPaymentUpdate(
+        [...payments.reduce((map, payment) => {
+          for (const trip of payment.trips ?? []) map.set(String(trip.id), trip);
+          return map;
+        }, new Map<string, TripEntity>()).values()],
+        manager,
+      );
+      const lockedTripById = new Map(lockedTrips.map((trip) => [String(trip.id), trip]));
+      const deductionByTrip = new Map<string, { trip: TripEntity; amount: number }>();
+      for (const payment of payments) {
+        const linkedTrips = payment.trips ?? [];
+        if (!linkedTrips.length) continue;
+        const contribution = Number(payment.amount ?? 0) / linkedTrips.length;
+        for (const trip of linkedTrips) {
+          const tripId = String(trip.id);
+          const current = deductionByTrip.get(tripId) ?? { trip: lockedTripById.get(tripId) ?? trip, amount: 0 };
+          current.amount += contribution;
+          deductionByTrip.set(tripId, current);
+        }
+      }
 
-    for (const vendorId of vendorIds) {
-      const vendor = await this.findOne(vendorId);
-      const balance = (await this.computeBalancesForVendors([vendorId])).get(vendorId)!;
-      vendor.payable_balance = String(Math.max(0, balance.remaining));
-      await this.vendorsRepository.save(vendor);
-    }
+      for (const { trip, amount } of deductionByTrip.values()) {
+        const payable = this.tripCost(trip);
+        const nextPaid = Math.max(0, Number(trip.vendor_paid_amount ?? 0) - amount);
+        trip.vendor_paid_amount = String(nextPaid);
+        trip.vendor_payment_status = this.resolveVendorPaymentStatus(nextPaid, payable);
+        if (nextPaid === 0) trip.vendor_payment_proof_url = null;
+        await tripsRepository.save(trip);
+      }
+
+      await paymentsRepository.remove(payments);
+      for (const vendorId of vendorIds) await this.refreshPayableBalance(vendorId, manager);
+    });
 
     return { deleted_count: payments.length, deleted_ids: ids };
   }
 
-  async resolveDefaultVendorId(): Promise<string> {
-    let vendor = await this.vendorsRepository.findOne({
+  async resolveDefaultVendorId(manager?: EntityManager): Promise<string> {
+    const vendorsRepository = manager?.getRepository(VendorEntity) ?? this.vendorsRepository;
+    let vendor = await vendorsRepository.findOne({
       where: [{ code: DEFAULT_VENDOR_CODE }, { name: DEFAULT_VENDOR_NAME }],
     });
     if (!vendor) {
-      vendor = await this.vendorsRepository.save(
-        this.vendorsRepository.create({
+      vendor = await vendorsRepository.save(
+        vendorsRepository.create({
           code: DEFAULT_VENDOR_CODE,
           name: DEFAULT_VENDOR_NAME,
           status: 'ACTIVE',
@@ -481,32 +519,47 @@ export class VendorsService {
     return vendor.id;
   }
 
-  async addPayableDebt(vendorId: string, amount: number, tripId?: string, description?: string): Promise<void> {
+  async addPayableDebt(vendorId: string, amount: number, tripId?: string, description?: string, manager?: EntityManager): Promise<void> {
     if (!amount || amount <= 0) return;
-    const vendor = await this.findOne(vendorId);
-    const current = Number(vendor.payable_balance ?? 0);
-    vendor.payable_balance = String(current + amount);
-    await this.vendorsRepository.save(vendor);
-    await this.debtEntriesRepository.save(
-      this.debtEntriesRepository.create({
-        vendor_id: vendorId,
-        trip_id: tripId ?? null,
-        amount: String(amount),
-        description: description ?? null,
-      }),
-    );
+    const saveDebt = async (transactionManager?: EntityManager) => {
+      const vendorsRepository = transactionManager?.getRepository(VendorEntity) ?? this.vendorsRepository;
+      const debtEntriesRepository = transactionManager?.getRepository(VendorDebtEntryEntity) ?? this.debtEntriesRepository;
+      const vendor = await vendorsRepository.findOne({
+        where: { id: vendorId },
+        ...(transactionManager ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+      });
+      if (!vendor) throw new NotFoundException('Vendor not found');
+      const current = Number(vendor.payable_balance ?? 0);
+      vendor.payable_balance = String(current + amount);
+      await vendorsRepository.save(vendor);
+      await debtEntriesRepository.save(
+        debtEntriesRepository.create({
+          vendor_id: vendorId,
+          trip_id: tripId ?? null,
+          amount: String(amount),
+          description: description ?? null,
+        }),
+      );
+    };
+    if (manager) return saveDebt(manager);
+    await this.runInTransaction(saveDebt);
   }
 
-  async refreshPayableBalance(vendorId: string): Promise<void> {
-    const vendor = await this.vendorsRepository.findOne({ where: { id: vendorId } });
+  async refreshPayableBalance(vendorId: string, manager?: EntityManager): Promise<void> {
+    const vendorsRepository = manager?.getRepository(VendorEntity) ?? this.vendorsRepository;
+    const vendor = await vendorsRepository.findOne({
+      where: { id: vendorId },
+      ...(manager ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+    });
     if (!vendor) return;
-    const balance = (await this.computeBalancesForVendors([vendorId])).get(vendorId);
+    const balance = (await this.computeBalancesForVendors([vendorId], manager)).get(vendorId);
     vendor.payable_balance = String(Math.max(0, balance?.remaining ?? 0));
-    await this.vendorsRepository.save(vendor);
+    await vendorsRepository.save(vendor);
   }
 
-  private async queryVendorTrips(vendorId: string, from?: Date, to?: Date): Promise<TripEntity[]> {
-    const qb = this.tripsRepository.createQueryBuilder('trip')
+  private async queryVendorTrips(vendorId: string, from?: Date, to?: Date, manager?: EntityManager): Promise<TripEntity[]> {
+    const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
+    const qb = tripsRepository.createQueryBuilder('trip')
       .leftJoinAndSelect('trip.truck', 'truck')
       .leftJoinAndSelect('trip.vendor', 'trip_vendor')
       .leftJoinAndSelect('truck.vendor', 'truck_vendor')
@@ -601,27 +654,33 @@ export class VendorsService {
     return map;
   }
 
-  private async computeBalancesForVendors(vendorIds: string[]) {
+  private async computeBalancesForVendors(vendorIds: string[], manager?: EntityManager) {
     const map = new Map<string, { total_incurred: number; total_paid: number; remaining: number }>();
     if (!vendorIds.length) return map;
 
+    const vendorsRepository = manager?.getRepository(VendorEntity) ?? this.vendorsRepository;
+    const expensesRepository = manager?.getRepository(ExpenseEntity) ?? this.expensesRepository;
+    const waybillsRepository = manager?.getRepository(WaybillEntity) ?? this.waybillsRepository;
+    const debtEntriesRepository = manager?.getRepository(VendorDebtEntryEntity) ?? this.debtEntriesRepository;
+    const paymentsRepository = manager?.getRepository(VendorPaymentEntity) ?? this.paymentsRepository;
+
     for (const vendorId of vendorIds) {
-      const vendor = await this.vendorsRepository.findOne({ where: { id: vendorId } });
-      const trips = await this.queryVendorTrips(vendorId);
+      const vendor = await vendorsRepository.findOne({ where: { id: vendorId } });
+      const trips = await this.queryVendorTrips(vendorId, undefined, undefined, manager);
       const tripIncurred = trips.reduce((sum, t) => sum + this.tripCost(t), 0);
       const [vendorExpenses, lastMileCosts] = await Promise.all([
-        this.expensesRepository.find({ where: { vendor_id: vendorId, fund_id: IsNull() } }),
-        this.waybillsRepository.find({ where: { last_mile_vendor_id: vendorId } as any }),
+        expensesRepository.find({ where: { vendor_id: vendorId, fund_id: IsNull() } }),
+        waybillsRepository.find({ where: { last_mile_vendor_id: vendorId } as any }),
       ]);
       const expenseIncurred = vendorExpenses.reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
       const lastMileIncurred = lastMileCosts.reduce((sum, waybill) => sum + Number(waybill.last_mile_cost_amount ?? 0), 0);
-      const stackDebts = await this.debtEntriesRepository.find({
+      const stackDebts = await debtEntriesRepository.find({
         where: { vendor_id: vendorId, trip_id: IsNull() },
       });
       const stackIncurred = stackDebts.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0);
       const openingDebt = Number(vendor?.opening_debt ?? 0);
       const totalIncurred = openingDebt + tripIncurred + stackIncurred + expenseIncurred + lastMileIncurred;
-      const payments = await this.paymentsRepository.find({ where: { vendor_id: vendorId } });
+      const payments = await paymentsRepository.find({ where: { vendor_id: vendorId } });
       const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
       map.set(vendorId, {
         total_incurred: totalIncurred,
@@ -791,6 +850,26 @@ export class VendorsService {
     const values = Object.fromEntries(mutableFields.filter((field) => dto[field] !== undefined).map((field) => [field, dto[field]]));
     if (dto.opening_debt !== undefined) values.opening_debt = String(dto.opening_debt);
     return values;
+  }
+
+  private async runInTransaction<T>(work: (manager?: EntityManager) => Promise<T>): Promise<T> {
+    const repositoryManager = this.paymentsRepository.manager;
+    if (!repositoryManager?.transaction) return work(undefined);
+    return repositoryManager.transaction((manager) => work(manager));
+  }
+
+  private async lockTripsForPaymentUpdate(trips: TripEntity[], manager?: EntityManager): Promise<TripEntity[]> {
+    if (!manager || !trips.length) return trips;
+    const tripIds = [...new Set(trips.map((trip) => String(trip.id)))];
+    const lockedTrips = await manager.getRepository(TripEntity).createQueryBuilder('trip')
+      .leftJoinAndSelect('trip.truck', 'truck')
+      .leftJoinAndSelect('trip.vendor', 'vendor')
+      .where('trip.id IN (:...tripIds)', { tripIds })
+      .orderBy('trip.id', 'ASC')
+      .setLock('pessimistic_write')
+      .getMany();
+    if (lockedTrips.length !== tripIds.length) throw new NotFoundException('One or more trips not found');
+    return lockedTrips;
   }
 
   private async findActiveCashFund(fundId: string, currentUser: UserEntity) {
