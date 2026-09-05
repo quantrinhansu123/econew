@@ -2246,6 +2246,9 @@ export class WaybillsService {
       const vendorCost = sharedVendorCostProvided
         ? sharedCostAllocations[groupIndex]
         : group.reduce((sum, row) => sum + Math.round(row.vendor_cost * 100), 0) / 100;
+      const tripVendorId = selectedVendorId
+        ?? group.find((row) => row.vendor_id)?.vendor_id
+        ?? (vendorCost > 0 ? await this.vendorsService.resolveDefaultVendorId() : null);
       const trip = await this.createInTransitTripForStack(
         manifest,
         group[0].truck_id,
@@ -2259,13 +2262,13 @@ export class WaybillsService {
           driver_name: dto.driver_name,
           driver_phone: dto.driver_phone,
           trip_cost: vendorCost,
+          vendor_id: tripVendorId,
         },
       );
       tripId = trip.id;
       if (vendorCost > 0) {
         const pricedRow = group.find((row) => row.vendor_cost > 0) ?? group[0];
-        const vendorId = selectedVendorId
-          ?? pricedRow.vendor_id
+        const vendorId = tripVendorId
           ?? await this.vendorsService.resolveDefaultVendorId();
         await this.vendorsService.addPayableDebt(
           vendorId,
@@ -2360,6 +2363,7 @@ export class WaybillsService {
       driver_name?: string;
       driver_phone?: string;
       trip_cost?: number;
+      vendor_id?: string | null;
     } = {},
   ): Promise<TripEntity> {
     const expectedTimes = splitRows
@@ -2373,6 +2377,10 @@ export class WaybillsService {
       where: { manifest_id: String(manifest.id) } as any,
     });
     if (existingTrip) {
+      if (!existingTrip.vendor_id && tripDetails.vendor_id) {
+        existingTrip.vendor_id = String(tripDetails.vendor_id);
+        await this.tripsRepository.save(existingTrip);
+      }
       const splitIds = splitRows.map((row) => String(row.split_id)).filter(Boolean);
       if (splitIds.length) {
         await this.splitsRepository.update({ id: In(splitIds) }, { trip_id: existingTrip.id });
@@ -2391,6 +2399,7 @@ export class WaybillsService {
       status: TripStatus.PLANNED,
       driver_name: tripDetails.driver_name?.trim() || null,
       driver_phone: tripDetails.driver_phone?.trim() || null,
+      vendor_id: tripDetails.vendor_id ? String(tripDetails.vendor_id) : null,
       trip_cost: tripDetails.trip_cost && tripDetails.trip_cost > 0
         ? String(tripDetails.trip_cost)
         : null,

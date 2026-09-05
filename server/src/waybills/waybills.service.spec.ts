@@ -793,6 +793,8 @@ describe('WaybillsService', () => {
       .toEqual(['0901234567']);
     expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.trip_cost))
       .toEqual(['100.01']);
+    expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.vendor_id))
+      .toEqual(['vendor-1']);
     expect(tripsRepository.create.mock.calls.map(([value]: [any]) => value.other_costs))
       .toEqual([null]);
     for (const [tripData] of tripsRepository.create.mock.calls) {
@@ -854,6 +856,7 @@ describe('WaybillsService', () => {
     expect(splitsRepository.create).toHaveBeenCalledWith(expect.objectContaining({ truck_id: null, carrier_label: 'Xe lẻ' }));
     expect(tripsRepository.create).toHaveBeenCalledWith(expect.objectContaining({
       truck_id: null,
+      vendor_id: 'vendor-1',
       departure_time: new Date('2025-08-07T01:00:00Z'),
     }));
   });

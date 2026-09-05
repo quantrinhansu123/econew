@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowLeft, FileSpreadsheet, Loader2, ShieldAlert, Trash2
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { getLoginDisplayName, getStoredAuthUser } from '../lib/authUser';
+import { notifyWaybillListChanged } from '../lib/waybillListSync';
 import CreateWaybillSuccessDialog from './warehouse/orders/dialogs/CreateWaybillSuccessDialog';
 import OrderBulkImportDialog from './warehouse/orders/dialogs/OrderBulkImportDialog';
 import NewOrderWorkbench from './warehouse/orders/components/NewOrderWorkbench';
@@ -448,11 +449,13 @@ export default function WarehouseOrderNewPage({
       const body = buildCreatePayload(form, volumetricWeight);
       if (selectedBillId) {
         await apiRequest(`/waybills/${selectedBillId}`, { method: 'PATCH', body });
+        notifyWaybillListChanged();
         if (embedded) await onEmbeddedSaved?.(selectedBillId);
         else await loadBills(billFilterDate, billListLimitRef.current);
         setActionError('');
       } else {
         const response = await apiRequest<CreatedWaybill>('/waybills', { method: 'POST', body });
+        notifyWaybillListChanged();
         setCreatedWaybill({
           ...response,
           current_state: response.current_state || 'RECEIVED',
@@ -700,7 +703,10 @@ export default function WarehouseOrderNewPage({
         existingWaybillCodes={bills.map((bill) => bill.waybill_code)}
         defaultNvgn={loginName !== 'bạn' ? loginName : 'ADMIN'}
         hubs={hubs}
-        onImported={async () => { await loadBills(billFilterDate, billListLimitRef.current); }}
+        onImported={async () => {
+          notifyWaybillListChanged();
+          await loadBills(billFilterDate, billListLimitRef.current);
+        }}
       />}
     </div>
   );

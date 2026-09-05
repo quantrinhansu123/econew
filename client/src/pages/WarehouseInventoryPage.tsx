@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { formatMoney } from '../lib/formatMoney';
+import { WAYBILL_LIST_CHANGED_EVENT, WAYBILL_LIST_CHANGED_STORAGE_KEY } from '../lib/waybillListSync';
 import { DayPicker } from '../components/ui/DayPicker';
 import { DateRangePicker } from '../components/ui/DateRangePicker';
 import { FilterSelect } from '../components/ui/FilterSelect';
@@ -273,6 +274,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     navigate(`/warehouse/orders/${encodeURIComponent(String(item.id))}/receive?returnTo=${encodeURIComponent(returnTo)}`);
   };
   const inventoryRequestIdRef = useRef(0);
+  const loadInventoryRef = useRef<(options?: { silent?: boolean }) => Promise<void>>(async () => undefined);
   const selectedWaybillCacheRef = useRef<Map<string, WaybillInventoryItem>>(new Map());
   const cashVoucherCloseTimerRef = useRef<number | null>(null);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
@@ -495,12 +497,14 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     }
   }
 
-  async function loadInventory() {
+  async function loadInventory({ silent = false }: { silent?: boolean } = {}) {
     const requestId = inventoryRequestIdRef.current + 1;
     inventoryRequestIdRef.current = requestId;
     const isCurrentRequest = () => inventoryRequestIdRef.current === requestId;
-    setIsLoading(true);
-    setError('');
+    if (!silent) {
+      setIsLoading(true);
+      setError('');
+    }
     try {
       if (isAllOrders) {
         const items = await loadAllInventoryRows({ ...filters, keyword: '' }, variant);
@@ -523,6 +527,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             ? items.reduce((sum, waybill) => sum + Number(waybill.freight_amount ?? waybill.cost_amount ?? 0), 0)
             : 0,
         });
+        setError('');
         return;
       }
       const items = await loadAllInventoryRows(filters, variant);
@@ -534,15 +539,46 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
           ? items.reduce((sum, waybill) => sum + Number(waybill.freight_amount ?? waybill.cost_amount ?? 0), 0)
           : 0,
       });
+      setError('');
     } catch (err) {
       if (!isCurrentRequest()) return;
-      setError(err instanceof ApiError ? err.message : 'Không thể tải danh sách tồn kho theo chuyến.');
-      setWaybills([]);
-      setFilterTotals({ orderCount: 0, totalFreight: 0 });
+      if (!silent) {
+        setError(err instanceof ApiError ? err.message : 'Không thể tải danh sách tồn kho theo chuyến.');
+        setWaybills([]);
+        setFilterTotals({ orderCount: 0, totalFreight: 0 });
+      }
     } finally {
       if (isCurrentRequest()) setIsLoading(false);
     }
   }
+
+  loadInventoryRef.current = loadInventory;
+
+  useEffect(() => {
+    if (!canViewPage) return undefined;
+
+    const refreshSilently = () => void loadInventoryRef.current({ silent: true });
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === WAYBILL_LIST_CHANGED_STORAGE_KEY) refreshSilently();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    };
+
+    window.addEventListener(WAYBILL_LIST_CHANGED_EVENT, refreshSilently);
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const refreshInterval = window.setInterval(refreshSilently, 30_000);
+
+    return () => {
+      window.removeEventListener(WAYBILL_LIST_CHANGED_EVENT, refreshSilently);
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.clearInterval(refreshInterval);
+    };
+  }, [canViewPage]);
 
   async function updateCustomerPaymentStatus() {
     if (!selectedWaybillIds.length || !canUpdateCustomerPayment) return;
@@ -973,7 +1009,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               {isExporting ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
               <span className="hidden sm:inline">{isExporting ? 'Đang tạo Excel' : 'Tải Excel'}</span>
             </button>
-            <button title="Làm mới" onClick={() => void loadInventory()} className="hidden h-10 w-10 rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted md:flex items-center justify-center"><RefreshCcw size={16} /></button>
+            <button title="Làm mới" aria-label="Làm mới danh sách tồn" onClick={() => void loadInventory()} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted"><RefreshCcw size={16} /></button>
           </div>
 
           {!isAllOrders && <div className="hidden flex-wrap items-center gap-2 md:flex">
