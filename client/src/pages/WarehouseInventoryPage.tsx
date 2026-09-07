@@ -13,6 +13,8 @@ import { ConfirmDialog, type ConfirmDialogState } from '../components/ui/Confirm
 import { ImagePreviewModal } from '../components/ImagePreviewModal';
 import InlineMoneyInput from '../components/ui/InlineMoneyInput';
 import InlineTextInput from '../components/ui/InlineTextInput';
+import InlineSelect from '../components/ui/InlineSelect';
+import { DON_GIA_DON_VI_OPTIONS } from './warehouse/orders/orderFormData';
 import type { AuthUserProfile } from './login/types';
 import WaybillInventoryDetailDialog from './warehouse/inventory/dialogs/WaybillInventoryDetailDialog';
 import WaybillEditDialog from './warehouse/inventory/dialogs/WaybillEditDialog';
@@ -724,6 +726,53 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     }
   };
 
+  const saveInlineBillingUnit = async (waybill: WaybillInventoryItem, billingUnit: string) => {
+    setActionError('');
+    try {
+      let updated: WaybillInventoryItem | null = null;
+      try {
+        updated = await apiRequest<WaybillInventoryItem>(`/waybills/${waybill.id}/billing-unit`, {
+          method: 'PATCH',
+          body: { billing_unit: billingUnit },
+        });
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          const currentNote = waybill.note || waybill.notes || '';
+          const noteWithUnit = currentNote
+            ? currentNote.includes('billing_unit=')
+              ? currentNote.replace(/billing_unit=[^|]+/, `billing_unit=${billingUnit}`)
+              : `${currentNote} | billing_unit=${billingUnit}`
+            : `billing_unit=${billingUnit}`;
+          updated = await apiRequest<WaybillInventoryItem>(`/waybills/${waybill.id}`, {
+            method: 'PATCH',
+            body: { note: noteWithUnit },
+          });
+        } else {
+          throw err;
+        }
+      }
+
+      setWaybills((current) => current.map((item) => {
+        if (String(item.id) !== String(waybill.id)) return item;
+        const currentNote = item.note || item.notes || '';
+        const noteWithUnit = currentNote
+          ? currentNote.includes('billing_unit=')
+            ? currentNote.replace(/billing_unit=[^|]+/, `billing_unit=${billingUnit}`)
+            : `${currentNote} | billing_unit=${billingUnit}`
+          : `billing_unit=${billingUnit}`;
+        return {
+          ...item,
+          ...(updated || {}),
+          note: updated?.note || noteWithUnit,
+          notes: updated?.note || noteWithUnit,
+        };
+      }));
+    } catch (error) {
+      setActionError(error instanceof ApiError ? error.message : 'Không lưu được ĐVT cước.');
+      throw error;
+    }
+  };
+
   const openCustomerLedger = async (rawCode: string) => {
     const code = rawCode.trim();
     if (!code || code === '—') return;
@@ -1125,6 +1174,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       onCustomerLedger={openCustomerLedger}
                       onPricingSave={saveInlinePricing}
                       onPaymentNoteSave={saveInlinePaymentNote}
+                      onBillingUnitSave={saveInlineBillingUnit}
                       onOpenTripManifest={(trip) => {
                         if (trip.manifest_id) navigate(`/warehouse/manifests?openManifestId=${trip.manifest_id}&openExpense=1`);
                         else if (trip.trip_id) navigate(`/trips/${trip.trip_id}`);
@@ -1164,6 +1214,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                   onPayment={openCashVoucher}
                   onRelease={confirmReleaseUnscheduledSplit}
                   onCustomerLedger={openCustomerLedger}
+                  onBillingUnitSave={saveInlineBillingUnit}
                 />
               ) : (
                 <div className="grid gap-3 p-3 md:hidden">{displayedWaybills.map(waybill => <InventoryCard key={`${waybill.id}-${waybill.split_id ?? 'base'}`} waybill={waybill} hubs={hubs} isAllOrders={isAllOrders} canUpdate={canUpdate} canEdit={canEdit} openActionMenuId={openActionMenuId} onToggleActionMenu={toggleActionMenu} onCloseActionMenu={() => setOpenActionMenuId(null)} onDetail={openDetail} onEdit={openEdit} onReceive={openWarehouseIntake} onCashVoucher={openCashVoucher} onReleaseUnscheduledSplit={confirmReleaseUnscheduledSplit} onCustomerLedger={openCustomerLedger} />)}</div>
@@ -1326,6 +1377,7 @@ function InventoryRow({
   onCustomerLedger,
   onPricingSave,
   onPaymentNoteSave,
+  onBillingUnitSave,
   onOpenTripManifest,
 }: InventoryItemProps & {
   hubs: HubSummary[];
@@ -1339,6 +1391,7 @@ function InventoryRow({
     amount: number,
   ) => Promise<void>;
   onPaymentNoteSave?: (waybill: WaybillInventoryItem, note: string) => Promise<void>;
+  onBillingUnitSave: (waybill: WaybillInventoryItem, billingUnit: string) => Promise<void>;
   showSelection?: boolean;
   selected?: boolean;
   onToggleSelect?: (waybillId: string | number) => void;
@@ -1559,7 +1612,17 @@ function InventoryRow({
         );
       }
       case 'billing_unit':
-        return <td className={cellClass}>{resolveBillingUnit(waybill)}</td>;
+        return (
+          <td className={clsx(cellClass, isAllOrders && 'px-1 py-0.5')}>
+            <InlineSelect
+              value={resolveBillingUnit(waybill)}
+              options={DON_GIA_DON_VI_OPTIONS}
+              editable={Boolean(canEdit)}
+              label={`ĐVT cước bill ${displayCode(waybill)}`}
+              onSave={(unit) => onBillingUnitSave(waybill, unit)}
+            />
+          </td>
+        );
       case 'billing_qty_detail':
         return (
           <td className={clsx(cellClass, 'text-right font-medium', !isAllOrders && 'whitespace-normal')} title={resolveBillingQtyDetail(waybill)}>
@@ -1997,6 +2060,7 @@ function AllOrdersCompactTable({
   onPayment,
   onRelease,
   onCustomerLedger,
+  onBillingUnitSave,
 }: {
   waybills: WaybillInventoryItem[];
   canViewPricing: boolean;
@@ -2009,6 +2073,7 @@ function AllOrdersCompactTable({
   onPayment: (waybill: WaybillInventoryItem) => void;
   onRelease: (waybill: WaybillInventoryItem) => void;
   onCustomerLedger: (code: string) => void;
+  onBillingUnitSave: (waybill: WaybillInventoryItem, billingUnit: string) => Promise<void>;
 }) {
   const headerClass = 'sticky top-0 z-10 border-b border-r border-slate-300 bg-slate-100 px-1.5 py-1.5 text-[9px] font-extrabold uppercase text-slate-600 whitespace-nowrap';
   const cellClass = 'border-b border-r border-slate-200 px-1.5 py-1.5 text-[10px] leading-tight whitespace-nowrap overflow-hidden text-ellipsis';
@@ -2063,7 +2128,15 @@ function AllOrdersCompactTable({
                 <td className={cellClass} title={resolveCongSg(waybill)}>{resolveCongSg(waybill)}</td>
                 <td className={`${cellClass} font-semibold`} title={resolveNoiDen(waybill)}>{resolveNoiDen(waybill)}</td>
                 <td className={`${cellClass} text-right font-bold`}>{resolvePackageCountSl(waybill)}</td>
-                <td className={cellClass}>{resolveBillingUnit(waybill)}</td>
+                <td className={clsx(cellClass, 'px-1 py-0.5')}>
+                  <InlineSelect
+                    value={resolveBillingUnit(waybill)}
+                    options={DON_GIA_DON_VI_OPTIONS}
+                    editable={Boolean(canEdit)}
+                    label={`ĐVT cước bill ${displayCode(waybill)}`}
+                    onSave={(unit) => onBillingUnitSave(waybill, unit)}
+                  />
+                </td>
                 <td className={`${cellClass} text-right font-bold tabular-nums text-emerald-800`}>
                   {canViewPricing ? formatMoney(totalAmount) : '—'}
                 </td>

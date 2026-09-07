@@ -29,6 +29,7 @@ import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
 import { WaybillsService } from './waybills.service';
 import { UpdateWaybillPhotosDto } from './dto/update-waybill-photos.dto';
 import { UpdateWaybillPricingDto } from './dto/update-waybill-pricing.dto';
+import { UpdateWaybillBillingUnitDto } from './dto/update-waybill-billing-unit.dto';
 import { UpdateDeliveryPreparationDto } from './dto/update-delivery-preparation.dto';
 import { UpdateCodReconciliationDto } from './dto/update-cod-reconciliation.dto';
 import { ProofOfDeliveryDto } from './dto/proof-of-delivery.dto';
@@ -273,6 +274,13 @@ export class WaybillsController {
   @ApiOperation({ summary: 'Update one waybill pricing cell without leaving the list' })
   updatePricing(@Param('id') id: string, @Body() dto: UpdateWaybillPricingDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.updatePricing(id, dto, currentUser);
+  }
+
+  @Patch(':id/billing-unit')
+  @RequireRoles(Roles.WAREHOUSE, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Update waybill billing unit directly from the list' })
+  updateBillingUnit(@Param('id') id: string, @Body() dto: UpdateWaybillBillingUnitDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.updateBillingUnit(id, dto, currentUser);
   }
 
   @Patch(':id/photos')

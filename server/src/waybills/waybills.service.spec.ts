@@ -2076,6 +2076,53 @@ describe('WaybillsService', () => {
     expect(result.note).toContain('tong_cuoc=200000');
   });
 
+  it('updates inline billing_unit and recalculates freight if unit_price is present', async () => {
+    const waybill = makeWaybill({
+      id: '77',
+      current_state: WaybillStatus.IN_WAREHOUSE,
+      status: WaybillStatus.IN_WAREHOUSE,
+      volumetric_weight: '100',
+      freight_amount: '170000',
+      cost_amount: '170000',
+      note: 'ma_kh=KHACHLE | billing_unit=Kg | unit_price=1500 | phu_phi=20000 | cuoc_chinh=150000 | tong_cuoc=170000 | thanh_toan=170000',
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+
+    const result = await service.updateBillingUnit('77', {
+      billing_unit: 'Trọn gói',
+    }, manager);
+
+    expect(result).toMatchObject({
+      id: '77',
+      freight_amount: 21500, // 1 * 1500 + 20000 = 21500
+    });
+    expect(result.note).toContain('billing_unit=Trọn gói');
+    expect(result.note).toContain('cuoc_chinh=1500');
+    expect(result.note).toContain('tong_cuoc=21500');
+  });
+
+  it('updates inline billing_unit when unit_price is 0 without changing freight', async () => {
+    const waybill = makeWaybill({
+      id: '78',
+      current_state: WaybillStatus.IN_WAREHOUSE,
+      status: WaybillStatus.IN_WAREHOUSE,
+      freight_amount: '50000',
+      cost_amount: '50000',
+      note: 'ma_kh=KHACHLE | billing_unit=Kg | unit_price=0 | cuoc_chinh=50000',
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+
+    const result = await service.updateBillingUnit('78', {
+      billing_unit: 'Khối',
+    }, manager);
+
+    expect(result).toMatchObject({
+      id: '78',
+      freight_amount: 50000,
+    });
+    expect(result.note).toContain('billing_unit=Khối');
+  });
+
   it('bulk payment creates one exact payment per selected bill and marks each bill paid', async () => {
     const firstWaybill = makeWaybill({
       id: '76',
