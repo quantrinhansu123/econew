@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { In } from 'typeorm';
 import { WaybillsService } from './waybills.service';
 import { Roles } from '../common/roles';
 import { HubEntity } from '../hubs/hub.entity';
@@ -56,6 +57,8 @@ const createQueryBuilder = () => {
     addOrderBy: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
+    offset: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
     groupBy: jest.fn().mockReturnThis(),
@@ -1231,6 +1234,51 @@ describe('WaybillsService', () => {
       'waybill.current_state IN (:...statuses)',
       { statuses: expect.arrayContaining([WaybillStatus.IN_TRANSIT]) },
     );
+  });
+
+  it('bounds list rows and split loading to the requested page while preserving global totals', async () => {
+    const qb = createQueryBuilder();
+    qb.getRawOne.mockResolvedValue({ total_waybills: '10000', total_freight: '1200000000' });
+    qb.getMany.mockResolvedValue([makeWaybill({ id: '26' }), makeWaybill({ id: '27' })]);
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    const result = await service.getInventoryTripLines({ list_scope: 'all_orders', page: 2, limit: 25, sort_by: 'sent_date' }, manager);
+
+    expect(qb.offset).toHaveBeenCalledWith(25);
+    expect(qb.limit).toHaveBeenCalledWith(25);
+    expect(qb.skip).not.toHaveBeenCalled();
+    expect(qb.orderBy).toHaveBeenCalledWith('waybill.sent_date', 'DESC', 'NULLS LAST');
+    expect(qb.addOrderBy).toHaveBeenCalledWith('waybill.id', 'DESC');
+    expect(result.items.map((item) => item.id)).toEqual(['26', '27']);
+    expect(result.meta).toMatchObject({ total_waybills: 10000, total_pages: 400, page: 2, limit: 25, total_freight: 1200000000 });
+    expect(splitsRepository.find).toHaveBeenCalledWith(expect.objectContaining({
+      where: { waybill_id: In(['26', '27']) },
+    }));
+  });
+
+  it('does not aggregate or expose freight totals for warehouse staff', async () => {
+    const qb = createQueryBuilder();
+    qb.getRawOne.mockResolvedValue({ total_waybills: '10000' });
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    const result = await service.getInventoryTripLines({ list_scope: 'all_orders' }, warehouse);
+
+    expect(qb.addSelect).not.toHaveBeenCalled();
+    expect(result.meta.total_freight).toBeUndefined();
+    expect(result.items[0].cost_amount).toBeUndefined();
+  });
+
+  it('filters vendor assignments using EXISTS so multiple splits cannot duplicate page rows or freight', async () => {
+    const qb = createQueryBuilder();
+    qb.getRawOne.mockResolvedValue({ total_waybills: '1', total_freight: '120000' });
+    waybillsRepository.createQueryBuilder.mockReturnValue(qb);
+
+    const result = await service.getInventoryTripLines({ list_scope: 'all_orders', vendor_id: '9' }, manager);
+
+    expect(qb.andWhere).toHaveBeenCalledWith(expect.stringContaining('OR EXISTS ('), { vendorId: '9' });
+    expect(qb.leftJoin).not.toHaveBeenCalledWith('waybill_splits', 'vendor_split', expect.anything());
+    expect(qb.getRawOne).toHaveBeenCalledTimes(1);
+    expect(result.meta.total_freight).toBe(120000);
   });
 
   it('inventory uses the revised waybill package count when the linked order is stale', async () => {

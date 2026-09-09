@@ -22,6 +22,7 @@ interface Props {
   filterValues?: AllOrdersColumnFilters;
   onFilterChange?: (columnId: InventoryColumnId, value: string) => void;
   sort?: AllOrdersSort;
+  onFilterOpen?: () => void;
   onSortChange?: (columnId: InventoryColumnId, direction: AllOrdersSortDirection) => void;
   grouped?: boolean;
 }
@@ -33,12 +34,14 @@ function ColumnFilterLabel({
   onChange,
   sort,
   onSortChange,
+  onFilterOpen,
 }: {
   column: InventoryColumnView;
   options: AllOrdersColumnFilterOption[];
   value: string;
   onChange?: (columnId: InventoryColumnId, value: string) => void;
   sort?: AllOrdersSort;
+  onFilterOpen?: () => void;
   onSortChange?: (columnId: InventoryColumnId, direction: AllOrdersSortDirection) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -63,6 +66,7 @@ function ColumnFilterLabel({
         open={open}
         onOpenChange={(nextOpen) => {
           setOpen(nextOpen);
+          if (nextOpen) onFilterOpen?.();
           if (!nextOpen) setKeyword('');
         }}
       >
@@ -153,6 +157,7 @@ export default function AllOrdersTableHeader({
   onFilterChange,
   sort,
   onSortChange,
+  onFilterOpen,
   grouped = true,
 }: Props) {
   if (!grouped) {
@@ -165,7 +170,7 @@ export default function AllOrdersTableHeader({
         )}
         {columns.map((column) => (
           <th key={column.id} className={clsx('border-b border-r border-border px-2 py-2 font-bold last:border-r-0 whitespace-nowrap', column.headerClass)}>
-            <ColumnFilterLabel column={column} options={filterOptions[column.id] || []} value={filterValues[column.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} />
+            <ColumnFilterLabel column={column} options={filterOptions[column.id] || []} value={filterValues[column.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} onFilterOpen={onFilterOpen} />
           </th>
         ))}
       </tr>
@@ -211,7 +216,7 @@ export default function AllOrdersTableHeader({
               col.id === 'stt' && 'sticky z-30',
             )}
           >
-            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} />
+            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} onFilterOpen={onFilterOpen} />
           </th>
         ))}
         {groupRuns.map((run, index) => (
@@ -235,7 +240,7 @@ export default function AllOrdersTableHeader({
               col.id === 'actions' && 'sticky right-0 z-20 w-[112px] border-l bg-slate-100 shadow-[-4px_0_8px_rgba(15,23,42,0.08)]',
             )}
           >
-            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} />
+            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} onFilterOpen={onFilterOpen} />
           </th>
         ))}
       </tr>
@@ -251,7 +256,7 @@ export default function AllOrdersTableHeader({
               col.headerClass,
             )}
           >
-            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} />
+            <ColumnFilterLabel column={col} options={filterOptions[col.id] || []} value={filterValues[col.id] || ''} onChange={onFilterChange} sort={sort} onSortChange={onSortChange} onFilterOpen={onFilterOpen} />
           </th>
         ))}
       </tr>

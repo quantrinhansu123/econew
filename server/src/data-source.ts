@@ -109,5 +109,6 @@ export default new DataSource({
   ],
   migrations: [__filename.endsWith('.js') ? 'dist/migrations/*.js' : 'src/migrations/*.ts'],
   synchronize: false,
+  migrationsTransactionMode: 'each',
 });
 

@@ -1,11 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { normalizePaginationLimit } from '../../common/pagination';
 import { CustomerPaymentStatus } from '../../common/enums';
 import { WaybillPriority, WaybillStatus } from './waybill.enums';
 
 export class QueryWaybillsDto {
+  @ApiPropertyOptional({ enum: ['created_at', 'sent_date'] }) @IsOptional() @IsIn(['created_at', 'sent_date']) sort_by?: 'created_at' | 'sent_date';
   @ApiPropertyOptional() @IsOptional() @IsString() keyword?: string;
   @ApiPropertyOptional({ description: 'Exact customer code (ma_kh)' }) @IsOptional() @IsString() ma_kh?: string;
   @ApiPropertyOptional({ description: 'Filter waybills assigned to vendor trucks/trips' }) @IsOptional() @IsString() vendor_id?: string;

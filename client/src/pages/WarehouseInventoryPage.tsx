@@ -30,7 +30,6 @@ import AllOrdersSortControl from './warehouse/inventory/AllOrdersSortControl';
 import { resolveCustomerLedgerCode } from './warehouse/inventory/allOrdersSortUtils';
 import {
   applyAllOrdersColumnFilters,
-  applyAllOrdersGlobalSearch,
   buildAllOrdersColumnFilterOptions,
   sortAllOrders,
   type AllOrdersColumnFilterOption,
@@ -38,7 +37,6 @@ import {
   type AllOrdersSort,
   type AllOrdersSortDirection,
 } from './warehouse/inventory/allOrdersColumnFilters';
-import { downloadInventoryExcel } from './warehouse/inventory/inventoryExcelUtils';
 import {
   ALL_ORDERS_COLUMN_WIDTHS,
   canCollectCashPayment,
@@ -180,6 +178,7 @@ const EXCEL_EXPORT_PAGE_SIZE = 100;
 async function loadAllInventoryRows(
   filters: InventoryFilters,
   variant: InventoryPageVariant,
+  signal?: AbortSignal,
 ): Promise<WaybillInventoryItem[]> {
   const requestPage = (page: number) =>
     apiRequest<InventoryListResponse | WaybillInventoryItem[]>(
@@ -187,6 +186,7 @@ async function loadAllInventoryRows(
         { ...filters, page, limit: EXCEL_EXPORT_PAGE_SIZE },
         variant,
       )}`,
+      { signal },
     );
 
   const firstResponse = await requestPage(1);
@@ -204,9 +204,9 @@ async function loadAllInventoryRows(
   const totalPages = Math.max(1, Math.ceil(totalWaybills / EXCEL_EXPORT_PAGE_SIZE));
   const allItems = [...firstItems];
 
-  for (let page = 2; page <= totalPages; page += 4) {
+  for (let page = 2; page <= totalPages; page += 2) {
     const pageNumbers = Array.from(
-      { length: Math.min(4, totalPages - page + 1) },
+      { length: Math.min(2, totalPages - page + 1) },
       (_, index) => page + index,
     );
     const responses = await Promise.all(pageNumbers.map(requestPage));
@@ -253,12 +253,14 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [isBoardClosing, setIsBoardClosing] = useState(false);
   const [actionError, setActionError] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [isColumnPickerOpen, setIsColumnPickerOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [cashVoucherWaybill, setCashVoucherWaybill] = useState<WaybillInventoryItem | null>(null);
   const [isCashVoucherOpen, setIsCashVoucherOpen] = useState(false);
   const [isCashVoucherClosing, setIsCashVoucherClosing] = useState(false);
-  const [selectedWaybillIds, setSelectedWaybillIds] = useState<string[]>([]);
+  const [selectedWaybillCache, setSelectedWaybillCache] = useState<Map<string, WaybillInventoryItem>>(() => new Map());
+  const selectedWaybillIds = useMemo(() => [...selectedWaybillCache.keys()], [selectedWaybillCache]);
   const [isPaymentStatusDialogOpen, setIsPaymentStatusDialogOpen] = useState(false);
   const [customerPaymentStatus, setCustomerPaymentStatus] = useState<'PAID' | 'SENT_STATEMENT' | ''>('');
   const [customerPaymentNote, setCustomerPaymentNote] = useState('');
@@ -266,6 +268,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [isStackClosing, setIsStackClosing] = useState(false);
   const [releaseConfirm, setReleaseConfirm] = useState<ConfirmDialogState>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+  const [advancedList, setAdvancedList] = useState(false);
   const [columnFilters, setColumnFilters] = useState<AllOrdersColumnFilters>({});
   const [sort, setSort] = useState<AllOrdersSort>({ columnId: 'received_at', direction: 'desc' });
   const [customerCodeOptions, setCustomerCodeOptions] = useState<AllOrdersColumnFilterOption[]>([]);
@@ -276,8 +279,9 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     navigate(`/warehouse/orders/${encodeURIComponent(String(item.id))}/receive?returnTo=${encodeURIComponent(returnTo)}`);
   };
   const inventoryRequestIdRef = useRef(0);
+  const inventoryAbortRef = useRef<AbortController | null>(null);
+  const lastInventoryLoadRef = useRef(0);
   const loadInventoryRef = useRef<(options?: { silent?: boolean }) => Promise<void>>(async () => undefined);
-  const selectedWaybillCacheRef = useRef<Map<string, WaybillInventoryItem>>(new Map());
   const cashVoucherCloseTimerRef = useRef<number | null>(null);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const horizontalRailRef = useRef<HTMLDivElement | null>(null);
@@ -285,10 +289,11 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [showHorizontalRail, setShowHorizontalRail] = useState(false);
 
   useEffect(() => () => {
+    inventoryAbortRef.current?.abort();
     if (cashVoucherCloseTimerRef.current != null) window.clearTimeout(cashVoucherCloseTimerRef.current);
   }, []);
 
-  const user = useMemo(getStoredUser, []);
+  const user = useMemo(() => getStoredUser(), []);
   const canViewPricing = hasManagerAccess(user?.role_mask ?? 0);
   const canViewPage = isAllOrders
     ? canEditWaybill(user?.role_mask ?? 0) || ((user?.role_mask ?? 0) & ACCOUNTANT) !== 0
@@ -318,11 +323,15 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     () => resolveVisibleColumnViews(visibleColumnIds, variant, canViewPricing),
     [visibleColumnIds, variant, canViewPricing],
   );
-  const displayedWaybills = useMemo(() => {
-    const searchResults = isAllOrders ? applyAllOrdersGlobalSearch(waybills, filters.keyword) : waybills;
-    const filteredResults = applyAllOrdersColumnFilters(searchResults, columnFilters);
+  const filteredWaybills = useMemo(() => {
+    const filteredResults = applyAllOrdersColumnFilters(waybills, columnFilters);
     return isAllOrders ? sortAllOrders(filteredResults, sort) : filteredResults;
-  }, [columnFilters, filters.keyword, isAllOrders, sort, waybills]);
+  }, [columnFilters, isAllOrders, sort, waybills]);
+  const displayedWaybills = useMemo(() => advancedList
+    ? filteredWaybills.slice((filters.page - 1) * filters.limit, filters.page * filters.limit)
+    : filteredWaybills, [advancedList, filteredWaybills, filters.page, filters.limit]);
+  const totalRows = advancedList ? filteredWaybills.length : filterTotals.orderCount;
+  const totalPages = Math.max(1, Math.ceil(totalRows / filters.limit));
   useEffect(() => {
     if (!isAllOrders) return undefined;
     const scrollElement = tableScrollRef.current;
@@ -350,14 +359,14 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     if (source === 'rail' && Math.abs(table.scrollLeft - rail.scrollLeft) > 1) table.scrollLeft = rail.scrollLeft;
   };
   const displayedFilterTotals = useMemo(() => {
-    if (!isAllOrders) return filterTotals;
+    if (!advancedList) return filterTotals;
     return {
-      orderCount: displayedWaybills.length,
+      orderCount: filteredWaybills.length,
       totalFreight: canViewPricing
-        ? displayedWaybills.reduce((sum, waybill) => sum + Number(waybill.freight_amount ?? waybill.cost_amount ?? 0), 0)
+        ? filteredWaybills.reduce((sum, waybill) => sum + Number(waybill.freight_amount ?? waybill.cost_amount ?? 0), 0)
         : 0,
     };
-  }, [canViewPricing, displayedWaybills, filterTotals, isAllOrders]);
+  }, [canViewPricing, filteredWaybills, filterTotals, advancedList]);
   const columnFilterValues = useMemo<AllOrdersColumnFilters>(
     () => ({ ...columnFilters, ...(filters.ma_kh.trim() ? { ma_kh: filters.ma_kh.trim() } : {}) }),
     [columnFilters, filters.ma_kh],
@@ -383,53 +392,57 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const activeColumnFilterCount = Object.values(columnFilters).filter(Boolean).length;
   const totalActiveFilterCount = activeFilterCount + activeColumnFilterCount;
   const inventoryLoadKey = useMemo(
-    () => JSON.stringify(isAllOrders ? { ...filters, keyword: '' } : filters),
-    [filters, isAllOrders],
+    () => JSON.stringify({ ...filters, page: advancedList ? 1 : filters.page, advancedList, variant }),
+    [filters, advancedList, variant],
   );
   const grandTotals = useMemo(
-    () => computeGrandTotals(waybills, canViewPricing),
-    [waybills, canViewPricing],
+    () => computeGrandTotals(displayedWaybills, canViewPricing),
+    [displayedWaybills, canViewPricing],
   );
   const selectedWaybills = useMemo(
     () => {
       const currentWaybills = new Map(waybills.map((waybill) => [String(waybill.id), waybill]));
       return selectedWaybillIds
-        .map((id) => currentWaybills.get(id) || selectedWaybillCacheRef.current.get(id))
+        .map((id) => currentWaybills.get(id) || selectedWaybillCache.get(id))
         .filter((waybill): waybill is WaybillInventoryItem => Boolean(waybill));
     },
-    [waybills, selectedWaybillIds],
+    [waybills, selectedWaybillIds, selectedWaybillCache],
   );
   const allRowsSelected = displayedWaybills.length > 0 && displayedWaybills.every((waybill) => selectedWaybillIds.includes(String(waybill.id)));
   const toggleSelectAll = () => {
     const displayedIds = displayedWaybills.map((waybill) => String(waybill.id));
-    setSelectedWaybillIds((current) => {
+    setSelectedWaybillCache((current) => {
+      const next = new Map(current);
       if (allRowsSelected) {
-        displayedIds.forEach((id) => selectedWaybillCacheRef.current.delete(id));
-        return current.filter((id) => !displayedIds.includes(id));
+        displayedIds.forEach((id) => next.delete(id));
+      } else {
+        displayedWaybills.forEach((waybill) => next.set(String(waybill.id), waybill));
       }
-      displayedWaybills.forEach((waybill) => selectedWaybillCacheRef.current.set(String(waybill.id), waybill));
-      return [...new Set([...current, ...displayedIds])];
+      return next;
     });
   };
   const toggleSelectRow = (waybillId: string | number) => {
     const id = String(waybillId);
-    setSelectedWaybillIds((prev) => {
-      if (prev.includes(id)) {
-        selectedWaybillCacheRef.current.delete(id);
-        return prev.filter((item) => item !== id);
+    setSelectedWaybillCache((current) => {
+      const next = new Map(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        const waybill = waybills.find((item) => String(item.id) === id);
+        if (waybill) next.set(id, waybill);
       }
-      const waybill = waybills.find((item) => String(item.id) === id);
-      if (waybill) selectedWaybillCacheRef.current.set(id, waybill);
-      return [...prev, id];
+      return next;
     });
   };
   const removeSelectedWaybill = (waybillId: string) => {
-    selectedWaybillCacheRef.current.delete(waybillId);
-    setSelectedWaybillIds((current) => current.filter((id) => id !== waybillId));
+    setSelectedWaybillCache((current) => {
+      const next = new Map(current);
+      next.delete(waybillId);
+      return next;
+    });
   };
   const clearSelectedWaybills = () => {
-    selectedWaybillCacheRef.current.clear();
-    setSelectedWaybillIds([]);
+    setSelectedWaybillCache(new Map());
   };
   const toggleActionMenu = (id: string) => {
     setOpenActionMenuId((prev) => (prev === id ? null : id));
@@ -446,6 +459,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       setIsStackClosing(false);
     }, 180);
   };
+  const updateFilters = (patch: Partial<InventoryFilters>) => setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 1 }));
   const clearFilters = () => {
     setFilters(isAllOrders ? allOrdersDefaultFilters : defaultFilters);
     setColumnFilters({});
@@ -474,13 +488,21 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       else delete next[columnId];
       return next;
     });
+    updateFilters({ page: 1 });
   };
   const setFilterArray = (
     key: keyof Pick<InventoryFilters, 'statuses' | 'orderStatusGroups' | 'originHubIds' | 'destHubIds' | 'paymentTypes' | 'priorities' | 'billingUnits'>,
     value: string[],
   ) => updateFilters({ [key]: value } as Partial<InventoryFilters>);
 
-  useEffect(() => { if (canViewPage) void loadHubs(); }, [canViewPage]);
+  useEffect(() => {
+    if (!canViewPage) return;
+    let active = true;
+    void apiRequest<HubSummary[] | { data?: HubSummary[]; items?: HubSummary[] }>('/hubs/active')
+      .then((response) => { if (active) setHubs(Array.isArray(response) ? response : response.data || response.items || []); })
+      .catch(() => { if (active) setHubs([]); });
+    return () => { active = false; };
+  }, [canViewPage]);
   useEffect(() => {
     if (isAllOrders) return;
     const maKh = searchParams.get('ma_kh')?.trim() || '';
@@ -488,59 +510,50 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       setFilters((prev) => (prev.ma_kh === maKh ? prev : { ...prev, ma_kh: maKh, page: 1 }));
     });
   }, [searchParams, isAllOrders]);
-  useEffect(() => { if (canViewPage) void loadInventory(); }, [inventoryLoadKey, canViewPage]);
-
-  async function loadHubs() {
-    try {
-      const response = await apiRequest<HubSummary[] | { data?: HubSummary[]; items?: HubSummary[] }>('/hubs/active');
-      setHubs(Array.isArray(response) ? response : response.data || response.items || []);
-    } catch {
-      setHubs([]);
-    }
-  }
+  useEffect(() => {
+    if (!canViewPage) return;
+    inventoryAbortRef.current?.abort();
+    inventoryRequestIdRef.current += 1;
+    queueMicrotask(() => setIsLoading(true));
+    const timer = window.setTimeout(() => void loadInventoryRef.current(), 250);
+    return () => window.clearTimeout(timer);
+  }, [inventoryLoadKey, canViewPage]);
 
   async function loadInventory({ silent = false }: { silent?: boolean } = {}) {
+    if (silent && (advancedList || document.visibilityState !== 'visible' || inventoryAbortRef.current || Date.now() - lastInventoryLoadRef.current < 2_000)) return;
+    inventoryAbortRef.current?.abort();
+    const controller = new AbortController();
+    inventoryAbortRef.current = controller;
     const requestId = inventoryRequestIdRef.current + 1;
     inventoryRequestIdRef.current = requestId;
-    const isCurrentRequest = () => inventoryRequestIdRef.current === requestId;
+    const isCurrentRequest = () => inventoryRequestIdRef.current === requestId && !controller.signal.aborted;
     if (!silent) {
       setIsLoading(true);
       setError('');
     }
     try {
-      if (isAllOrders) {
-        const items = await loadAllInventoryRows({ ...filters, keyword: '' }, variant);
-        if (!isCurrentRequest()) return;
-        setWaybills(items);
-        const nextCustomerCodes = buildAllOrdersColumnFilterOptions(items, 'ma_kh')
-          .filter((option) => option.value !== '—');
-        setCustomerCodeOptions((current) => {
-          const merged = new Map(current.map((option) => [option.value.toLocaleUpperCase('vi-VN'), option]));
-          nextCustomerCodes.forEach((option) => {
-            const key = option.value.toLocaleUpperCase('vi-VN');
-            const previous = merged.get(key);
-            if (!previous || option.count > previous.count) merged.set(key, option);
-          });
-          return [...merged.values()].sort((left, right) => left.label.localeCompare(right.label, 'vi', { numeric: true, sensitivity: 'base' }));
-        });
-        setFilterTotals({
-          orderCount: items.length,
-          totalFreight: canViewPricing
-            ? items.reduce((sum, waybill) => sum + Number(waybill.freight_amount ?? waybill.cost_amount ?? 0), 0)
-            : 0,
-        });
-        setError('');
+      const response = advancedList
+        ? await loadAllInventoryRows(filters, variant, controller.signal)
+        : await apiRequest<InventoryListResponse>(
+          `/waybills/inventory/trip-lines?${buildQuery(filters, variant)}${isAllOrders ? '&sort_by=sent_date' : ''}`,
+          { signal: controller.signal },
+        );
+      if (!isCurrentRequest()) return;
+      const items = normalizeList(response);
+      const total = Array.isArray(response) ? items.length : response.meta?.total_waybills ?? response.meta?.total ?? items.length;
+      if (!advancedList && filters.page > Math.max(1, Math.ceil(total / filters.limit))) {
+        updateFilters({ page: Math.max(1, Math.ceil(total / filters.limit)) });
         return;
       }
-      const items = await loadAllInventoryRows(filters, variant);
-      if (!isCurrentRequest()) return;
       setWaybills(items);
+      setCustomerCodeOptions(buildAllOrdersColumnFilterOptions(items, 'ma_kh').filter((option) => option.value !== '—'));
       setFilterTotals({
-        orderCount: items.length,
+        orderCount: total,
         totalFreight: canViewPricing
-          ? items.reduce((sum, waybill) => sum + Number(waybill.freight_amount ?? waybill.cost_amount ?? 0), 0)
+          ? (Array.isArray(response) ? items.reduce((sum, row) => sum + Number(row.freight_amount ?? row.cost_amount ?? 0), 0) : response.meta?.total_freight ?? 0)
           : 0,
       });
+      lastInventoryLoadRef.current = Date.now();
       setError('');
     } catch (err) {
       if (!isCurrentRequest()) return;
@@ -550,11 +563,12 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         setFilterTotals({ orderCount: 0, totalFreight: 0 });
       }
     } finally {
+      if (inventoryAbortRef.current === controller) inventoryAbortRef.current = null;
       if (isCurrentRequest()) setIsLoading(false);
     }
   }
 
-  loadInventoryRef.current = loadInventory;
+  useEffect(() => { loadInventoryRef.current = loadInventory; });
 
   useEffect(() => {
     if (!canViewPage) return undefined;
@@ -606,7 +620,6 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     }
   }
 
-  const updateFilters = (patch: Partial<InventoryFilters>) => setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 1 }));
   const openFilterSheet = () => { setDraftFilters(filters); setIsFilterOpen(true); };
   const applyFilters = () => { setFilters({ ...draftFilters, page: 1 }); setIsFilterOpen(false); };
 
@@ -637,6 +650,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     setIsCashVoucherOpen(true);
   };
   const updateSort = (columnId: InventoryColumnId, direction: AllOrdersSortDirection) => {
+    setAdvancedList(true);
+    updateFilters({ page: 1 });
     setSort({ columnId, direction });
   };
 
@@ -801,25 +816,40 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     }
   };
 
-  function handlePrintStockList() {
+  async function handlePrintStockList() {
     setActionError('');
     if (!displayedWaybills.length) {
       setActionError('Không có đơn tồn kho trên danh sách để in.');
       return;
     }
-    const sheets = mapWaybillsToPrintSheets(
-      displayedWaybills,
-      canViewPricing,
-      visibleColumns.map((col) => col.id),
-      summarizeFilters(filters),
-      Object.fromEntries(visibleColumns.map((col) => [col.id, col.label])),
-      {
-        currentHubIsHcm: filters.originHubIds.length === 1
-          && String(hubs.find((hub) => String(hub.id) === filters.originHubIds[0])?.code || '').toUpperCase() === 'HCM',
-      },
-    );
-    saveInventoryPrintPayload(sheets);
-    window.open('/print/inventory-stock', '_blank');
+    const printWindow = window.open('about:blank', '_blank');
+    if (!printWindow) {
+      setActionError('Trình duyệt đã chặn cửa sổ in. Vui lòng cho phép cửa sổ bật lên.');
+      return;
+    }
+    setIsPrinting(true);
+    try {
+      const loadedRows = await loadAllInventoryRows(filters, variant);
+      const filteredRows = applyAllOrdersColumnFilters(loadedRows, columnFilters);
+      const sheets = mapWaybillsToPrintSheets(
+        isAllOrders ? sortAllOrders(filteredRows, sort) : filteredRows,
+        canViewPricing,
+        visibleColumns.map((col) => col.id),
+        summarizeFilters(filters),
+        Object.fromEntries(visibleColumns.map((col) => [col.id, col.label])),
+        {
+          currentHubIsHcm: filters.originHubIds.length === 1
+            && String(hubs.find((hub) => String(hub.id) === filters.originHubIds[0])?.code || '').toUpperCase() === 'HCM',
+        },
+      );
+      saveInventoryPrintPayload(sheets);
+      printWindow.location.replace('/print/inventory-stock');
+    } catch (err) {
+      printWindow.close();
+      setActionError(err instanceof ApiError ? err.message : 'Không thể tải đầy đủ dữ liệu để in.');
+    } finally {
+      setIsPrinting(false);
+    }
   }
 
   async function handleDownloadExcel() {
@@ -830,13 +860,14 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     }
     setIsExporting(true);
     try {
-      const loadedRows = await loadAllInventoryRows(isAllOrders ? { ...filters, keyword: '' } : filters, variant);
+      const { downloadInventoryExcel } = await import('./warehouse/inventory/inventoryExcelUtils');
+      const loadedRows = await loadAllInventoryRows(filters, variant);
       const exportRows = isAllOrders
         ? sortAllOrders(
-          applyAllOrdersColumnFilters(applyAllOrdersGlobalSearch(loadedRows, filters.keyword), columnFilters),
+          applyAllOrdersColumnFilters(loadedRows, columnFilters),
           sort,
         )
-        : loadedRows;
+        : applyAllOrdersColumnFilters(loadedRows, columnFilters);
       const exported = downloadInventoryExcel(
         exportRows,
         visibleColumns.map((col) => col.id),
@@ -911,17 +942,17 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         <>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <FilterSummaryCard
-            label="Tổng kiện (toàn bộ danh sách)"
+            label="Tổng kiện (trang hiện tại)"
             value={isLoading ? '…' : `${grandTotals.package_count.toLocaleString('vi-VN')} kiện`}
             tone="blue"
           />
           <FilterSummaryCard
-            label="Tổng cân (toàn bộ danh sách)"
+            label="Tổng cân (trang hiện tại)"
             value={isLoading ? '…' : `${grandTotals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg`}
             tone="emerald"
           />
           <FilterSummaryCard
-            label="Tổng khối (toàn bộ danh sách)"
+            label="Tổng khối (trang hiện tại)"
             value={isLoading ? '…' : `${grandTotals.volume_m3.toFixed(2)} m³`}
             tone="amber"
           />
@@ -1041,17 +1072,17 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
             <button
               type="button"
               title="In danh sách tồn"
-              disabled={isLoading || displayedWaybills.length === 0}
+              disabled={isLoading || isPrinting || isExporting || displayedWaybills.length === 0}
               onClick={handlePrintStockList}
               className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-emerald-600 bg-emerald-600 px-3 text-[13px] font-extrabold text-white hover:bg-emerald-700 disabled:opacity-50"
             >
-              <Printer size={16} />
-              <span className="hidden sm:inline">In danh sách tồn</span>
+              {isPrinting ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+              <span className="hidden sm:inline">{isPrinting ? 'Đang tạo bản in' : 'In danh sách tồn'}</span>
             </button>
             <button
               type="button"
               title="Tải xuống Excel"
-              disabled={isLoading || isExporting || displayedWaybills.length === 0}
+              disabled={isLoading || isExporting || isPrinting || displayedWaybills.length === 0}
               onClick={() => void handleDownloadExcel()}
               className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-50 px-3 text-[13px] font-extrabold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
             >
@@ -1142,6 +1173,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                     filterOptions={allOrdersColumnFilterOptions}
                     filterValues={columnFilterValues}
                     onFilterChange={updateColumnFilter}
+                    onFilterOpen={() => { if (!advancedList) { setAdvancedList(true); updateFilters({ page: 1 }); } }}
                     sort={isAllOrders ? sort : undefined}
                     onSortChange={isAllOrders ? updateSort : undefined}
                     grouped={isAllOrders}
@@ -1154,7 +1186,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       waybill={waybill}
                       hubs={hubs}
                       columns={visibleColumns}
-                      rowIndex={rowIndex + 1}
+                      rowIndex={(filters.page - 1) * filters.limit + rowIndex + 1}
                       isAllOrders={isAllOrders}
                       canViewPricing={canViewPricing}
                       canUpdate={canUpdate}
@@ -1188,7 +1220,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                     {selectionEnabled && <td className="border-t border-border px-2 py-2.5 border-r" />}
                     {visibleColumns.map((col) => (
                       <td key={col.id} className="border-t border-border px-4 py-2.5 border-r last:border-r-0">
-                        {col.id === 'customer_name' ? 'Tổng cộng' : ''}
+                        {col.id === 'customer_name' ? 'Tổng trang' : ''}
                         {col.id === 'package_count' ? grandTotals.package_count : ''}
                         {col.id === 'weight' ? `${grandTotals.weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} kg` : ''}
                         {col.id === 'volumetric_weight' ? `${grandTotals.volumetric_weight_kg.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kg` : ''}
@@ -1235,10 +1267,17 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         )}
 
         <div className="border-t border-border bg-card px-4 py-3 flex items-center justify-between shrink-0">
-          <p className="w-full text-center text-[12px] font-bold text-muted-foreground">
-            Hiển thị toàn bộ {displayedWaybills.length} {isAllOrders ? 'đơn' : 'đơn tồn'}
-            {isAllOrders && displayedWaybills.length !== waybills.length ? ` / ${waybills.length} đơn trước lọc cột` : ''}
+          <p className="text-[12px] font-bold text-muted-foreground">
+            {displayedWaybills.length} / {totalRows.toLocaleString('vi-VN')} đơn · Trang {filters.page}/{totalPages}
           </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {advancedList && <button className="text-xs text-primary" onClick={() => { setAdvancedList(false); setColumnFilters({}); setSort({ columnId: 'received_at', direction: 'desc' }); updateFilters({ page: 1 }); }}>Về danh sách phân trang</button>}
+            <select aria-label="Số đơn mỗi trang" value={filters.limit} onChange={(event) => updateFilters({ limit: Number(event.target.value) })} className="rounded border border-border p-1 text-xs">
+              {[10, 25, 50, 100].map((limit) => <option key={limit} value={limit}>{limit} đơn/trang</option>)}
+            </select>
+            <button disabled={isLoading || filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">Trước</button>
+            <button disabled={isLoading || filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">Sau</button>
+          </div>
         </div>
       </div>
 

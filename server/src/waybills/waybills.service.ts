@@ -1366,15 +1366,17 @@ export class WaybillsService {
 
     const vendorId = query.vendor_id?.trim();
     if (vendorId) {
-      qb.distinct(true)
-        .leftJoin('waybill_splits', 'vendor_split', 'vendor_split.waybill_id = waybill.id')
-        .leftJoin('trucks', 'vendor_split_truck', 'vendor_split_truck.id = vendor_split.truck_id')
-        .leftJoin('trips', 'vendor_split_trip', 'vendor_split_trip.id = vendor_split.trip_id')
-        .leftJoin('trucks', 'vendor_trip_truck', 'vendor_trip_truck.id = vendor_split_trip.truck_id')
-        .andWhere(
-          '(waybill.last_mile_vendor_id = :vendorId OR vendor_split_truck.vendor_id = :vendorId OR vendor_trip_truck.vendor_id = :vendorId)',
-          { vendorId },
-        );
+      qb.andWhere(
+        `(waybill.last_mile_vendor_id = :vendorId OR EXISTS (
+          SELECT 1 FROM waybill_splits vendor_split
+          LEFT JOIN trucks vendor_split_truck ON vendor_split_truck.id = vendor_split.truck_id
+          LEFT JOIN trips vendor_split_trip ON vendor_split_trip.id = vendor_split.trip_id
+          LEFT JOIN trucks vendor_trip_truck ON vendor_trip_truck.id = vendor_split_trip.truck_id
+          WHERE vendor_split.waybill_id = waybill.id
+            AND (vendor_split_truck.vendor_id = :vendorId OR vendor_trip_truck.vendor_id = :vendorId)
+        ))`,
+        { vendorId },
+      );
     }
 
     this.applyIncompleteSplitFilter(qb, query.only_incomplete_split);
@@ -1383,21 +1385,6 @@ export class WaybillsService {
     const includeFreightTotal = isManager(currentUser.role_mask);
 
     const loadSummary = async () => {
-      if (vendorId) {
-        const [freightRow, totalWaybills] = await Promise.all([
-          includeFreightTotal
-            ? qb.clone()
-              .select('COALESCE(SUM(COALESCE(waybill.freight_amount, waybill.cost_amount, 0)), 0)', 'total_freight')
-              .getRawOne<{ total_freight: string }>()
-            : Promise.resolve(null),
-          qb.clone().getCount(),
-        ]);
-        return {
-          totalWaybills,
-          totalFreight: includeFreightTotal ? Number(freightRow?.total_freight) || 0 : undefined,
-        };
-      }
-
       const summaryQb = qb.clone()
         .select('COUNT(DISTINCT waybill.id)', 'total_waybills');
       if (includeFreightTotal) {
@@ -1413,13 +1400,21 @@ export class WaybillsService {
       };
     };
 
+    const pageQb = qb.clone();
+    if (query.sort_by === 'sent_date') {
+      pageQb.orderBy('waybill.sent_date', 'DESC', 'NULLS LAST')
+        .addOrderBy('waybill.created_at', 'DESC');
+    } else {
+      pageQb.orderBy('waybill.created_at', 'DESC');
+    }
     const [summary, waybills] = await Promise.all([
       loadSummary(),
-      qb.clone()
-        .orderBy('waybill.created_at', 'DESC')
+      pageQb
         .addOrderBy('waybill.id', 'DESC')
-        .skip((page - 1) * limit)
-        .take(limit)
+        // All page joins are many-to-one; EXISTS above avoids split fan-out.
+        // A direct LIMIT avoids TypeORM's extra wide DISTINCT pagination query.
+        .offset((page - 1) * limit)
+        .limit(limit)
         .getMany(),
     ]);
     const { totalWaybills, totalFreight } = summary;
