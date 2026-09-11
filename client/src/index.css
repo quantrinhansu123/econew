@@ -132,6 +132,32 @@
   background: var(--color-muted-foreground);
 }
 
+/* The incoming-trip proxy rail is portaled to body and must remain obvious at the viewport edge. */
+.incoming-horizontal-rail {
+  scrollbar-color: #475569 #cbd5e1;
+  scrollbar-width: auto;
+}
+
+.incoming-horizontal-rail::-webkit-scrollbar {
+  height: 14px;
+}
+
+.incoming-horizontal-rail::-webkit-scrollbar-track {
+  background: #cbd5e1;
+  border-radius: 8px;
+}
+
+.incoming-horizontal-rail::-webkit-scrollbar-thumb {
+  min-width: 72px;
+  background: #475569;
+  border: 2px solid #cbd5e1;
+  border-radius: 8px;
+}
+
+.incoming-horizontal-rail::-webkit-scrollbar-thumb:hover {
+  background: #1e293b;
+}
+
 /* Animations */
 @keyframes fade-in {
   from { opacity: 0; }

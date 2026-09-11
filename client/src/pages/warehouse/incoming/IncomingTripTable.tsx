@@ -1,10 +1,15 @@
 import { clsx } from 'clsx';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { IncomingTrip } from './types';
 import { IncomingTripRowActions } from './IncomingTripRowActions';
 import { formatMoney } from '../../../lib/formatMoney';
 import InlineMoneyInput from '../../../components/ui/InlineMoneyInput';
 import InlineTextInput from '../../../components/ui/InlineTextInput';
+import {
+  isIncomingTripTableOverflowing,
+  shouldShowIncomingHorizontalRail,
+} from './incomingTripTableScroll';
 import {
   formatTripDepartureDate,
   getManifestCode,
@@ -76,6 +81,8 @@ export function IncomingTripTable({
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const horizontalRailRef = useRef<HTMLDivElement | null>(null);
   const [tableScrollWidth, setTableScrollWidth] = useState(0);
+  const [tableViewportWidth, setTableViewportWidth] = useState(0);
+  const [isTableOverflowing, setIsTableOverflowing] = useState(false);
   const [railBounds, setRailBounds] = useState<{ left: number; width: number } | null>(null);
 
   useEffect(() => {
@@ -83,35 +90,59 @@ export function IncomingTripTable({
     if (!scrollContainer) return undefined;
 
     let animationFrame = 0;
+    let observedElements: Element[] = [];
+    let resizeObserver: ResizeObserver | null = null;
     const measure = () => {
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
       animationFrame = window.requestAnimationFrame(() => {
+        const viewportWidth = scrollContainer.clientWidth;
         const scrollWidth = scrollContainer.scrollWidth;
-        const isOverflowing = scrollWidth > scrollContainer.clientWidth + 1;
+        const isOverflowing = isIncomingTripTableOverflowing(scrollWidth, viewportWidth);
         const rect = scrollContainer.getBoundingClientRect();
         const left = Math.max(0, Math.round(rect.left));
         const right = Math.min(window.innerWidth, Math.round(rect.right));
         const width = Math.max(0, right - left);
 
         setTableScrollWidth((previous) => (previous === scrollWidth ? previous : scrollWidth));
+        setTableViewportWidth((previous) => (previous === viewportWidth ? previous : viewportWidth));
+        setIsTableOverflowing((previous) => (previous === isOverflowing ? previous : isOverflowing));
         setRailBounds((previous) => {
-          if (!isOverflowing || width <= 0) return previous === null ? previous : null;
+          if (!isOverflowing || width <= 0) return null;
           if (previous && previous.left === left && previous.width === width) return previous;
           return { left, width };
         });
       });
     };
+    resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    const observeContent = () => {
+      if (!resizeObserver) return;
+      const nextElements = [
+        scrollContainer,
+        ...Array.from(scrollContainer.children),
+        ...Array.from(scrollContainer.querySelectorAll('table')),
+      ];
+      for (const element of observedElements) {
+        if (!nextElements.includes(element)) resizeObserver.unobserve(element);
+      }
+      for (const element of nextElements) {
+        if (!observedElements.includes(element)) resizeObserver.observe(element);
+      }
+      observedElements = nextElements;
+      measure();
+    };
+    const mutationObserver = typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => {
+      observeContent();
+      measure();
+    });
 
-    measure();
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
-    observer?.observe(scrollContainer);
-    const table = scrollContainer.querySelector('table');
-    if (table) observer?.observe(table);
+    observeContent();
+    mutationObserver?.observe(scrollContainer, { childList: true, subtree: true });
     window.addEventListener('resize', measure);
 
     return () => {
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
-      observer?.disconnect();
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
       window.removeEventListener('resize', measure);
     };
   }, [showActions, trips.length, visibleHeaders.length]);
@@ -119,7 +150,7 @@ export function IncomingTripTable({
   useEffect(() => {
     const scrollContainer = tableScrollRef.current;
     const horizontalRail = horizontalRailRef.current;
-    if (!scrollContainer || !horizontalRail || tableScrollWidth <= scrollContainer.clientWidth + 1) return undefined;
+    if (!scrollContainer || !horizontalRail || !isTableOverflowing || tableScrollWidth <= tableViewportWidth + 1) return undefined;
 
     const syncFromTable = () => {
       if (Math.abs(horizontalRail.scrollLeft - scrollContainer.scrollLeft) > 1) {
@@ -140,9 +171,23 @@ export function IncomingTripTable({
       scrollContainer.removeEventListener('scroll', syncFromTable);
       horizontalRail.removeEventListener('scroll', syncFromRail);
     };
-  }, [tableScrollWidth]);
+  }, [isTableOverflowing, tableScrollWidth, tableViewportWidth]);
 
-  const showHorizontalRail = Boolean(railBounds && tableScrollWidth > railBounds.width + 1);
+  const showHorizontalRail = Boolean(
+    railBounds
+    && shouldShowIncomingHorizontalRail(tableScrollWidth, tableViewportWidth, railBounds.width),
+  );
+  const horizontalRail = showHorizontalRail && railBounds ? (
+    <div
+      ref={horizontalRailRef}
+      className="incoming-horizontal-rail fixed bottom-3 z-[1000] hidden h-5 overflow-x-auto overflow-y-hidden rounded-md border-2 border-slate-400 bg-slate-200 shadow-lg md:block"
+      style={{ left: railBounds.left, width: railBounds.width }}
+      aria-label="Cuộn ngang danh sách chuyến xe"
+      data-testid="incoming-horizontal-rail"
+    >
+      <div style={{ width: tableScrollWidth, height: 1 }} />
+    </div>
+  ) : null;
 
   return (
     <section className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
@@ -267,16 +312,7 @@ export function IncomingTripTable({
           </>
         )}
       </div>
-      {showHorizontalRail && railBounds && (
-        <div
-          ref={horizontalRailRef}
-          className="fixed bottom-2 z-40 hidden h-4 overflow-x-auto overflow-y-hidden rounded border border-slate-300 bg-slate-100 shadow-md custom-scrollbar md:block"
-          style={{ left: railBounds.left, width: railBounds.width }}
-          aria-label="Cuộn ngang danh sách chuyến xe"
-        >
-          <div style={{ width: tableScrollWidth, height: 1 }} />
-        </div>
-      )}
+      {typeof document !== 'undefined' && horizontalRail ? createPortal(horizontalRail, document.body) : null}
     </section>
   );
 }
