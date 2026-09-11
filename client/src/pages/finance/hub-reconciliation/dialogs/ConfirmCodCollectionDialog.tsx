@@ -30,7 +30,12 @@ export default function ConfirmCodCollectionDialog({
   onManageFunds,
 }: Props) {
   if (!waybill) return null;
-  const activeFunds = funds.filter((fund) => fund.is_active);
+  const destinationHubId = String(waybill.dest_hub_id ?? waybill.collector_hub_id ?? '');
+  const activeFunds = funds.filter((fund) => (
+    fund.is_active
+    && destinationHubId.length > 0
+    && String(fund.hub_id ?? '') === destinationHubId
+  ));
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-end justify-center sm:items-center">
@@ -70,6 +75,9 @@ export default function ConfirmCodCollectionDialog({
                 <option key={String(fund.id)} value={String(fund.id)}>{fund.code} · {fund.name}</option>
               ))}
             </select>
+            <span className="mt-1.5 block text-[11px] font-medium text-muted-foreground">
+              Chỉ hiển thị sổ quỹ thuộc HUB đến của vận đơn.
+            </span>
           </label>
 
           <label className="block">
@@ -87,7 +95,7 @@ export default function ConfirmCodCollectionDialog({
 
           {!activeFunds.length && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] font-bold text-amber-800">
-              Chưa có sổ quỹ đang hoạt động. Tạo sổ quỹ trước khi xác nhận.
+              HUB đến chưa có sổ quỹ đang hoạt động. Tạo đúng sổ quỹ HUB trước khi xác nhận.
             </div>
           )}
           {error && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[13px] font-bold text-red-700">{error}</div>}

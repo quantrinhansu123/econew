@@ -1627,6 +1627,30 @@ describe('WaybillsService', () => {
     expect(cashVouchersRepository.save).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { hub_id: null, label: 'không gắn HUB' },
+    { hub_id: '2', label: 'thuộc HUB khác' },
+  ])('rejects a COD cash fund $label instead of the destination HUB', async ({ hub_id }) => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      dest_hub_id: '1',
+      payment_type: PaymentType.COD,
+      cod_amount: 100000,
+    }));
+    cashFundsRepository.findOne.mockResolvedValue({
+      id: 'fund-invalid',
+      code: 'QUY_SAI',
+      name: 'Quỹ không đúng HUB đến',
+      is_active: true,
+      hub_id,
+    });
+
+    await expect(service.updateCodReconciliation('1', {
+      confirmed: true,
+      fund_id: 'fund-invalid',
+    }, manager)).rejects.toThrow('Sổ quỹ COD phải thuộc HUB đến của vận đơn');
+    expect(cashVouchersRepository.save).not.toHaveBeenCalled();
+  });
+
   it('ACCOUNTANT can update COD after MANIFEST_CLOSED and WAREHOUSE cannot', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.MANIFEST_CLOSED, current_state: WaybillStatus.MANIFEST_CLOSED }));
     await expect(service.updateCodFee('1', { cod_amount: 100 }, accountant)).resolves.toMatchObject({ status: WaybillStatus.MANIFEST_CLOSED });
