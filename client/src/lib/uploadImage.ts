@@ -4,9 +4,9 @@ import { resolveApiBaseUrl } from './apiBaseUrl';
 const API_BASE_URL = resolveApiBaseUrl();
 
 const ACCESS_TOKEN_KEY = 'eco_access_token';
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_PRICE_LIST_BYTES = 10 * 1024 * 1024;
-const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
 const MAX_IMAGE_EDGE = 2_000;
 const MAX_RECOGNITION_IMAGE_EDGE = 1_280;
 const OPTIMIZE_THRESHOLD_BYTES = 1_500_000;
@@ -230,24 +230,36 @@ async function uploadStoredFile(file: File, endpoint: string, fallbackError: str
 }
 
 async function uploadImage(file: File, endpoint: string): Promise<string> {
-  validateImageSource(file);
+  await validateImageSource(file);
 
   const uploadFile = await optimizeMobilePhoto(file);
   if (uploadFile.size > MAX_UPLOAD_BYTES) {
-    throw new ApiError(400, 'Không thể nén ảnh xuống dưới 5 MB. Vui lòng chọn ảnh nhỏ hơn.', null);
+    throw new ApiError(400, 'Ảnh gốc tối đa 10 MB. Vui lòng chọn ảnh nhỏ hơn.', null);
   }
 
   return uploadStoredFile(uploadFile, endpoint, 'Không upload được ảnh.');
 }
 
-function validateImageSource(file: File) {
+async function validateImageSource(file: File) {
   const hasImageMime = file.type.toLowerCase().startsWith('image/');
   const hasKnownImageExtension = /\.(?:avif|gif|heic|heif|jpe?g|png|webp)$/i.test(file.name);
   if (!hasImageMime && !hasKnownImageExtension) {
     throw new ApiError(400, 'Chỉ chấp nhận file ảnh.', null);
   }
   if (file.size > MAX_SOURCE_BYTES) {
-    throw new ApiError(400, 'Ảnh gốc tối đa 20 MB.', null);
+    throw new ApiError(400, 'Ảnh gốc tối đa 10 MB.', null);
+  }
+  const signature = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  const ascii = (start: number, length: number) => String.fromCharCode(...signature.slice(start, start + length));
+  const isJpeg = signature[0] === 0xff && signature[1] === 0xd8 && signature[2] === 0xff;
+  const isPng = ascii(0, 8) === '\x89PNG\r\n\x1a\n';
+  const isGif = ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a';
+  const isWebp = ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP';
+  const isFtyp = ascii(4, 4) === 'ftyp';
+  const brand = ascii(8, 4).toLowerCase();
+  const isAvifOrHeif = isFtyp && ['avif', 'avis', 'heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1'].includes(brand);
+  if (!isJpeg && !isPng && !isGif && !isWebp && !isAvifOrHeif) {
+    throw new ApiError(400, 'Nội dung file không phải ảnh hợp lệ.', null);
   }
 }
 
@@ -261,6 +273,10 @@ export function uploadExpenseReceipt(file: File): Promise<string> {
 
 export function uploadWaybillImage(file: File): Promise<string> {
   return uploadImage(file, '/uploads/waybill-images');
+}
+
+export function uploadCashVoucherImage(file: File): Promise<string> {
+  return uploadImage(file, '/uploads/cash-voucher-images');
 }
 
 export function uploadVehicleDocument(file: File): Promise<string> {
@@ -282,7 +298,7 @@ export function uploadVendorQrImage(file: File, vendorCode: string): Promise<str
 }
 
 export async function recognizeWaybillCodeWithGemini(file: File): Promise<string | null> {
-  validateImageSource(file);
+  await validateImageSource(file);
   const uploadFile = await optimizeMobilePhoto(file, {
     forceTransform: true,
     jpegQuality: 0.74,

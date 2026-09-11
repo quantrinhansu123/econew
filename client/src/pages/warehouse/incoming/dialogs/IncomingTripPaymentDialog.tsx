@@ -1,5 +1,5 @@
 import { Banknote, ImagePlus, Loader2, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import CashFundSelect from '../../../../components/finance/CashFundSelect';
 import {
   formatAmountInput,
@@ -51,6 +51,13 @@ export function IncomingTripPaymentDialog({
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState('');
   const [localError, setLocalError] = useState('');
+  const proofObjectUrlRef = useRef<string | null>(null);
+  const revokeProofPreview = useCallback(() => {
+    if (proofObjectUrlRef.current) URL.revokeObjectURL(proofObjectUrlRef.current);
+    proofObjectUrlRef.current = null;
+  }, []);
+
+  useEffect(() => () => revokeProofPreview(), [revokeProofPreview]);
 
   useEffect(() => {
     if (!trip) return;
@@ -60,10 +67,11 @@ export function IncomingTripPaymentDialog({
     setPaymentNote(getPaymentNote(trip));
     setFundId('');
     setCostCategory((current) => costCategories.includes(current) ? current : costCategories[0] || '');
+    revokeProofPreview();
     setProofFile(null);
     setProofPreview(trip.vendor_payment_proof_url?.trim() || '');
     setLocalError('');
-  }, [costCategories, trip]);
+  }, [costCategories, revokeProofPreview, trip]);
 
   useEffect(() => {
     void loadExpenseCategoryNames().then(setCostCategories).catch(() => undefined);
@@ -73,6 +81,7 @@ export function IncomingTripPaymentDialog({
 
   const handleProofChange = (file: File | null) => {
     if (!file) {
+      revokeProofPreview();
       setProofFile(null);
       setProofPreview(trip.vendor_payment_proof_url?.trim() || '');
       setLocalError('');
@@ -82,12 +91,15 @@ export function IncomingTripPaymentDialog({
       setLocalError('Chỉ chấp nhận file ảnh.');
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setLocalError('Ảnh tối đa 5 MB.');
+    if (file.size > 10 * 1024 * 1024) {
+      setLocalError('Ảnh gốc tối đa 10 MB.');
       return;
     }
+    revokeProofPreview();
     setProofFile(file);
-    setProofPreview(URL.createObjectURL(file));
+    const previewUrl = URL.createObjectURL(file);
+    proofObjectUrlRef.current = previewUrl;
+    setProofPreview(previewUrl);
     setLocalError('');
   };
 
@@ -225,7 +237,7 @@ export function IncomingTripPaymentDialog({
               {proofPreview && (
                 <img src={proofPreview} alt="Xem trước chứng từ" className="max-h-40 rounded-lg border border-border object-contain" />
               )}
-              <p className="text-[11px] text-muted-foreground">Ảnh sẽ được lưu lên cloud (Supabase).</p>
+              <p className="text-[11px] text-muted-foreground">Ảnh sẽ được tối ưu trước khi lưu lên hệ thống.</p>
             </div>
           )}
           {displayError && <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-semibold text-red-700">{displayError}</p>}

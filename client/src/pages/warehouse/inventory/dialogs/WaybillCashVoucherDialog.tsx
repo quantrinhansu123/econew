@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { ProofImageButton } from '../../../../components/ImagePreviewModal';
 import CashFundSelect from '../../../../components/finance/CashFundSelect';
 import { ApiError, apiRequest } from '../../../../lib/api';
+import { uploadCashVoucherImage } from '../../../../lib/uploadImage';
 import {
   formatAmountInput,
   formatAmountInputFromNumber,
@@ -66,11 +67,17 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
   const [fundId, setFundId] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [imageName, setImageName] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [vouchers, setVouchers] = useState<WaybillCashVoucher[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const voucherRequestIdRef = useRef(0);
+  const imageObjectUrlRef = useRef<string | null>(null);
+  const revokeImagePreview = useCallback(() => {
+    if (imageObjectUrlRef.current) URL.revokeObjectURL(imageObjectUrlRef.current);
+    imageObjectUrlRef.current = null;
+  }, []);
   const freightDue = normalizeMoney(
     waybill?.customer_payment_due_amount ?? waybill?.freight_amount ?? waybill?.cost_amount,
   );
@@ -93,11 +100,15 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
     setAmountInput('');
     setNote('');
     setFundId('');
+    revokeImagePreview();
     setImageUrl('');
     setImageName('');
+    setImageFile(null);
     setVouchers([]);
     setError('');
-  }, []);
+  }, [revokeImagePreview]);
+
+  useEffect(() => () => revokeImagePreview(), [revokeImagePreview]);
 
   const loadVouchers = useCallback(async () => {
     if (!waybillId) return;
@@ -136,26 +147,33 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
   }, [isOpen, waybillId, loadVouchers, resetForm]);
 
   const handleImageChange = (file: File | null) => {
+    revokeImagePreview();
     if (!file) {
       setImageUrl('');
       setImageName('');
+      setImageFile(null);
       return;
     }
     if (!file.type.startsWith('image/')) {
+      setImageUrl('');
+      setImageName('');
+      setImageFile(null);
       setError('Chỉ chấp nhận file ảnh.');
       return;
     }
-    if (file.size > 1_500_000) {
-      setError('Ảnh tối đa 1.5 MB.');
+    if (file.size > 10 * 1024 * 1024) {
+      setImageUrl('');
+      setImageName('');
+      setImageFile(null);
+      setError('Ảnh gốc tối đa 10 MB.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImageUrl(String(reader.result || ''));
-      setImageName(file.name);
-      setError('');
-    };
-    reader.readAsDataURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    imageObjectUrlRef.current = previewUrl;
+    setImageUrl(previewUrl);
+    setImageFile(file);
+    setImageName(file.name);
+    setError('');
   };
 
   const handleSubmit = async () => {
@@ -177,6 +195,7 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
     setError('');
     try {
       const waybillCode = displayCode(waybill);
+      const uploadedImageUrl = imageFile ? await uploadCashVoucherImage(imageFile) : imageUrl.trim() || undefined;
       const saved = await apiRequest<WaybillCashVoucher & { customer_payment_status?: 'PAID' | 'SENT_STATEMENT' | null }>(
         `/waybills/${waybill.id}/cash-vouchers`,
         {
@@ -187,7 +206,7 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
             amount,
             fund_id: fundId,
             note: note.trim() || undefined,
-            image_url: imageUrl.trim() || undefined,
+            image_url: uploadedImageUrl,
           },
         },
       );

@@ -1,4 +1,5 @@
 import { clsx } from 'clsx';
+import { useEffect, useRef, useState } from 'react';
 import type { IncomingTrip } from './types';
 import { IncomingTripRowActions } from './IncomingTripRowActions';
 import { formatMoney } from '../../../lib/formatMoney';
@@ -72,10 +73,80 @@ export function IncomingTripTable({
   void _showOriginColumn;
   const showActions = Boolean(onView && onEdit && onDelete && onPayment);
   const visibleHeaders = showActions ? HEADERS : HEADERS.filter((header) => header !== 'Thao tác');
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const horizontalRailRef = useRef<HTMLDivElement | null>(null);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
+  const [railBounds, setRailBounds] = useState<{ left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    const scrollContainer = tableScrollRef.current;
+    if (!scrollContainer) return undefined;
+
+    let animationFrame = 0;
+    const measure = () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        const scrollWidth = scrollContainer.scrollWidth;
+        const isOverflowing = scrollWidth > scrollContainer.clientWidth + 1;
+        const rect = scrollContainer.getBoundingClientRect();
+        const left = Math.max(0, Math.round(rect.left));
+        const right = Math.min(window.innerWidth, Math.round(rect.right));
+        const width = Math.max(0, right - left);
+
+        setTableScrollWidth((previous) => (previous === scrollWidth ? previous : scrollWidth));
+        setRailBounds((previous) => {
+          if (!isOverflowing || width <= 0) return previous === null ? previous : null;
+          if (previous && previous.left === left && previous.width === width) return previous;
+          return { left, width };
+        });
+      });
+    };
+
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(scrollContainer);
+    const table = scrollContainer.querySelector('table');
+    if (table) observer?.observe(table);
+    window.addEventListener('resize', measure);
+
+    return () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [showActions, trips.length, visibleHeaders.length]);
+
+  useEffect(() => {
+    const scrollContainer = tableScrollRef.current;
+    const horizontalRail = horizontalRailRef.current;
+    if (!scrollContainer || !horizontalRail || tableScrollWidth <= scrollContainer.clientWidth + 1) return undefined;
+
+    const syncFromTable = () => {
+      if (Math.abs(horizontalRail.scrollLeft - scrollContainer.scrollLeft) > 1) {
+        horizontalRail.scrollLeft = scrollContainer.scrollLeft;
+      }
+    };
+    const syncFromRail = () => {
+      if (Math.abs(scrollContainer.scrollLeft - horizontalRail.scrollLeft) > 1) {
+        scrollContainer.scrollLeft = horizontalRail.scrollLeft;
+      }
+    };
+
+    scrollContainer.addEventListener('scroll', syncFromTable, { passive: true });
+    horizontalRail.addEventListener('scroll', syncFromRail, { passive: true });
+    syncFromTable();
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', syncFromTable);
+      horizontalRail.removeEventListener('scroll', syncFromRail);
+    };
+  }, [tableScrollWidth]);
+
+  const showHorizontalRail = Boolean(railBounds && tableScrollWidth > railBounds.width + 1);
 
   return (
     <section className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
-      <div className="min-h-0 flex-1 overflow-auto custom-scrollbar">
+      <div ref={tableScrollRef} className="min-h-0 flex-1 overflow-auto custom-scrollbar md:pb-5">
         {trips.length === 0 ? (
           <div className="flex min-h-[220px] items-center justify-center px-4 py-8 text-center text-[12px] font-medium text-muted-foreground">
             {emptyText}
@@ -196,6 +267,16 @@ export function IncomingTripTable({
           </>
         )}
       </div>
+      {showHorizontalRail && railBounds && (
+        <div
+          ref={horizontalRailRef}
+          className="fixed bottom-2 z-40 hidden h-4 overflow-x-auto overflow-y-hidden rounded border border-slate-300 bg-slate-100 shadow-md custom-scrollbar md:block"
+          style={{ left: railBounds.left, width: railBounds.width }}
+          aria-label="Cuộn ngang danh sách chuyến xe"
+        >
+          <div style={{ width: tableScrollWidth, height: 1 }} />
+        </div>
+      )}
     </section>
   );
 }

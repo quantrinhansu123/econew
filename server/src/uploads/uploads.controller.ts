@@ -15,7 +15,7 @@ import { RequireRoles } from '../auth/decorators/require-roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/roles';
-import { StorageService } from './storage.service';
+import { MAX_IMAGE_INPUT_BYTES, MAX_RAW_FILE_BYTES, StorageService } from './storage.service';
 
 @ApiTags('Uploads')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -30,7 +30,7 @@ export class UploadsController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 },
+      limits: { fileSize: MAX_IMAGE_INPUT_BYTES },
     }),
   )
   uploadPaymentProof(@UploadedFile() file: Express.Multer.File) {
@@ -45,7 +45,7 @@ export class UploadsController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 },
+      limits: { fileSize: MAX_IMAGE_INPUT_BYTES },
     }),
   )
   uploadExpenseReceipt(@UploadedFile() file: Express.Multer.File) {
@@ -54,17 +54,27 @@ export class UploadsController {
 
   @Post('waybill-images')
   @HttpCode(HttpStatus.OK)
-  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DRIVER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DRIVER, Roles.DISPATCHER, Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Upload ảnh bill/hàng hóa lên Cloudinary' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 },
+      limits: { fileSize: MAX_IMAGE_INPUT_BYTES },
     }),
   )
   uploadWaybillImage(@UploadedFile() file: Express.Multer.File) {
     return this.storageService.uploadWaybillImage(file).then((url) => ({ url }));
+  }
+
+  @Post('cash-voucher-images')
+  @HttpCode(HttpStatus.OK)
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Upload ảnh phiếu thu tiền mặt lên Cloudinary' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_IMAGE_INPUT_BYTES } }))
+  uploadCashVoucherImage(@UploadedFile() file: Express.Multer.File) {
+    return this.storageService.uploadCashVoucherImage(file).then((url) => ({ url }));
   }
 
   @Post('vehicle-documents')
@@ -72,7 +82,7 @@ export class UploadsController {
   @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Upload ảnh giấy tờ xe nội bộ lên Cloudinary' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_IMAGE_INPUT_BYTES } }))
   uploadVehicleDocument(@UploadedFile() file: Express.Multer.File) {
     return this.storageService.uploadVehicleDocument(file).then((url) => ({ url }));
   }
@@ -82,7 +92,7 @@ export class UploadsController {
   @RequireRoles(Roles.WAREHOUSE, Roles.PACKER, Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Upload file Excel quy đổi kích thước của vận đơn' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_RAW_FILE_BYTES } }))
   uploadWaybillDimensionFile(@UploadedFile() file: Express.Multer.File) {
     return this.storageService.uploadWaybillDimensionFile(file).then((url) => ({ url, name: file.originalname }));
   }
@@ -95,7 +105,7 @@ export class UploadsController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 },
+      limits: { fileSize: MAX_IMAGE_INPUT_BYTES },
     }),
   )
   uploadVendorQrImage(
@@ -113,7 +123,7 @@ export class UploadsController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 10 * 1024 * 1024 },
+      limits: { fileSize: MAX_RAW_FILE_BYTES },
     }),
   )
   uploadCustomerPriceList(
