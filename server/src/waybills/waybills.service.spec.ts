@@ -1555,7 +1555,7 @@ describe('WaybillsService', () => {
   });
 
   it('confirms the total COD and receiver-paid freight into a cash fund', async () => {
-    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ payment_type: PaymentType.COD, cod_amount: 500000, cc_amount: 120000 }));
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ dest_hub_id: '1', payment_type: PaymentType.COD, cod_amount: 500000, cc_amount: 120000 }));
     cashFundsRepository.findOne.mockResolvedValue({ id: 'fund-1', code: 'QUY_HAN', name: 'Quỹ Hà Nội', is_active: true, hub_id: '1' });
     cashVouchersRepository.findOne.mockResolvedValue(null);
 
@@ -1592,13 +1592,14 @@ describe('WaybillsService', () => {
   });
 
   it('rejects hub COD reconciliation when the bill has nothing to collect', async () => {
-    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ payment_type: PaymentType.PP }));
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ dest_hub_id: '1', payment_type: PaymentType.PP }));
 
     await expect(service.updateCodReconciliation('1', { confirmed: true, fund_id: 'fund-1' }, accountant)).rejects.toThrow(BadRequestException);
   });
 
   it('uses freight as the receiver-paid amount for legacy CC bills without cc_amount', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      dest_hub_id: '1',
       payment_type: PaymentType.CC,
       freight_amount: '350000',
       cc_amount: 0,
@@ -1612,6 +1613,18 @@ describe('WaybillsService', () => {
       amount: '350000',
       source_type: 'COD_COLLECTION',
     }));
+  });
+
+  it('only allows the destination hub to reconcile COD', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      origin_hub_id: '1',
+      dest_hub_id: '2',
+      payment_type: PaymentType.COD,
+      cod_amount: 100000,
+    }));
+    await expect(service.updateCodReconciliation('1', { confirmed: true, fund_id: 'fund-1' }, accountant))
+      .rejects.toThrow(ForbiddenException);
+    expect(cashVouchersRepository.save).not.toHaveBeenCalled();
   });
 
   it('ACCOUNTANT can update COD after MANIFEST_CLOSED and WAREHOUSE cannot', async () => {

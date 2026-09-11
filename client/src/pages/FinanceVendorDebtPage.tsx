@@ -45,6 +45,9 @@ interface TripRow {
   departure_time: string;
   status?: string;
   trip_cost: number;
+  paid_amount?: number;
+  remaining_amount?: number;
+  payment_status?: 'UNPAID' | 'PARTIAL' | 'PAID' | string;
   license_plate?: string | null;
   manifest_id?: string | number;
   manifest_code?: string | null;
@@ -189,11 +192,29 @@ export default function FinanceVendorDebtPage() {
 
   const selectedVendor = vendors.find((v) => String(v.id) === selectedVendorId);
 
+  const paymentAllocationPreview = useMemo(() => {
+    const amount = parseAmountInput(paymentForm.amount);
+    let remaining = amount;
+    const rows = (dashboard?.trips ?? [])
+      .filter((trip) => paymentForm.trip_ids.includes(String(trip.id)))
+      .map((trip) => {
+        const outstanding = Math.max(0, Number(trip.remaining_amount ?? (trip.trip_cost - (trip.paid_amount ?? 0))) || 0);
+        const allocated = Math.min(outstanding, Math.max(0, remaining));
+        remaining -= allocated;
+        return { trip, outstanding, allocated };
+      });
+    return { rows, unallocated: Math.max(0, remaining) };
+  }, [dashboard?.trips, paymentForm.amount, paymentForm.trip_ids]);
+
   async function submitPayment() {
     if (!selectedVendorId || !paymentForm.amount) return;
     const amount = parseAmountInput(paymentForm.amount);
     if (amount <= 0 || !paymentForm.fund_id) {
       setError(amount <= 0 ? 'Nhập số tiền chi lớn hơn 0.' : 'Vui lòng chọn sổ quỹ chi tiền.');
+      return;
+    }
+    if (paymentForm.trip_ids.length && paymentAllocationPreview.unallocated > 0.01) {
+      setError(`Số tiền vượt quá dư nợ của các chuyến đã chọn ${formatMoney(paymentAllocationPreview.unallocated)}.`);
       return;
     }
     setIsSubmitting(true);
@@ -208,6 +229,12 @@ export default function FinanceVendorDebtPage() {
           cost_category: paymentForm.cost_category,
           description: paymentForm.description.trim() || undefined,
           trip_ids: paymentForm.trip_ids.length ? paymentForm.trip_ids.map(Number) : undefined,
+          allocations: paymentForm.trip_ids.length
+            ? paymentAllocationPreview.rows.filter((row) => row.allocated > 0).map((row) => ({
+              trip_id: Number(row.trip.id),
+              amount: row.allocated,
+            }))
+            : undefined,
         },
       });
       setPaymentOpen(false);
@@ -411,6 +438,8 @@ export default function FinanceVendorDebtPage() {
                     <th className="px-3 py-2">BKS</th>
                     <th className="px-3 py-2">Chuyến / Bảng kê</th>
                     <th className="px-3 py-2 text-right">Cước chuyến</th>
+                    <th className="px-3 py-2 text-right">Đã trả</th>
+                    <th className="px-3 py-2 text-right">Còn lại</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -423,13 +452,15 @@ export default function FinanceVendorDebtPage() {
                         {trip.manifest_code ? ` · ${trip.manifest_code}` : ''}
                       </td>
                       <td className="px-3 py-2.5 text-right font-extrabold text-primary">{formatMoney(trip.trip_cost)}</td>
+                      <td className="px-3 py-2.5 text-right font-bold text-emerald-700">{formatMoney(trip.paid_amount)}</td>
+                      <td className="px-3 py-2.5 text-right font-extrabold text-amber-700">{formatMoney(trip.remaining_amount ?? Math.max(0, trip.trip_cost - (trip.paid_amount ?? 0)))}</td>
                     </tr>
                   ))}
                 </tbody>
                 {dashboard && (
                   <tfoot className="bg-amber-50 font-extrabold sticky bottom-0">
                     <tr>
-                      <td colSpan={3} className="px-3 py-2.5 text-right">
+                      <td colSpan={5} className="px-3 py-2.5 text-right">
                         Tổng {dashboard.summary.trip_count} chuyến · {dashboard.summary.license_plates.length} BKS
                       </td>
                       <td className="px-3 py-2.5 text-right text-primary">{formatMoney(dashboard.summary.total_incurred)}</td>
@@ -549,10 +580,19 @@ export default function FinanceVendorDebtPage() {
                         />
                         <span className="font-bold">#{trip.id}</span>
                         <span className="text-muted-foreground">{trip.license_plate}</span>
-                        <span className="ml-auto font-bold text-primary">{formatMoney(trip.trip_cost)}</span>
+                        <span className="ml-auto text-right text-[11px] font-bold"><span className="text-primary">{formatMoney(trip.trip_cost)}</span><span className="block text-amber-700">Còn {formatMoney(trip.remaining_amount ?? Math.max(0, trip.trip_cost - (trip.paid_amount ?? 0)))}</span></span>
                       </label>
                     ))}
                   </div>
+                  {paymentForm.trip_ids.length > 0 && (
+                    <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 text-[11px]">
+                      <p className="font-extrabold text-blue-800">Phân bổ tuần tự theo dư nợ (chuyến được tick trước nhận tiền trước)</p>
+                      {paymentAllocationPreview.rows.map((row) => (
+                        <p key={String(row.trip.id)} className="mt-1 flex justify-between gap-2 text-blue-900"><span>Chuyến #{row.trip.id}: {formatMoney(row.outstanding)} còn</span><b>{formatMoney(row.allocated)} phân bổ</b></p>
+                      ))}
+                      {paymentAllocationPreview.unallocated > 0.01 && <p className="mt-1 font-bold text-red-700">Chưa phân bổ: {formatMoney(paymentAllocationPreview.unallocated)} — giảm số tiền hoặc chọn thêm chuyến.</p>}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

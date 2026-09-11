@@ -278,6 +278,20 @@ export default function WarehouseIncomingPage({
     }
   }, [updateTrip]);
 
+  const handlePaymentNoteSave = useCallback(async (trip: IncomingTrip, note: string) => {
+    setExportError('');
+    try {
+      const updated = await apiRequest<IncomingTrip>(`/trips/${trip.id}/vendor-payment-note`, {
+        method: 'PATCH',
+        body: { note },
+      });
+      updateTrip(trip.id, { vendor_payment_note: updated.vendor_payment_note ?? note });
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : 'Không lưu được ghi chú thanh toán.');
+      throw err;
+    }
+  }, [updateTrip]);
+
   const handlePrintManifest = useCallback((trip: IncomingTrip) => {
     const manifestId = getManifestId(trip);
     if (!manifestId) return;
@@ -379,11 +393,13 @@ export default function WarehouseIncomingPage({
             canDelete={actions.canDelete}
             canPay={actions.canPay}
             canEditCost={actions.canDelete}
+            canEditPaymentNote={actions.canPay}
             onView={actions.handleView}
             onEdit={actions.handleEdit}
             onDelete={actions.handleDelete}
             onPayment={actions.handlePayment}
             onTripCostSave={handleTripCostSave}
+            onPaymentNoteSave={handlePaymentNoteSave}
           />
         )}
       </IncomingTripsPageLayout>

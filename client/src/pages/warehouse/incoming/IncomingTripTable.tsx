@@ -3,6 +3,7 @@ import type { IncomingTrip } from './types';
 import { IncomingTripRowActions } from './IncomingTripRowActions';
 import { formatMoney } from '../../../lib/formatMoney';
 import InlineMoneyInput from '../../../components/ui/InlineMoneyInput';
+import InlineTextInput from '../../../components/ui/InlineTextInput';
 import {
   formatTripDepartureDate,
   getManifestCode,
@@ -10,6 +11,7 @@ import {
   getRouteLabel,
   getTripExpenseTotal,
   getTripPayableAmount,
+  getTripPaidAmount,
   getTripRevenueAmount,
   getTripWaitingPaymentDays,
   getVendorCode,
@@ -31,6 +33,7 @@ const HEADERS = [
   'Chi phí sau khởi hành',
   'Cước chuyến đường trục',
   'Số ngày chờ TT',
+  'Ghi chú TT',
   'Trạng thái thanh toán',
   'Thao tác',
 ] as const;
@@ -44,11 +47,13 @@ export function IncomingTripTable({
   canDelete = false,
   canPay = false,
   canEditCost = false,
+  canEditPaymentNote = false,
   onView,
   onEdit,
   onDelete,
   onPayment,
   onTripCostSave,
+  onPaymentNoteSave,
 }: {
   trips: IncomingTrip[];
   emptyText: string;
@@ -56,11 +61,13 @@ export function IncomingTripTable({
   canDelete?: boolean;
   canPay?: boolean;
   canEditCost?: boolean;
+  canEditPaymentNote?: boolean;
   onView?: (trip: IncomingTrip) => void;
   onEdit?: (trip: IncomingTrip) => void;
   onDelete?: (trip: IncomingTrip) => void;
   onPayment?: (trip: IncomingTrip) => void;
   onTripCostSave?: (trip: IncomingTrip, amount: number) => Promise<void>;
+  onPaymentNoteSave?: (trip: IncomingTrip, note: string) => Promise<void>;
 }) {
   void _showOriginColumn;
   const showActions = Boolean(onView && onEdit && onDelete && onPayment);
@@ -74,7 +81,8 @@ export function IncomingTripTable({
             {emptyText}
           </div>
         ) : (
-          <table className="w-full min-w-[1720px] border-collapse text-left">
+          <>
+            <table className="hidden w-full min-w-[1840px] border-collapse text-left md:table">
             <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
               <tr className="border-b border-border">
                 {visibleHeaders.map((header) => (
@@ -86,6 +94,7 @@ export function IncomingTripTable({
                       header === '# Chuyến' && 'min-w-[90px] text-center',
                       ['Tổng cước các đơn', 'Chi phí sau khởi hành', 'Cước chuyến đường trục'].includes(header) && 'min-w-[160px] text-right',
                       header === 'Số ngày chờ TT' && 'min-w-[112px] text-center',
+                      header === 'Ghi chú TT' && 'min-w-[190px]',
                       header === 'Trạng thái thanh toán' && 'min-w-[150px] text-center',
                       header === 'Thao tác' && 'w-[76px] text-center',
                     )}
@@ -139,6 +148,15 @@ export function IncomingTripTable({
                     <td className="whitespace-nowrap px-3 py-2.5 text-center font-extrabold tabular-nums text-foreground">
                       {waitingDays == null ? '—' : `${waitingDays} ngày`}
                     </td>
+                    <td className="px-2 py-2.5">
+                      <InlineTextInput
+                        value={trip.vendor_payment_note}
+                        editable={Boolean(canEditPaymentNote && onPaymentNoteSave)}
+                        label={`Ghi chú thanh toán chuyến #${trip.id}`}
+                        placeholder="Nhập ghi chú TT..."
+                        onSave={(note) => onPaymentNoteSave?.(trip, note) ?? Promise.resolve()}
+                      />
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-center">
                       <span className={clsx('inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-[10px] font-extrabold leading-tight whitespace-nowrap', getVendorPaymentStatusTone(trip))}>
                         {getVendorPaymentStatusLabel(trip)}
@@ -161,10 +179,76 @@ export function IncomingTripTable({
                 );
               })}
             </tbody>
-          </table>
+            </table>
+            <div className="grid gap-3 p-2 md:hidden">
+              {trips.map((trip, index) => (
+                <IncomingTripMobileCard
+                  key={trip.id}
+                  trip={trip}
+                  index={index}
+                  canEditPaymentNote={canEditPaymentNote}
+                  onPaymentNoteSave={onPaymentNoteSave}
+                  onView={onView}
+                  onPayment={onPayment}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </section>
+  );
+}
+
+function IncomingTripMobileCard({
+  trip,
+  index,
+  canEditPaymentNote,
+  onPaymentNoteSave,
+  onView,
+  onPayment,
+}: {
+  trip: IncomingTrip;
+  index: number;
+  canEditPaymentNote: boolean;
+  onPaymentNoteSave?: (trip: IncomingTrip, note: string) => Promise<void>;
+  onView?: (trip: IncomingTrip) => void;
+  onPayment?: (trip: IncomingTrip) => void;
+}) {
+  return (
+    <article className="rounded-xl border border-border bg-white p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <button type="button" onClick={() => onView?.(trip)} className="text-left text-[13px] font-extrabold text-primary hover:underline">
+            #{trip.id} · {getManifestCode(trip)}
+          </button>
+          <p className="mt-0.5 truncate text-[11px] font-semibold text-muted-foreground">{getRouteLabel(trip)} · {getPlateLabel(trip)}</p>
+        </div>
+        <span className={clsx('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-extrabold', getVendorPaymentStatusTone(trip))}>
+          {getVendorPaymentStatusLabel(trip)}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+        <div className="rounded-lg bg-muted/20 px-2.5 py-2"><p className="font-bold uppercase text-muted-foreground">NCC</p><p className="mt-0.5 truncate font-extrabold">{getVendorName(trip)}</p></div>
+        <div className="rounded-lg bg-muted/20 px-2.5 py-2"><p className="font-bold uppercase text-muted-foreground">Cước phải trả</p><p className="mt-0.5 font-extrabold tabular-nums">{formatMoney(getTripPayableAmount(trip))}</p></div>
+        <div className="rounded-lg bg-muted/20 px-2.5 py-2"><p className="font-bold uppercase text-muted-foreground">Đã trả / còn</p><p className="mt-0.5 font-extrabold tabular-nums">{formatMoney(getTripPaidAmount(trip))} / {formatMoney(Math.max(0, getTripPayableAmount(trip) - getTripPaidAmount(trip)))}</p></div>
+        <div className="rounded-lg bg-muted/20 px-2.5 py-2"><p className="font-bold uppercase text-muted-foreground">Ngày chờ TT</p><p className="mt-0.5 font-extrabold">{getTripWaitingPaymentDays(trip) == null ? '—' : `${getTripWaitingPaymentDays(trip)} ngày`}</p></div>
+      </div>
+      <div className="mt-2">
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Ghi chú TT</p>
+        <InlineTextInput
+          value={trip.vendor_payment_note}
+          editable={Boolean(canEditPaymentNote && onPaymentNoteSave)}
+          label={`Ghi chú thanh toán chuyến #${trip.id}`}
+          placeholder="Nhập ghi chú TT..."
+          onSave={(note) => onPaymentNoteSave?.(trip, note) ?? Promise.resolve()}
+        />
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2">
+        <span className="text-[10px] font-semibold text-muted-foreground">STT {index + 1}</span>
+        {onPayment && <button type="button" onClick={() => onPayment(trip)} className="h-8 rounded-lg bg-emerald-600 px-3 text-[11px] font-extrabold text-white">Thanh toán</button>}
+      </div>
+    </article>
   );
 }
 

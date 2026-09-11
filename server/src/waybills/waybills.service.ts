@@ -1158,7 +1158,7 @@ export class WaybillsService {
         relations: ['origin_hub', 'dest_hub', 'current_hub'],
       }) as WaybillRecord | null;
       if (!waybill) throw new NotFoundException('Waybill not found');
-      this.assertWaybillAccess(waybill, currentUser);
+      this.assertCodDestinationHubAccess(waybill, currentUser);
       const reconciliationBefore = this.getCodReconciliationSnapshot(waybill);
 
       if (!dto.confirmed) {
@@ -1190,6 +1190,9 @@ export class WaybillsService {
       if (!fundId) throw new BadRequestException('Vui lòng chọn sổ quỹ nhận tiền');
       const fund = await cashFundsRepository.findOne({ where: { id: fundId, is_active: true }, relations: ['hub'] });
       if (!fund) throw new NotFoundException('Sổ quỹ không tồn tại hoặc đã ngừng sử dụng');
+      if (fund.hub_id && String(fund.hub_id) !== String(waybill.dest_hub_id)) {
+        throw new BadRequestException('Sổ quỹ COD phải thuộc HUB đến của vận đơn');
+      }
       if (!isManager(currentUser.role_mask) && fund.hub_id && !getAssignedHubIds(currentUser).includes(String(fund.hub_id))) {
         throw new ForbiddenException('Không được ghi nhận tiền vào sổ quỹ của bưu cục khác');
       }
@@ -3744,6 +3747,16 @@ export class WaybillsService {
       .map(String);
     if (!waybillHubIds.some((hubId) => assignedHubIds.includes(hubId))) {
       throw new ForbiddenException('User cannot access this waybill outside assigned hub');
+    }
+  }
+
+  private assertCodDestinationHubAccess(waybill: WaybillRecord, currentUser: UserEntity) {
+    const destinationHubId = waybill.dest_hub_id == null ? null : String(waybill.dest_hub_id);
+    if (!destinationHubId) throw new BadRequestException('Vận đơn chưa có HUB đến để đối soát COD');
+    if (isManager(currentUser.role_mask)) return;
+    const assignedHubIds = getAssignedHubIds(currentUser);
+    if (!assignedHubIds.length || !assignedHubIds.includes(destinationHubId)) {
+      throw new ForbiddenException('Chỉ HUB đến được thu và giữ COD của vận đơn này');
     }
   }
 

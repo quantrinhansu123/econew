@@ -181,3 +181,50 @@ describe('VendorsService opening debt', () => {
     });
   });
 });
+
+describe('VendorsService payment allocation', () => {
+  it('allocates one payment sequentially by each trip outstanding balance', () => {
+    const context = (() => {
+      const makeRepository = () => ({ find: jest.fn().mockResolvedValue([]), findOne: jest.fn(), save: jest.fn(), createQueryBuilder: jest.fn().mockReturnValue(chain()) });
+      return new VendorsService(
+        makeRepository() as any,
+        makeRepository() as any,
+        makeRepository() as any,
+        makeRepository() as any,
+        makeRepository() as any,
+        makeRepository() as any,
+        makeRepository() as any,
+      );
+    })();
+    const trips = [
+      { id: '75', trip_cost: '1000', vendor_paid_amount: '600' },
+      { id: '76', trip_cost: '800', vendor_paid_amount: '0' },
+    ] as any;
+
+    const result = (context as any).buildPaymentAllocations(900, trips);
+
+    expect([...result.entries()]).toEqual([
+      ['75', 400],
+      ['76', 500],
+    ]);
+  });
+
+  it('requires explicit allocations to equal the payment and not exceed a trip balance', () => {
+    const makeRepository = () => ({ find: jest.fn().mockResolvedValue([]), findOne: jest.fn(), save: jest.fn(), createQueryBuilder: jest.fn().mockReturnValue(chain()) });
+    const service = new VendorsService(
+      makeRepository() as any,
+      makeRepository() as any,
+      makeRepository() as any,
+      makeRepository() as any,
+      makeRepository() as any,
+      makeRepository() as any,
+      makeRepository() as any,
+    );
+    const trips = [{ id: '75', trip_cost: '1000', vendor_paid_amount: '600' }] as any;
+
+    expect(() => (service as any).buildPaymentAllocations(500, trips, [{ trip_id: 75, amount: 500 }]))
+      .toThrow('Phân bổ vượt dư nợ chuyến #75');
+    expect(() => (service as any).buildPaymentAllocations(400, trips, [{ trip_id: 75, amount: 400 }]))
+      .not.toThrow();
+  });
+});

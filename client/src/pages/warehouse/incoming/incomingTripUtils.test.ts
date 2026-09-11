@@ -5,9 +5,12 @@ import {
   collectVendorCodeOptions,
   filterTripsByVendorCode,
   formatTripDepartureDate,
+  getTripPaidAmount,
+  getTripPayableAmount,
   getPlateLabel,
   getTripProvisionalProfit,
   getTripWaitingPaymentDays,
+  getVendorPaymentStatus,
   isExpectedArrivingTrip,
   summarizeIncomingTrips,
 } from './incomingTripUtils';
@@ -92,5 +95,19 @@ describe('incoming trip summary', () => {
     ];
 
     expect(summarizeIncomingTrips(trips).totalCollect).toBe(1_000_000);
+  });
+
+  it('derives vendor payment status and remaining balance from money, not a client status field', () => {
+    const trip: IncomingTrip = {
+      id: 9,
+      trip_cost: 1_000_000,
+      other_costs: 1_000_000,
+      vendor_paid_amount: 250_000,
+      vendor_payment_status: 'PAID',
+    };
+
+    expect(getTripPayableAmount(trip)).toBe(1_000_000);
+    expect(getTripPaidAmount(trip)).toBe(250_000);
+    expect(getVendorPaymentStatus(trip)).toBe('PARTIAL');
   });
 });

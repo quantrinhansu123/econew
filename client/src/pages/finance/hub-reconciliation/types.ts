@@ -81,7 +81,15 @@ export interface CodReconciliationWaybill {
   manifest_id?: string | number | null;
   manifest_code?: string | null;
   origin_hub_code?: string | null;
+  origin_hub_name?: string | null;
   dest_hub_code?: string | null;
+  dest_hub_name?: string | null;
+  collector_hub_id?: string | number | null;
+  collector_hub_code?: string | null;
+  collector_hub_name?: string | null;
+  holder_hub_id?: string | number | null;
+  holder_hub_code?: string | null;
+  holder_hub_name?: string | null;
   fund_id?: string | number | null;
   fund_code?: string | null;
   fund_name?: string | null;

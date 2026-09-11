@@ -1,6 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { ArrayUnique, IsArray, IsDate, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { ArrayUnique, IsArray, IsDate, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested, IsUrl } from 'class-validator';
+
+export class VendorPaymentAllocationDto {
+  @Type(() => Number)
+  @IsInt()
+  trip_id!: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  amount!: number;
+}
 
 export class CreateVendorPaymentDto {
   @ApiProperty({ type: String, format: 'date-time' })
@@ -30,6 +41,13 @@ export class CreateVendorPaymentDto {
   @MaxLength(500)
   description?: string;
 
+  @ApiPropertyOptional({ description: 'Ảnh chứng từ của riêng phiếu chi' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  @IsUrl({ require_protocol: true })
+  proof_image_url?: string;
+
   @ApiPropertyOptional({ type: [Number], description: 'Gắn phiếu chi với các chuyến xe cụ thể' })
   @IsOptional()
   @IsArray()
@@ -37,4 +55,11 @@ export class CreateVendorPaymentDto {
   @Type(() => Number)
   @IsInt({ each: true })
   trip_ids?: number[];
+
+  @ApiPropertyOptional({ type: [VendorPaymentAllocationDto], description: 'Phân bổ chính xác số tiền cho từng chuyến; tổng phải bằng amount' })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => VendorPaymentAllocationDto)
+  allocations?: VendorPaymentAllocationDto[];
 }

@@ -32,7 +32,7 @@ export type IncomingVendorPaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
 
 export const vendorPaymentStatusLabel: Record<IncomingVendorPaymentStatus, string> = {
   UNPAID: 'Chờ TT',
-  PARTIAL: 'Đề xuất TT',
+  PARTIAL: 'TT một phần',
   PAID: 'Đã TT',
 };
 
@@ -54,12 +54,26 @@ export const normalizeVendorPaymentStatus = (status?: string | null): IncomingVe
   return 'UNPAID';
 };
 
+export const getDerivedVendorPaymentStatus = (trip: IncomingTrip): IncomingVendorPaymentStatus | null => {
+  const payable = getTripPayableAmount(trip);
+  const paid = getTripPaidAmount(trip);
+  if (trip.trip_cost == null && trip.other_costs == null && trip.vendor_paid_amount == null) return null;
+  if (payable <= 0) return paid > 0 ? 'PAID' : 'UNPAID';
+  if (paid >= payable) return 'PAID';
+  if (paid > 0) return 'PARTIAL';
+  return 'UNPAID';
+};
+
+export const getVendorPaymentStatus = (trip: IncomingTrip) => (
+  getDerivedVendorPaymentStatus(trip) ?? normalizeVendorPaymentStatus(trip.vendor_payment_status)
+);
+
 export const getVendorPaymentStatusLabel = (trip: IncomingTrip) => (
-  vendorPaymentStatusLabel[normalizeVendorPaymentStatus(trip.vendor_payment_status)]
+  vendorPaymentStatusLabel[getVendorPaymentStatus(trip)]
 );
 
 export const getVendorPaymentStatusTone = (trip: IncomingTrip) => (
-  vendorPaymentStatusTone[normalizeVendorPaymentStatus(trip.vendor_payment_status)]
+  vendorPaymentStatusTone[getVendorPaymentStatus(trip)]
 );
 
 export const normalizeNumber = (value?: number | string | null) => normalizeMoney(value);
@@ -361,7 +375,7 @@ export interface IncomingPaymentStatusOption {
 export const collectPaymentStatusOptions = (trips: IncomingTrip[]): IncomingPaymentStatusOption[] => {
   const statuses = new Set<IncomingVendorPaymentStatus>();
   trips.forEach((trip) => {
-    statuses.add(normalizeVendorPaymentStatus(trip.vendor_payment_status));
+    statuses.add(getVendorPaymentStatus(trip));
   });
   return PAYMENT_STATUS_FILTER_ORDER
     .filter((value) => statuses.has(value))
@@ -380,7 +394,7 @@ export const filterTripsByPaymentStatuses = (
   if (enabledPaymentStatuses.size === allPaymentStatuses.length) return trips;
   if (enabledPaymentStatuses.size === 0) return [];
   return trips.filter((trip) => (
-    enabledPaymentStatuses.has(normalizeVendorPaymentStatus(trip.vendor_payment_status))
+    enabledPaymentStatuses.has(getVendorPaymentStatus(trip))
   ));
 };
 
@@ -396,7 +410,7 @@ export const getTotalCollect = (trip: IncomingTrip) => normalizeNumber(trip.tota
 /** Tổng COD + CC trên chuyến — số tiền phải thu */
 export const getTripReceivableAmount = (trip: IncomingTrip) => getTotalCollect(trip);
 
-export const getTripPayableAmount = (trip: IncomingTrip) => normalizeNumber(trip.trip_cost);
+export const getTripPayableAmount = (trip: IncomingTrip) => normalizeNumber(trip.trip_cost ?? trip.other_costs);
 
 export const isDepartedManifestTrip = (trip: IncomingTrip) => (
   ['IN_TRANSIT', 'DEPARTED', 'ARRIVED', 'COMPLETED'].includes(normalizeTripStatus(trip.status))

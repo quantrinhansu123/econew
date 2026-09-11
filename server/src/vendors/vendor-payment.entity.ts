@@ -1,7 +1,8 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, JoinTable, ManyToMany, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { TripEntity } from '../trips/trip.entity';
 import { CashFundEntity } from '../finance/cash-fund.entity';
 import { UserEntity } from '../users/user.entity';
+import { VendorPaymentAllocationEntity } from './vendor-payment-allocation.entity';
 import { VendorEntity } from './vendor.entity';
 
 @Entity('vendor_payments')
@@ -26,6 +27,9 @@ export class VendorPaymentEntity {
 
   @Column({ type: 'varchar', nullable: true })
   description: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  proof_image_url: string | null;
 
   @Column({ type: 'bigint', nullable: true })
   created_by: string | null;
@@ -52,4 +56,7 @@ export class VendorPaymentEntity {
     inverseJoinColumn: { name: 'trip_id', referencedColumnName: 'id' },
   })
   trips: TripEntity[];
+
+  @OneToMany(() => VendorPaymentAllocationEntity, (allocation) => allocation.payment, { cascade: false })
+  allocations: VendorPaymentAllocationEntity[];
 }

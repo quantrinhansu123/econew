@@ -19,6 +19,7 @@ import { UpdateTripCargoTotalsDto } from './dto/update-trip-cargo-totals.dto';
 import { StartTripDto } from './dto/start-trip.dto';
 import { UpdateTripCostsDto } from './dto/update-trip-costs.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
+import { UpdateTripPaymentNoteDto } from './dto/update-trip-payment-note.dto';
 import { TripsService } from './trips.service';
 
 @ApiTags('Trips')
@@ -92,6 +93,17 @@ export class TripsController {
   @ApiOperation({ summary: 'Update trip schedule or transport information in every trip status' })
   update(@Param('id') id: string, @Body() dto: UpdateTripDto, @CurrentUser() currentUser: UserEntity) {
     return this.tripsService.update(id, dto, currentUser);
+  }
+
+  @Patch(':id/vendor-payment-note')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Update the vendor payment note shown in incoming trip ledgers' })
+  updateVendorPaymentNote(
+    @Param('id') id: string,
+    @Body() dto: UpdateTripPaymentNoteDto,
+    @CurrentUser() currentUser: UserEntity,
+  ) {
+    return this.tripsService.updateVendorPaymentNote(id, dto, currentUser);
   }
 
   @Patch(':id/assign-manifest')

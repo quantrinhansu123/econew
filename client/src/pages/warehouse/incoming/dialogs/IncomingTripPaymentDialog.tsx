@@ -13,9 +13,11 @@ import {
   getManifestCode,
   getPaymentNote,
   getPlateLabel,
+  getTripPaidAmount,
+  getTripPayableAmount,
   getTotalCollect,
   getVendorName,
-  normalizeVendorPaymentStatus,
+  getVendorPaymentStatus,
   vendorPaymentStatusOptions,
   type IncomingVendorPaymentStatus,
 } from '../incomingTripUtils';
@@ -33,7 +35,7 @@ export function IncomingTripPaymentDialog({
   onClose: () => void;
   onConfirm: (payload: {
     payment_status: IncomingVendorPaymentStatus;
-    paid_amount?: number;
+    payment_amount?: number;
     fund_id?: string;
     cost_category?: string;
     proofFile?: File;
@@ -52,8 +54,9 @@ export function IncomingTripPaymentDialog({
 
   useEffect(() => {
     if (!trip) return;
-    setPaymentStatus(normalizeVendorPaymentStatus(trip.vendor_payment_status));
-    setPaidAmount(formatAmountInputFromNumber(trip.vendor_paid_amount));
+    setPaymentStatus(getVendorPaymentStatus(trip));
+    const remaining = Math.max(0, getTripPayableAmount(trip) - getTripPaidAmount(trip));
+    setPaidAmount(formatAmountInputFromNumber(remaining));
     setPaymentNote(getPaymentNote(trip));
     setFundId('');
     setCostCategory((current) => costCategories.includes(current) ? current : costCategories[0] || '');
@@ -101,7 +104,7 @@ export function IncomingTripPaymentDialog({
         setLocalError('Vui lòng chọn sổ quỹ chi tiền.');
         return;
       }
-      onConfirm({ payment_status: paymentStatus, paid_amount: amount, fund_id: fundId, cost_category: costCategory, payment_note: note });
+      onConfirm({ payment_status: paymentStatus, payment_amount: amount, fund_id: fundId, cost_category: costCategory, payment_note: note });
       return;
     }
     if (paymentStatus === 'PAID') {
@@ -120,7 +123,7 @@ export function IncomingTripPaymentDialog({
       }
       onConfirm({
         payment_status: paymentStatus,
-        paid_amount: amount,
+        payment_amount: amount,
         fund_id: fundId,
         cost_category: costCategory,
         proofFile: proofFile ?? undefined,
@@ -172,7 +175,7 @@ export function IncomingTripPaymentDialog({
           {needsAmount && (
             <label className="block space-y-1">
               <span className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">
-                Bồi P trả (số tiền đã chi) {paymentStatus === 'PAID' ? '(bắt buộc)' : ''}
+                Số tiền lần chi {paymentStatus === 'PAID' ? '(bắt buộc)' : ''}
               </span>
               <input
                 type="text"

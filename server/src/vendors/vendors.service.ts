@@ -13,6 +13,7 @@ import { UserEntity } from '../users/user.entity';
 import { WaybillEntity } from '../waybills/waybill.entity';
 import { BulkUpdateTripVendorPaymentDto } from './dto/bulk-update-trip-vendor-payment.dto';
 import { CreateVendorPaymentDto } from './dto/create-vendor-payment.dto';
+import { VendorPaymentAllocationDto } from './dto/create-vendor-payment.dto';
 import { QueryVendorDebtDto } from './dto/query-vendor-debt.dto';
 import { QueryVendorTripPayablesDto } from './dto/query-vendor-trip-payables.dto';
 import { QueryVendorPaymentsDto } from './dto/query-vendor-payments.dto';
@@ -20,6 +21,7 @@ import { QueryVendorsDto } from './dto/query-vendors.dto';
 import { UpdateVendorStatusDto } from './dto/update-vendor-status.dto';
 import { UpsertVendorDto } from './dto/upsert-vendor.dto';
 import { VendorDebtEntryEntity } from './vendor-debt-entry.entity';
+import { VendorPaymentAllocationEntity } from './vendor-payment-allocation.entity';
 import { VendorPaymentEntity } from './vendor-payment.entity';
 import { VendorEntity } from './vendor.entity';
 
@@ -54,6 +56,7 @@ export class VendorsService {
     @InjectRepository(ManifestWaybillEntity) private readonly manifestWaybillsRepository: Repository<ManifestWaybillEntity>,
     @InjectRepository(ExpenseEntity) private readonly expensesRepository: Repository<ExpenseEntity>,
     @InjectRepository(WaybillEntity) private readonly waybillsRepository: Repository<WaybillEntity>,
+    @InjectRepository(VendorPaymentAllocationEntity) private readonly paymentAllocationsRepository?: Repository<VendorPaymentAllocationEntity>,
   ) {}
 
   async create(dto: UpsertVendorDto, currentUser: UserEntity) {
@@ -195,6 +198,9 @@ export class VendorsService {
         departure_time: trip.departure_time,
         status: trip.status,
         trip_cost: this.tripCost(trip),
+        paid_amount: this.toNumber(trip.vendor_paid_amount),
+        remaining_amount: Math.max(0, this.tripCost(trip) - this.toNumber(trip.vendor_paid_amount)),
+        payment_status: this.resolveVendorPaymentStatus(this.toNumber(trip.vendor_paid_amount), this.tripCost(trip)),
         license_plate: trip.truck?.bks || trip.truck?.license_plate || null,
         manifest_id: trip.manifest_id,
         manifest_code: trip.manifest?.manifest_code ?? null,
@@ -230,7 +236,16 @@ export class VendorsService {
     if (query.vendor_id) qb.andWhere('COALESCE(trip.vendor_id, truck.vendor_id) = :vendorId', { vendorId: String(query.vendor_id) });
     if (query.from) qb.andWhere('trip.departure_time >= :from', { from: query.from });
     if (query.to) qb.andWhere('trip.departure_time <= :to', { to: query.to });
-    if (query.payment_status) qb.andWhere('trip.vendor_payment_status = :paymentStatus', { paymentStatus: query.payment_status });
+    if (query.payment_status) {
+      const paymentStatusSql = `CASE
+        WHEN COALESCE(trip.trip_cost, trip.other_costs, 0) <= 0 AND COALESCE(trip.vendor_paid_amount, 0) > 0 THEN 'PAID'
+        WHEN COALESCE(trip.trip_cost, trip.other_costs, 0) <= 0 THEN 'UNPAID'
+        WHEN COALESCE(trip.vendor_paid_amount, 0) >= COALESCE(trip.trip_cost, trip.other_costs, 0) THEN 'PAID'
+        WHEN COALESCE(trip.vendor_paid_amount, 0) > 0 THEN 'PARTIAL'
+        ELSE 'UNPAID'
+      END`;
+      qb.andWhere(`${paymentStatusSql} = :paymentStatus`, { paymentStatus: query.payment_status });
+    }
     if (query.keyword?.trim()) {
       const keyword = `%${query.keyword.trim()}%`;
       qb.andWhere(new Brackets((inner) => inner
@@ -272,64 +287,110 @@ export class VendorsService {
     const tripIds = [...new Set(dto.trip_ids.map((id) => String(id)))];
     const trips = await this.tripsRepository.find({ where: { id: In(tripIds) }, relations: ['truck', 'vendor'] });
     if (trips.length !== tripIds.length) throw new NotFoundException('One or more trips not found');
-
-    if (dto.payment_status === VendorTripPaymentStatus.PAID) {
-      if (dto.paid_amount == null || dto.paid_amount <= 0) {
-        throw new BadRequestException('Đã thanh toán phải nhập số tiền lớn hơn 0.');
-      }
-      if (!dto.proof_image_url?.trim()) {
-        throw new BadRequestException('Đã thanh toán phải có ảnh chứng từ.');
-      }
-    }
-
     const fund = dto.fund_id ? await this.findActiveCashFund(dto.fund_id, currentUser) : null;
     await this.runInTransaction(async (manager) => {
       const paymentsRepository = manager?.getRepository(VendorPaymentEntity) ?? this.paymentsRepository;
+      const allocationsRepository = manager?.getRepository(VendorPaymentAllocationEntity) ?? this.paymentAllocationsRepository;
       const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
       const transactionTrips = await this.lockTripsForPaymentUpdate(trips, manager);
+      const tripById = new Map(transactionTrips.map((trip) => [String(trip.id), trip]));
+      const orderedTrips = tripIds.map((id) => tripById.get(id)).filter((trip): trip is TripEntity => Boolean(trip));
+      const vendorIds = [...new Set(orderedTrips.map((trip) => this.resolveTripVendorId(trip)).filter(Boolean))] as string[];
+      if (vendorIds.length > 1) throw new BadRequestException('Một phiếu chi chỉ được gắn các chuyến của cùng một NCC');
+      const vendorId = vendorIds[0] ?? null;
+
+      // payment_amount is the amount of this payment. paid_amount remains
+      // accepted as the old "target total paid" contract for integrations.
+      const isIncrement = dto.payment_amount != null || dto.allocations != null;
+      const requestedAmount = dto.payment_amount ?? dto.paid_amount ?? 0;
+      const incrementByTrip = new Map<string, number>();
+
+      if (dto.allocations) {
+        const seen = new Set<string>();
+        let allocatedTotal = 0;
+        for (const allocation of dto.allocations) {
+          const tripId = String(allocation.trip_id);
+          if (seen.has(tripId) || !tripById.has(tripId)) throw new BadRequestException(`Phân bổ chuyến #${tripId} không hợp lệ`);
+          seen.add(tripId);
+          const amount = Number(allocation.amount);
+          if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('Số tiền phân bổ phải lớn hơn 0');
+          incrementByTrip.set(tripId, amount);
+          allocatedTotal += amount;
+        }
+        if (Math.abs(allocatedTotal - requestedAmount) > 0.01) {
+          throw new BadRequestException('Tổng phân bổ phải bằng số tiền phiếu chi');
+        }
+      } else if (isIncrement) {
+        let remainingToAllocate = requestedAmount;
+        if (!Number.isFinite(remainingToAllocate) || remainingToAllocate <= 0) {
+          throw new BadRequestException('Số tiền lần chi phải lớn hơn 0');
+        }
+        for (const trip of orderedTrips) {
+          const outstanding = Math.max(0, this.tripCost(trip) - this.toNumber(trip.vendor_paid_amount));
+          const amount = Math.min(outstanding, remainingToAllocate);
+          if (amount > 0) incrementByTrip.set(String(trip.id), amount);
+          remainingToAllocate -= amount;
+          if (remainingToAllocate <= 0.009) break;
+        }
+        if (remainingToAllocate > 0.01) throw new BadRequestException('Số tiền chi vượt quá tổng dư nợ các chuyến đã chọn');
+      } else if (dto.paid_amount != null) {
+        // Backwards compatible target-total mode.
+        for (const trip of orderedTrips) {
+          const target = Math.max(0, Number(dto.paid_amount));
+          const current = this.toNumber(trip.vendor_paid_amount);
+          const payable = this.tripCost(trip);
+          if (target < current) throw new BadRequestException(`Không thể giảm số tiền đã chi của chuyến #${trip.id}`);
+          const amount = Math.min(payable, target) - current;
+          if (amount > 0) incrementByTrip.set(String(trip.id), amount);
+        }
+      }
+
+      const totalIncrease = [...incrementByTrip.values()].reduce((sum, amount) => sum + amount, 0);
+      if (totalIncrease > 0) {
+        if (!fund) throw new BadRequestException('Vui lòng chọn sổ quỹ chi tiền');
+        if (!vendorId) throw new BadRequestException('Các chuyến đã chọn chưa gán nhà cung cấp');
+        const payment = await paymentsRepository.save(paymentsRepository.create({
+          vendor_id: vendorId,
+          amount: String(totalIncrease),
+          payment_date: new Date(),
+          fund_id: String(fund.id),
+          cost_category: dto.cost_category?.trim() || 'Thanh toán cước chuyến',
+          description: dto.payment_note?.trim() || `Thanh toán cước ${orderedTrips.map((trip) => `chuyến #${trip.id}`).join(', ')}`,
+          proof_image_url: dto.proof_image_url?.trim() || null,
+          created_by: currentUser.id,
+          trips: orderedTrips.filter((trip) => incrementByTrip.has(String(trip.id))),
+        }));
+        if (allocationsRepository) {
+          await allocationsRepository.save([...incrementByTrip.entries()].map(([tripId, amount]) => allocationsRepository.create({
+            payment_id: String(payment.id),
+            trip_id: tripId,
+            amount: String(amount),
+          })));
+        }
+      }
+
       const changedVendorIds = new Set<string>();
-      for (const trip of transactionTrips) {
+      for (const trip of orderedTrips) {
+        const currentPaid = this.toNumber(trip.vendor_paid_amount);
+        const increment = incrementByTrip.get(String(trip.id)) ?? 0;
+        const nextPaid = currentPaid + increment;
         const payable = this.tripCost(trip);
-        const currentPaid = Number(trip.vendor_paid_amount ?? 0) || 0;
-        let paid = dto.paid_amount;
-        if (paid == null) {
-          if (dto.payment_status === VendorTripPaymentStatus.UNPAID) paid = 0;
-          else paid = Number(trip.vendor_paid_amount ?? 0);
+        if (nextPaid > payable + 0.01) throw new BadRequestException(`Số tiền chi vượt quá dư nợ chuyến #${trip.id}`);
+        trip.vendor_paid_amount = String(Math.min(payable, nextPaid));
+        trip.vendor_payment_status = this.resolveVendorPaymentStatus(nextPaid, payable);
+        if (dto.proof_image_url?.trim()) trip.vendor_payment_proof_url = dto.proof_image_url.trim();
+        if (dto.payment_note !== undefined) trip.vendor_payment_note = dto.payment_note.trim() || null;
+        if (increment > 0) {
+          const resolvedVendor = this.resolveTripVendorId(trip);
+          if (resolvedVendor) changedVendorIds.add(resolvedVendor);
         }
-        if (paid > payable && payable > 0) paid = payable;
-        const paymentIncrease = paid - currentPaid;
-        if (paymentIncrease < 0) {
-          throw new BadRequestException(`Không thể giảm số tiền đã chi của chuyến #${trip.id}; hãy xóa phiếu chi liên quan trước`);
-        }
-        if (paymentIncrease > 0) {
-          if (!fund) throw new BadRequestException('Vui lòng chọn sổ quỹ chi tiền');
-          if (!trip.vendor_id) throw new BadRequestException(`Chuyến #${trip.id} chưa gán nhà cung cấp`);
-          await paymentsRepository.save(paymentsRepository.create({
-            vendor_id: String(trip.vendor_id),
-            amount: String(paymentIncrease),
-            payment_date: new Date(),
-            fund_id: String(fund.id),
-            cost_category: dto.cost_category?.trim() || 'Thanh toán cước chuyến',
-            description: dto.payment_note?.trim() || `Thanh toán cước chuyến #${trip.id}`,
-            created_by: currentUser.id,
-            trips: [trip],
-          }));
-          changedVendorIds.add(String(trip.vendor_id));
-        }
-        trip.vendor_paid_amount = String(paid);
-        trip.vendor_payment_status = this.resolveVendorPaymentStatus(paid, payable, dto.payment_status);
-        if (dto.payment_status === VendorTripPaymentStatus.PAID && dto.proof_image_url?.trim()) {
-          trip.vendor_payment_proof_url = dto.proof_image_url.trim();
-        } else if (dto.payment_status !== VendorTripPaymentStatus.PAID) {
-          trip.vendor_payment_proof_url = null;
-        }
-        if (dto.payment_note !== undefined) {
-          trip.vendor_payment_note = dto.payment_note.trim() || null;
+        if (trip.vendor_payment_status === VendorTripPaymentStatus.PAID && !trip.vendor_payment_proof_url?.trim()) {
+          throw new BadRequestException(`Chuyến #${trip.id} đã đủ cước nhưng chưa có ảnh chứng từ`);
         }
         await tripsRepository.save(trip);
       }
 
-      for (const vendorId of changedVendorIds) await this.refreshPayableBalance(vendorId, manager);
+      for (const changedVendorId of changedVendorIds) await this.refreshPayableBalance(changedVendorId, manager);
     });
 
     return { updated_count: trips.length, trip_ids: tripIds };
@@ -339,7 +400,7 @@ export class VendorsService {
     await this.findOne(vendorId);
     return this.paymentsRepository.find({
       where: { vendor_id: vendorId },
-      relations: ['trips', 'creator', 'fund'],
+      relations: ['trips', 'allocations', 'creator', 'fund'],
       order: { payment_date: 'DESC' },
     });
   }
@@ -352,7 +413,8 @@ export class VendorsService {
       .leftJoinAndSelect('payment.vendor', 'vendor')
       .leftJoinAndSelect('payment.creator', 'creator')
       .leftJoinAndSelect('payment.fund', 'fund')
-      .leftJoinAndSelect('payment.trips', 'trips');
+      .leftJoinAndSelect('payment.trips', 'trips')
+      .leftJoinAndSelect('payment.allocations', 'allocations');
 
     if (query.vendor_id?.trim()) {
       qb.andWhere('payment.vendor_id = :vendorId', { vendorId: query.vendor_id.trim() });
@@ -410,8 +472,10 @@ export class VendorsService {
 
     const payment = await this.runInTransaction(async (manager) => {
       const paymentsRepository = manager?.getRepository(VendorPaymentEntity) ?? this.paymentsRepository;
+      const allocationsRepository = manager?.getRepository(VendorPaymentAllocationEntity) ?? this.paymentAllocationsRepository;
       const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
       const transactionTrips = await this.lockTripsForPaymentUpdate(linkedTrips, manager);
+      const incrementByTrip = this.buildPaymentAllocations(dto.amount, transactionTrips, dto.allocations);
       const savedPayment = await paymentsRepository.save(
         paymentsRepository.create({
           vendor_id: vendorId,
@@ -420,21 +484,29 @@ export class VendorsService {
           fund_id: String(fund.id),
           cost_category: dto.cost_category.trim(),
           description: dto.description?.trim() || null,
+          proof_image_url: dto.proof_image_url?.trim() || null,
           created_by: currentUser.id,
-          trips: transactionTrips,
+          trips: transactionTrips.filter((trip) => incrementByTrip.has(String(trip.id))),
         }),
       );
 
-      if (transactionTrips.length) {
-        const perTrip = dto.amount / transactionTrips.length;
-        for (const trip of transactionTrips) {
-          const payable = this.tripCost(trip);
-          const currentPaid = Number(trip.vendor_paid_amount ?? 0);
-          const nextPaid = Math.min(payable, currentPaid + perTrip);
-          trip.vendor_paid_amount = String(nextPaid);
-          trip.vendor_payment_status = this.resolveVendorPaymentStatus(nextPaid, payable);
-          await tripsRepository.save(trip);
-        }
+      if (allocationsRepository && incrementByTrip.size) {
+        await allocationsRepository.save([...incrementByTrip.entries()].map(([tripId, amount]) => allocationsRepository.create({
+          payment_id: String(savedPayment.id),
+          trip_id: tripId,
+          amount: String(amount),
+        })));
+      }
+      for (const trip of transactionTrips) {
+        const increment = incrementByTrip.get(String(trip.id)) ?? 0;
+        if (increment <= 0) continue;
+        const payable = this.tripCost(trip);
+        const currentPaid = this.toNumber(trip.vendor_paid_amount);
+        const nextPaid = currentPaid + increment;
+        trip.vendor_paid_amount = String(nextPaid);
+        trip.vendor_payment_status = this.resolveVendorPaymentStatus(nextPaid, payable);
+        if (dto.proof_image_url?.trim()) trip.vendor_payment_proof_url = dto.proof_image_url.trim();
+        await tripsRepository.save(trip);
       }
 
       await this.refreshPayableBalance(vendorId, manager);
@@ -443,7 +515,7 @@ export class VendorsService {
 
     return this.paymentsRepository.findOne({
       where: { id: payment.id },
-      relations: ['trips', 'creator', 'fund'],
+      relations: ['trips', 'allocations', 'creator', 'fund'],
     });
   }
 
@@ -454,7 +526,7 @@ export class VendorsService {
 
     const payments = await this.paymentsRepository.find({
       where: { id: In(ids) },
-      relations: ['trips'],
+      relations: ['trips', 'allocations'],
     });
     if (payments.length !== ids.length) {
       throw new NotFoundException('One or more vendor payments not found');
@@ -476,9 +548,11 @@ export class VendorsService {
       for (const payment of payments) {
         const linkedTrips = payment.trips ?? [];
         if (!linkedTrips.length) continue;
-        const contribution = Number(payment.amount ?? 0) / linkedTrips.length;
+        const allocationByTrip = new Map((payment.allocations ?? []).map((allocation) => [String(allocation.trip_id), Number(allocation.amount ?? 0)]));
+        const fallbackContribution = Number(payment.amount ?? 0) / linkedTrips.length;
         for (const trip of linkedTrips) {
           const tripId = String(trip.id);
+          const contribution = allocationByTrip.get(tripId) ?? fallbackContribution;
           const current = deductionByTrip.get(tripId) ?? { trip: lockedTripById.get(tripId) ?? trip, amount: 0 };
           current.amount += contribution;
           deductionByTrip.set(tripId, current);
@@ -591,16 +665,69 @@ export class VendorsService {
     return trips;
   }
 
+  private buildPaymentAllocations(
+    amount: number,
+    trips: TripEntity[],
+    requested?: VendorPaymentAllocationDto[],
+  ): Map<string, number> {
+    const result = new Map<string, number>();
+    if (!trips.length) {
+      if (requested?.length) throw new BadRequestException('Phân bổ chuyến phải đi kèm trip_ids');
+      return result;
+    }
+    const tripById = new Map(trips.map((trip) => [String(trip.id), trip]));
+
+    if (requested) {
+      let total = 0;
+      for (const item of requested) {
+        const tripId = String(item.trip_id);
+        if (result.has(tripId) || !tripById.has(tripId)) {
+          throw new BadRequestException(`Phân bổ chuyến #${tripId} không hợp lệ`);
+        }
+        const allocation = Number(item.amount);
+        if (!Number.isFinite(allocation) || allocation <= 0) throw new BadRequestException('Số tiền phân bổ phải lớn hơn 0');
+        const trip = tripById.get(tripId)!;
+        const outstanding = Math.max(0, this.tripCost(trip) - this.toNumber(trip.vendor_paid_amount));
+        if (allocation > outstanding + 0.01) throw new BadRequestException(`Phân bổ vượt dư nợ chuyến #${tripId}`);
+        result.set(tripId, allocation);
+        total += allocation;
+      }
+      if (Math.abs(total - amount) > 0.01) throw new BadRequestException('Tổng phân bổ phải bằng số tiền phiếu chi');
+      return result;
+    }
+
+    let remaining = amount;
+    for (const trip of trips) {
+      const outstanding = Math.max(0, this.tripCost(trip) - this.toNumber(trip.vendor_paid_amount));
+      const allocation = Math.min(outstanding, remaining);
+      if (allocation > 0) result.set(String(trip.id), allocation);
+      remaining -= allocation;
+      if (remaining <= 0.01) break;
+    }
+    if (remaining > 0.01) throw new BadRequestException('Số tiền chi vượt quá tổng dư nợ các chuyến đã chọn');
+    return result;
+  }
+
   private tripCost(trip: TripEntity): number {
     const cost = Number(trip.trip_cost ?? trip.other_costs ?? 0);
     return Number.isFinite(cost) ? cost : 0;
   }
 
+  private toNumber(value: unknown): number {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private resolveTripVendorId(trip: TripEntity): string | null {
+    const id = trip.vendor_id ?? trip.vendor?.id ?? trip.truck?.vendor_id ?? trip.truck?.vendor?.id;
+    return id == null || String(id).trim() === '' ? null : String(id);
+  }
+
   private resolveVendorPaymentStatus(paid: number, payable: number, preferred?: VendorTripPaymentStatus): VendorTripPaymentStatus {
-    if (preferred === VendorTripPaymentStatus.UNPAID) return VendorTripPaymentStatus.UNPAID;
-    if (payable <= 0 || paid >= payable) return VendorTripPaymentStatus.PAID;
+    if (payable <= 0) return paid > 0 ? VendorTripPaymentStatus.PAID : VendorTripPaymentStatus.UNPAID;
+    if (paid >= payable) return VendorTripPaymentStatus.PAID;
     if (paid > 0) return VendorTripPaymentStatus.PARTIAL;
-    return preferred ?? VendorTripPaymentStatus.UNPAID;
+    return VendorTripPaymentStatus.UNPAID;
   }
 
   private mapTripPayableRow(trip: TripEntity, revenueMap: Map<string, number>) {
@@ -634,7 +761,8 @@ export class VendorsService {
       fuel_cost: fuelCost,
       other_costs: otherCosts,
       estimated_profit: estimatedProfit,
-      payment_status: trip.vendor_payment_status ?? VendorTripPaymentStatus.UNPAID,
+      payment_status: this.resolveVendorPaymentStatus(totalPaid, totalPayable),
+      vendor_payment_status: this.resolveVendorPaymentStatus(totalPaid, totalPayable),
     };
   }
 

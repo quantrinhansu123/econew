@@ -36,6 +36,7 @@ import { TruckEntity } from './trucks/truck.entity';
 import { UserEntity } from './users/user.entity';
 import { UserHubEntity } from './users/user-hub.entity';
 import { VendorDebtEntryEntity } from './vendors/vendor-debt-entry.entity';
+import { VendorPaymentAllocationEntity } from './vendors/vendor-payment-allocation.entity';
 import { VendorPaymentEntity } from './vendors/vendor-payment.entity';
 import { VendorEntity } from './vendors/vendor.entity';
 import { VehicleCostEntity } from './vehicle-costs/vehicle-cost.entity';
@@ -98,6 +99,7 @@ export default new DataSource({
     VehicleCostEntity,
     VehicleDirectoryEntity,
     VendorDebtEntryEntity,
+    VendorPaymentAllocationEntity,
     VendorEntity,
     VendorPaymentEntity,
     WarehouseEntity,

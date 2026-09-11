@@ -27,9 +27,9 @@ import {
   getPlateLabel,
   getTripStatusLabel,
   getTripStatusTone,
+  getVendorPaymentStatus,
   getVendorPaymentStatusLabel,
   getVendorPaymentStatusTone,
-  normalizeVendorPaymentStatus,
 } from '../incomingTripUtils';
 
 const formatDateTime = (value?: string | null) => (
@@ -100,8 +100,6 @@ export function IncomingTripDetailDialog({
   };
 
   const paymentSummary = detail?.payment_summary;
-  const paymentStatus = normalizeVendorPaymentStatus(paymentSummary?.status || trip.vendor_payment_status);
-  const paymentTrip = { ...trip, vendor_payment_status: paymentStatus };
   const displayPaidAmount = normalizeMoney(
     paymentSummary?.paid_amount
     ?? paymentSummary?.vendor_paid_amount
@@ -109,8 +107,21 @@ export function IncomingTripDetailDialog({
   );
   const displayPayableAmount = normalizeMoney(
     paymentSummary?.payable_amount
-    ?? detail?.trip_cost,
+    ?? detail?.trip_cost
+    ?? trip.trip_cost
+    ?? trip.other_costs,
   );
+  const displayRemainingAmount = Math.max(0, displayPayableAmount - displayPaidAmount);
+  const paymentTrip = {
+    ...trip,
+    trip_cost: displayPayableAmount,
+    vendor_paid_amount: displayPaidAmount,
+    vendor_payment_status: getVendorPaymentStatus({
+      ...trip,
+      trip_cost: displayPayableAmount,
+      vendor_paid_amount: displayPaidAmount,
+    }),
+  };
 
   const dialog = (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4">
@@ -232,6 +243,10 @@ export function IncomingTripDetailDialog({
                       <div>
                         <p className="text-[11px] font-bold text-muted-foreground">Phải trả NCC</p>
                         <p className="mt-1 text-[15px] font-black tabular-nums text-foreground">{formatMoney(displayPayableAmount, { empty: '0 đ' })}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold text-muted-foreground">Còn lại</p>
+                        <p className={clsx('mt-1 text-[15px] font-black tabular-nums', displayRemainingAmount > 0 ? 'text-amber-700' : 'text-emerald-700')}>{formatMoney(displayRemainingAmount, { empty: '0 đ' })}</p>
                       </div>
                       <div>
                         <p className="text-[11px] font-bold text-muted-foreground">Chứng từ</p>

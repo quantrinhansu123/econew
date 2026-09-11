@@ -29,6 +29,7 @@ import { UpdateLoadingSequenceDto } from './dto/update-loading-sequence.dto';
 import { UpdateTripCargoTotalsDto } from './dto/update-trip-cargo-totals.dto';
 import { UpdateTripCostsDto } from './dto/update-trip-costs.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
+import { UpdateTripPaymentNoteDto } from './dto/update-trip-payment-note.dto';
 import { TripEntity } from './trip.entity';
 import { resolveTripArrivalSchedule } from './trip-arrival-schedule';
 
@@ -348,6 +349,12 @@ export class TripsService {
       await Promise.all(affectedVendorIds.map((vendorId) => this.vendorsService.refreshPayableBalance(vendorId)));
     }
     return savedTrip;
+  }
+
+  async updateVendorPaymentNote(id: string, dto: UpdateTripPaymentNoteDto, currentUser: UserEntity): Promise<TripEntity> {
+    const trip = await this.findOne(id, currentUser);
+    trip.vendor_payment_note = dto.note?.trim() || null;
+    return this.tripsRepository.save(trip);
   }
 
   async assignManifest(id: string, dto: AssignManifestDto, currentUser: UserEntity): Promise<TripEntity> {
@@ -737,14 +744,30 @@ export class TripsService {
       .createQueryBuilder('payment')
       .leftJoinAndSelect('payment.creator', 'creator')
       .leftJoinAndSelect('payment.vendor', 'vendor')
-      .innerJoin('payment.trips', 'linked_trip')
+      .leftJoinAndSelect('payment.allocations', 'allocation')
+      .innerJoinAndSelect('payment.trips', 'linked_trip')
       .where('linked_trip.id = :tripId', { tripId: id })
       .orderBy('payment.payment_date', 'DESC')
       .addOrderBy('payment.id', 'DESC')
       .getMany();
 
-    const payment_history = [
-      ...(paid > 0 || trip.vendor_payment_proof_url || trip.vendor_payment_status !== VendorTripPaymentStatus.UNPAID
+    const payment_history = payments.length
+      ? payments.map((payment) => ({
+      id: payment.id,
+      type: 'VENDOR_PAYMENT' as const,
+      amount: (() => {
+        const allocation = payment.allocations?.find((item) => String(item.trip_id) === String(id));
+        if (allocation) return Number(allocation.amount ?? 0);
+        const linkedTripCount = payment.trips?.length || 1;
+        return Number(payment.amount ?? 0) / linkedTripCount;
+      })(),
+      payment_date: payment.payment_date,
+      description: payment.description,
+      proof_image_url: payment.proof_image_url ?? null,
+      created_by_name: payment.creator?.full_name?.trim() || payment.creator?.username?.trim() || null,
+      vendor_name: payment.vendor?.name?.trim() || null,
+    }))
+      : (paid > 0 || trip.vendor_payment_proof_url || trip.vendor_payment_status !== VendorTripPaymentStatus.UNPAID
         ? [{
           id: `trip-${trip.id}`,
           type: 'TRIP_STATUS' as const,
@@ -755,18 +778,7 @@ export class TripsService {
           created_by_name: null,
           vendor_name: trip.vendor?.name?.trim() || trip.truck?.vendor?.name?.trim() || trip.truck?.nha_xe?.trim() || null,
         }]
-        : []),
-      ...payments.map((payment) => ({
-      id: payment.id,
-      type: 'VENDOR_PAYMENT' as const,
-      amount: Number(payment.amount ?? 0),
-      payment_date: payment.payment_date,
-      description: payment.description,
-      proof_image_url: null,
-      created_by_name: payment.creator?.full_name?.trim() || payment.creator?.username?.trim() || null,
-      vendor_name: payment.vendor?.name?.trim() || null,
-    })),
-    ];
+        : []);
 
     return {
       id: trip.id,
@@ -808,7 +820,7 @@ export class TripsService {
       fuel_cost: Number(trip.fuel_cost ?? 0) || 0,
       other_costs: Number(trip.other_costs ?? 0) || 0,
       payment_summary: {
-        status: trip.vendor_payment_status,
+        status: this.resolveVendorPaymentStatus(paid, payable),
         paid_amount: paid,
         payable_amount: payable,
         proof_image_url: trip.vendor_payment_proof_url,
@@ -1325,7 +1337,16 @@ export class TripsService {
       vendor_id: trip.vendor?.id ?? trip.vendor_id ?? trip.truck?.vendor?.id ?? trip.truck?.vendor_id ?? null,
       vendor_code: trip.vendor?.code?.trim() || trip.truck?.vendor?.code?.trim() || null,
       vehicle_type: trip.truck?.loai_xe?.trim() || null,
+      vendor_payment_status: this.resolveVendorPaymentStatus(trip.vendor_paid_amount, trip.trip_cost ?? trip.other_costs),
     };
+  }
+
+  private resolveVendorPaymentStatus(paidValue: Money, payableValue: Money): VendorTripPaymentStatus {
+    const paid = Math.max(0, Number(paidValue ?? 0) || 0);
+    const payable = Math.max(0, Number(payableValue ?? 0) || 0);
+    if (payable <= 0) return paid > 0 ? VendorTripPaymentStatus.PAID : VendorTripPaymentStatus.UNPAID;
+    if (paid >= payable) return VendorTripPaymentStatus.PAID;
+    return paid > 0 ? VendorTripPaymentStatus.PARTIAL : VendorTripPaymentStatus.UNPAID;
   }
 
   private calcWaybillCollectAmount(waybill: WaybillEntity): number {

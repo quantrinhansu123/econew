@@ -213,7 +213,17 @@ export class FinanceService {
     if (query.collection_status === 'COLLECTED') qb.andWhere('waybill.cod_reconciled_at IS NOT NULL');
     if (query.date_from) qb.andWhere('COALESCE(waybill.sent_date, waybill.created_at::date) >= :dateFrom', { dateFrom: query.date_from });
     if (query.date_to) qb.andWhere('COALESCE(waybill.sent_date, waybill.created_at::date) <= :dateTo', { dateTo: query.date_to });
-    this.applyWaybillScope(qb, query.hub_id, currentUser);
+    // COD is collected and held by the destination hub. Do not use the
+    // generic origin/current/destination scope here: that made an origin
+    // hub's users appear as collectors and let the same bill surface in the
+    // wrong hub statement.
+    if (query.hub_id) {
+      qb.andWhere('waybill.dest_hub_id = :codDestinationHubId', { codDestinationHubId: String(query.hub_id) });
+    } else if (!isManager(currentUser.role_mask)) {
+      const assignedHubIds = getAssignedHubIds(currentUser);
+      if (!assignedHubIds.length) throw new ForbiddenException('User is not assigned to a destination hub');
+      qb.andWhere('waybill.dest_hub_id IN (:...codDestinationHubIds)', { codDestinationHubIds: assignedHubIds });
+    }
 
     const total = await qb.clone().getCount();
     const rawItems = await qb
@@ -225,7 +235,15 @@ export class FinanceService {
       .addSelect('waybill.origin_hub_id', 'origin_hub_id')
       .addSelect('waybill.dest_hub_id', 'dest_hub_id')
       .addSelect('origin_hub.code', 'origin_hub_code')
+      .addSelect('origin_hub.name', 'origin_hub_name')
       .addSelect('dest_hub.code', 'dest_hub_code')
+      .addSelect('dest_hub.name', 'dest_hub_name')
+      .addSelect('dest_hub.id', 'collector_hub_id')
+      .addSelect('dest_hub.code', 'collector_hub_code')
+      .addSelect('dest_hub.name', 'collector_hub_name')
+      .addSelect('dest_hub.id', 'holder_hub_id')
+      .addSelect('dest_hub.code', 'holder_hub_code')
+      .addSelect('dest_hub.name', 'holder_hub_name')
       .addSelect('waybill.current_state', 'current_state')
       .addSelect('waybill.payment_type', 'payment_type')
       .addSelect('waybill.note', 'payment_note_source')
