@@ -943,6 +943,59 @@ describe('WaybillsService', () => {
     expect(tripsRepository.save).not.toHaveBeenCalled();
   });
 
+  it('keeps an existing trip assignment and repairs its missing manifest link when saving splits', async () => {
+    const waybill = makeWaybill({
+      id: '909',
+      waybill_code: 'ECOHAN109728',
+      package_count: 94,
+      current_state: WaybillStatus.MANIFEST_CLOSED,
+      status: WaybillStatus.MANIFEST_CLOSED,
+    });
+    waybillsRepository.findOne.mockResolvedValue(waybill);
+    splitsRepository.find.mockResolvedValue([{
+      id: '961',
+      waybill_id: '909',
+      trip_id: '166',
+      truck_id: '125',
+      package_count: 94,
+      loading_position: 3,
+      load_status: WaybillSplitLoadStatus.LOADED,
+    }]);
+    tripsRepository.findOne.mockResolvedValue({
+      id: '166',
+      manifest_id: '149',
+      truck_id: '125',
+      truck: { id: '125', license_plate: 'XE GHÉP THẮNG LỢI' },
+    });
+    trucksRepository.findOne.mockResolvedValue({ id: '125', license_plate: 'XE GHÉP THẮNG LỢI' });
+    manifestWaybillsRepository.findOne.mockResolvedValue(null);
+    manifestWaybillsRepository.find.mockResolvedValue([
+      { manifest_id: '149', waybill_id: '892', loading_position: 1 },
+      { manifest_id: '149', waybill_id: '907', loading_position: 2 },
+    ]);
+    jest.spyOn(service, 'getPackageSplits').mockResolvedValue({ repaired: true } as any);
+
+    await service.savePackageSplits('909', {
+      splits: [{
+        id: '961',
+        truck_id: '125',
+        package_count: 94,
+        loading_position: 3,
+        load_status: WaybillSplitLoadStatus.LOADED,
+      }],
+    }, manager);
+
+    expect(splitsRepository.save).toHaveBeenCalledWith([
+      expect.objectContaining({ trip_id: '166', truck_id: '125', package_count: 94 }),
+    ]);
+    expect(manifestWaybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      manifest_id: '149',
+      waybill_id: '909',
+      loading_position: 3,
+      dispatch_fields: expect.objectContaining({ so_luong: '94' }),
+    }));
+  });
+
   it('bulk stack stops when package allocation changes after the waybill lock is acquired', async () => {
     setupMixedDestinationBulkStack();
     splitsRepository.find

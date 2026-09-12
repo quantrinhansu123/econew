@@ -1990,18 +1990,33 @@ export class WaybillsService {
       relations: ['order'],
     });
     const totalPackages = this.resolveTotalPackages((waybillWithOrder ?? waybill) as WaybillRecord);
-    const allocated = dto.splits.reduce((sum, line) => sum + line.package_count, 0);
+    const existingRows = await this.splitsRepository.find({ where: { waybill_id: id } });
+    const existingById = new Map(existingRows.map((row) => [String(row.id), row]));
+    const normalizedLines = dto.splits.map((line) => ({
+      ...line,
+      trip_id: line.trip_id
+        ? String(line.trip_id)
+        : line.id && existingById.get(String(line.id))?.trip_id
+          ? String(existingById.get(String(line.id))!.trip_id)
+          : undefined,
+    }));
+    const allocated = normalizedLines.reduce((sum, line) => sum + line.package_count, 0);
     if (allocated > totalPackages) {
       throw new BadRequestException(`Allocated packages (${allocated}) exceed order total (${totalPackages})`);
     }
 
-    for (const line of dto.splits) {
+    const tripsById = new Map<string, TripEntity>();
+    for (const line of normalizedLines) {
       if (!line.trip_id && !line.truck_id) {
         throw new BadRequestException('Each split line requires trip_id or truck_id');
       }
       if (line.trip_id) {
         const trip = await this.tripsRepository.findOne({ where: { id: String(line.trip_id) }, relations: ['truck'] });
         if (!trip) throw new NotFoundException(`Trip ${line.trip_id} not found`);
+        tripsById.set(String(trip.id), trip);
+        if (line.truck_id && trip.truck_id && String(line.truck_id) !== String(trip.truck_id)) {
+          throw new BadRequestException(`Truck ${line.truck_id} does not belong to trip ${line.trip_id}`);
+        }
         if (!line.truck_id && trip.truck_id) line.truck_id = trip.truck_id;
         if (!line.carrier_label?.trim()) {
           line.carrier_label = trip.truck?.nha_xe ?? trip.truck?.license_plate ?? trip.driver_name ?? undefined;
@@ -2016,13 +2031,12 @@ export class WaybillsService {
       }
     }
 
-    const existingRows = await this.splitsRepository.find({ where: { waybill_id: id } });
     const statusById = new Map(existingRows.map((row) => [String(row.id), row.load_status]));
 
     await this.dataSource.transaction(async (manager) => {
       const splitsRepository = manager.getRepository(WaybillSplitEntity);
       await splitsRepository.delete({ waybill_id: id });
-      const rows = dto.splits.map((line) => splitsRepository.create({
+      const rows = normalizedLines.map((line) => splitsRepository.create({
         waybill_id: id,
         trip_id: line.trip_id ? String(line.trip_id) : null,
         truck_id: line.truck_id ? String(line.truck_id) : null,
@@ -2039,9 +2053,75 @@ export class WaybillsService {
         created_by: currentUser.id,
       }));
       if (rows.length) await splitsRepository.save(rows);
+      await this.ensureSplitManifestLinks(waybill, rows, tripsById, manager);
     });
 
     return this.getPackageSplits(id, currentUser);
+  }
+
+  private async ensureSplitManifestLinks(
+    waybill: WaybillRecord,
+    splits: WaybillSplitEntity[],
+    tripsById: Map<string, TripEntity>,
+    manager: EntityManager,
+  ): Promise<void> {
+    const linksRepository = manager.getRepository(ManifestWaybillEntity);
+    const splitsByManifest = new Map<string, WaybillSplitEntity[]>();
+
+    for (const split of splits) {
+      if (!split.trip_id) continue;
+      const manifestId = tripsById.get(String(split.trip_id))?.manifest_id;
+      if (!manifestId) continue;
+      const manifestSplits = splitsByManifest.get(String(manifestId)) ?? [];
+      manifestSplits.push(split);
+      splitsByManifest.set(String(manifestId), manifestSplits);
+    }
+
+    for (const [manifestId, manifestSplits] of splitsByManifest) {
+      const packageCount = manifestSplits.reduce((sum, split) => sum + Number(split.package_count ?? 0), 0);
+      const expectedArrival = manifestSplits
+        .map((split) => split.expected_arrival_at ? new Date(split.expected_arrival_at) : null)
+        .filter((value): value is Date => Boolean(value) && !Number.isNaN(value!.getTime()))
+        .sort((left, right) => right.getTime() - left.getTime())[0];
+      const requestedPosition = manifestSplits
+        .map((split) => Number(split.loading_position))
+        .filter((position) => Number.isInteger(position) && position > 0)
+        .sort((left, right) => left - right)[0];
+      const existingLink = await linksRepository.findOne({
+        where: { manifest_id: manifestId, waybill_id: String(waybill.id) },
+      });
+
+      if (existingLink) {
+        existingLink.loading_position = requestedPosition ?? existingLink.loading_position;
+        existingLink.loaded_at = existingLink.loaded_at ?? new Date();
+        existingLink.dispatch_fields = {
+          ...(existingLink.dispatch_fields ?? {}),
+          so_luong: String(packageCount),
+          ...(expectedArrival ? { expected_arrival_at: expectedArrival.toISOString() } : {}),
+        };
+        await linksRepository.save(existingLink);
+        continue;
+      }
+
+      const manifestLinks = await linksRepository.find({
+        where: { manifest_id: manifestId },
+        order: { loading_position: 'ASC', waybill_id: 'ASC' },
+      });
+      const nextPosition = manifestLinks.reduce(
+        (max, link) => Math.max(max, Number(link.loading_position ?? 0)),
+        0,
+      ) + 1;
+      await linksRepository.save(linksRepository.create({
+        manifest_id: manifestId,
+        waybill_id: String(waybill.id),
+        loading_position: requestedPosition ?? nextPosition,
+        loaded_at: new Date(),
+        dispatch_fields: {
+          so_luong: String(packageCount),
+          ...(expectedArrival ? { expected_arrival_at: expectedArrival.toISOString() } : {}),
+        },
+      }));
+    }
   }
 
   async releaseUnassignedPackageSplits(id: string, currentUser: UserEntity) {

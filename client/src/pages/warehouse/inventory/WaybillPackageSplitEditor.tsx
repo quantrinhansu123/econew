@@ -27,6 +27,7 @@ interface Props {
 type EditableSplit = {
   key: string;
   split_id?: string;
+  trip_id?: string;
   load_status?: string | null;
   truck_id: string;
   package_count: string;
@@ -86,6 +87,7 @@ export default function WaybillPackageSplitEditor({ waybill, onSaved, disabled, 
           ? splitRes.splits.map((line) => ({
               key: String(line.id ?? `${line.truck_id}-${line.package_count}`),
               split_id: line.id ? String(line.id) : undefined,
+              trip_id: line.trip_id ? String(line.trip_id) : undefined,
               load_status: line.load_status ?? 'WAITING_LOAD',
               truck_id: line.truck_id ? String(line.truck_id) : '',
               package_count: String(line.package_count),
@@ -143,6 +145,7 @@ export default function WaybillPackageSplitEditor({ waybill, onSaved, disabled, 
       .filter((row) => row.truck_id && Number(row.package_count) > 0)
       .map((row) => ({
         id: row.split_id,
+        trip_id: row.trip_id,
         truck_id: row.truck_id,
         package_count: Number(row.package_count),
         loading_position: row.loading_position ? Number(row.loading_position) : undefined,
