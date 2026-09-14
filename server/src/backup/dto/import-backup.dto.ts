@@ -25,18 +25,19 @@ class BackupTableDto {
 
 export class ImportBackupDto {
   @ApiProperty({ example: 'supabase-table-backup' })
-  @IsString()
-  format!: string;
+  @IsIn(['supabase-table-backup'])
+  format!: 'supabase-table-backup';
 
   @ApiProperty({ example: 1 })
   @Type(() => Number)
   @IsNumber()
-  version!: number;
+  @IsIn([1])
+  version!: 1;
 
   @ApiPropertyOptional({ example: 'public' })
   @IsOptional()
-  @IsString()
-  schema?: string;
+  @IsIn(['public'])
+  schema?: 'public';
 
   @ApiProperty({ type: [BackupTableDto] })
   @IsArray()

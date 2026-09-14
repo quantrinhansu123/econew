@@ -9,8 +9,8 @@ import {
   Square,
   Upload,
 } from 'lucide-react';
-import { ApiError, apiRequest } from '../../../lib/api';
-import { getStoredAuthUser } from '../../../lib/authUser';
+import { ApiError, apiRequest } from '../../lib/api';
+import { getStoredAuthUser } from '../../lib/authUser';
 import type { BackupImportMode, BackupImportResult, BackupTableMeta, SupabaseTableBackup } from './backup/types';
 
 const DIRECTOR = 64;
