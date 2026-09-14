@@ -1683,24 +1683,44 @@ describe('WaybillsService', () => {
   it.each([
     { hub_id: null, label: 'không gắn HUB' },
     { hub_id: '2', label: 'thuộc HUB khác' },
-  ])('rejects a COD cash fund $label instead of the destination HUB', async ({ hub_id }) => {
+  ])('confirms COD into an existing cash fund $label while keeping the destination HUB', async ({ hub_id }) => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({
       dest_hub_id: '1',
       payment_type: PaymentType.COD,
       cod_amount: 100000,
     }));
     cashFundsRepository.findOne.mockResolvedValue({
-      id: 'fund-invalid',
-      code: 'QUY_SAI',
-      name: 'Quỹ không đúng HUB đến',
+      id: 'fund-existing',
+      code: 'QUY_CU',
+      name: 'Quỹ đã tạo',
       is_active: true,
       hub_id,
     });
 
-    await expect(service.updateCodReconciliation('1', {
+    const result = await service.updateCodReconciliation('1', {
       confirmed: true,
-      fund_id: 'fund-invalid',
-    }, manager)).rejects.toThrow('Sổ quỹ COD phải thuộc HUB đến của vận đơn');
+      fund_id: 'fund-existing',
+    }, manager);
+    expect(result).toMatchObject({ dest_hub_id: '1', cod_fund_id: 'fund-existing', cod_collected_amount: '100000' });
+    expect(cashVouchersRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      waybill_id: '1', voucher_type: 'Thu', source_type: 'COD_COLLECTION', fund_id: 'fund-existing', amount: '100000',
+    }));
+  });
+
+  it('allows an accountant to confirm COD into a shared fund without a HUB', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ dest_hub_id: '1', cod_amount: 400000 }));
+    cashFundsRepository.findOne.mockResolvedValue({ id: 'shared', is_active: true, hub_id: null });
+
+    await expect(service.updateCodReconciliation('1', { confirmed: true, fund_id: 'shared' }, accountant))
+      .resolves.toMatchObject({ dest_hub_id: '1', cod_fund_id: 'shared', cod_collected_amount: '400000' });
+  });
+
+  it('still blocks an accountant from using a fund outside their assigned HUBs', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ dest_hub_id: '1', cod_amount: 100000 }));
+    cashFundsRepository.findOne.mockResolvedValue({ id: 'other', is_active: true, hub_id: '2' });
+
+    await expect(service.updateCodReconciliation('1', { confirmed: true, fund_id: 'other' }, accountant))
+      .rejects.toThrow('Không được ghi nhận tiền vào sổ quỹ của bưu cục khác');
     expect(cashVouchersRepository.save).not.toHaveBeenCalled();
   });
 

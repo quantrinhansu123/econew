@@ -1190,9 +1190,6 @@ export class WaybillsService {
       if (!fundId) throw new BadRequestException('Vui lòng chọn sổ quỹ nhận tiền');
       const fund = await cashFundsRepository.findOne({ where: { id: fundId, is_active: true }, relations: ['hub'] });
       if (!fund) throw new NotFoundException('Sổ quỹ không tồn tại hoặc đã ngừng sử dụng');
-      if (String(fund.hub_id ?? '') !== String(waybill.dest_hub_id)) {
-        throw new BadRequestException('Sổ quỹ COD phải thuộc HUB đến của vận đơn');
-      }
       if (!isManager(currentUser.role_mask) && fund.hub_id && !getAssignedHubIds(currentUser).includes(String(fund.hub_id))) {
         throw new ForbiddenException('Không được ghi nhận tiền vào sổ quỹ của bưu cục khác');
       }

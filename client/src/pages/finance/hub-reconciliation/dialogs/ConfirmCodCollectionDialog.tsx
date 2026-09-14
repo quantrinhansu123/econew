@@ -30,12 +30,9 @@ export default function ConfirmCodCollectionDialog({
   onManageFunds,
 }: Props) {
   if (!waybill) return null;
-  const destinationHubId = String(waybill.dest_hub_id ?? waybill.collector_hub_id ?? '');
-  const activeFunds = funds.filter((fund) => (
-    fund.is_active
-    && destinationHubId.length > 0
-    && String(fund.hub_id ?? '') === destinationHubId
-  ));
+  const activeFunds = funds.filter((fund) => fund.is_active);
+  const collectorHub = waybill.collector_hub_name || waybill.collector_hub_code
+    || waybill.dest_hub_name || waybill.dest_hub_code || '—';
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-end justify-center sm:items-center">
@@ -63,6 +60,11 @@ export default function ConfirmCodCollectionDialog({
             <span className="text-right font-extrabold text-foreground">{waybill.payment_method || waybill.payment_type || '—'}</span>
           </div>
 
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-slate-50 px-3 py-2.5 text-[12px]">
+            <span className="font-bold text-muted-foreground">Bưu cục thu</span>
+            <span className="text-right font-extrabold text-foreground">{collectorHub}</span>
+          </div>
+
           <label className="block">
             <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Tiền về sổ quỹ</span>
             <select
@@ -76,7 +78,7 @@ export default function ConfirmCodCollectionDialog({
               ))}
             </select>
             <span className="mt-1.5 block text-[11px] font-medium text-muted-foreground">
-              Chỉ hiển thị sổ quỹ thuộc HUB đến của vận đơn.
+              Chọn quỹ nhận tiền đã tạo. Bưu cục thu được theo dõi riêng theo HUB đến.
             </span>
           </label>
 
@@ -95,7 +97,7 @@ export default function ConfirmCodCollectionDialog({
 
           {!activeFunds.length && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] font-bold text-amber-800">
-              HUB đến chưa có sổ quỹ đang hoạt động. Tạo đúng sổ quỹ HUB trước khi xác nhận.
+              Chưa có sổ quỹ đang hoạt động. Tạo hoặc kích hoạt sổ quỹ trước khi xác nhận.
             </div>
           )}
           {error && <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[13px] font-bold text-red-700">{error}</div>}
