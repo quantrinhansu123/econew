@@ -214,7 +214,7 @@ export default function FinanceHubReconciliationPage() {
 
       <FilterPanel open={filterOpen} activeCount={activeFilterCount} groups={filterGroups} onClose={() => setFilterOpen(false)} onApply={() => setFilterOpen(false)} onClear={clearFilters} />
       <ConfirmCodCollectionDialog waybill={confirmWaybill} funds={funds} fundId={confirmFundId} note={confirmNote} submitting={confirming} error={confirmError} onFundChange={setConfirmFundId} onNoteChange={setConfirmNote} onClose={closeConfirm} onSubmit={() => void confirmCollection()} onManageFunds={() => setFundManagerOpen(true)} />
-      <CashFundManagerDialog open={fundManagerOpen} funds={funds} hubs={hubs} onClose={() => setFundManagerOpen(false)} onChanged={loadFunds} />
+      <CashFundManagerDialog open={fundManagerOpen} funds={funds} onClose={() => setFundManagerOpen(false)} onChanged={loadFunds} />
     </div>
   );
 }

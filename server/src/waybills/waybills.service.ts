@@ -1190,9 +1190,7 @@ export class WaybillsService {
       if (!fundId) throw new BadRequestException('Vui lòng chọn sổ quỹ nhận tiền');
       const fund = await cashFundsRepository.findOne({ where: { id: fundId, is_active: true }, relations: ['hub'] });
       if (!fund) throw new NotFoundException('Sổ quỹ không tồn tại hoặc đã ngừng sử dụng');
-      if (!isManager(currentUser.role_mask) && fund.hub_id && !getAssignedHubIds(currentUser).includes(String(fund.hub_id))) {
-        throw new ForbiddenException('Không được ghi nhận tiền vào sổ quỹ của bưu cục khác');
-      }
+      // COD is collected by the destination HUB, then confirmed into a central cash fund.
 
       const existingVoucher = await cashVouchersRepository.findOne({
         where: { waybill_id: String(waybill.id), source_type: 'COD_COLLECTION' } as any,

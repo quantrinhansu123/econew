@@ -1715,13 +1715,13 @@ describe('WaybillsService', () => {
       .resolves.toMatchObject({ dest_hub_id: '1', cod_fund_id: 'shared', cod_collected_amount: '400000' });
   });
 
-  it('still blocks an accountant from using a fund outside their assigned HUBs', async () => {
+  it('allows central COD confirmation into an existing fund belonging to another HUB', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ dest_hub_id: '1', cod_amount: 100000 }));
     cashFundsRepository.findOne.mockResolvedValue({ id: 'other', is_active: true, hub_id: '2' });
 
     await expect(service.updateCodReconciliation('1', { confirmed: true, fund_id: 'other' }, accountant))
-      .rejects.toThrow('Không được ghi nhận tiền vào sổ quỹ của bưu cục khác');
-    expect(cashVouchersRepository.save).not.toHaveBeenCalled();
+      .resolves.toMatchObject({ dest_hub_id: '1', cod_fund_id: 'other', cod_collected_amount: '100000' });
+    expect(cashVouchersRepository.save).toHaveBeenCalledWith(expect.objectContaining({ fund_id: 'other', source_type: 'COD_COLLECTION' }));
   });
 
   it('ACCOUNTANT can update COD after MANIFEST_CLOSED and WAREHOUSE cannot', async () => {

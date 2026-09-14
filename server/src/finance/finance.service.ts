@@ -60,11 +60,6 @@ export class FinanceService {
       .addOrderBy('fund.code', 'ASC');
     if (!query.include_inactive) qb.andWhere('fund.is_active = true');
     if (query.hub_id) qb.andWhere('(fund.hub_id = :hubId OR fund.hub_id IS NULL)', { hubId: query.hub_id });
-    if (!isManager(currentUser.role_mask)) {
-      const assignedHubIds = getAssignedHubIds(currentUser);
-      if (!assignedHubIds.length) throw new ForbiddenException('User is not assigned to a hub');
-      qb.andWhere('(fund.hub_id IN (:...userHubIds) OR fund.hub_id IS NULL)', { userHubIds: assignedHubIds });
-    }
 
     const funds = await qb.getMany();
     if (!funds.length) return [];
