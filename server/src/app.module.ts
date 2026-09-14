@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { getDatabaseUrl, getDatabaseUrlHelp, isSupabaseDirectDatabaseUrl } from './database-url';
 import { AuthModule } from './auth/auth.module';
+import { BackupModule } from './backup/backup.module';
 import { CarrierDirectoryModule } from './carrier-directory/carrier-directory.module';
 import { FundBalanceModule } from './fund-balances/fund-balance.module';
 import { CashJournalEntryModule } from './cash-journal-entries/cash-journal-entry.module';
@@ -94,6 +95,7 @@ const getPositiveInteger = (value: string | undefined, fallback: number) => {
     ExpensesModule,
     ReconciliationsModule,
     AuthModule,
+    BackupModule,
     DashboardModule,
     SearchModule,
     FinanceModule,
