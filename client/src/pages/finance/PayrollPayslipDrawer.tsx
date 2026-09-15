@@ -333,11 +333,20 @@ function DetailList({
             return (
               <div
                 key={String(item.id)}
-                className="flex items-center justify-between gap-3 border-b border-border py-2.5 text-sm last:border-0"
+                className="flex items-start justify-between gap-3 border-b border-border py-2.5 text-sm last:border-0"
               >
-                <span className="font-semibold">
-                  {new Date(`${date}T00:00:00`).toLocaleDateString("vi-VN")}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">
+                    {new Date(`${date}T00:00:00`).toLocaleDateString("vi-VN")}
+                  </p>
+                  {kind === "advances" && (
+                    <p className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                      {typeof item.note === "string" && item.note.trim()
+                        ? item.note
+                        : "Chưa có nội dung ứng lương"}
+                    </p>
+                  )}
+                </div>
                 {kind === "attendance" ? (
                   <span className="tabular-nums">
                     {Number(item.work_days || 0).toLocaleString("vi-VN")} công ·{" "}
@@ -345,7 +354,7 @@ function DetailList({
                     giờ
                   </span>
                 ) : (
-                  <span className="font-bold tabular-nums text-amber-700">
+                  <span className="shrink-0 font-bold tabular-nums text-amber-700">
                     {formatMoney(item.amount as string | number)}
                   </span>
                 )}
