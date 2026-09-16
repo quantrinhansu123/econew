@@ -64,8 +64,18 @@ export default function FinancePayrollPage() {
   useEffect(() => {
     queueMicrotask(() => { void load(); });
   }, [load]);
-  const total = useMemo(
-    () => rows.reduce((sum, row) => sum + Number(row.net_salary || 0), 0),
+  const totals = useMemo(
+    () =>
+      rows.reduce(
+        (current, row) => ({
+          grossSalary:
+            current.grossSalary + Number(row.gross_salary || 0),
+          advanceAmount:
+            current.advanceAmount + Number(row.advance_amount || 0),
+          netSalary: current.netSalary + Number(row.net_salary || 0),
+        }),
+        { grossSalary: 0, advanceAmount: 0, netSalary: 0 },
+      ),
     [rows],
   );
   const saveAdjustment = async (row: PayrollRow) => {
@@ -146,11 +156,22 @@ export default function FinancePayrollPage() {
         </div>
       </div>
       {!loading && !error && (
-        <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
-          <BadgeDollarSign className="text-emerald-600" size={20} />
-          <span className="text-sm font-bold text-emerald-800">
-            Tổng lương tạm tính: {formatMoney(total)}
-          </span>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <PayrollTotal
+            label="Tổng lương đã tính"
+            value={totals.grossSalary}
+            className="border-blue-200 bg-blue-50 text-blue-800"
+          />
+          <PayrollTotal
+            label="Tổng đã ứng"
+            value={totals.advanceAmount}
+            className="border-amber-200 bg-amber-50 text-amber-800"
+          />
+          <PayrollTotal
+            label="Tổng thực lĩnh"
+            value={totals.netSalary}
+            className="border-emerald-200 bg-emerald-50 text-emerald-800"
+          />
         </div>
       )}
       {error && (
@@ -199,6 +220,32 @@ export default function FinancePayrollPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function PayrollTotal({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: number;
+  className: string;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${className}`}
+    >
+      <BadgeDollarSign className="shrink-0" size={20} />
+      <div className="min-w-0">
+        <p className="text-xs font-bold uppercase tracking-wide opacity-75">
+          {label}
+        </p>
+        <p className="mt-0.5 text-base font-black tabular-nums">
+          {formatMoney(value)}
+        </p>
+      </div>
     </div>
   );
 }
