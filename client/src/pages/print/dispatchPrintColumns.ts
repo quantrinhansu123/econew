@@ -76,7 +76,7 @@ export const DISPATCH_PRINT_COLUMN_DEFS: DispatchPrintColumnDef[] = [
 export const DISPATCH_PRINT_COLUMN_STORAGE_KEY = 'eco_dispatch_print_visible_columns_v6';
 
 const defMap = new Map(DISPATCH_PRINT_COLUMN_DEFS.map((def) => [def.id, def]));
-const DISPATCH_NOTE_COLUMNS = new Set<DispatchPrintColumnId>(['ghiChu', 'ghiChu1', 'ghiChu2']);
+const INTERNAL_DISPATCH_NOTE_COLUMNS = new Set<DispatchPrintColumnId>(['ghiChu1', 'ghiChu2']);
 
 export function getDispatchColumnDef(id: DispatchPrintColumnId): DispatchPrintColumnDef {
   return defMap.get(id)!;
@@ -84,7 +84,7 @@ export function getDispatchColumnDef(id: DispatchPrintColumnId): DispatchPrintCo
 
 export function getSelectableDispatchColumns(canViewPricing: boolean): DispatchPrintColumnDef[] {
   return DISPATCH_PRINT_COLUMN_DEFS.filter(
-    (col) => !DISPATCH_NOTE_COLUMNS.has(col.id) && (!col.managerOnly || canViewPricing),
+    (col) => !INTERNAL_DISPATCH_NOTE_COLUMNS.has(col.id) && (!col.managerOnly || canViewPricing),
   );
 }
 
@@ -117,7 +117,7 @@ export function resolveVisibleDispatchColumnIds(
   const allowed = new Set(
     getSelectableDispatchColumns(canViewPricing)
       .map((col) => col.id)
-      .filter((id) => !DISPATCH_NOTE_COLUMNS.has(id)),
+      .filter((id) => !INTERNAL_DISPATCH_NOTE_COLUMNS.has(id)),
   );
   const selected = ids.filter((id, index) => allowed.has(id) && ids.indexOf(id) === index);
   const ordered = [

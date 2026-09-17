@@ -24,6 +24,18 @@ describe('dispatch bill barcode column', () => {
     ]);
   });
 
+  it('offers the bill note without exposing internal dispatch notes', () => {
+    const selectableIds = getSelectableDispatchColumns(true).map((column) => column.id);
+
+    expect(selectableIds).toContain('ghiChu');
+    expect(selectableIds).not.toContain('ghiChu1');
+    expect(selectableIds).not.toContain('ghiChu2');
+    expect(resolveVisibleDispatchColumnIds(['viTriHang', 'ghiChu'], true)).toEqual([
+      'viTriHang',
+      'ghiChu',
+    ]);
+  });
+
   it('builds an encoded Code 128 image URL from the bill code', () => {
     const url = buildDispatchBarcodeUrl('ECO HAN/109178');
 
