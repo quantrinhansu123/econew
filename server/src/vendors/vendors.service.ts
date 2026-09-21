@@ -994,7 +994,7 @@ export class VendorsService {
       .leftJoinAndSelect('trip.vendor', 'vendor')
       .where('trip.id IN (:...tripIds)', { tripIds })
       .orderBy('trip.id', 'ASC')
-      .setLock('pessimistic_write')
+      .setLock('pessimistic_write', undefined, ['trip'])
       .getMany();
     if (lockedTrips.length !== tripIds.length) throw new NotFoundException('One or more trips not found');
     return lockedTrips;

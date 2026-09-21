@@ -84,6 +84,7 @@ describe('VendorsService payment safety', () => {
       trip,
       paymentsRepository,
       tripsRepository,
+      tripQb,
       vendorsRepository,
       transaction,
     };
@@ -98,6 +99,7 @@ describe('VendorsService payment safety', () => {
     });
 
     expect(context.transaction).toHaveBeenCalledTimes(1);
+    expect(context.tripQb.setLock).toHaveBeenCalledWith('pessimistic_write', undefined, ['trip']);
     expect(context.paymentsRepository.remove).toHaveBeenCalledWith([context.payment]);
     expect(context.tripsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
       id: '75',
