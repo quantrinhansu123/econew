@@ -420,7 +420,7 @@ export default function NhiemVuGiaoHangPage() {
                 )}
                 {visibleColumnIds.includes('packages') && <div className="text-[11px] font-extrabold"><span className="mr-1 text-muted-foreground xl:hidden">Số kiện:</span>{waybill.trip_package_count ?? waybill.package_count ?? '—'}</div>}
                 {visibleColumnIds.includes('actualWeight') && <div className="text-[11px] font-extrabold"><span className="mr-1 text-muted-foreground xl:hidden">Kg thực tế:</span>{Number(waybill.actual_weight ?? waybill.weight ?? 0).toLocaleString('vi-VN')} kg</div>}
-                {visibleColumnIds.includes('cbm') && <div className="text-[11px] font-extrabold"><span className="mr-1 text-muted-foreground xl:hidden">CBM:</span>{Number(waybill.the_tich_m3 ?? 0).toLocaleString('vi-VN', { maximumFractionDigits: 4 })}</div>}
+                {visibleColumnIds.includes('cbm') && <div className="text-[11px] font-extrabold"><span className="mr-1 text-muted-foreground xl:hidden">CBM:</span>{Number(waybill.the_tich_m3 ?? 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 })}</div>}
                 {visibleColumnIds.includes('payment') && <div className="text-[11px] font-bold text-muted-foreground"><span className="mr-1 xl:hidden">Thanh toán:</span>{waybill.payment_type || '—'}</div>}
                 {visibleColumnIds.includes('preparationNote') && (
                 <div className="min-w-0 text-[11px]">

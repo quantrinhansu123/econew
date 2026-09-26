@@ -58,7 +58,7 @@ export function calcM3(length: string, width: string, height: string): string {
   const w = parseDecimalNumber(width);
   const h = parseDecimalNumber(height);
   if (!l || !w || !h) return '';
-  return formatDisplayNumber((l * w * h) / 1_000_000, 3);
+  return formatDisplayNumber((l * w * h) / 1_000_000, 2);
 }
 
 export function isWeightBillingUnit(unit: string) {
@@ -292,11 +292,14 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
   const [length, width, height] = parseDimensions(waybill, note);
   const receiverAddress = waybill.receiver_address?.trim() || receiver.address || '';
   const addressParts = extractVietnamAddressParts(receiverAddress);
-  const volumeM3 = Number(
+  const rawVolumeM3 = Number(
     (waybill as { the_tich_m3?: number }).the_tich_m3
     ?? parseNoteField(note, 'the_tich_m3')
     ?? 0,
   );
+  const volumeM3 = Number.isFinite(rawVolumeM3) && rawVolumeM3 > 0
+    ? Number(rawVolumeM3.toFixed(2))
+    : 0;
 
   return {
     ...emptyOrderForm(),
@@ -473,7 +476,8 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
   const totalFreight = freight + surcharge;
   const thanhToan = totalFreight + (receiverPays ? cod : 0);
   const weight = parseDecimalNumber(form.klKg);
-  const volumeM3 = parseDecimalNumber(form.m3);
+  const rawVolumeM3 = parseDecimalNumber(form.m3);
+  const volumeM3 = rawVolumeM3 > 0 ? Number(rawVolumeM3.toFixed(2)) : 0;
   const length = Math.max(0, parseDecimalNumber(form.chieuDai));
   const width = Math.max(0, parseDecimalNumber(form.chieuRong));
   const height = Math.max(0, parseDecimalNumber(form.chieuCao));

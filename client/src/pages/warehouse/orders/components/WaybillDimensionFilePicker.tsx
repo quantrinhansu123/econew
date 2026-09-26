@@ -13,7 +13,7 @@ interface Props {
 }
 
 const makeRow = (quantity = '1'): DimensionRow => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, quantity, lengthCm: '', widthCm: '', heightCm: '' });
-const displayDecimal = (value: number, maximumFractionDigits = 6) => value.toLocaleString('vi-VN', { maximumFractionDigits });
+const displayDecimal = (value: number, maximumFractionDigits = 2) => value.toLocaleString('vi-VN', { maximumFractionDigits });
 
 export default function WaybillDimensionFilePicker({ url, name, waybillCode = '', packageCount = '1', disabled, onChange, onTotalsChange, onUploadingChange }: Props) {
   const [uploading, setUploading] = useState(false); const [open, setOpen] = useState(false); const [error, setError] = useState('');

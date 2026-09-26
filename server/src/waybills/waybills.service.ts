@@ -195,7 +195,7 @@ export class WaybillsService {
       width: dto.width ?? 0,
       height: dto.height ?? 0,
       volumetric_weight: dto.volumetric_weight ?? 0,
-      the_tich_m3: dto.the_tich_m3 ?? null,
+      the_tich_m3: dto.the_tich_m3 != null ? Math.round(Number(dto.the_tich_m3) * 100) / 100 : null,
       dimension_file_url: dto.dimension_file_url?.trim() || null,
       dimension_file_name: dto.dimension_file_name?.trim() || null,
       payment_type: this.resolvePaymentType(dto),
@@ -746,6 +746,9 @@ export class WaybillsService {
       delete patch.waybill_code;
     }
 
+    if (patch.the_tich_m3 !== undefined && patch.the_tich_m3 !== null) {
+      patch.the_tich_m3 = Math.round(Number(patch.the_tich_m3) * 100) / 100;
+    }
     Object.assign(waybill, patch, { updated_by: currentUser.id });
     if (originHub) waybill.origin_hub = originHub;
     if (destHub) waybill.dest_hub = destHub;

@@ -38,7 +38,7 @@ export const calculateDimensionRow = (row: DimensionRow): DimensionRowResult => 
     lengthCm,
     widthCm,
     heightCm,
-    volumeM3: round(cubicCentimeters / 1_000_000, 6),
+    volumeM3: round(cubicCentimeters / 1_000_000, 2),
     convertedWeightKg: round(cubicCentimeters / DIMENSION_WEIGHT_DIVISOR, 2),
   };
 };
@@ -47,7 +47,7 @@ export const calculateDimensionTotals = (rows: DimensionRow[]) => {
   const calculated = rows.map(calculateDimensionRow);
   return {
     packageCount: calculated.reduce((sum, row) => sum + row.quantity, 0),
-    volumeM3: round(calculated.reduce((sum, row) => sum + row.volumeM3, 0), 6),
+    volumeM3: round(calculated.reduce((sum, row) => sum + row.volumeM3, 0), 2),
     convertedWeightKg: round(calculated.reduce((sum, row) => sum + row.convertedWeightKg, 0), 2),
   };
 };
@@ -75,8 +75,8 @@ export const createDimensionWorkbookFile = (rows: DimensionRow[], waybillCode: s
         result.lengthCm,
         result.widthCm,
         result.heightCm,
-        { f: `B${excelRow}*C${excelRow}*D${excelRow}*E${excelRow}/1000000`, v: result.volumeM3 } as unknown as number,
-        { f: `B${excelRow}*C${excelRow}*D${excelRow}*E${excelRow}/${DIMENSION_WEIGHT_DIVISOR}`, v: result.convertedWeightKg } as unknown as number,
+        { f: `ROUND(B${excelRow}*C${excelRow}*D${excelRow}*E${excelRow}/1000000, 2)`, v: result.volumeM3 } as unknown as number,
+        { f: `ROUND(B${excelRow}*C${excelRow}*D${excelRow}*E${excelRow}/${DIMENSION_WEIGHT_DIVISOR}, 2)`, v: result.convertedWeightKg } as unknown as number,
       ];
     }),
   ];
@@ -85,8 +85,8 @@ export const createDimensionWorkbookFile = (rows: DimensionRow[], waybillCode: s
     'TỔNG',
     { f: `SUM(B5:B${totalRow - 1})` } as unknown as number,
     '', '', '',
-    { f: `SUM(F5:F${totalRow - 1})` } as unknown as number,
-    { f: `SUM(G5:G${totalRow - 1})` } as unknown as number,
+    { f: `ROUND(SUM(F5:F${totalRow - 1}), 2)` } as unknown as number,
+    { f: `ROUND(SUM(G5:G${totalRow - 1}), 2)` } as unknown as number,
   ]);
 
   const worksheet = XLSX.utils.aoa_to_sheet(data);

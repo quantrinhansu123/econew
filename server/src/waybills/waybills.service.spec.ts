@@ -254,6 +254,27 @@ describe('WaybillsService', () => {
     });
   });
 
+  it('rounds the_tich_m3 to 2 decimal places on create', async () => {
+    waybillsRepository.findOne.mockResolvedValue(null);
+    await service.create({
+      waybill_code: 'ECOHAN109603',
+      sender_name: 'A',
+      sender_phone: '1',
+      sender_address: 'HN',
+      receiver_name: 'B',
+      receiver_phone: '2',
+      receiver_address: 'HCM',
+      origin_hub_id: '1',
+      dest_hub_id: '2',
+      weight: 3,
+      the_tich_m3: 41.1264,
+    }, manager);
+
+    expect(waybillsRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ the_tich_m3: 41.13 }),
+    );
+  });
+
   it('create stores a missing customer phone as null', async () => {
     waybillsRepository.findOne.mockResolvedValue(null);
     const result = await service.create({

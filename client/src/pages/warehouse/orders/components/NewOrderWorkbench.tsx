@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { clsx } from 'clsx';
 import { ExternalLink, FileText, PackageCheck } from 'lucide-react';
-import { calcOrderPricing } from '../orderFormUtils';
+import { calcOrderPricing, parseDecimalNumber } from '../orderFormUtils';
 import {
   DICH_VU_OPTIONS,
   DON_GIA_DON_VI_OPTIONS,
@@ -274,6 +274,12 @@ export default function NewOrderWorkbench({
                   <CompactInput
                     value={form.m3}
                     onChange={(e) => setField('m3', e.target.value)}
+                    onBlur={() => {
+                      const val = parseDecimalNumber(form.m3);
+                      if (val > 0) {
+                        setField('m3', String(Number(val.toFixed(2))));
+                      }
+                    }}
                     placeholder="VD: 4.6 hoặc 4,6"
                     inputMode="decimal"
                   />
@@ -298,7 +304,7 @@ export default function NewOrderWorkbench({
                   onUploadingChange={setIsDimensionFileUploading}
                   onChange={(url, name) => { setField('dimensionFileUrl', url); setField('dimensionFileName', name); }}
                   onTotalsChange={({ packageCount: count, volumeM3, convertedWeightKg }) => {
-                    setField('soKien', String(count)); setField('m3', String(volumeM3)); setField('klQuyDoi', String(convertedWeightKg));
+                    setField('soKien', String(count)); setField('m3', String(Number(volumeM3.toFixed(2)))); setField('klQuyDoi', String(convertedWeightKg));
                   }}
                 />
                 <CompactField label="Nội dung" className="col-span-12 sm:col-span-6 xl:col-span-6">

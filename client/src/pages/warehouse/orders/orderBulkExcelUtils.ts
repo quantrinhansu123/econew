@@ -349,7 +349,7 @@ export function bulkRowToOrderForm(
     chieuDai: values.chieuDai || '0',
     chieuRong: values.chieuRong || '0',
     chieuCao: values.chieuCao || '0',
-    m3: values.m3,
+    m3: parseDecimalNumber(values.m3) > 0 ? String(Number(parseDecimalNumber(values.m3).toFixed(2))) : (values.m3 || ''),
     nvgn: values.nvgn || defaults.nvgn || 'ADMIN',
     noiDung: values.noiDung,
     ghiChu: values.ghiChu,
