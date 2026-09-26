@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Receipt, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Receipt, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../../../lib/api';
@@ -74,6 +74,14 @@ interface JournalResponse {
   };
 }
 
+interface VoucherSyncPreview {
+  voucher_id: string;
+  waybill_code: string;
+  current_amount: number;
+  new_amount: number;
+  fund_name: string | null;
+}
+
 interface Filters {
   q: string;
   date_from: string;
@@ -139,6 +147,9 @@ export default function DailyCashJournalPage() {
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [syncingId, setSyncingId] = useState('');
+  const [syncMessage, setSyncMessage] = useState('');
+  const [syncError, setSyncError] = useState('');
 
   const loadReferences = useCallback(async () => {
     const [fundResponse, vendorResponse, hubResponse, accountantResponse, categoryResponse] = await Promise.all([
@@ -276,6 +287,36 @@ export default function DailyCashJournalPage() {
     }
   };
 
+  const syncFromWaybill = async (entry: JournalEntry) => {
+    setSyncingId(entry.id);
+    setSyncMessage('');
+    setSyncError('');
+    try {
+      const preview = await apiRequest<VoucherSyncPreview>(`/waybills/cash-vouchers/${entry.record_id}/sync-preview`);
+      if (preview.new_amount === preview.current_amount) {
+        setSyncMessage(`Phiếu thu ${preview.waybill_code} đã khớp với vận đơn.`);
+        return;
+      }
+      const confirmed = window.confirm(
+        `Cập nhật phiếu thu ${preview.waybill_code} trong quỹ ${preview.fund_name || entry.fund_code || ''}?\n`
+        + `Hiện tại: ${formatMoney(preview.current_amount)}\n`
+        + `Theo vận đơn: ${formatMoney(preview.new_amount)}\n`
+        + `Chênh lệch: ${formatMoney(preview.new_amount - preview.current_amount)}`,
+      );
+      if (!confirmed) return;
+      await apiRequest(`/waybills/cash-vouchers/${entry.record_id}/sync-with-waybill`, {
+        method: 'POST',
+        body: { expected_amount: preview.new_amount, expected_current_amount: preview.current_amount },
+      });
+      await Promise.all([loadEntries(), loadReferences()]);
+      setSyncMessage(`Đã cập nhật phiếu thu ${preview.waybill_code} và số dư quỹ.`);
+    } catch (requestError) {
+      setSyncError(errorMessage(requestError));
+    } finally {
+      setSyncingId('');
+    }
+  };
+
   const activeFilterCount = ['q', 'date_from', 'date_to', 'voucher_type', 'fund_id', 'vendor_id', 'hub_id', 'cost_category'].filter((key) => Boolean(String(filters[key as keyof Filters]).trim())).length;
   const pageCount = Math.max(1, meta.total_pages || Math.ceil(meta.total / filters.limit));
 
@@ -308,13 +349,16 @@ export default function DailyCashJournalPage() {
         {activeFilterCount > 0 && <button type="button" onClick={() => setFilters((current) => ({ ...defaultFilters, limit: current.limit }))} className="h-10 rounded-lg border border-red-200 bg-red-50 px-3 text-[12px] font-bold text-red-600">Xóa {activeFilterCount} lọc</button>}
       </div>
 
+      {syncMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] font-bold text-emerald-800">{syncMessage}</p>}
+      {syncError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-bold text-red-700">{syncError}</p>}
+
       <div className="min-h-0 flex-1 overflow-auto bg-white custom-scrollbar">
         {loading ? <State icon={<Loader2 className="animate-spin" />} title="Đang tải nhật ký" /> : error ? <State icon={<AlertTriangle />} title={error} /> : entries.length === 0 ? <State icon={<Receipt />} title="Chưa có giao dịch phù hợp" /> : <>
           <table className="hidden min-w-[1600px] w-full border-collapse text-left md:table">
             <thead className="sticky top-0 z-10 bg-slate-100 text-[10px] uppercase text-slate-600"><tr>{['Ngày', 'Loại', 'Nguồn', 'HUB', 'Đối tượng', 'NCC', 'Phân loại', 'Sổ quỹ', 'Nội dung', 'Chứng từ', 'Thu', 'Chi', 'Người lập', ''].map((header) => <th key={header} className="border-b border-r border-border px-3 py-2.5 font-extrabold last:border-r-0">{header}</th>)}</tr></thead>
-            <tbody>{entries.map((entry) => <JournalRow key={entry.id} entry={entry} onEdit={() => openEdit(entry)} onRemove={() => void remove(entry)} />)}</tbody>
+            <tbody>{entries.map((entry) => <JournalRow key={entry.id} entry={entry} syncing={syncingId === entry.id} onSync={() => void syncFromWaybill(entry)} onEdit={() => openEdit(entry)} onRemove={() => void remove(entry)} />)}</tbody>
           </table>
-          <div className="grid gap-2 p-3 md:hidden">{entries.map((entry) => <JournalCard key={entry.id} entry={entry} onEdit={() => openEdit(entry)} onRemove={() => void remove(entry)} />)}</div>
+          <div className="grid gap-2 p-3 md:hidden">{entries.map((entry) => <JournalCard key={entry.id} entry={entry} syncing={syncingId === entry.id} onSync={() => void syncFromWaybill(entry)} onEdit={() => openEdit(entry)} onRemove={() => void remove(entry)} />)}</div>
         </>}
       </div>
 
@@ -328,12 +372,18 @@ export default function DailyCashJournalPage() {
   );
 }
 
-function JournalRow({ entry, onEdit, onRemove }: { entry: JournalEntry; onEdit: () => void; onRemove: () => void }) {
-  return <tr className="border-b border-border text-[12px] hover:bg-muted/20"><td className="border-r border-border px-3 py-2.5 font-bold">{new Date(entry.entry_date).toLocaleDateString('vi-VN')}</td><td className="border-r border-border px-3 py-2.5"><TypeBadge value={entry.voucher_type} /></td><td className="border-r border-border px-3 py-2.5">{entry.source}</td><td className="border-r border-border px-3 py-2.5 font-bold">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || '—'}</td><td className="border-r border-border px-3 py-2.5 font-bold">{entry.detail}</td><td className="border-r border-border px-3 py-2.5">{[entry.vendor_code, entry.vendor_name].filter(Boolean).join(' · ') || '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.cost_category}</td><td className="border-r border-border px-3 py-2.5 font-bold">{[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</td><td className="max-w-[280px] border-r border-border px-3 py-2.5"><p className="truncate" title={entry.content}>{entry.content}</p>{entry.note && <p className="mt-0.5 truncate text-[10px] text-muted-foreground" title={entry.note}>{entry.note}</p>}</td><td className="border-r border-border px-3 py-2.5"><ReceiptImageLinks images={entry.attachment_urls} /></td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-emerald-700">{entry.income_amount > 0 ? formatMoney(entry.income_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-red-600">{entry.expense_amount > 0 ? formatMoney(entry.expense_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.created_by_name || '—'}</td><td className="px-2 py-2.5">{entry.editable && <div className="flex gap-1"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary hover:bg-blue-50"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50"><Trash2 size={14} /></button></div>}</td></tr>;
+const canSyncVoucher = (entry: JournalEntry) => entry.source === 'Vận đơn' && entry.source_type === 'MANUAL' && !entry.editable && entry.voucher_type === 'Thu';
+
+function SyncButton({ onClick, syncing }: { onClick: () => void; syncing: boolean }) {
+  return <button type="button" disabled={syncing} onClick={onClick} title="Cập nhật số tiền phiếu thu theo vận đơn" className="inline-flex h-8 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[11px] font-bold text-primary hover:bg-blue-100 disabled:opacity-50">{syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}Cập nhật theo đơn</button>;
 }
 
-function JournalCard({ entry, onEdit, onRemove }: { entry: JournalEntry; onEdit: () => void; onRemove: () => void }) {
-  return <article className="rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-2"><div><TypeBadge value={entry.voucher_type} /><p className="mt-2 text-[14px] font-extrabold">{entry.detail}</p><p className="text-[11px] text-muted-foreground">{new Date(entry.entry_date).toLocaleDateString('vi-VN')} · {[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</p><p className="text-[11px] font-bold text-primary">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || 'Chưa gắn HUB'}</p></div><p className={clsx('text-[15px] font-black', entry.voucher_type === 'Thu' ? 'text-emerald-700' : 'text-red-600')}>{formatMoney(entry.voucher_type === 'Thu' ? entry.income_amount : entry.expense_amount)}</p></div><p className="mt-2 text-[12px]">{entry.content}</p><p className="mt-1 text-[11px] font-bold text-muted-foreground">{entry.cost_category}{entry.vendor_name ? ` · ${entry.vendor_name}` : ''}</p><div className="mt-2"><ReceiptImageLinks images={entry.attachment_urls} /></div>{entry.editable && <div className="mt-3 flex justify-end gap-1 border-t border-border pt-2"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600"><Trash2 size={14} /></button></div>}</article>;
+function JournalRow({ entry, onEdit, onRemove, onSync, syncing }: { entry: JournalEntry; onEdit: () => void; onRemove: () => void; onSync: () => void; syncing: boolean }) {
+  return <tr className="border-b border-border text-[12px] hover:bg-muted/20"><td className="border-r border-border px-3 py-2.5 font-bold">{new Date(entry.entry_date).toLocaleDateString('vi-VN')}</td><td className="border-r border-border px-3 py-2.5"><TypeBadge value={entry.voucher_type} /></td><td className="border-r border-border px-3 py-2.5">{canSyncVoucher(entry) ? <button type="button" disabled={syncing} onClick={onSync} title="Cập nhật phiếu thu theo vận đơn" className="inline-flex items-center gap-1 font-bold text-primary hover:underline disabled:opacity-50">Vận đơn<RefreshCw size={12} className={syncing ? "animate-spin" : ""} /></button> : entry.source}</td><td className="border-r border-border px-3 py-2.5 font-bold">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || '—'}</td><td className="border-r border-border px-3 py-2.5 font-bold">{entry.detail}</td><td className="border-r border-border px-3 py-2.5">{[entry.vendor_code, entry.vendor_name].filter(Boolean).join(' · ') || '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.cost_category}</td><td className="border-r border-border px-3 py-2.5 font-bold">{[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</td><td className="max-w-[280px] border-r border-border px-3 py-2.5"><p className="truncate" title={entry.content}>{entry.content}</p>{entry.note && <p className="mt-0.5 truncate text-[10px] text-muted-foreground" title={entry.note}>{entry.note}</p>}</td><td className="border-r border-border px-3 py-2.5"><ReceiptImageLinks images={entry.attachment_urls} /></td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-emerald-700">{entry.income_amount > 0 ? formatMoney(entry.income_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-red-600">{entry.expense_amount > 0 ? formatMoney(entry.expense_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.created_by_name || '—'}</td><td className="px-2 py-2.5">{canSyncVoucher(entry) && <SyncButton onClick={onSync} syncing={syncing} />}{entry.editable && <div className="flex gap-1"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary hover:bg-blue-50"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50"><Trash2 size={14} /></button></div>}</td></tr>;
+}
+
+function JournalCard({ entry, onEdit, onRemove, onSync, syncing }: { entry: JournalEntry; onEdit: () => void; onRemove: () => void; onSync: () => void; syncing: boolean }) {
+  return <article className="rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-2"><div><TypeBadge value={entry.voucher_type} /><p className="mt-2 text-[14px] font-extrabold">{entry.detail}</p><p className="text-[11px] text-muted-foreground">{new Date(entry.entry_date).toLocaleDateString('vi-VN')} · {[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</p><p className="text-[11px] font-bold text-primary">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || 'Chưa gắn HUB'}</p></div><p className={clsx('text-[15px] font-black', entry.voucher_type === 'Thu' ? 'text-emerald-700' : 'text-red-600')}>{formatMoney(entry.voucher_type === 'Thu' ? entry.income_amount : entry.expense_amount)}</p></div><p className="mt-2 text-[12px]">{entry.content}</p><p className="mt-1 text-[11px] font-bold text-muted-foreground">{entry.cost_category}{entry.vendor_name ? ` · ${entry.vendor_name}` : ''}</p><div className="mt-2"><ReceiptImageLinks images={entry.attachment_urls} /></div>{canSyncVoucher(entry) && <div className="mt-3 flex justify-end border-t border-border pt-2"><SyncButton onClick={onSync} syncing={syncing} /></div>}{entry.editable && <div className="mt-3 flex justify-end gap-1 border-t border-border pt-2"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600"><Trash2 size={14} /></button></div>}</article>;
 }
 
 function EntryDialog({ form, editing, categories, funds, hubs, vendors, accountants, submitting, uploadingReceipt, error, onChange, onUploadingReceiptChange, onTypeChange, onClose, onSubmit }: { form: EntryForm; editing: boolean; categories: string[]; funds: CashFund[]; hubs: Hub[]; vendors: Vendor[]; accountants: UserAccount[]; submitting: boolean; uploadingReceipt: boolean; error: string; onChange: (patch: Partial<EntryForm>) => void; onUploadingReceiptChange: (uploading: boolean) => void; onTypeChange: (value: VoucherType) => void; onClose: () => void; onSubmit: () => void }) {

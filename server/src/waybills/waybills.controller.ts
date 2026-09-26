@@ -13,6 +13,7 @@ import { AssignWaybillRouteDto } from './dto/assign-waybill-route.dto';
 import { CancelWaybillDto } from './dto/cancel-waybill.dto';
 import { CreateWaybillDto } from './dto/create-waybill.dto';
 import { CreateWaybillCashVoucherDto } from './dto/create-waybill-cash-voucher.dto';
+import { SyncWaybillCashVoucherDto } from './dto/sync-waybill-cash-voucher.dto';
 import { CreateBulkWaybillPaymentDto } from './dto/create-bulk-waybill-payment.dto';
 import { QueryWaybillCashVouchersDto } from './dto/query-waybill-cash-vouchers.dto';
 import { QueryReceiverContactsDto } from './dto/query-receiver-contacts.dto';
@@ -222,6 +223,24 @@ export class WaybillsController {
   @ApiOperation({ summary: 'Save package splits — allocate kiện per truck/trip under one waybill' })
   savePackageSplits(@Param('id') id: string, @Body() dto: SaveWaybillSplitsDto, @CurrentUser() currentUser: UserEntity) {
     return this.waybillsService.savePackageSplits(id, dto, currentUser);
+  }
+
+  @Get('cash-vouchers/:voucherId/sync-preview')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Preview a waybill receipt adjustment using current waybill amounts' })
+  previewCashVoucherSync(@Param('voucherId') voucherId: string, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.previewCashVoucherSync(voucherId, currentUser);
+  }
+
+  @Post('cash-vouchers/:voucherId/sync-with-waybill')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Adjust a waybill receipt and cash fund to current waybill amounts' })
+  syncCashVoucherWithWaybill(
+    @Param('voucherId') voucherId: string,
+    @Body() dto: SyncWaybillCashVoucherDto,
+    @CurrentUser() currentUser: UserEntity,
+  ) {
+    return this.waybillsService.syncCashVoucherWithWaybill(voucherId, dto, currentUser);
   }
 
   @Delete(':id/splits/unassigned')

@@ -19,6 +19,7 @@ import { AssignWaybillRouteDto } from './dto/assign-waybill-route.dto';
 import { CancelWaybillDto } from './dto/cancel-waybill.dto';
 import { CreateWaybillDto } from './dto/create-waybill.dto';
 import { CreateWaybillCashVoucherDto } from './dto/create-waybill-cash-voucher.dto';
+import { SyncWaybillCashVoucherDto } from './dto/sync-waybill-cash-voucher.dto';
 import { CreateBulkWaybillPaymentDto } from './dto/create-bulk-waybill-payment.dto';
 import { QueryWaybillCashVouchersDto } from './dto/query-waybill-cash-vouchers.dto';
 import { QueryReceiverContactsDto } from './dto/query-receiver-contacts.dto';
@@ -673,7 +674,7 @@ export class WaybillsService {
     return logs.map((log) => {
       const changes = Object.fromEntries(Object.entries(log.changes || {}).filter(([field]) => {
         if (['cost_amount', 'freight_amount', 'cc_amount', 'last_mile_cost_amount'].includes(field)) return canViewPricing;
-        if (['cod_amount', 'cod_collected_amount'].includes(field)) return canViewCod;
+        if (['cod_amount', 'cod_collected_amount', 'cash_voucher_amount'].includes(field)) return canViewCod;
         return true;
       }));
       return {
@@ -2052,6 +2053,101 @@ export class WaybillsService {
     });
 
     return this.getPackageSplits(id, currentUser);
+  }
+
+  async previewCashVoucherSync(voucherId: string, currentUser: UserEntity) {
+    return this.getCashVoucherSyncAmounts(this.dataSource.manager, voucherId, currentUser);
+  }
+
+  async syncCashVoucherWithWaybill(voucherId: string, dto: SyncWaybillCashVoucherDto, currentUser: UserEntity) {
+    return this.dataSource.transaction(async (manager) => {
+      const preview = await this.getCashVoucherSyncAmounts(manager, voucherId, currentUser, true);
+      if (preview.new_amount !== dto.expected_amount || preview.current_amount !== dto.expected_current_amount) {
+        throw new ConflictException('Phiếu thu hoặc vận đơn đã thay đổi. Vui lòng xem lại trước khi cập nhật quỹ.');
+      }
+      if (preview.new_amount === preview.current_amount) return preview;
+
+      const voucherRepository = manager.getRepository(WaybillCashVoucherEntity);
+      const waybillRepository = manager.getRepository(WaybillEntity);
+      const voucher = await voucherRepository.findOne({ where: { id: voucherId } });
+      const waybill = await waybillRepository.findOne({ where: { id: preview.waybill_id, deleted_at: IsNull() } as any });
+      if (!voucher || !waybill) throw new NotFoundException('Không tìm thấy phiếu thu hoặc vận đơn');
+      const paymentStatusBefore = waybill.customer_payment_status;
+      const reconciliationBefore = this.getCodReconciliationSnapshot(waybill as WaybillRecord);
+
+      voucher.amount = String(preview.new_amount);
+      await voucherRepository.save(voucher);
+      await this.applyCustomerPaymentStatus(manager, waybill as WaybillRecord);
+      const collectAmount = this.getCollectOnDeliveryAmount(waybill as WaybillRecord);
+      if (collectAmount > 0 && !waybill.cod_reconciled_at && preview.fund_paid >= collectAmount) {
+        waybill.cod_reconciled_at = new Date();
+        waybill.cod_reconciled_by = currentUser.id;
+        waybill.cod_fund_id = voucher.fund_id;
+        waybill.cod_collected_amount = String(collectAmount);
+      }
+      if (waybill.customer_payment_status !== paymentStatusBefore ||
+        this.getCodReconciliationSnapshot(waybill as WaybillRecord).cod_reconciled_at !== reconciliationBefore.cod_reconciled_at) {
+        waybill.updated_by = currentUser.id;
+        await waybillRepository.save(waybill);
+      }
+      await this.recordWaybillChange(String(waybill.id), 'CASH_VOUCHER_SYNCED', currentUser, undefined, undefined, {
+        cash_voucher_id: { old_value: voucherId, new_value: voucherId },
+        cash_voucher_amount: { old_value: preview.current_amount, new_value: preview.new_amount },
+        ...(waybill.customer_payment_status !== paymentStatusBefore ? {
+          customer_payment_status: { old_value: paymentStatusBefore, new_value: waybill.customer_payment_status },
+        } : {}),
+        ...this.diffCodReconciliationSnapshots(reconciliationBefore, this.getCodReconciliationSnapshot(waybill as WaybillRecord)),
+      }, manager.getRepository(WaybillChangeLogEntity));
+      return preview;
+    });
+  }
+
+  private async getCashVoucherSyncAmounts(manager: EntityManager, voucherId: string, currentUser: UserEntity, lock = false) {
+    const voucherRepository = manager.getRepository(WaybillCashVoucherEntity);
+    const voucher = await voucherRepository.findOne({
+      where: { id: voucherId },
+      ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+    });
+    if (!voucher || !voucher.waybill_id) throw new NotFoundException('Không tìm thấy phiếu thu vận đơn');
+    if (voucher.source_type !== 'MANUAL' || voucher.voucher_type !== 'Thu' || !voucher.fund_id) {
+      throw new BadRequestException('Chỉ cập nhật được phiếu thu cước vận đơn vào sổ quỹ');
+    }
+    const waybill = await manager.getRepository(WaybillEntity).findOne({
+      where: { id: voucher.waybill_id, deleted_at: IsNull() } as any,
+      ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+    }) as WaybillRecord | null;
+    if (!waybill) throw new NotFoundException('Vận đơn không còn tồn tại');
+    this.assertWaybillAccess(waybill, currentUser);
+    const fund = await manager.getRepository(CashFundEntity).findOne({ where: { id: voucher.fund_id } });
+    if (!fund) throw new NotFoundException('Sổ quỹ của phiếu thu không còn tồn tại');
+    if (!isManager(currentUser.role_mask) && fund.hub_id && !getAssignedHubIds(currentUser).includes(String(fund.hub_id))) {
+      throw new ForbiddenException('Không được điều chỉnh sổ quỹ của bưu cục khác');
+    }
+
+    const totalDue = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
+    const receivable = Math.max(totalDue, this.getCollectOnDeliveryAmount(waybill));
+    const otherVouchers = await voucherRepository.find({ where: { waybill_id: String(waybill.id) } });
+    const otherPaid = otherVouchers.reduce((sum, item) => item.id === voucher.id
+      ? sum
+      : sum + (item.voucher_type === 'Thu' ? Number(item.amount) : -Number(item.amount)), 0);
+    const newAmount = receivable - otherPaid;
+    if (!Number.isSafeInteger(newAmount) || newAmount <= 0 || newAmount > 999999999999.99) {
+      throw new BadRequestException('Không thể cập nhật phiếu thu: các khoản thu/chi khác đã bằng hoặc vượt số phải thu của vận đơn');
+    }
+    return {
+      voucher_id: voucher.id,
+      waybill_id: String(waybill.id),
+      waybill_code: waybill.waybill_code,
+      current_amount: Number(voucher.amount),
+      new_amount: newAmount,
+      total_due: receivable,
+      other_paid: otherPaid,
+      fund_paid: otherVouchers.reduce((sum, item) => item.id === voucher.id || !item.fund_id
+        ? sum
+        : sum + (item.voucher_type === 'Thu' ? Number(item.amount) : -Number(item.amount)), newAmount),
+      fund_id: voucher.fund_id,
+      fund_name: fund.name,
+    };
   }
 
   private async ensureSplitManifestLinks(
