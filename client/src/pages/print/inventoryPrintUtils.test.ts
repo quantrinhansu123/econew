@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WaybillInventoryItem } from '../warehouse/inventory/types';
-import { buildInventoryExcelRows } from '../warehouse/inventory/inventoryExcelUtils';
+import { buildInventoryExcelRows, buildInventoryExcelWorkbook } from '../warehouse/inventory/inventoryExcelUtils';
 import {
   buildInventoryQueryForPrint,
   mapWaybillsToPrintRows,
@@ -61,6 +61,35 @@ describe('inventory stock-list print columns', () => {
     });
     expect(payload.rows[0]).not.toHaveProperty('order_code');
     expect(payload.rows[0]).not.toHaveProperty('priority');
+  });
+
+  it('keeps bill pickup date and typed line breaks in print and Excel', () => {
+    const waybill: WaybillInventoryItem = {
+      id: 1,
+      sent_date: '2026-09-26',
+      created_at: '2026-09-27T08:00:00Z',
+      noi_dung: 'YTB1336-22-68=68;\nWLVN202-23-34=34',
+    };
+    const columns = ['loaded_at', 'cong_sg'] as const;
+    const printed = mapWaybillsToPrintRows([waybill], false, [...columns]);
+    const excel = buildInventoryExcelRows([waybill], [...columns], false, '', 'split-pending');
+    expect(printed.rows[0]).toMatchObject({
+      loaded_at: '26/09/2026',
+      cong_sg: waybill.noi_dung,
+    });
+    expect(excel[4]).toEqual(['26/09/2026', waybill.noi_dung]);
+  });
+
+  it('exports one editable worksheet per destination HUB with the print columns', () => {
+    const workbook = buildInventoryExcelWorkbook([
+      { id: 1, waybill_code: 'HAN001', dest_hub: { id: 1, code: 'HAN', name: 'Hà Nội' } },
+      { id: 2, waybill_code: 'HCM001', dest_hub: { id: 2, code: 'HCM', name: 'Hồ Chí Minh' } },
+    ], ['loaded_at', 'waybill_code', 'user_note'], false, '', 'split-pending');
+    expect(workbook?.SheetNames).toEqual(['1-HCM', '2-HAN']);
+    expect(workbook?.Sheets['1-HCM'].A1.v).toContain('HUB ĐẾN HCM');
+    expect(workbook?.Sheets['1-HCM'].B5.v).toBe('HCM001');
+    expect(workbook?.Sheets['2-HAN'].B5.v).toBe('HAN001');
+    expect(workbook?.Sheets['1-HCM'].C4.v).toBe('Ghi chú');
   });
 
   it('prints and exports the barcode column with the exact bill code', () => {

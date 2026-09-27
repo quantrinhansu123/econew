@@ -50,6 +50,7 @@ export function buildInventoryTripLinesQuery(
     onlyIncompleteSplit?: boolean;
     listScope?: 'all_orders' | 'all_inventory';
     destHubId?: string | number | null;
+    dateField?: 'sent' | 'received';
   },
 ) {
   const params = new URLSearchParams({
@@ -57,10 +58,10 @@ export function buildInventoryTripLinesQuery(
     limit: String(filters.limit),
   });
   if (filters.receivedFrom) {
-    params.set(options?.listScope === 'all_orders' ? 'sent_from' : 'received_from', filters.receivedFrom);
+    params.set(options?.dateField === 'sent' || options?.listScope === 'all_orders' ? 'sent_from' : 'received_from', filters.receivedFrom);
   }
   if (filters.receivedTo) {
-    params.set(options?.listScope === 'all_orders' ? 'sent_to' : 'received_to', filters.receivedTo);
+    params.set(options?.dateField === 'sent' || options?.listScope === 'all_orders' ? 'sent_to' : 'received_to', filters.receivedTo);
   }
   if (options?.onlyIncompleteSplit) {
     params.set('only_incomplete_split', '1');

@@ -208,7 +208,7 @@ export function buildInventoryQueryForPrint(filters: InventoryFilters) {
   return params.toString();
 }
 
-export function summarizeFilters(filters: InventoryFilters) {
+export function summarizeFilters(filters: InventoryFilters, dateLabel = 'Ngày bốc') {
   const parts: string[] = [];
   if (filters.keyword.trim()) parts.push(`Từ khóa: ${filters.keyword.trim()}`);
   if (filters.ma_kh.trim()) parts.push(`Mã KH: ${filters.ma_kh.trim()}`);
@@ -217,7 +217,7 @@ export function summarizeFilters(filters: InventoryFilters) {
   if (filters.originHubIds.length) parts.push(`Bưu cục gửi: ${filters.originHubIds.length} bưu cục`);
   if (filters.destHubIds.length) parts.push(`HUB đến: ${filters.destHubIds.length} bưu cục`);
   if (filters.receivedFrom || filters.receivedTo) {
-    parts.push(`Ngày nhận: ${filters.receivedFrom || '…'} → ${filters.receivedTo || '…'}`);
+    parts.push(`${dateLabel}: ${filters.receivedFrom || '…'} → ${filters.receivedTo || '…'}`);
   }
   return parts.length ? parts.join(' · ') : 'Tất cả đơn tồn kho theo bộ lọc hiện tại';
 }

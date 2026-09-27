@@ -625,6 +625,7 @@ export function normalizeInventoryVisibleColumnIds(
   const selected = ids.filter((id, index) => (
     id !== 'actions'
     && id !== 'stt'
+    && id !== 'received_at'
     && allowed.has(id)
     && ids.indexOf(id) === index
   ));
@@ -939,7 +940,10 @@ export function resolveReceiverPhone(waybill: WaybillInventoryItem): string {
 
 export function resolveLoadedAt(waybill: WaybillInventoryItem): string | null {
   const loaded = (waybill as { loaded_at?: string | null }).loaded_at;
-  return loaded || waybill.received_at || waybill.created_at || null;
+  // "Ngày bốc" trên danh sách tồn là ngày người dùng sửa được trên bill.
+  // Giữ fallback cho vận đơn cũ chưa có sent_date.
+  return waybill.sent_date || parseNote(waybill.note || waybill.notes, 'ngay_gui')
+    || loaded || waybill.received_at || waybill.created_at || null;
 }
 
 /** Số ngày lưu kho tính từ ngày bốc/nhận — dùng highlight cảnh báo */

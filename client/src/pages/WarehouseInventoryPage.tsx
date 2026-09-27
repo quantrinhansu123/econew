@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Hash, Layers, Loader2, MoreHorizontal, Package, PackageCheck, Pencil, Printer, ReceiptText, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Truck, Unlink, X } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { formatMoney } from '../lib/formatMoney';
 import { WAYBILL_LIST_CHANGED_EVENT, WAYBILL_LIST_CHANGED_STORAGE_KEY } from '../lib/waybillListSync';
@@ -18,6 +18,7 @@ import { DON_GIA_DON_VI_OPTIONS } from './warehouse/orders/orderFormData';
 import type { AuthUserProfile } from './login/types';
 import WaybillInventoryDetailDialog from './warehouse/inventory/dialogs/WaybillInventoryDetailDialog';
 import WaybillEditDialog from './warehouse/inventory/dialogs/WaybillEditDialog';
+import WarehouseOrderReceivePage from './WarehouseOrderReceivePage';
 import WaybillPriorityControl from './warehouse/inventory/WaybillPriorityControl';
 import WaybillRouteControl from './warehouse/inventory/WaybillRouteControl';
 import SplitOrderDialog from './warehouse/inventory/dialogs/SplitOrderDialog';
@@ -99,7 +100,7 @@ const MANAGER = 32;
 const DIRECTOR = 64;
 const DISPATCHER = 8;
 const MUTABLE_WAYBILL_STATUSES = ['RECEIVED', 'IN_WAREHOUSE'];
-const defaultFilters: InventoryFilters = { keyword: '', ma_kh: '', statuses: [], orderStatusGroups: [], noiDenKeyword: '', billingUnits: [], customerPaymentStatuses: [], originHubIds: [], destHubIds: [], paymentTypes: [], priorities: [], receivedFrom: '', receivedTo: '', page: 1, limit: 10 };
+const defaultFilters: InventoryFilters = { keyword: '', ma_kh: '', statuses: [], orderStatusGroups: [], noiDenKeyword: '', billingUnits: [], customerPaymentStatuses: [], originHubIds: [], destHubIds: [], paymentTypes: [], priorities: [], receivedFrom: '', receivedTo: '', page: 1, limit: 100 };
 const allOrdersDefaultFilters: InventoryFilters = { ...defaultFilters, limit: 25 };
 const billingUnitFilterOptions: FilterOption[] = [
   { value: 'Kg', label: 'Kg' },
@@ -171,7 +172,8 @@ const buildQuery = (filters: InventoryFilters, variant: InventoryPageVariant) =>
   buildInventoryTripLinesQuery(filters, {
     onlyIncompleteSplit: variant === 'split-pending',
     listScope: variant === 'all-orders' ? 'all_orders' : undefined,
-  });
+    dateField: 'sent',
+  }) + '&sort_by=sent_date';
 
 const EXCEL_EXPORT_PAGE_SIZE = 100;
 
@@ -229,7 +231,6 @@ async function loadAllInventoryRows(
 export default function WarehouseInventoryPage({ variant = 'split-pending' }: { variant?: InventoryPageVariant }) {
   const isAllOrders = variant === 'all-orders';
   const navigate = useNavigate();
-  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<InventoryFilters>(() => ({
     ...(isAllOrders ? allOrdersDefaultFilters : defaultFilters),
@@ -246,6 +247,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [groupSearch, setGroupSearch] = useState<Record<string, string>>({ status: '', originHub: '', destHub: '', payment: '', priority: '' });
   const [detailWaybill, setDetailWaybill] = useState<WaybillInventoryDetail | null>(null);
   const [editWaybill, setEditWaybill] = useState<WaybillInventoryItem | null>(null);
+  const [receiveWaybill, setReceiveWaybill] = useState<WaybillInventoryItem | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDetailClosing, setIsDetailClosing] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
@@ -276,8 +278,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [ledgerCustomer, setLedgerCustomer] = useState<CustomerRecord | null>(null);
   const [isLedgerCustomerLoading, setIsLedgerCustomerLoading] = useState(false);
   const openWarehouseIntake = (item: WaybillInventoryItem) => {
-    const returnTo = `${location.pathname}${location.search}`;
-    navigate(`/warehouse/orders/${encodeURIComponent(String(item.id))}/receive?returnTo=${encodeURIComponent(returnTo)}`);
+    setReceiveWaybill(item);
   };
   const inventoryRequestIdRef = useRef(0);
   const inventoryAbortRef = useRef<AbortController | null>(null);
@@ -522,8 +523,8 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     return () => window.clearTimeout(timer);
   }, [inventoryLoadKey, canViewPage]);
 
-  async function loadInventory({ silent = false }: { silent?: boolean } = {}) {
-    if (silent && (loadsAllRows || document.visibilityState !== 'visible' || inventoryAbortRef.current || Date.now() - lastInventoryLoadRef.current < 2_000)) return;
+  async function loadInventory({ silent = false, force = false }: { silent?: boolean; force?: boolean } = {}) {
+    if (silent && !force && (loadsAllRows || document.visibilityState !== 'visible' || inventoryAbortRef.current || Date.now() - lastInventoryLoadRef.current < 2_000)) return;
     inventoryAbortRef.current?.abort();
     const controller = new AbortController();
     inventoryAbortRef.current = controller;
@@ -538,7 +539,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       const response = loadsAllRows
         ? await loadAllInventoryRows(filters, variant, controller.signal)
         : await apiRequest<InventoryListResponse>(
-          `/waybills/inventory/trip-lines?${buildQuery(filters, variant)}${isAllOrders ? '&sort_by=sent_date' : ''}`,
+          `/waybills/inventory/trip-lines?${buildQuery(filters, variant)}`,
           { signal: controller.signal },
         );
       if (!isCurrentRequest()) return;
@@ -840,7 +841,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         isAllOrders ? sortAllOrders(filteredRows, sort) : filteredRows,
         canViewPricing,
         visibleColumns.map((col) => col.id),
-        summarizeFilters(filters),
+        summarizeFilters(filters, isAllOrders ? 'Ngày gửi' : 'Ngày bốc'),
         Object.fromEntries(visibleColumns.map((col) => [col.id, col.label])),
         {
           currentHubIsHcm: filters.originHubIds.length === 1
@@ -877,7 +878,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         exportRows,
         visibleColumns.map((col) => col.id),
         canViewPricing,
-        summarizeFilters(filters),
+        summarizeFilters(filters, isAllOrders ? 'Ngày gửi' : 'Ngày bốc'),
         isAllOrders ? 'danh-sach-don' : 'danh-sach-ton-kho',
         variant,
       );
@@ -1297,6 +1298,14 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         onClose={() => setEditWaybill(null)}
         onSaved={handleEditSaved}
       />
+      {receiveWaybill && (
+        <WarehouseOrderReceivePage
+          key={String(receiveWaybill.id)}
+          embeddedId={String(receiveWaybill.id)}
+          onClose={() => setReceiveWaybill(null)}
+          onSaved={() => void loadInventory({ silent: true, force: true })}
+        />
+      )}
       <SplitOrderDialog isOpen={isBoardOpen} isClosing={isBoardClosing} waybill={null} onClose={closeBoard} />
       <ConfirmDialog dialog={releaseConfirm} onClose={() => setReleaseConfirm(null)} />
       <InventoryColumnPicker
@@ -1476,7 +1485,7 @@ function InventoryRow({
       case 'stt':
         return <td style={isAllOrders ? { left: 0 } : undefined} className={clsx(cellClass, 'text-center font-bold text-muted-foreground', isAllOrders && 'sticky z-[5]', isAllOrders && (getStorageAgeRowClass(waybill).includes('red') ? 'bg-red-50 group-hover:bg-red-100' : getStorageAgeRowClass(waybill).includes('amber') ? 'bg-amber-50 group-hover:bg-amber-100' : 'bg-white group-hover:bg-sky-50'))}>{rowIndex ?? '—'}</td>;
       case 'cong_sg':
-        return <td {...stickyAllOrdersCellProps}>{resolveCongSg(waybill)}</td>;
+        return <td {...stickyAllOrdersCellProps} className={clsx(stickyAllOrdersCellProps.className.replace('truncate', ''), 'max-w-[320px] whitespace-pre-line break-words align-top')} title={resolveCongSg(waybill)}>{resolveCongSg(waybill)}</td>;
       case 'stack_position':
         return (
           <td className={`${cellClass} min-w-[72px] text-muted-foreground`}>
@@ -1520,9 +1529,9 @@ function InventoryRow({
         );
       case 'bill_info':
         return (
-          <td className={cellClass}>
+          <td className={cellClass.replace('truncate', '')}>
             <p className="font-bold">{displayCode(waybill)}</p>
-            <p className="text-[11px] text-muted-foreground truncate">{waybill.noi_dung || waybill.mat_hang || '—'}</p>
+            <p className="whitespace-pre-line break-words text-[11px] text-muted-foreground">{waybill.noi_dung || waybill.mat_hang || '—'}</p>
           </td>
         );
       case 'service_type':
@@ -2173,7 +2182,7 @@ function AllOrdersCompactTable({
                     </button>
                   ) : '—'}
                 </td>
-                <td className={cellClass} title={resolveCongSg(waybill)}>{resolveCongSg(waybill)}</td>
+                <td className="border-b border-r border-slate-200 px-1.5 py-1.5 text-[10px] leading-tight whitespace-pre-line break-words align-top" title={resolveCongSg(waybill)}>{resolveCongSg(waybill)}</td>
                 <td className={`${cellClass} font-semibold`} title={resolveNoiDen(waybill)}>{resolveNoiDen(waybill)}</td>
                 <td className={`${cellClass} text-right font-bold`}>{resolvePackageCountSl(waybill)}</td>
                 <td className={clsx(cellClass, 'px-1 py-0.5')}>
@@ -2265,10 +2274,7 @@ function InventoryCard({ waybill, hubs, isAllOrders, canUpdate, canEdit, openAct
             : displayValue(waybill.package_count || waybill.declared_package_count)
         } />
         <MobileInfo label="Cân nặng" value={displayValue(waybill.actual_weight || waybill.weight, ' kg')} />
-        <MobileInfo
-          label={isAllOrders ? 'Ngày gửi' : 'Ngày nhận'}
-          value={formatDate(isAllOrders ? waybill.sent_date : (waybill.received_at || waybill.created_at))}
-        />
+        <MobileInfo label={isAllOrders ? 'Ngày gửi' : 'Ngày bốc'} value={formatDate(resolveLoadedAt(waybill))} />
       </div>
 
       <div className="mt-3 border-t border-border pt-3">
@@ -2431,7 +2437,7 @@ function FilterGroup({ id, title, options, selected, search, openGroups, setOpen
 
 function DateGroup({ draftFilters, setDraftFilters, openGroups, setOpenGroups }: { draftFilters: InventoryFilters; setDraftFilters: React.Dispatch<React.SetStateAction<InventoryFilters>>; openGroups: Record<string, boolean>; setOpenGroups: React.Dispatch<React.SetStateAction<Record<string, boolean>>> }) {
   const isOpen = openGroups.received;
-  return <div className="overflow-hidden rounded-2xl border border-border bg-white"><button onClick={() => setOpenGroups(prev => ({ ...prev, received: !prev.received }))} className="flex w-full items-center justify-between px-4 py-3 text-left"><span className="text-[13px] font-black text-foreground">Khoảng thời gian nhận hàng</span><ChevronDown size={16} className={clsx('transition-transform', isOpen && 'rotate-180')} /></button>{isOpen && <div className="grid gap-3 border-t border-border p-4 sm:grid-cols-2"><Field label="Từ ngày"><DayPicker value={draftFilters.receivedFrom} onChange={value => setDraftFilters(prev => ({ ...prev, receivedFrom: value }))} className="h-11 border-input text-[13px] font-bold" /></Field><Field label="Đến ngày"><DayPicker value={draftFilters.receivedTo} onChange={value => setDraftFilters(prev => ({ ...prev, receivedTo: value }))} className="h-11 border-input text-[13px] font-bold" /></Field><button onClick={() => setDraftFilters(prev => ({ ...prev, receivedFrom: '', receivedTo: '' }))} className="rounded-lg bg-muted px-3 py-2 text-[12px] font-bold text-muted-foreground sm:col-span-2">Xóa chọn</button></div>}</div>;
+  return <div className="overflow-hidden rounded-2xl border border-border bg-white"><button onClick={() => setOpenGroups(prev => ({ ...prev, received: !prev.received }))} className="flex w-full items-center justify-between px-4 py-3 text-left"><span className="text-[13px] font-black text-foreground">Khoảng ngày bốc trên bill</span><ChevronDown size={16} className={clsx('transition-transform', isOpen && 'rotate-180')} /></button>{isOpen && <div className="grid gap-3 border-t border-border p-4 sm:grid-cols-2"><Field label="Từ ngày"><DayPicker value={draftFilters.receivedFrom} onChange={value => setDraftFilters(prev => ({ ...prev, receivedFrom: value }))} className="h-11 border-input text-[13px] font-bold" /></Field><Field label="Đến ngày"><DayPicker value={draftFilters.receivedTo} onChange={value => setDraftFilters(prev => ({ ...prev, receivedTo: value }))} className="h-11 border-input text-[13px] font-bold" /></Field><button onClick={() => setDraftFilters(prev => ({ ...prev, receivedFrom: '', receivedTo: '' }))} className="rounded-lg bg-muted px-3 py-2 text-[12px] font-bold text-muted-foreground sm:col-span-2">Xóa chọn</button></div>}</div>;
 }
 
 function Badge({ config, fallback }: { config?: BadgeConfig; fallback: ReactNode }) { return <span className={clsx('inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-black whitespace-nowrap', config?.className || 'bg-muted text-muted-foreground border-border')}>{config?.label || fallback}</span>; }

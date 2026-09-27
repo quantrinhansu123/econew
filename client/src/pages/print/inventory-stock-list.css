@@ -153,6 +153,12 @@
   vertical-align: top;
 }
 
+.inventory-stock-table--inventory tbody td.col-inv-cong_sg,
+.inventory-stock-table--inventory tbody td.col-inv-bill_info {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 .inventory-stock-table--inventory tbody td.col-inv-receiver_address,
 .inventory-stock-table--inventory tbody td.col-inv-bill_info,
 .inventory-stock-table--inventory tbody td.col-inv-customer_name,

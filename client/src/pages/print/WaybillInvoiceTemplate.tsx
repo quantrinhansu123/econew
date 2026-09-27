@@ -115,7 +115,7 @@ export default function WaybillInvoiceTemplate({ data }: Props) {
             </div>
             <div className="eco-note-cell eco-note-cell--contents">
               <span className="eco-note-heading">Nội dung hàng hoá</span>
-              <p>{value(data.noiDungHang)}</p>
+              <p>{value(data.noiDungHang).replace(/\s*\r?\n\s*/g, ' ')}</p>
             </div>
           </div>
         </div>

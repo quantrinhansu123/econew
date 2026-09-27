@@ -9,6 +9,7 @@ import {
   normalizeInventoryVisibleColumnIds,
   resolvePrintColumnIds,
   resolveDeliveryStaff,
+  resolveLoadedAt,
   resolveNoiDen,
   resolveTotalAmount,
   resolveUserNote,
@@ -52,6 +53,16 @@ describe('inventory visible columns', () => {
       'loaded_at',
       'actions',
     ]);
+  });
+
+  it('uses the editable bill date for pickup and hides the redundant creation date from saved stock columns', () => {
+    expect(resolveLoadedAt({
+      id: 1,
+      sent_date: '2026-09-26',
+      loaded_at: '2026-09-27',
+      created_at: '2026-09-27T08:00:00Z',
+    })).toBe('2026-09-26');
+    expect(normalizeInventoryVisibleColumnIds(['received_at', 'loaded_at'], true)).toEqual(['loaded_at', 'actions']);
   });
 
   it('does not show optional order, priority, and image columns until they are selected', () => {

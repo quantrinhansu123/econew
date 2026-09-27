@@ -44,6 +44,11 @@ const printData: WaybillPrintData = {
 };
 
 describe('waybill invoice layout', () => {
+  it('keeps entered content on one line on the printed bill', () => {
+    const html = renderToStaticMarkup(<WaybillInvoiceTemplate data={{ ...printData, noiDungHang: 'MÃ 1;\nMÃ 2' }} />);
+    expect(html).toContain('MÃ 1; MÃ 2');
+    expect(html).not.toContain('MÃ 1;\nMÃ 2');
+  });
   it('keeps the barcode code, uses the requested hotline, and removes sender phone', () => {
     const html = renderToStaticMarkup(<WaybillInvoiceTemplate data={printData} />);
 

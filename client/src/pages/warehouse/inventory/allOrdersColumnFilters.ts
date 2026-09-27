@@ -13,6 +13,7 @@ import {
   resolveOrderStatusBadge,
   resolveWarehouseIntakePresentation,
   resolveInventoryTripHistoryText,
+  resolveLoadedAt,
   resolvePackageCountSl,
   resolvePaymentMethod,
   resolveReceiverAddress,
@@ -162,7 +163,7 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
     case 'stack_position':
       return String(waybill.loading_position ?? EMPTY_VALUE);
     case 'loaded_at':
-      return waybill.loaded_at ? formatInventoryDate(String(waybill.loaded_at)) : EMPTY_VALUE;
+      return resolveLoadedAt(waybill) ? formatInventoryDate(resolveLoadedAt(waybill)) : EMPTY_VALUE;
     case 'trip_label':
       return resolveInventoryTripHistoryText(waybill) || EMPTY_VALUE;
     case 'delivery_staff':

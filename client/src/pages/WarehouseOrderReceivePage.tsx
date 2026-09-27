@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ClipboardCheck, Loader2, Package, PackageCheck, RotateCcw, Save, Search, ShieldAlert, Truck, UserRound, Warehouse } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ClipboardCheck, Loader2, Package, PackageCheck, RotateCcw, Save, Search, ShieldAlert, Truck, UserRound, Warehouse, X } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { clsx } from 'clsx';
 
@@ -93,8 +94,16 @@ function Badge({ config, fallback }: { config?: BadgeConfig; fallback: string })
   return <span className={clsx('inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-wider', resolved.className)}>{resolved.label}</span>;
 }
 
-export default function WarehouseOrderReceivePage() {
-  const { id } = useParams();
+interface WarehouseOrderReceivePageProps {
+  embeddedId?: string;
+  onClose?: () => void;
+  onSaved?: () => void;
+}
+
+export default function WarehouseOrderReceivePage({ embeddedId, onClose, onSaved }: WarehouseOrderReceivePageProps = {}) {
+  const { id: routeId } = useParams();
+  const id = embeddedId ?? routeId;
+  const isEmbedded = Boolean(embeddedId);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [user] = useState<UserSummary | null>(() => getStoredUser());
@@ -113,6 +122,11 @@ export default function WarehouseOrderReceivePage() {
   const roleMask = user?.role_mask ?? 0;
   const returnToParam = searchParams.get('returnTo') || '';
   const returnTo = safeReturnPath(returnToParam);
+  const closePage = () => {
+    if (isEmbedded && isSubmitting) return;
+    if (isEmbedded) onClose?.();
+    else navigate(returnTo);
+  };
   const canSeeRestrictedMoney = isManager(roleMask);
   const hasReceiveRole = canReceiveByRole(roleMask);
   const userHubIds = useMemo(() => getUserHubIds(user), [user]);
@@ -182,6 +196,13 @@ export default function WarehouseOrderReceivePage() {
     bootstrap();
     return () => { ignore = true; };
   }, [id]);
+
+  useEffect(() => {
+    if (!isEmbedded) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [isEmbedded]);
 
   const searchByCode = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -255,8 +276,13 @@ export default function WarehouseOrderReceivePage() {
         ? { ...waybill, delivery_photo_url: payload.delivery_photo_url || waybill.delivery_photo_url }
         : { ...waybill, current_state: 'IN_WAREHOUSE', received_at: new Date().toISOString(), delivery_photo_url: payload.delivery_photo_url }));
       setSuccessMessage(isCorrectionMode ? 'Đã cập nhật thông tin nhập kho.' : 'Đã nhập kho thành công và lưu thông tin xe/tài xế lấy hàng.');
-      closeConfirm();
-      if (isCorrectionMode) window.setTimeout(() => navigate(returnTo), 350);
+      if (isEmbedded) {
+        onSaved?.();
+        onClose?.();
+      } else {
+        closeConfirm();
+        if (isCorrectionMode) window.setTimeout(() => navigate(returnTo), 350);
+      }
     } catch (submitError) {
       setError(submitError instanceof ApiError ? submitError.message : 'Không thể tiếp nhận vận đơn.');
     } finally {
@@ -271,8 +297,8 @@ export default function WarehouseOrderReceivePage() {
     setFormState(initialFormState);
   };
 
-  return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 w-full space-y-5">
+  const content = (
+    <div className="w-full space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-[12px] font-bold text-primary">
@@ -281,8 +307,8 @@ export default function WarehouseOrderReceivePage() {
           <h1 className="text-2xl font-black tracking-tight text-foreground">{isCorrectionMode ? 'Sửa thông tin nhập kho' : 'Tiếp nhận đơn tại kho'}</h1>
           <p className="mt-2 max-w-2xl text-[13px] text-muted-foreground">{isCorrectionMode ? 'Chỉnh lại nguồn đưa hàng, xe, tài xế hoặc ghi chú. Trạng thái và ngày nhận kho không thay đổi.' : 'Đơn mới ở trạng thái “Đơn cần lấy”. Chọn nguồn đưa hàng và xác nhận khi hàng thực tế đã có mặt tại kho.'}</p>
         </div>
-        <button type="button" onClick={() => navigate(returnTo)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted">
-          <ArrowLeft size={16} /> Về danh sách đơn
+        <button type="button" onClick={closePage} disabled={isSubmitting} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted disabled:opacity-50">
+          {isEmbedded ? <X size={16} /> : <ArrowLeft size={16} />}{isEmbedded ? 'Đóng' : 'Về danh sách đơn'}
         </button>
       </div>
 
@@ -291,7 +317,7 @@ export default function WarehouseOrderReceivePage() {
       ) : (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
           <div className="space-y-5">
-            <form onSubmit={searchByCode} className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+            {!isEmbedded && <form onSubmit={searchByCode} className="rounded-2xl border border-border bg-white p-4 shadow-sm">
               <div className="mb-4 flex items-center gap-2 border-b border-border pb-3">
                 <Search size={16} className="text-primary" />
                 <span className="text-[12px] font-bold uppercase tracking-wider text-primary">Quét / nhập mã vận đơn</span>
@@ -305,7 +331,7 @@ export default function WarehouseOrderReceivePage() {
                   {isSearching ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />} Kiểm tra
                 </button>
               </div>
-            </form>
+            </form>}
 
             <form onSubmit={openConfirm} className="rounded-2xl border border-border bg-white p-4 shadow-sm">
               <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-3">
@@ -408,7 +434,7 @@ export default function WarehouseOrderReceivePage() {
               {successMessage && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] font-bold text-emerald-700 flex items-center gap-2"><CheckCircle2 size={16} />{successMessage}</div>}
 
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <button type="button" onClick={isCorrectionMode ? () => navigate(returnTo) : resetForNextScan} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted">{isCorrectionMode ? <ArrowLeft size={16} /> : <RotateCcw size={16} />} {isCorrectionMode ? 'Hủy chỉnh sửa' : 'Quét đơn khác'}</button>
+                <button type="button" onClick={isEmbedded || isCorrectionMode ? closePage : resetForNextScan} disabled={isSubmitting} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[13px] font-bold text-foreground transition-colors hover:bg-muted disabled:opacity-50">{isEmbedded || isCorrectionMode ? <ArrowLeft size={16} /> : <RotateCcw size={16} />} {isEmbedded ? 'Hủy' : isCorrectionMode ? 'Hủy chỉnh sửa' : 'Quét đơn khác'}</button>
                 <button type="submit" disabled={receiveDisabled} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-bold text-white shadow-sm shadow-primary/20 transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50">{isCorrectionMode ? <Save size={16} /> : <PackageCheck size={16} />} {isCorrectionMode ? 'Lưu chỉnh sửa' : 'Đã nhập kho'}</button>
               </div>
             </form>
@@ -456,6 +482,16 @@ export default function WarehouseOrderReceivePage() {
 
       <WaybillReceiveConfirmDialog isOpen={isConfirmOpen} isClosing={isConfirmClosing} isSubmitting={isSubmitting} isCorrectionMode={isCorrectionMode} waybill={waybill} formState={formState} onClose={closeConfirm} onConfirm={submitReceive} />
     </div>
+  );
+
+  if (!isEmbedded) return content;
+  return createPortal(
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/50 p-2 sm:p-5" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !isSubmitting) onClose?.(); }}>
+      <div role="dialog" aria-modal="true" aria-label="Xử lý nhập kho" className="max-h-[94vh] w-full max-w-6xl overflow-y-auto rounded-2xl bg-slate-50 p-4 shadow-2xl sm:p-6">
+        {content}
+      </div>
+    </div>,
+    document.body,
   );
 }
 

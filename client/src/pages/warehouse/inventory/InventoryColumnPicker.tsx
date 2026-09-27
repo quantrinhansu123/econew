@@ -35,6 +35,7 @@ export default function InventoryColumnPicker({ isOpen, visibleIds, canViewPrici
     : orderedInventoryColumns.filter((col) => (
       col.id !== 'actions'
       && col.id !== 'stt'
+      && col.id !== 'received_at'
       && (!col.managerOnly || canViewPricing)
     )), [canViewPricing, mode, orderedInventoryColumns]);
   const options = useMemo(() => {

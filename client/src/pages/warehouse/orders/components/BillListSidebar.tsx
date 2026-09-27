@@ -2,6 +2,7 @@ import { CalendarDays, ChevronDown, ChevronRight, Loader2, Printer, X } from 'lu
 import { clsx } from 'clsx';
 import { Fragment, useMemo, useState } from 'react';
 import type { BillListItem } from '../orderFormTypes';
+import { billMatchesDate, sortBillsByBillDate } from '../billListDate';
 
 interface Props {
   bills: BillListItem[];
@@ -22,19 +23,6 @@ interface Props {
 const formatMoney = (value: number) => (value ? value.toLocaleString('vi-VN') : '');
 const UNKNOWN_DATE_KEY = '__unknown_date__';
 
-const billMatchesDate = (bill: BillListItem, filterDate: string) => {
-  if (!filterDate) return true;
-  const source = bill.createdAt || '';
-  if (source) {
-    const iso = new Date(source).toISOString().slice(0, 10);
-    return iso === filterDate;
-  }
-  const [day, month, year] = bill.date.split('/').map((part) => part.trim());
-  if (!day || !month || !year) return false;
-  const normalized = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  return normalized === filterDate;
-};
-
 export default function BillListSidebar({
   bills,
   selectedId,
@@ -54,7 +42,7 @@ export default function BillListSidebar({
   const checkedIds = useMemo(() => new Set(checkedBillIds), [checkedBillIds]);
 
   const filteredBills = useMemo(
-    () => bills.filter((bill) => billMatchesDate(bill, filterDate)),
+    () => sortBillsByBillDate(bills.filter((bill) => billMatchesDate(bill, filterDate))),
     [bills, filterDate],
   );
 

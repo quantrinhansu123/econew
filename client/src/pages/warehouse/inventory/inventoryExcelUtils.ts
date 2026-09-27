@@ -595,6 +595,7 @@ export function buildInventoryExcelRows(
   showPricing: boolean,
   filterSummary: string,
   variant: InventoryExcelVariant = 'split-pending',
+  title?: string,
 ): ExcelValue[][] {
   const printColumnIds = resolvePrintColumnIds(visibleColumnIds);
   const headers = printColumnIds.map((id) => columnLabel(id, variant));
@@ -615,7 +616,7 @@ export function buildInventoryExcelRows(
     : computeGrandTotals(waybills, false);
 
   return [
-    [variant === 'all-orders' ? 'DANH SÁCH ĐƠN HÀNG ECO' : 'DANH SÁCH TỒN KHO ECO'],
+    [title || (variant === 'all-orders' ? 'DANH SÁCH ĐƠN HÀNG ECO' : 'DANH SÁCH TỒN KHO ECO')],
     [meta],
     [],
     ...headerRows,
@@ -686,7 +687,7 @@ function estimateRowHeight(values: ExcelValue[], widths: number[]): number {
       .reduce((sum, part) => sum + Math.max(1, Math.ceil(part.length / width)), 0);
     return Math.max(max, lines);
   }, 1);
-  return Math.min(72, Math.max(22, lineCount * 15));
+  return Math.min(409, Math.max(22, lineCount * 15));
 }
 
 function styleInventoryWorksheet(
@@ -704,6 +705,13 @@ function styleInventoryWorksheet(
   const totalRow = dataEndRow + 1;
   const summaryRow = totalRow + 1;
   const widths = printColumnIds.map((id) => EXCEL_COLUMN_WIDTHS[id] ?? 16);
+  const isStock = variant === 'split-pending';
+  const stockBorder: NonNullable<CellStyle['border']> = {
+    top: { style: 'thin', color: { rgb: '000000' } },
+    right: { style: 'thin', color: { rgb: '000000' } },
+    bottom: { style: 'thin', color: { rgb: '000000' } },
+    left: { style: 'thin', color: { rgb: '000000' } },
+  };
 
   worksheet['!cols'] = widths.map((wch) => ({ wch }));
   worksheet['!rows'] = rows.map((row, index) => {
@@ -716,8 +724,14 @@ function styleInventoryWorksheet(
   });
 
   for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
-    setCellStyle(worksheet, 0, columnIndex, titleStyle);
-    setCellStyle(worksheet, 1, columnIndex, metaStyle);
+    setCellStyle(worksheet, 0, columnIndex, isStock ? {
+      font: { name: 'Times New Roman', sz: 16, bold: true, color: { rgb: '000000' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+    } : titleStyle);
+    setCellStyle(worksheet, 1, columnIndex, isStock ? {
+      font: { name: 'Times New Roman', sz: 10, color: { rgb: '444444' } },
+      alignment: { horizontal: 'left', vertical: 'center' },
+    } : metaStyle);
   }
 
   if (variant === 'all-orders') {
@@ -740,7 +754,12 @@ function styleInventoryWorksheet(
     });
   } else {
     printColumnIds.forEach((id, columnIndex) => {
-      setCellStyle(worksheet, headerEndRow, columnIndex, headerStyleForColumn(id));
+      setCellStyle(worksheet, headerEndRow, columnIndex, {
+        ...headerStyleForColumn(id),
+        font: { name: 'Times New Roman', sz: 10, bold: true, color: { rgb: '000000' } },
+        fill: { patternType: 'solid', fgColor: { rgb: 'C6EFCE' } },
+        border: stockBorder,
+      });
     });
   }
 
@@ -748,10 +767,11 @@ function styleInventoryWorksheet(
     printColumnIds.forEach((id, columnIndex) => {
       const style: CellStyle = {
         ...baseCellStyle,
+        ...(isStock ? { font: { name: 'Times New Roman', sz: 10, color: { rgb: '000000' } }, border: stockBorder } : {}),
         alignment: alignmentForColumn(id),
         fill: {
           patternType: 'solid',
-          fgColor: { rgb: dataFillForColumn(id, (rowIndex - dataStartRow) % 2 === 1) },
+          fgColor: { rgb: isStock ? COLORS.white : dataFillForColumn(id, (rowIndex - dataStartRow) % 2 === 1) },
         },
         ...(NUMBER_FORMAT_BY_COLUMN[id] ? { numFmt: NUMBER_FORMAT_BY_COLUMN[id] } : {}),
       };
@@ -762,6 +782,11 @@ function styleInventoryWorksheet(
   printColumnIds.forEach((id, columnIndex) => {
     setCellStyle(worksheet, totalRow, columnIndex, {
       ...totalStyle,
+      ...(isStock ? {
+        font: { name: 'Times New Roman', sz: 10, bold: true, color: { rgb: '000000' } },
+        fill: { patternType: 'solid', fgColor: { rgb: 'E2F0D9' } },
+        border: stockBorder,
+      } : {}),
       alignment: alignmentForColumn(id),
       ...(NUMBER_FORMAT_BY_COLUMN[id] ? { numFmt: NUMBER_FORMAT_BY_COLUMN[id] } : {}),
     });
@@ -873,32 +898,39 @@ export function buildInventoryExcelWorkbook(
 ): WorkBook | null {
   const printColumnIds = resolvePrintColumnIds(visibleColumnIds);
   if (!waybills.length || !printColumnIds.length) return null;
-
-  const rows = buildInventoryExcelRows(
-    waybills,
-    visibleColumnIds,
-    showPricing,
-    filterSummary,
-    variant,
-  );
-  const worksheet = utils.aoa_to_sheet(rows);
-  const columnCount = printColumnIds.length;
-  const dataCount = waybills.length;
-  const headerRows = variant === 'all-orders' ? 2 : 1;
-  const totalRow = 3 + headerRows + dataCount;
-  const summaryRow = totalRow + 1;
-  const allOrderHeaders = variant === 'all-orders' ? allOrdersHeaderRows(printColumnIds) : null;
-
-  worksheet['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: columnCount - 1 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: columnCount - 1 } },
-    { s: { r: summaryRow, c: 0 }, e: { r: summaryRow, c: columnCount - 1 } },
-    ...(allOrderHeaders?.merges ?? []),
-  ];
-  styleInventoryWorksheet(worksheet, rows, printColumnIds, dataCount, variant);
-
   const workbook = utils.book_new();
-  utils.book_append_sheet(workbook, worksheet, variant === 'all-orders' ? 'Danh sach don' : 'Danh sach ton');
+  const groups = variant === 'all-orders'
+    ? [{ name: 'Danh sach don', title: 'DANH SÁCH ĐƠN HÀNG ECO', items: waybills }]
+    : [...waybills.reduce((groupMap, waybill) => {
+      const code = hubCode(waybill.dest_hub, waybill.dest_hub_id) || 'CHƯA RÕ';
+      const group = groupMap.get(code) || [];
+      group.push(waybill);
+      groupMap.set(code, group);
+      return groupMap;
+    }, new Map<string, WaybillInventoryItem[]>())]
+      .sort(([left], [right]) => left === 'HCM' ? -1 : right === 'HCM' ? 1 : left.localeCompare(right, 'vi'))
+      .map(([code, items], index) => ({
+        name: `${index + 1}-${code.replace(/[\\/?*:[\]]/g, ' ')}`.slice(0, 31),
+        title: `DANH SÁCH TỒN KHO · HUB ĐẾN ${code}`,
+        items,
+      }));
+
+  for (const group of groups) {
+    const rows = buildInventoryExcelRows(group.items, visibleColumnIds, showPricing, filterSummary, variant, group.title);
+    const worksheet = utils.aoa_to_sheet(rows);
+    const columnCount = printColumnIds.length;
+    const headerRows = variant === 'all-orders' ? 2 : 1;
+    const summaryRow = 3 + headerRows + group.items.length + 1;
+    const allOrderHeaders = variant === 'all-orders' ? allOrdersHeaderRows(printColumnIds) : null;
+    worksheet['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: columnCount - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: columnCount - 1 } },
+      { s: { r: summaryRow, c: 0 }, e: { r: summaryRow, c: columnCount - 1 } },
+      ...(allOrderHeaders?.merges ?? []),
+    ];
+    styleInventoryWorksheet(worksheet, rows, printColumnIds, group.items.length, variant);
+    utils.book_append_sheet(workbook, worksheet, group.name);
+  }
   if (variant === 'all-orders') {
     utils.book_append_sheet(
       workbook,

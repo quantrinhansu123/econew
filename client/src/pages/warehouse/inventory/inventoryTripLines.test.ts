@@ -57,6 +57,16 @@ describe('all-orders inventory query', () => {
     expect(params.has('received_to')).toBe(false);
   });
 
+  it('filters the stock list by bill pickup date when requested', () => {
+    const params = new URLSearchParams(buildInventoryTripLinesQuery(
+      { ...filters, receivedFrom: '2026-09-26', receivedTo: '2026-09-27' },
+      { onlyIncompleteSplit: true, dateField: 'sent' },
+    ));
+    expect(params.get('sent_from')).toBe('2026-09-26');
+    expect(params.get('sent_to')).toBe('2026-09-27');
+    expect(params.has('received_from')).toBe(false);
+  });
+
   it('serializes origin and destination HUB filters independently', () => {
     const params = new URLSearchParams(buildInventoryTripLinesQuery({
       ...filters,

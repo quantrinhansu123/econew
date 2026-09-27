@@ -308,7 +308,23 @@ export default function NewOrderWorkbench({
                   }}
                 />
                 <CompactField label="Nội dung" className="col-span-12 sm:col-span-6 xl:col-span-6">
-                  <CompactTextarea value={form.noiDung} onChange={(e) => setField('noiDung', e.target.value)} />
+                  <CompactTextarea
+                    value={form.noiDung}
+                    onChange={(e) => setField('noiDung', e.target.value)}
+                    onKeyDown={(event) => {
+                      if (!event.altKey || event.key !== 'Enter') return;
+                      event.preventDefault();
+                      const field = event.currentTarget;
+                      const start = field.selectionStart;
+                      const end = field.selectionEnd;
+                      setField('noiDung', `${form.noiDung.slice(0, start)}\n${form.noiDung.slice(end)}`);
+                      requestAnimationFrame(() => {
+                        field.selectionStart = start + 1;
+                        field.selectionEnd = start + 1;
+                      });
+                    }}
+                    title="Alt + Enter để xuống dòng giữa các mã"
+                  />
                 </CompactField>
                 <CompactField label="Ghi chú" className="col-span-12 sm:col-span-6 xl:col-span-6">
                   <CompactTextarea value={form.ghiChu} onChange={(e) => setField('ghiChu', e.target.value)} />
