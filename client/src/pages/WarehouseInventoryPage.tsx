@@ -271,7 +271,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [releaseConfirm, setReleaseConfirm] = useState<ConfirmDialogState>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
   const [advancedList, setAdvancedList] = useState(false);
-  const loadsAllRows = isAllOrders || advancedList;
+  const loadsAllRows = advancedList;
   const [columnFilters, setColumnFilters] = useState<AllOrdersColumnFilters>({});
   const [sort, setSort] = useState<AllOrdersSort>({ columnId: 'received_at', direction: 'desc' });
   const [customerCodeOptions, setCustomerCodeOptions] = useState<AllOrdersColumnFilterOption[]>([]);
@@ -329,11 +329,9 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     const filteredResults = applyAllOrdersColumnFilters(waybills, columnFilters);
     return isAllOrders ? sortAllOrders(filteredResults, sort) : filteredResults;
   }, [columnFilters, isAllOrders, sort, waybills]);
-  const displayedWaybills = useMemo(() => isAllOrders
-    ? filteredWaybills
-    : advancedList
-      ? filteredWaybills.slice((filters.page - 1) * filters.limit, filters.page * filters.limit)
-      : filteredWaybills, [advancedList, filteredWaybills, filters.page, filters.limit, isAllOrders]);
+  const displayedWaybills = useMemo(() => loadsAllRows
+    ? filteredWaybills.slice((filters.page - 1) * filters.limit, filters.page * filters.limit)
+    : filteredWaybills, [loadsAllRows, filteredWaybills, filters.page, filters.limit]);
   const totalRows = loadsAllRows ? filteredWaybills.length : filterTotals.orderCount;
   const totalPages = Math.max(1, Math.ceil(totalRows / filters.limit));
   useEffect(() => {
@@ -654,10 +652,10 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     setIsCashVoucherOpen(true);
   };
   const updateSort = (columnId: InventoryColumnId, direction: AllOrdersSortDirection) => {
-    if (!isAllOrders) {
+    if (!loadsAllRows) {
       setAdvancedList(true);
-      updateFilters({ page: 1 });
     }
+    updateFilters({ page: 1 });
     setSort({ columnId, direction });
   };
 
@@ -1192,7 +1190,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       waybill={waybill}
                       hubs={hubs}
                       columns={visibleColumns}
-                      rowIndex={isAllOrders ? rowIndex + 1 : (filters.page - 1) * filters.limit + rowIndex + 1}
+                      rowIndex={(filters.page - 1) * filters.limit + rowIndex + 1}
                       isAllOrders={isAllOrders}
                       canViewPricing={canViewPricing}
                       canUpdate={canUpdate}
@@ -1274,20 +1272,16 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
 
         <div className="border-t border-border bg-card px-4 py-3 flex items-center justify-between shrink-0">
           <p className="text-[12px] font-bold text-muted-foreground">
-            {isAllOrders
-              ? `${displayedWaybills.length.toLocaleString('vi-VN')} đơn · Cuộn dọc để xem toàn bộ`
-              : `${displayedWaybills.length} / ${totalRows.toLocaleString('vi-VN')} đơn · Trang ${filters.page}/${totalPages}`}
+            {displayedWaybills.length} / {totalRows.toLocaleString('vi-VN')} đơn · Trang {filters.page}/{totalPages}
           </p>
-          {!isAllOrders && (
-            <div className="flex flex-wrap items-center gap-2">
-              {advancedList && <button className="text-xs text-primary" onClick={() => { setAdvancedList(false); setColumnFilters({}); setSort({ columnId: 'received_at', direction: 'desc' }); updateFilters({ page: 1 }); }}>Về danh sách phân trang</button>}
-              <select aria-label="Số đơn mỗi trang" value={filters.limit} onChange={(event) => updateFilters({ limit: Number(event.target.value) })} className="rounded border border-border p-1 text-xs">
-                {[10, 25, 50, 100].map((limit) => <option key={limit} value={limit}>{limit} đơn/trang</option>)}
-              </select>
-              <button disabled={isLoading || filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">Trước</button>
-              <button disabled={isLoading || filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">Sau</button>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {advancedList && <button className="text-xs text-primary" onClick={() => { setAdvancedList(false); setColumnFilters({}); setSort({ columnId: 'received_at', direction: 'desc' }); updateFilters({ page: 1 }); }}>Về danh sách phân trang</button>}
+            <select aria-label="Số đơn mỗi trang" value={filters.limit} onChange={(event) => updateFilters({ limit: Number(event.target.value) })} className="rounded border border-border p-1 text-xs">
+              {[10, 25, 50, 100].map((limit) => <option key={limit} value={limit}>{limit} đơn/trang</option>)}
+            </select>
+            <button disabled={isLoading || filters.page <= 1} onClick={() => updateFilters({ page: filters.page - 1 })} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">Trước</button>
+            <button disabled={isLoading || filters.page >= totalPages} onClick={() => updateFilters({ page: filters.page + 1 })} className="rounded border border-border px-3 py-1 text-xs disabled:opacity-40">Sau</button>
+          </div>
         </div>
       </div>
 

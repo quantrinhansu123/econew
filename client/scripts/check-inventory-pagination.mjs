@@ -97,10 +97,10 @@ try {
   assert.equal(requests.at(-1).searchParams.get('keyword'), 'TEST-9999');
   assert.equal(requests.at(-1).searchParams.get('page'), '1');
   await page.goto('http://127.0.0.1:6060/warehouse/inventory');
-  await page.getByText(/Trang 1\/25$/).waitFor();
+  await page.getByText(/Trang 1\/3$/).waitFor();
   await page.locator('tbody tr.group input[type="checkbox"]').first().check();
   await page.getByRole('button', { name: 'Sau', exact: true }).click();
-  await page.getByText('TEST-11', { exact: true }).first().waitFor();
+  await page.getByText('TEST-101', { exact: true }).first().waitFor();
   assert.equal(await page.locator('tbody tr.group input[type="checkbox"]').first().isChecked(), false);
   await page.getByRole('button', { name: 'Trước', exact: true }).click();
   await page.getByText('TEST-1', { exact: true }).first().waitFor();
