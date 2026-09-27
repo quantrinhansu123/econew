@@ -6,7 +6,7 @@ services:
     name: eco-transport-api
     runtime: node
     rootDir: server
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm build
     startCommand: node --max-old-space-size=192 dist/scripts/run-migrations.js && exec node --max-old-space-size=320 dist/main.js
     healthCheckPath: /api/v1/health
     envVars:
