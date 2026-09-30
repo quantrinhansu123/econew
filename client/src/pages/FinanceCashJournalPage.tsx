@@ -36,6 +36,7 @@ type JournalTab = 'bill' | 'vendor';
 type AccessMode = 'both' | 'bill' | 'vendor';
 
 export interface FinanceCashJournalPageProps {
+  onBack?: () => void;
   defaultTab?: JournalTab;
   pageTitle?: string;
   pageSubtitle?: string;
@@ -161,6 +162,7 @@ function LinkedPaymentsJournal({
   defaultTab = 'bill',
   pageTitle = 'Nhật ký thu chi',
   pageSubtitle = 'Tổng hợp phiếu thu/chi bill và phiếu chi NCC',
+  onBack,
   hideTabs = false,
   tripId,
   netSummaryLabel = 'Chênh lệch',
@@ -369,7 +371,7 @@ function LinkedPaymentsJournal({
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={() => onBack ? onBack() : navigate(-1)}
             className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-muted/10 text-muted-foreground hover:bg-muted"
           >
             <ArrowLeft size={16} />

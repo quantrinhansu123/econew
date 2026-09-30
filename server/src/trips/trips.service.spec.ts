@@ -346,6 +346,27 @@ describe('TripsService', () => {
       expect(qb.andWhere).toHaveBeenCalled();
     });
 
+    it.each(['#194', '  ECOHCM75  ', '89H-062.55', "x' OR 1=1 --"])(
+      'searches trip and manifest waybill fields with bound parameters: %s',
+      async (keyword) => {
+        const qb = new MockQb();
+        qb.getManyAndCount.mockResolvedValue([[], 0]);
+        trips.createQueryBuilder.mockReturnValue(qb);
+        await service.findAll({ keyword, status: TripStatus.ARRIVED, start_hub_id: 1 }, dispatcher);
+        const bracket = qb.andWhere.mock.calls.find(([clause]) => typeof clause?.whereFactory === 'function')?.[0];
+        const inner = { where: jest.fn().mockReturnThis(), orWhere: jest.fn().mockReturnThis() };
+        bracket.whereFactory(inner);
+        expect(inner.where).toHaveBeenCalledWith('manifest.manifest_code ILIKE :keyword', { keyword: `%${keyword.trim()}%` });
+        expect(inner.orWhere).toHaveBeenCalledWith('trip.manual_license_plate ILIKE :keyword');
+        expect(inner.orWhere).toHaveBeenCalledWith(expect.stringMatching(/EXISTS[\s\S]*search_mw\.manifest_id = trip\.manifest_id[\s\S]*search_wb\.waybill_code ILIKE :keyword/));
+        if (keyword === '#194') {
+          expect(inner.orWhere).toHaveBeenCalledWith('CAST(trip.id AS text) = :tripNumber', { tripNumber: '194' });
+        }
+        expect(qb.andWhere).toHaveBeenCalledWith('trip.status = :status', { status: TripStatus.ARRIVED });
+        expect(qb.andWhere).toHaveBeenCalledWith('trip.start_hub_id = :startHubId', { startHubId: '1' });
+      },
+    );
+
     it('MANAGER thấy tất cả trip', async () => {
       const qb = new MockQb();
       qb.getManyAndCount.mockResolvedValue([[], 0]);

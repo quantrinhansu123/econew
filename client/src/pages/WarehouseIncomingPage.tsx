@@ -36,6 +36,7 @@ import { useIncomingTrips } from './warehouse/incoming/useIncomingTrips';
 import { downloadIncomingTripsExcel } from './warehouse/incoming/incomingTripsExcelUtils';
 import type { IncomingTrip } from './warehouse/incoming/types';
 import VehicleManifestButton from './warehouse/inventory/VehicleManifestButton';
+import TripWorkspaceDialog from './trips/dialogs/TripWorkspaceDialog';
 
 export interface WarehouseIncomingPageProps {
   mode?: 'overview' | 'expected-arrivals';
@@ -53,6 +54,7 @@ export default function WarehouseIncomingPage({
   const navigate = useNavigate();
   const { trips, isLoading, error, updatedAt, refresh, updateTrip } = useIncomingTrips({ source: mode });
   const [keyword, setKeyword] = useState('');
+  const [workspaceTripId, setWorkspaceTripId] = useState<string | null>(null);
   const [filterFromDate, setFilterFromDate] = useState('');
   const [filterToDate, setFilterToDate] = useState('');
   const [vendorCode, setVendorCode] = useState('');
@@ -395,6 +397,7 @@ export default function WarehouseIncomingPage({
             canEditCost={actions.canDelete}
             canEditPaymentNote={actions.canPay}
             onView={actions.handleView}
+            onOpenTrip={(trip) => setWorkspaceTripId(String(trip.id))}
             onEdit={actions.handleEdit}
             onDelete={actions.handleDelete}
             onPayment={actions.handlePayment}
@@ -403,6 +406,7 @@ export default function WarehouseIncomingPage({
           />
         )}
       </IncomingTripsPageLayout>
+      {workspaceTripId && <TripWorkspaceDialog tripId={workspaceTripId} onClose={() => { setWorkspaceTripId(null); void refresh(false); }} />}
 
       <IncomingTripDeleteDialog
         trip={actions.deleteTrip}

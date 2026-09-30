@@ -149,10 +149,27 @@ export class TripsService {
       .skip((page - 1) * limit)
       .take(limit);
 
-    if (query.keyword) {
+    if (query.keyword?.trim()) {
+      const keyword = query.keyword.trim();
       qb.andWhere(new Brackets((inner) => {
-        inner.where('manifest.manifest_code ILIKE :keyword', { keyword: `%${query.keyword}%` })
-          .orWhere('truck.license_plate ILIKE :keyword', { keyword: `%${query.keyword}%` });
+        inner.where('manifest.manifest_code ILIKE :keyword', { keyword: `%${keyword}%` })
+          .orWhere('truck.license_plate ILIKE :keyword')
+          .orWhere('trip.manual_license_plate ILIKE :keyword')
+          .orWhere('trip.driver_name ILIKE :keyword')
+          .orWhere('trip_vendor.name ILIKE :keyword')
+          .orWhere('trip_vendor.code ILIKE :keyword')
+          .orWhere('vendor.name ILIKE :keyword')
+          .orWhere('vendor.code ILIKE :keyword')
+          .orWhere(`EXISTS (
+            SELECT 1 FROM manifest_waybills search_mw
+            JOIN waybills search_wb ON search_wb.id = search_mw.waybill_id
+            WHERE search_mw.manifest_id = trip.manifest_id
+              AND search_wb.waybill_code ILIKE :keyword
+          )`);
+        const tripNumber = keyword.replace(/^#\s*/, '');
+        if (/^\d+$/.test(tripNumber)) {
+          inner.orWhere('CAST(trip.id AS text) = :tripNumber', { tripNumber });
+        }
       }));
     }
     if (query.status) qb.andWhere('trip.status = :status', { status: query.status });

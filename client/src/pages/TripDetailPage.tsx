@@ -21,6 +21,8 @@ import { buildInventoryTripLinesQuery, filterManifestAddableInventoryRows, isInc
 import type { WaybillInventoryItem } from './warehouse/inventory/types';
 import type { AddWaybillsFormState, LoadPlanningManifest } from './warehouse/manifests/types';
 import type { FilterOption, HubSummary, ListResponse, ManifestDetail, Trip, TripAction, TruckSummary, WaybillFilters, WaybillSummary } from './trips/types';
+import FinanceCashJournalPage from './FinanceCashJournalPage';
+import ManifestExpensesSection from './warehouse/manifests/dialogs/ManifestExpensesSection';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const DRIVER = 4;
@@ -91,8 +93,9 @@ const compareLoadingPosition = (a: WaybillSummary, b: WaybillSummary) => {
   return String(a.waybill_code || '').localeCompare(String(b.waybill_code || ''), 'vi');
 };
 
-export default function TripDetailPage() {
-  const { id } = useParams();
+export default function TripDetailPage({ tripId, onClose }: { tripId?: string; onClose?: () => void } = {}) {
+  const { id: routeId } = useParams();
+  const id = tripId ?? routeId;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const user = useMemo(getStoredUser, []);
@@ -127,6 +130,7 @@ export default function TripDetailPage() {
   const [positionDrafts, setPositionDrafts] = useState<Record<string, string>>({});
   const [packageDrafts, setPackageDrafts] = useState<Record<string, string>>({});
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
+  const [expenseView, setExpenseView] = useState<'trip' | 'manifest' | null>(null);
   const [filters, setFilters] = useState<WaybillFilters>({ keyword: '', current_state: [], origin_hub_id: [], dest_hub_id: [], payment_type: [], page: 1, limit: 10 });
 
   const loadTrip = async () => {
@@ -240,7 +244,7 @@ export default function TripDetailPage() {
     setIsEditingManifest(false);
     setPositionDrafts({});
     setPackageDrafts({});
-    if (searchParams.get('edit') === 'manifest') navigate(`/trips/${trip?.id || id}`, { replace: true });
+    if (!onClose && searchParams.get('edit') === 'manifest') navigate(`/trips/${trip?.id || id}`, { replace: true });
   }
   async function saveManifestPositions() {
     if (!trip || !allManifestWaybills.length) return;
@@ -269,7 +273,7 @@ export default function TripDetailPage() {
       setPositionDrafts({});
       setPackageDrafts({});
       await loadTrip();
-      if (searchParams.get('edit') === 'manifest') navigate(`/trips/${trip.id}`, { replace: true });
+      if (!onClose && searchParams.get('edit') === 'manifest') navigate(`/trips/${trip.id}`, { replace: true });
     } catch (submitError) {
       setActionError(submitError instanceof ApiError ? submitError.message : 'Không lưu được vị trí xếp hàng.');
     } finally { setIsSubmitting(false); }
@@ -369,19 +373,36 @@ export default function TripDetailPage() {
     window.open(`/print/manifest/${trip.manifest_id}`, '_blank', 'noopener');
   }
 
+  function handleBack() {
+    if (isSubmitting) return;
+    const close = () => onClose ? onClose() : navigate(-1);
+    const hasDraftChanges = manifestEditActive && allManifestWaybills.some((waybill, index) => (
+      String(positionDrafts[String(waybill.id)] ?? waybill.loading_position ?? index + 1) !== String(waybill.loading_position || index + 1)
+      || String(packageDrafts[String(waybill.id)] ?? waybill.package_count ?? 1) !== String(waybill.package_count || 1)
+    ));
+    if (hasDraftChanges) {
+      setConfirmDialog({ title: 'Đóng khi chưa lưu?', message: 'Thay đổi vị trí hoặc số kiện chưa được lưu. Chọn Hủy để quay lại lưu bảng kê.', confirmLabel: 'Bỏ thay đổi và đóng', onConfirm: close });
+    } else close();
+  }
+
   const costManifestId = trip?.manifest_id ?? manifest?.id ?? null;
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-2">
+    <div className="h-full min-h-0 flex flex-col gap-2" onKeyDown={(event) => {
+      if (onClose && event.key === 'Escape' && !expenseView && !actionTrip && !scheduleTrip && !transportTrip && !detailManifest && !detailTruck && !isAddWaybillsOpen && !confirmDialog) {
+        event.stopPropagation();
+        handleBack();
+      }
+    }}>
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
         <div className="p-3 border-b border-border shrink-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => navigate(-1)} className="h-10 w-10 rounded-lg border border-border bg-card text-[13px] font-medium text-muted-foreground hover:bg-muted flex items-center justify-center gap-2 md:w-auto md:px-3"><ArrowLeft size={15} /><span className="hidden md:inline">Quay lại</span></button>
+            <button onClick={handleBack} disabled={isSubmitting} aria-label={onClose ? 'Đóng chi tiết chuyến' : 'Quay lại'} className="h-10 w-10 rounded-lg border border-border bg-card text-[13px] font-medium text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary flex items-center justify-center gap-2 md:w-auto md:px-3">{onClose ? <X size={15} /> : <ArrowLeft size={15} />}<span className="hidden md:inline">{onClose ? 'Đóng' : 'Quay lại'}</span></button>
             <div className="relative min-w-0 flex-1 md:max-w-[460px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={filters.keyword} onChange={event => updateFilter('keyword', event.target.value)} placeholder="Tìm vận đơn trong bảng kê..." className="w-full h-10 rounded-lg border border-border bg-muted/10 pl-9 pr-3 text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-primary/10" /></div>
             <button title="Mở bộ lọc" onClick={() => setIsFilterPanelOpen(true)} className="relative h-10 w-10 rounded-lg border border-primary/30 bg-blue-50 text-primary hover:bg-blue-100 flex items-center justify-center md:hidden"><Filter size={16} />{activeFilterCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-white">{activeFilterCount}</span>}</button>
             {activeFilterCount > 0 && <div className="order-last basis-full md:order-none md:basis-auto"><button onClick={clearFilters} className="h-9 rounded-lg border border-red-200 bg-red-50 px-3 text-[13px] font-bold text-red-500 transition-colors hover:bg-red-100 md:h-10">× Xóa {activeFilterCount} bộ lọc</button></div>}
             <div className="hidden flex-1 md:block" />
-            {canUpdateCosts && <button disabled={!costManifestId} title={costManifestId ? 'Mở chi tiết bảng kê để nhập chi phí' : 'Chuyến chưa có bảng kê'} onClick={() => costManifestId && navigate(`/warehouse/manifests?openManifestId=${encodeURIComponent(String(costManifestId))}`)} className="h-10 rounded-lg bg-primary px-3 text-[13px] font-bold text-white hover:bg-primary/90 disabled:opacity-40"><span className="hidden md:inline">+ Chi phí chuyến</span><Fuel className="md:hidden" size={16} /></button>}
+            {canUpdateCosts && <button disabled={!costManifestId} title={costManifestId ? 'Mở chi tiết bảng kê để nhập chi phí' : 'Chuyến chưa có bảng kê'} onClick={() => costManifestId && (onClose ? setExpenseView('manifest') : navigate(`/warehouse/manifests?openManifestId=${encodeURIComponent(String(costManifestId))}`))} className="h-10 rounded-lg bg-primary px-3 text-[13px] font-bold text-white hover:bg-primary/90 disabled:opacity-40"><span className="hidden md:inline">+ Chi phí chuyến</span><Fuel className="md:hidden" size={16} /></button>}
           </div>
           <div className="hidden md:flex flex-wrap items-center gap-2">
             <FilterSelect multiple icon={Tag} placeholder="Trạng thái vận đơn" options={waybillStatusOptions} value={filters.current_state} onValueChange={value => updateFilter('current_state', value)} />
@@ -390,7 +411,7 @@ export default function TripDetailPage() {
             <FilterSelect multiple icon={Tag} placeholder="Loại thanh toán" options={paymentOptions} value={filters.payment_type} onValueChange={value => updateFilter('payment_type', value)} />
           </div>
           {actionError && !scheduleTrip && <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-bold text-red-700"><AlertTriangle size={14} />{actionError}</div>}
-          {trip && <TripInfo trip={trip} manifest={manifest} truck={truck} hubs={hubs} canOperateTrip={canOperateTrip} canEditTrip={canEditTrip} isFinal={isFinal} isEditingManifest={manifestEditActive} isSubmitting={isSubmitting} openAction={openAction} openManifest={() => manifest && setDetailManifest(manifest)} openTruck={() => truck && setDetailTruck(truck)} openTransportEditor={() => setTransportTrip(trip)} openScheduleEditor={openScheduleEditor} openAddWaybills={openAddWaybills} openManifestEditor={openManifestEditor} closeManifestEditor={closeManifestEditor} saveManifestPositions={saveManifestPositions} printManifest={printManifest} />}
+          {trip && <TripInfo trip={trip} manifest={manifest} truck={truck} hubs={hubs} canOperateTrip={canOperateTrip} canEditTrip={canEditTrip} isFinal={isFinal} isEditingManifest={manifestEditActive} isSubmitting={isSubmitting} openAction={openAction} openManifest={() => manifest && setDetailManifest(manifest)} openTruck={() => truck && setDetailTruck(truck)} openTransportEditor={() => setTransportTrip(trip)} openScheduleEditor={openScheduleEditor} openAddWaybills={openAddWaybills} openManifestEditor={openManifestEditor} closeManifestEditor={closeManifestEditor} saveManifestPositions={saveManifestPositions} printManifest={printManifest} openExpenses={onClose ? () => setExpenseView('trip') : undefined} />}
         </div>
 
         {isLoading ? <StateBlock icon={<Loader2 className="animate-spin" size={28} />} title="Đang tải chi tiết chuyến xe" description="Hệ thống đang lấy dữ liệu thật từ API." /> : error ? <StateBlock icon={<AlertTriangle size={28} />} title="Không tải được dữ liệu" description={error} /> : !trip ? <StateBlock icon={<TruckIcon size={28} />} title="Không tìm thấy chuyến xe" description="Kiểm tra lại mã chuyến hoặc quyền truy cập." /> : !waybills.length ? <StateBlock icon={<Package size={28} />} title="Chưa có vận đơn phù hợp" description="Bảng kê chưa có vận đơn hoặc bộ lọc không có kết quả." /> : (
@@ -409,12 +430,20 @@ export default function TripDetailPage() {
       <EditTripScheduleDialog trip={scheduleTrip} formState={scheduleForm} isSubmitting={isSubmitting} error={actionError} onDepartureChange={(value) => setScheduleForm(prev => ({ ...prev, departure_time: value }))} onRouteStopChange={(hubId, value) => setScheduleForm(prev => ({ ...prev, route_stops: prev.route_stops.map(stop => stop.hub_id === hubId ? { ...stop, expected_arrival_at: value } : stop) }))} onClose={() => setScheduleTrip(null)} onSubmit={submitSchedule} />
       {transportTrip && <EditTripTransportDialog trip={transportTrip} currentTruck={truck} onClose={() => setTransportTrip(null)} onSaved={() => { setTransportTrip(null); void loadTrip(); }} />}
       <AddWaybillsToManifestDialog isOpen={isAddWaybillsOpen} isClosing={false} isLoading={isWaybillLoading} isSubmitting={isSubmitting} error={addWaybillsError} originHubLabel={manifest?.origin_hub?.code || manifest?.origin_hub?.name || '—'} manifest={manifest as LoadPlanningManifest | null} waybills={waybillChoices} total={waybillTotal} formState={addWaybillsForm} onChange={patch => setAddWaybillsForm(prev => ({ ...prev, ...patch }))} onClose={() => setIsAddWaybillsOpen(false)} onSubmit={submitAddWaybills} />
+      {expenseView && trip && <div className="fixed inset-0 z-[9999] flex flex-col bg-background p-3 sm:p-5">
+        <button type="button" onClick={() => { setExpenseView(null); void loadTrip(); }} className="mb-3 inline-flex h-10 shrink-0 items-center gap-2 self-start rounded-lg border border-border bg-white px-3 text-[13px] font-bold hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary"><ArrowLeft size={16} />Quay lại chuyến #{trip.id}</button>
+        <div className="min-h-0 flex-1 overflow-auto">
+          {expenseView === 'trip'
+            ? <FinanceCashJournalPage onBack={() => { setExpenseView(null); void loadTrip(); }} defaultTab="vendor" hideTabs accessMode="vendor" enableVendorBulkDelete tripId={String(trip.id)} pageTitle="Chi phí phát sinh chuyến" pageSubtitle="Ghi nhận dầu và chi phí dọc đường từ phiếu chi NCC." />
+            : manifest && <ManifestExpensesSection manifest={{ id: manifest.id!, status: manifest.status, trip: { id: trip.id, status: trip.status, trip_cost: trip.trip_cost, fuel_cost: trip.fuel_cost, other_costs: trip.other_costs } }} canManage={canUpdateCosts} canDelete={hasAnyRole(roleMask, [MANAGER, DIRECTOR])} canCreateVendor={hasAnyRole(roleMask, [MANAGER, DIRECTOR])} />}
+        </div>
+      </div>}
       <ConfirmDialog dialog={confirmDialog} isSubmitting={isSubmitting} onClose={() => setConfirmDialog(null)} />
     </div>
   );
 }
 
-function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, isFinal, isEditingManifest, isSubmitting, openAction, openManifest, openTruck, openTransportEditor, openScheduleEditor, openAddWaybills, openManifestEditor, closeManifestEditor, saveManifestPositions, printManifest }: { trip: Trip; manifest: ManifestDetail | null; truck: TruckSummary | null; hubs: HubSummary[]; canOperateTrip: boolean; canEditTrip: boolean; isFinal: boolean; isEditingManifest: boolean; isSubmitting: boolean; openAction: (action: TripAction) => void; openManifest: () => void; openTruck: () => void; openTransportEditor: () => void; openScheduleEditor: () => void; openAddWaybills: () => void; openManifestEditor: () => void; closeManifestEditor: () => void; saveManifestPositions: () => void; printManifest: () => void }) {
+function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, isFinal, isEditingManifest, isSubmitting, openAction, openManifest, openTruck, openTransportEditor, openScheduleEditor, openAddWaybills, openManifestEditor, closeManifestEditor, saveManifestPositions, printManifest, openExpenses }: { trip: Trip; manifest: ManifestDetail | null; truck: TruckSummary | null; hubs: HubSummary[]; canOperateTrip: boolean; canEditTrip: boolean; isFinal: boolean; isEditingManifest: boolean; isSubmitting: boolean; openAction: (action: TripAction) => void; openManifest: () => void; openTruck: () => void; openTransportEditor: () => void; openScheduleEditor: () => void; openAddWaybills: () => void; openManifestEditor: () => void; closeManifestEditor: () => void; saveManifestPositions: () => void; printManifest: () => void; openExpenses?: () => void }) {
   const navigate = useNavigate();
   return (
     <div className="grid gap-2 rounded-xl border border-border bg-muted/5 p-3 text-[12px] md:grid-cols-4">
@@ -442,7 +471,7 @@ function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, is
         {canEditTrip && trip.manifest_id && String(trip.status || '') !== 'CANCELLED' && !isEditingManifest && <button type="button" onClick={openManifestEditor} className="h-8 rounded-lg border border-amber-200 bg-amber-50 px-2 text-[11px] font-bold text-amber-800"><Pencil size={13} className="mr-1 inline" />Sửa bảng kê</button>}
         {isEditingManifest && <button type="button" disabled={isSubmitting} onClick={saveManifestPositions} className="h-8 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-bold text-emerald-700 disabled:opacity-40"><Save size={13} className="mr-1 inline" />Lưu bảng kê</button>}
         {isEditingManifest && <button type="button" disabled={isSubmitting} onClick={closeManifestEditor} className="h-8 rounded-lg border border-border bg-white px-2 text-[11px] font-bold text-muted-foreground disabled:opacity-40"><X size={13} className="mr-1 inline" />Đóng sửa</button>}
-        {!isFinal && (trip.status === 'IN_TRANSIT' || trip.status === 'ARRIVED') && <button type="button" onClick={() => navigate(`/trips/${trip.id}/expenses`)} className="h-8 rounded-lg border border-orange-200 bg-orange-50 px-2 text-[11px] font-bold text-orange-800">Chi phí phát sinh</button>}
+        {!isFinal && (trip.status === 'IN_TRANSIT' || trip.status === 'ARRIVED') && <button type="button" onClick={() => openExpenses ? openExpenses() : navigate(`/trips/${trip.id}/expenses`)} className="h-8 rounded-lg border border-orange-200 bg-orange-50 px-2 text-[11px] font-bold text-orange-800">Chi phí phát sinh</button>}
       </div>
     </div>
   );

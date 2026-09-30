@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, Building2, Loader2, PackageCheck, RefreshCw, Truck } from 'lucide-react';
+import { AlertTriangle, Building2, Loader2, PackageCheck, RefreshCw, Search, Truck, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { FilterSelect } from '../components/ui/FilterSelect';
@@ -31,11 +31,12 @@ const normalizeList = <T,>(response: ListResponse<T> | T[]) => (
   Array.isArray(response) ? response : response.data || response.items || response.trips || []
 );
 
-async function loadAllTripsByStatus(status: TripKanbanStatus, startHubId: string): Promise<Trip[]> {
+async function loadAllTripsByStatus(status: TripKanbanStatus, startHubId: string, keyword: string): Promise<Trip[]> {
   const limit = 100;
   const requestPage = (page: number) => {
     const params = new URLSearchParams({ page: String(page), limit: String(limit), status });
     if (startHubId) params.set('start_hub_id', startHubId);
+    if (keyword) params.set('keyword', keyword);
     return apiRequest<ListResponse<Trip> | Trip[]>(`/trips?${params.toString()}`);
   };
   const firstResponse = await requestPage(1);
@@ -64,6 +65,8 @@ export default function TripsPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [hubs, setHubs] = useState<HubSummary[]>([]);
   const [startHubId, setStartHubId] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const requestVersion = useRef(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionTrip, setActionTrip] = useState<Trip | null>(null);
@@ -74,10 +77,12 @@ export default function TripsPage() {
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
 
   const loadTrips = useCallback(async () => {
+    const version = ++requestVersion.current;
     setIsLoading(true);
     setError('');
     try {
-      const responses = await Promise.all(tripKanbanStatuses.map((status) => loadAllTripsByStatus(status, startHubId)));
+      const responses = await Promise.all(tripKanbanStatuses.map((status) => loadAllTripsByStatus(status, startHubId, keyword.trim())));
+      if (version !== requestVersion.current) return;
       const merged = new Map<string, Trip>();
       responses.flat().forEach((trip) => {
         merged.set(String(trip.id), trip);
@@ -86,16 +91,17 @@ export default function TripsPage() {
         new Date(b.departure_time || b.created_at || 0).getTime() - new Date(a.departure_time || a.created_at || 0).getTime()
       )));
     } catch (err) {
+      if (version !== requestVersion.current) return;
       setError(err instanceof ApiError ? err.message : 'Không tải được bảng kê đơn đã đi.');
     } finally {
-      setIsLoading(false);
+      if (version === requestVersion.current) setIsLoading(false);
     }
-  }, [startHubId]);
+  }, [startHubId, keyword]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void loadTrips(); }, 0);
-    return () => window.clearTimeout(timer);
-  }, [loadTrips]);
+    const timer = window.setTimeout(() => { void loadTrips(); }, keyword.trim() ? 300 : 0);
+    return () => { window.clearTimeout(timer); requestVersion.current += 1; };
+  }, [loadTrips, keyword]);
 
   useEffect(() => {
     let active = true;
@@ -199,6 +205,11 @@ export default function TripsPage() {
             <span className="mx-2">·</span>{totals.arrived.toLocaleString('vi-VN')} đã đến
             <span className="mx-2">·</span>{totals.completed.toLocaleString('vi-VN')} hoàn tất
           </p>
+          <div className="relative w-full sm:w-[320px]">
+            <Search aria-hidden="true" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input type="search" name="trip-search" aria-label="Tìm chuyến theo số chuyến, BKS, vận đơn hoặc bảng kê" autoComplete="off" spellCheck={false} value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="Số chuyến, BKS, vận đơn, bảng kê…" className="h-10 w-full rounded-lg border border-border bg-muted/10 pl-9 pr-9 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" />
+            {keyword && <button type="button" aria-label="Xóa tìm kiếm chuyến" onClick={() => setKeyword('')} className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-2 text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary"><X size={14} /></button>}
+          </div>
           <VehicleManifestButton />
           <FilterSelect
             icon={Building2}
@@ -224,7 +235,7 @@ export default function TripsPage() {
         ) : error ? (
           <StateBlock icon={<AlertTriangle size={22} />} title={error} />
         ) : !trips.length ? (
-          <StateBlock icon={<PackageCheck size={22} />} title="Chưa có chuyến xe." />
+          <StateBlock icon={<PackageCheck size={22} />} title={keyword.trim() ? 'Không tìm thấy chuyến phù hợp. Thử số chuyến, BKS hoặc mã vận đơn khác.' : 'Chưa có chuyến xe.'} />
         ) : (
           <TripKanbanBoard
             tripsByStatus={tripsByStatus}

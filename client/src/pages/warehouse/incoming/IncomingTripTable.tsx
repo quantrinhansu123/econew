@@ -55,6 +55,7 @@ export function IncomingTripTable({
   canEditCost = false,
   canEditPaymentNote = false,
   onView,
+  onOpenTrip,
   onEdit,
   onDelete,
   onPayment,
@@ -69,6 +70,7 @@ export function IncomingTripTable({
   canEditCost?: boolean;
   canEditPaymentNote?: boolean;
   onView?: (trip: IncomingTrip) => void;
+  onOpenTrip?: (trip: IncomingTrip) => void;
   onEdit?: (trip: IncomingTrip) => void;
   onDelete?: (trip: IncomingTrip) => void;
   onPayment?: (trip: IncomingTrip) => void;
@@ -243,7 +245,7 @@ export function IncomingTripTable({
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 font-extrabold text-foreground">{getPlateLabel(trip)}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-center">
-                      <button type="button" onClick={() => onView?.(trip)} className="font-extrabold text-primary hover:underline">
+                      <button type="button" onClick={() => (onOpenTrip ?? onView)?.(trip)} className="font-extrabold text-primary hover:underline">
                         #{trip.id}
                       </button>
                     </td>
@@ -305,6 +307,7 @@ export function IncomingTripTable({
                   canEditPaymentNote={canEditPaymentNote}
                   onPaymentNoteSave={onPaymentNoteSave}
                   onView={onView}
+                  onOpenTrip={onOpenTrip}
                   onPayment={onPayment}
                 />
               ))}
@@ -323,6 +326,7 @@ function IncomingTripMobileCard({
   canEditPaymentNote,
   onPaymentNoteSave,
   onView,
+  onOpenTrip,
   onPayment,
 }: {
   trip: IncomingTrip;
@@ -330,13 +334,14 @@ function IncomingTripMobileCard({
   canEditPaymentNote: boolean;
   onPaymentNoteSave?: (trip: IncomingTrip, note: string) => Promise<void>;
   onView?: (trip: IncomingTrip) => void;
+  onOpenTrip?: (trip: IncomingTrip) => void;
   onPayment?: (trip: IncomingTrip) => void;
 }) {
   return (
     <article className="rounded-xl border border-border bg-white p-3 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <button type="button" onClick={() => onView?.(trip)} className="text-left text-[13px] font-extrabold text-primary hover:underline">
+          <button type="button" onClick={() => (onOpenTrip ?? onView)?.(trip)} className="text-left text-[13px] font-extrabold text-primary hover:underline">
             #{trip.id} · {getManifestCode(trip)}
           </button>
           <p className="mt-0.5 truncate text-[11px] font-semibold text-muted-foreground">{getRouteLabel(trip)} · {getPlateLabel(trip)}</p>
