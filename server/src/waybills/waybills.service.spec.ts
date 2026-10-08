@@ -622,7 +622,7 @@ describe('WaybillsService', () => {
     expect(transactionOrderRepository.update).not.toHaveBeenCalled();
   });
 
-  it('reroutes a MANIFEST_CLOSED waybill on a PLANNED trip into a destination-specific manifest and trip', async () => {
+  const setupPlannedDestinationChange = (sharedTrip = true, missingLink = false) => {
     const sourceTrip = {
       id: 't1',
       truck_id: 'truck-1',
@@ -647,7 +647,7 @@ describe('WaybillsService', () => {
       waybill_id: '1',
       loading_position: 4,
       loaded_at: new Date('2026-07-20T02:00:00Z'),
-      dispatch_fields: { ma_tinh: 'HCM' },
+      dispatch_fields: { ma_tinh: 'HCM', so_luong: '20', ghi_chu_1: 'Giữ nguyên' },
       manifest: sourceManifest,
     };
     const split = {
@@ -655,11 +655,13 @@ describe('WaybillsService', () => {
       waybill_id: '1',
       trip_id: 't1',
       truck_id: 'truck-1',
-      package_count: 1,
+      package_count: 20,
+      loading_position: 4,
       load_status: WaybillSplitLoadStatus.LOADED,
     };
     const existing = makeWaybill({
       order_id: 'o1',
+      package_count: 20,
       manifest_id: 'm1',
       trip_id: 't1',
       status: WaybillStatus.MANIFEST_CLOSED,
@@ -669,15 +671,31 @@ describe('WaybillsService', () => {
     const danHub = { id: '3', code: 'DAN', name: 'Đà Nẵng', is_active: true };
 
     waybillsRepository.findOne.mockImplementation(async () => ({ ...existing }));
-    hubsRepository.findOne.mockResolvedValue(danHub);
-    manifestWaybillsRepository.find.mockImplementation(async ({ where }: any) => {
-      if (where?.waybill_id) return [sourceLink];
-      if (where?.manifest_id === 'm1') {
-        return [sourceLink, { manifest_id: 'm1', waybill_id: 'other' }];
-      }
-      return [];
+    waybillsRepository.save.mockImplementation(async (value: any) => {
+      Object.assign(existing, value);
+      return value;
     });
-    splitsRepository.find.mockResolvedValue([split]);
+    hubsRepository.findOne.mockImplementation(async ({ where }: any) => (
+      String(where.id) === '3' ? danHub : { id: '2', code: 'HCM', is_active: true }
+    ));
+    const manifestLinks: any[] = [
+      ...(missingLink ? [] : [sourceLink]),
+      ...(sharedTrip ? [{ manifest_id: 'm1', waybill_id: 'other' }] : []),
+    ];
+    manifestWaybillsRepository.find.mockImplementation(async ({ where }: any) => {
+      return manifestLinks.filter((link) => (
+        where?.waybill_id ? link.waybill_id === where.waybill_id : link.manifest_id === where.manifest_id
+      ));
+    });
+    manifestWaybillsRepository.save.mockImplementation(async (value: any) => {
+      if (!manifestLinks.some((link) => link.waybill_id === value.waybill_id)) manifestLinks.push(value);
+      return value;
+    });
+    splitsRepository.find.mockImplementation(async ({ where }: any) => (
+      where?.trip_id && sharedTrip
+        ? [split, { waybill_id: 'other', trip_id: 't1', package_count: 1 }]
+        : [split]
+    ));
     tripsRepository.findOne.mockResolvedValue(sourceTrip);
     tripsRepository.find.mockResolvedValue([]);
     manifestsRepository.findOne.mockResolvedValue(sourceManifest);
@@ -690,36 +708,131 @@ describe('WaybillsService', () => {
       return value;
     });
 
+    return { sourceTrip, sourceManifest, sourceLink, split, existing, danHub, manifestLinks };
+  };
+
+  it('keeps a destination change on the same planned multi-HUB trip and manifest', async () => {
+    const { sourceTrip, sourceManifest, split, danHub } = setupPlannedDestinationChange();
+
     await expect(service.update('1', { dest_hub_id: '3' }, manager))
       .resolves.toMatchObject({ dest_hub_id: '3', dest_hub: danHub });
 
-    expect(manifestsRepository.create).toHaveBeenCalledWith(expect.objectContaining({
-      origin_hub_id: '1',
-      dest_hub_id: '3',
-      status: ManifestStatus.CLOSED,
-    }));
-    expect(tripsRepository.create).toHaveBeenCalledWith(expect.objectContaining({
-      manifest_id: 'm2',
-      start_hub_id: '1',
-      end_hub_id: '3',
-      status: TripStatus.PLANNED,
-    }));
-    expect(manifestWaybillsRepository.delete).toHaveBeenCalledWith({
+    expect(manifestsRepository.create).not.toHaveBeenCalled();
+    expect(tripsRepository.create).not.toHaveBeenCalled();
+    expect(manifestWaybillsRepository.delete).not.toHaveBeenCalled();
+    expect(manifestWaybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
       manifest_id: 'm1',
       waybill_id: '1',
-    });
-    expect(manifestWaybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
-      manifest_id: 'm2',
-      waybill_id: '1',
-      dispatch_fields: expect.objectContaining({ ma_tinh: 'DAN' }),
+      dispatch_fields: expect.objectContaining({ ma_tinh: 'DAN', so_luong: '20', ghi_chu_1: 'Giữ nguyên' }),
     }));
-    expect(splitsRepository.save).toHaveBeenCalledWith([
-      expect.objectContaining({ id: 's1', trip_id: 't2' }),
-    ]);
+    expect(split).toMatchObject({ trip_id: 't1', truck_id: 'truck-1', package_count: 20 });
+    expect(sourceTrip.end_hub_id).toBe('2');
+    expect(sourceManifest.dest_hub_id).toBe('2');
     expect(transactionOrderRepository.update).toHaveBeenCalledWith(
       { id: 'o1' },
       { dest_hub_id: '3' },
     );
+  });
+
+  it('allows changing the destination back before departure without creating a second trip', async () => {
+    const { split, manifestLinks } = setupPlannedDestinationChange();
+
+    await service.update('1', { dest_hub_id: '3' }, manager);
+    await expect(service.update('1', { dest_hub_id: '2' }, manager))
+      .resolves.toMatchObject({ dest_hub_id: '2', current_state: WaybillStatus.MANIFEST_CLOSED });
+
+    expect(manifestLinks.find((link) => link.waybill_id === '1').dispatch_fields.ma_tinh).toBe('HCM');
+    expect(split).toMatchObject({ trip_id: 't1', package_count: 20, load_status: WaybillSplitLoadStatus.LOADED });
+    expect(tripsRepository.create).not.toHaveBeenCalled();
+    expect(manifestWaybillsRepository.delete).not.toHaveBeenCalled();
+  });
+
+  it('repairs a missing manifest link from the planned trip allocation when changing destination', async () => {
+    const { split } = setupPlannedDestinationChange(true, true);
+
+    await expect(service.update('1', { dest_hub_id: '3' }, manager))
+      .resolves.toMatchObject({ dest_hub_id: '3' });
+
+    expect(manifestWaybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      manifest_id: 'm1', waybill_id: '1', loading_position: 4,
+      dispatch_fields: expect.objectContaining({ ma_tinh: 'DAN', so_luong: '20' }),
+    }));
+    expect(split.trip_id).toBe('t1');
+    expect(tripsRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('updates the route endpoints when the planned trip contains only the corrected bill', async () => {
+    const { sourceTrip, sourceManifest } = setupPlannedDestinationChange(false);
+
+    await service.update('1', { dest_hub_id: '3' }, manager);
+
+    expect(sourceTrip.end_hub_id).toBe('3');
+    expect(sourceManifest.dest_hub_id).toBe('3');
+    expect(tripsRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('counts other split allocations before changing a shared trip endpoint with missing links', async () => {
+    const { sourceTrip, sourceManifest } = setupPlannedDestinationChange();
+    manifestWaybillsRepository.find.mockImplementation(async ({ where }: any) => (
+      where?.waybill_id ? [{ manifest_id: 'm1', waybill_id: '1', manifest: sourceManifest }] : []
+    ));
+
+    await service.update('1', { dest_hub_id: '3' }, manager);
+
+    expect(sourceTrip.end_hub_id).toBe('2');
+    expect(sourceManifest.dest_hub_id).toBe('2');
+  });
+
+  it.each([TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED, TripStatus.CANCELLED])(
+    'rejects destination changes when the assigned trip is %s even if split status is stale', async (status) => {
+      const { sourceTrip } = setupPlannedDestinationChange();
+      sourceTrip.status = status;
+
+      await expect(service.update('1', { dest_hub_id: '3' }, manager)).rejects.toBeInstanceOf(ConflictException);
+
+      expect(waybillsRepository.save).not.toHaveBeenCalled();
+      expect(manifestWaybillsRepository.save).not.toHaveBeenCalled();
+      expect(transactionOrderRepository.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects destination changes when waybill transport state is ahead of its planned trip', async () => {
+    const { existing } = setupPlannedDestinationChange();
+    existing.current_state = WaybillStatus.IN_TRANSIT;
+    existing.status = WaybillStatus.IN_TRANSIT;
+
+    await expect(service.update('1', { dest_hub_id: '3' }, manager)).rejects.toBeInstanceOf(ConflictException);
+
+    expect(manifestWaybillsRepository.save).not.toHaveBeenCalled();
+    expect(waybillsRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects a manifest link that disagrees with the allocated trip', async () => {
+    const { sourceTrip } = setupPlannedDestinationChange();
+    sourceTrip.manifest_id = 'different-manifest';
+
+    await expect(service.update('1', { dest_hub_id: '3' }, manager)).rejects.toBeInstanceOf(ConflictException);
+
+    expect(manifestWaybillsRepository.save).not.toHaveBeenCalled();
+    expect(transactionOrderRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps destination changes on a draft manifest separate from physical trips', async () => {
+    const { sourceLink, sourceManifest } = setupPlannedDestinationChange();
+    sourceManifest.status = ManifestStatus.DRAFT;
+    sourceManifest.trips = [];
+    splitsRepository.find.mockResolvedValue([]);
+
+    await service.update('1', { dest_hub_id: '3' }, manager);
+
+    expect(manifestsRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      origin_hub_id: '1', dest_hub_id: '3', status: ManifestStatus.DRAFT,
+    }));
+    expect(tripsRepository.create).not.toHaveBeenCalled();
+    expect(manifestWaybillsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      manifest_id: 'm2', loading_position: sourceLink.loading_position,
+      dispatch_fields: expect.objectContaining({ ma_tinh: 'DAN', so_luong: '20' }),
+    }));
   });
 
   it('rejects a destination reroute after a split has departed', async () => {

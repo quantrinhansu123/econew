@@ -3546,6 +3546,9 @@ export class WaybillsService {
         where: { id: nextDestHubId, is_active: true, deleted_at: IsNull() },
       });
       if (!nextDestHub) throw new BadRequestException('Hub is missing or inactive');
+      if (![...MUTABLE_STATUSES, WaybillStatus.MANIFEST_CLOSED, WaybillStatus.LOADED].includes(this.getStatus(waybill))) {
+        throw new ConflictException('Vận đơn đã vận chuyển; không thể đổi HUB đến');
+      }
       const persistWaybillAndOrder = async () => {
         Object.assign(waybill, finalWaybill, {
           dest_hub_id: String(nextDestHub.id),
@@ -3609,11 +3612,15 @@ export class WaybillsService {
         }
       }
 
-      const sourceLink = links[0] ?? null;
-      let sourceManifest = sourceLink?.manifest ?? null;
-      if (sourceManifest) {
+      let sourceLink = links[0] ?? null;
+      let sourceManifest: ManifestEntity | null = null;
+      const sourceManifestId = sourceLink?.manifest_id ?? sourceTrip?.manifest_id;
+      if (sourceTrip && (!sourceTrip.manifest_id || (sourceLink && String(sourceLink.manifest_id) !== String(sourceTrip.manifest_id)))) {
+        throw new ConflictException('Liên kết bảng kê không khớp chuyến xe của vận đơn');
+      }
+      if (sourceManifestId) {
         const lockedManifest = await manifestRepo.findOne({
-          where: { id: String(sourceManifest.id) },
+          where: { id: String(sourceManifestId) },
           lock: { mode: 'pessimistic_write' },
         });
         if (!lockedManifest) throw new ConflictException('Không tìm thấy bảng kê hiện tại của vận đơn');
@@ -3621,83 +3628,76 @@ export class WaybillsService {
         if (![ManifestStatus.DRAFT, ManifestStatus.CLOSED, ManifestStatus.ASSIGNED_TO_TRIP].includes(sourceManifest.status as ManifestStatus)) {
           throw new ConflictException('Bảng kê đã khởi hành hoặc đã khóa; không thể đổi HUB đến');
         }
-      } else if (sourceTrip) {
-        throw new ConflictException('Chuyến xe thiếu liên kết bảng kê; không thể tự động đổi HUB đến');
       } else if (!MUTABLE_STATUSES.includes(this.getStatus(waybill))) {
         throw new ConflictException('Vận đơn đã khóa logistics; không thể đổi HUB đến');
       }
 
-      if (sourceManifest && sourceLink) {
+      if (sourceManifest) {
         const sourceManifestLinks = await manifestLinkRepo.find({
           where: { manifest_id: String(sourceManifest.id) },
         });
 
+        if (sourceTrip) {
+          // A vehicle can carry several destination HUBs on one physical trip.
+          // Correcting a bill must preserve its trip, allocation and manifest.
+          const tripSplits = await splitRepo.find({
+            select: { waybill_id: true },
+            where: { trip_id: String(sourceTrip.id) },
+          });
+          const tripWaybillIds = new Set([
+            ...sourceManifestLinks.map((link) => String(link.waybill_id)),
+            ...tripSplits.map((split) => String(split.waybill_id)),
+            waybillId,
+          ]);
+          if (tripWaybillIds.size === 1) {
+            sourceManifest.dest_hub_id = String(nextDestHub.id);
+            sourceTrip.end_hub_id = String(nextDestHub.id);
+            await manifestRepo.save(sourceManifest);
+            await tripRepo.save(sourceTrip);
+          }
+
+          const allocatedSplits = splits.filter((split) => String(split.trip_id ?? '') === String(sourceTrip.id));
+          if (!sourceLink) {
+            const positions = allocatedSplits
+              .map((split) => split.loading_position)
+              .filter((position): position is number => position != null && position > 0);
+            sourceLink = manifestLinkRepo.create({
+              manifest_id: String(sourceManifest.id),
+              waybill_id: waybillId,
+              loading_position: positions.length ? Math.min(...positions) : null,
+              loaded_at: allocatedSplits.some((split) => split.load_status === WaybillSplitLoadStatus.LOADED)
+                ? waybill.loaded_at ?? new Date()
+                : null,
+              dispatch_fields: {},
+            });
+          }
+          const packageCount = allocatedSplits.reduce((sum, split) => sum + Number(split.package_count ?? 0), 0);
+          sourceLink.dispatch_fields = {
+            ...(sourceLink.dispatch_fields ?? {}),
+            ...(packageCount > 0 ? { so_luong: String(packageCount) } : {}),
+            ma_tinh: nextDestHub.code || nextDestHub.name || String(nextDestHub.id),
+          };
+          await manifestLinkRepo.save(sourceLink);
+          return persistWaybillAndOrder();
+        }
+
+        if (!sourceLink) throw new ConflictException('Không tìm thấy liên kết bảng kê của vận đơn');
         if (sourceManifestLinks.length <= 1) {
           sourceManifest.dest_hub_id = String(nextDestHub.id);
           await manifestRepo.save(sourceManifest);
-          if (sourceTrip) {
-            sourceTrip.end_hub_id = String(nextDestHub.id);
-            await tripRepo.save(sourceTrip);
-          }
           sourceLink.dispatch_fields = {
             ...(sourceLink.dispatch_fields ?? {}),
             ma_tinh: nextDestHub.code || nextDestHub.name || String(nextDestHub.id),
           };
           await manifestLinkRepo.save(sourceLink);
         } else {
-          let targetTrip: TripEntity | null = null;
-          let targetManifest: ManifestEntity | null = null;
-
-          if (sourceTrip) {
-            const candidates = await tripRepo.find({
-              where: {
-                truck_id: sourceTrip.truck_id,
-                start_hub_id: sourceTrip.start_hub_id,
-                end_hub_id: String(nextDestHub.id),
-                status: TripStatus.PLANNED,
-              } as any,
-              relations: ['manifest'],
-            });
-            const sourceDeparture = new Date(sourceTrip.departure_time).getTime();
-            const matchingCandidates = candidates.filter((candidate) => (
-              new Date(candidate.departure_time).getTime() === sourceDeparture
-              && candidate.manifest
-              && String(candidate.manifest.origin_hub_id) === String(sourceManifest!.origin_hub_id)
-              && String(candidate.manifest.dest_hub_id) === String(nextDestHub.id)
-            ));
-            if (matchingCandidates.length > 1) {
-              throw new ConflictException('Có nhiều bảng kê đích phù hợp; không thể tự động tách HUB');
-            }
-            targetTrip = matchingCandidates[0] ?? null;
-            targetManifest = targetTrip?.manifest ?? null;
-          }
-
-          if (!targetManifest) {
-            targetManifest = manifestRepo.create({
-              manifest_code: await this.generateInventoryManifestCode(manifestRepo),
-              seal_code: `AUTO-REROUTE-${Date.now()}`,
-              origin_hub_id: String(sourceManifest.origin_hub_id),
-              dest_hub_id: String(nextDestHub.id),
-              status: sourceTrip ? ManifestStatus.CLOSED : sourceManifest.status,
-            });
-            targetManifest = await manifestRepo.save(targetManifest);
-          }
-
-          if (sourceTrip && !targetTrip) {
-            targetTrip = tripRepo.create({
-              truck_id: sourceTrip.truck_id,
-              manifest_id: String(targetManifest.id),
-              start_hub_id: String(sourceTrip.start_hub_id),
-              end_hub_id: String(nextDestHub.id),
-              departure_time: sourceTrip.departure_time,
-              arrival_time: sourceTrip.arrival_time,
-              expected_arrival_time: sourceTrip.expected_arrival_time,
-              driver_name: sourceTrip.driver_name,
-              driver_phone: sourceTrip.driver_phone,
-              status: TripStatus.PLANNED,
-            });
-            targetTrip = await tripRepo.save(targetTrip);
-          }
+          const targetManifest = await manifestRepo.save(manifestRepo.create({
+            manifest_code: await this.generateInventoryManifestCode(manifestRepo),
+            seal_code: `AUTO-REROUTE-${Date.now()}`,
+            origin_hub_id: String(sourceManifest.origin_hub_id),
+            dest_hub_id: String(nextDestHub.id),
+            status: sourceManifest.status,
+          }));
 
           const movedLink = manifestLinkRepo.create({
             manifest_id: String(targetManifest.id),
@@ -3714,17 +3714,6 @@ export class WaybillsService {
             waybill_id: waybillId,
           });
           await manifestLinkRepo.save(movedLink);
-
-          if (sourceTrip && targetTrip) {
-            const splitsToMove = splits.filter((split) => String(split.trip_id ?? '') === String(sourceTrip!.id));
-            splitsToMove.forEach((split) => {
-              if (split.truck_id && targetTrip!.truck_id && String(split.truck_id) !== String(targetTrip!.truck_id)) {
-                throw new ConflictException('Xe của kiện hàng không khớp chuyến đích');
-              }
-              split.trip_id = String(targetTrip!.id);
-            });
-            if (splitsToMove.length) await splitRepo.save(splitsToMove);
-          }
         }
       }
 
