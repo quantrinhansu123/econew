@@ -66,6 +66,7 @@ const FIELD_LABELS: Record<string, string> = {
   cod_reconciled_at: 'Thời gian xác nhận COD',
   cod_collected_amount: 'Số tiền COD đã thu',
   cod_fund_id: 'Sổ quỹ nhận tiền',
+  cod_reconciliation_note: 'Nội dung xác nhận COD',
   noi_dung: 'Nội dung hàng',
   ghi_chu: 'Ghi chú',
   tinh_chat_hang_hoa: 'Tính chất hàng hóa đặc biệt',

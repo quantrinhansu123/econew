@@ -29,6 +29,7 @@ interface Props {
   filters: CashVoucherFilters;
   loading: boolean;
   error: string;
+  actionsDisabled?: boolean;
   onFiltersChange: (patch: Partial<CashVoucherFilters>) => void;
   onCollect: () => void;
   onPayout: () => void;
@@ -55,6 +56,7 @@ export default function CustomerCashVouchersPanel({
   filters,
   loading,
   error,
+  actionsDisabled = false,
   onFiltersChange,
   onCollect,
   onPayout,
@@ -86,7 +88,8 @@ export default function CustomerCashVouchersPanel({
           <button
             type="button"
             onClick={onPrintStatement}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-4 text-[13px] font-extrabold text-foreground shadow-sm hover:bg-muted"
+            disabled={actionsDisabled}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-4 text-[13px] font-extrabold text-foreground shadow-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Printer size={16} />
             In phiếu kê
@@ -94,7 +97,8 @@ export default function CustomerCashVouchersPanel({
           <button
             type="button"
             onClick={onPayout}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-[13px] font-extrabold text-amber-800 shadow-sm hover:bg-amber-100"
+            disabled={actionsDisabled}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-[13px] font-extrabold text-amber-800 shadow-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <HandCoins size={16} />
             Chi trả khách
@@ -102,7 +106,8 @@ export default function CustomerCashVouchersPanel({
           <button
             type="button"
             onClick={onCollect}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-[13px] font-extrabold text-white shadow-sm hover:bg-emerald-700"
+            disabled={actionsDisabled}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-[13px] font-extrabold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus size={16} />
             Thanh toán
@@ -119,7 +124,7 @@ export default function CustomerCashVouchersPanel({
 
       <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
         <p className="mb-3 text-[12px] font-extrabold uppercase tracking-wide text-primary">
-          Bộ lọc · Mã KH {customerCode}
+          Ngày giao dịch · Mã KH {customerCode}
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block">

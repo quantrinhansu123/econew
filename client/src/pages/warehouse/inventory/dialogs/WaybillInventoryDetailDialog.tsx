@@ -345,7 +345,7 @@ function HistorySection({ entries, isLoading, error }: { entries: WaybillHistory
                       {changes.map(([field, change]) => (
                         <div key={field} className="grid gap-1 text-[12px] sm:grid-cols-[145px_minmax(0,1fr)]">
                           <span className="font-bold text-slate-600">{waybillHistoryFieldLabel(field)}</span>
-                          <div className="min-w-0 break-words font-semibold text-foreground">
+                          <div className="min-w-0 whitespace-pre-wrap break-words font-semibold text-foreground">
                             <span className="text-red-600 line-through decoration-red-300">{formatWaybillHistoryValue(field, change.old_value)}</span>
                             <span className="mx-2 text-slate-400">→</span>
                             <span className="text-emerald-700">{formatWaybillHistoryValue(field, change.new_value)}</span>

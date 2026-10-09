@@ -276,6 +276,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [sort, setSort] = useState<AllOrdersSort>({ columnId: 'received_at', direction: 'desc' });
   const [customerCodeOptions, setCustomerCodeOptions] = useState<AllOrdersColumnFilterOption[]>([]);
   const [ledgerCustomer, setLedgerCustomer] = useState<CustomerRecord | null>(null);
+  const [ledgerBillScope, setLedgerBillScope] = useState<{ query: string; columnFilters: AllOrdersColumnFilters }>();
   const [isLedgerCustomerLoading, setIsLedgerCustomerLoading] = useState(false);
   const openWarehouseIntake = (item: WaybillInventoryItem) => {
     setReceiveWaybill(item);
@@ -795,6 +796,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const openCustomerLedger = async (rawCode: string) => {
     const code = rawCode.trim();
     if (!code || code === '—') return;
+    setLedgerBillScope({ query: buildQuery(filters, variant), columnFilters: { ...columnFilters } });
     setActionError('');
     setIsLedgerCustomerLoading(true);
     try {
@@ -1318,9 +1320,11 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         onClose={() => setIsColumnPickerOpen(false)}
       />
       <CustomerDetailDialog
+        key={`${ledgerCustomer?.id || 'closed'}-${JSON.stringify(ledgerBillScope)}`}
         customer={ledgerCustomer}
         loading={isLedgerCustomerLoading}
         initialTab="thanh-toan"
+        billScope={ledgerBillScope}
         onClose={() => setLedgerCustomer(null)}
       />
       <WaybillCashVoucherDialog

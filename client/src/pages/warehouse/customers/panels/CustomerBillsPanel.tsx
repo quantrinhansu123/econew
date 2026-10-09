@@ -2,13 +2,15 @@ import { useMemo } from 'react';
 import { clsx } from 'clsx';
 import { ExternalLink, Loader2, Printer } from 'lucide-react';
 import { DayPicker } from '../../../../components/ui/DayPicker';
-import { resolveNoiDen } from '../../inventory/inventoryColumns';
+import { resolveLoadedAt, resolveNoiDen } from '../../inventory/inventoryColumns';
 import type { WaybillInventoryItem } from '../../inventory/types';
 import type { WaybillCashVoucher } from '../../inventory/dialogs/WaybillCashVoucherDialog';
 import {
   buildPaidByWaybill,
   computeCustomerDebtSummary,
   computeVoucherMeta,
+  scopeCashVouchersToBills,
+  hasBillFilters,
   filterBills,
   getBillFreight,
   resolvePaidForBill,
@@ -59,15 +61,10 @@ export default function CustomerBillsPanel({
   const filteredItems = useMemo(() => filterBills(items, filters), [items, filters]);
 
   const summary = useMemo(() => {
-    return computeCustomerDebtSummary(filteredItems, paidMaps, openingDebt, showPaymentColumns);
-  }, [filteredItems, openingDebt, paidMaps, showPaymentColumns]);
+    return computeCustomerDebtSummary(filteredItems, paidMaps, hasBillFilters(filters) ? 0 : openingDebt, showPaymentColumns);
+  }, [filteredItems, openingDebt, paidMaps, showPaymentColumns, filters]);
   const voucherMeta = useMemo(() => {
-    const ids = new Set(filteredItems.map((item) => String(item.id)));
-    const codes = new Set(filteredItems.map((item) => (item.waybill_code || item.order_code || '').trim().toUpperCase()).filter(Boolean));
-    return computeVoucherMeta(vouchers.filter((voucher) => (
-      (voucher.waybill_id != null && ids.has(String(voucher.waybill_id)))
-      || Boolean(voucher.waybill_code && codes.has(voucher.waybill_code.trim().toUpperCase()))
-    )));
+    return computeVoucherMeta(scopeCashVouchersToBills(vouchers, filteredItems));
   }, [filteredItems, vouchers]);
 
   const hasFilters = Boolean(filters.fromDate || filters.toDate || filters.billCode.trim() || filters.paymentType);
@@ -112,7 +109,7 @@ export default function CustomerBillsPanel({
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block">
-            <span className="mb-1 block text-[11px] font-bold text-muted-foreground">Từ ngày nhận</span>
+            <span className="mb-1 block text-[11px] font-bold text-muted-foreground">Từ ngày gửi</span>
             <DayPicker
               value={filters.fromDate}
               onChange={(value) => onFiltersChange({ fromDate: value })}
@@ -120,7 +117,7 @@ export default function CustomerBillsPanel({
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-[11px] font-bold text-muted-foreground">Đến ngày nhận</span>
+            <span className="mb-1 block text-[11px] font-bold text-muted-foreground">Đến ngày gửi</span>
             <DayPicker
               value={filters.toDate}
               onChange={(value) => onFiltersChange({ toDate: value })}
@@ -206,7 +203,7 @@ export default function CustomerBillsPanel({
                     <td className="px-3 py-2.5 font-extrabold text-primary">
                       {item.waybill_code || item.order_code || `#${item.id}`}
                     </td>
-                    <td className="px-3 py-2.5">{formatDate(item.loaded_at)}</td>
+                    <td className="px-3 py-2.5">{formatDate(resolveLoadedAt(item))}</td>
                     <td className="px-3 py-2.5">{formatDate(item.received_at || item.created_at)}</td>
                     <td className="px-3 py-2.5">{resolveNoiDen(item)}</td>
                     <td className="px-3 py-2.5 text-right">{item.package_count ?? item.trip_package_count ?? '—'}</td>

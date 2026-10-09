@@ -662,7 +662,7 @@ export class WaybillsService {
   }
 
   async findHistory(id: string, currentUser: UserEntity): Promise<Array<Record<string, any>>> {
-    await this.findOne(id, currentUser);
+    const waybill = await this.findOne(id, currentUser);
     const logs = await this.changeLogsRepository.find({
       where: { waybill_id: id },
       relations: ['changed_by'],
@@ -671,10 +671,23 @@ export class WaybillsService {
     });
     const canViewPricing = isManager(currentUser.role_mask);
     const canViewCod = canViewPricing || hasRole(currentUser.role_mask, Roles.ACCOUNTANT);
+    // Recover the note for the current confirmation made before notes were audited.
+    // Never attach a current voucher note to an older or reversed confirmation.
+    const currentConfirmation = canViewCod && waybill.cod_reconciled_at
+      ? logs.find((log) => log.action === 'COD_RECONCILED'
+        && log.changes?.cod_reconciled_at?.new_value === new Date(waybill.cod_reconciled_at!).toISOString())
+      : undefined;
+    const currentVoucher = currentConfirmation && !('cod_reconciliation_note' in (currentConfirmation.changes || {}))
+      ? await this.cashVouchersRepository.findOne({ where: { waybill_id: id, source_type: 'COD_COLLECTION' } as any })
+      : null;
     return logs.map((log) => {
-      const changes = Object.fromEntries(Object.entries(log.changes || {}).filter(([field]) => {
+      const auditedChanges = { ...log.changes };
+      if (log === currentConfirmation && currentVoucher?.note) {
+        auditedChanges.cod_reconciliation_note = { old_value: null, new_value: currentVoucher.note };
+      }
+      const changes = Object.fromEntries(Object.entries(auditedChanges).filter(([field]) => {
         if (['cost_amount', 'freight_amount', 'cc_amount', 'last_mile_cost_amount'].includes(field)) return canViewPricing;
-        if (['cod_amount', 'cod_collected_amount', 'cash_voucher_amount'].includes(field)) return canViewCod;
+        if (['cod_amount', 'cod_collected_amount', 'cash_voucher_amount', 'cod_reconciliation_note'].includes(field)) return canViewCod;
         return true;
       }));
       return {
@@ -1199,6 +1212,7 @@ export class WaybillsService {
       const existingVoucher = await cashVouchersRepository.findOne({
         where: { waybill_id: String(waybill.id), source_type: 'COD_COLLECTION' } as any,
       });
+      const previousNote = existingVoucher?.note ?? null;
       const voucher = existingVoucher ?? cashVouchersRepository.create({
         waybill_id: String(waybill.id),
         waybill_code: waybill.waybill_code,
@@ -1228,7 +1242,10 @@ export class WaybillsService {
         currentUser,
         undefined,
         undefined,
-        this.diffCodReconciliationSnapshots(reconciliationBefore, this.getCodReconciliationSnapshot(saved as WaybillRecord)),
+        {
+          ...this.diffCodReconciliationSnapshots(reconciliationBefore, this.getCodReconciliationSnapshot(saved as WaybillRecord)),
+          cod_reconciliation_note: { old_value: previousNote, new_value: voucher.note },
+        },
         manager.getRepository(WaybillChangeLogEntity),
       );
       return this.sanitize({ ...saved, cod_fund: { id: fund.id, code: fund.code, name: fund.name } } as WaybillRecord, currentUser) as WaybillRecord;
@@ -1703,7 +1720,12 @@ export class WaybillsService {
           currentUser,
           undefined,
           undefined,
-          this.diffCodReconciliationSnapshots(reconciliationBefore, this.getCodReconciliationSnapshot(savedWaybill)),
+          {
+            ...this.diffCodReconciliationSnapshots(reconciliationBefore, this.getCodReconciliationSnapshot(savedWaybill)),
+            ...(!reconciliationBefore.cod_reconciled_at && savedWaybill.cod_reconciled_at ? {
+              cod_reconciliation_note: { old_value: null, new_value: dto.note?.trim() || null },
+            } : {}),
+          },
           manager.getRepository(WaybillChangeLogEntity),
         );
       }
@@ -1871,10 +1893,15 @@ export class WaybillsService {
           currentUser,
           undefined,
           undefined,
-          this.diffCodReconciliationSnapshots(
-            reconciliationBeforeById.get(String(waybill.id))!,
-            this.getCodReconciliationSnapshot(waybill),
-          ),
+          {
+            ...this.diffCodReconciliationSnapshots(
+              reconciliationBeforeById.get(String(waybill.id))!,
+              this.getCodReconciliationSnapshot(waybill),
+            ),
+            ...(!reconciliationBeforeById.get(String(waybill.id))!.cod_reconciled_at && waybill.cod_reconciled_at ? {
+              cod_reconciliation_note: { old_value: null, new_value: dto.note?.trim() || null },
+            } : {}),
+          },
           manager.getRepository(WaybillChangeLogEntity),
         );
       }
@@ -2100,6 +2127,9 @@ export class WaybillsService {
           customer_payment_status: { old_value: paymentStatusBefore, new_value: waybill.customer_payment_status },
         } : {}),
         ...this.diffCodReconciliationSnapshots(reconciliationBefore, this.getCodReconciliationSnapshot(waybill as WaybillRecord)),
+        ...(!reconciliationBefore.cod_reconciled_at && waybill.cod_reconciled_at ? {
+          cod_reconciliation_note: { old_value: null, new_value: voucher.note ?? null },
+        } : {}),
       }, manager.getRepository(WaybillChangeLogEntity));
       return preview;
     });

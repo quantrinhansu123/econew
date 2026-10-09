@@ -1674,6 +1674,7 @@ describe('WaybillsService', () => {
         freight_amount: { old_value: 100000, new_value: 120000 },
         last_mile_cost_amount: { old_value: 0, new_value: 50000 },
         cod_amount: { old_value: 0, new_value: 200000 },
+        cod_reconciliation_note: { old_value: null, new_value: 'Nội dung thu tiền' },
       },
       changed_by_id: manager.id,
       changed_by_name: 'Quản trị viên',
@@ -1692,6 +1693,28 @@ describe('WaybillsService', () => {
   it('receive blocks wrong status', async () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ status: WaybillStatus.IN_WAREHOUSE, current_state: WaybillStatus.IN_WAREHOUSE }));
     await expect(service.receive('1', { intake_method: WarehouseIntakeMethod.INTERNAL }, warehouse)).rejects.toThrow(BadRequestException);
+  });
+
+  it('recovers only the active legacy COD confirmation note from its voucher', async () => {
+    const confirmedAt = new Date('2026-09-29T08:35:31.000Z');
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ cod_reconciled_at: confirmedAt }));
+    changeLogsRepository.find.mockResolvedValue([
+      { id: 'new', action: 'COD_RECONCILED', changes: { cod_reconciled_at: { old_value: null, new_value: confirmedAt.toISOString() } } },
+      { id: 'old', action: 'COD_RECONCILED', changes: { cod_reconciled_at: { old_value: null, new_value: '2026-09-28T08:35:31.000Z' } } },
+    ]);
+    cashVouchersRepository.findOne.mockResolvedValue({ note: 'Thu COD tháng 9\nĐã kiểm tra' });
+    const history = await service.findHistory('1', accountant);
+    expect(history[0].changes.cod_reconciliation_note).toEqual({ old_value: null, new_value: 'Thu COD tháng 9\nĐã kiểm tra' });
+    expect(history[1].changes.cod_reconciliation_note).toBeUndefined();
+  });
+
+  it('preserves audited COD notes and does not restore notes after reversal', async () => {
+    const log = { id: 'old', action: 'COD_RECONCILED', changes: { cod_reconciliation_note: { old_value: null, new_value: 'Ghi chú lúc xác nhận' } } };
+    changeLogsRepository.find.mockResolvedValue([log]);
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ cod_reconciled_at: null }));
+    const history = await service.findHistory('1', accountant);
+    expect(history[0].changes.cod_reconciliation_note.new_value).toBe('Ghi chú lúc xác nhận');
+    expect(cashVouchersRepository.findOne).not.toHaveBeenCalled();
   });
 
   it('updateStatus cannot bypass warehouse intake details', async () => {
@@ -1774,6 +1797,7 @@ describe('WaybillsService', () => {
       changes: expect.objectContaining({
         cod_collected_amount: { old_value: 0, new_value: 620000 },
         cod_fund_id: { old_value: null, new_value: 'fund-1' },
+        cod_reconciliation_note: { old_value: null, new_value: 'Đã đối chiếu tiền mặt với lái xe' },
       }),
     }));
   });
@@ -1782,6 +1806,17 @@ describe('WaybillsService', () => {
     waybillsRepository.findOne.mockResolvedValue(makeWaybill({ dest_hub_id: '1', payment_type: PaymentType.PP }));
 
     await expect(service.updateCodReconciliation('1', { confirmed: true, fund_id: 'fund-1' }, accountant)).rejects.toThrow(BadRequestException);
+  });
+
+  it('audits both the previous and new note when updating a COD confirmation', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({ dest_hub_id: '1', payment_type: PaymentType.COD, cod_amount: 500000 }));
+    cashFundsRepository.findOne.mockResolvedValue({ id: 'fund-1', is_active: true });
+    cashVouchersRepository.findOne.mockResolvedValue({ id: 'voucher-1', note: 'Nội dung cũ' });
+    await service.updateCodReconciliation('1', { confirmed: true, fund_id: 'fund-1', note: '  Nội dung mới  ' }, accountant);
+    expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'COD_RECONCILED',
+      changes: expect.objectContaining({ cod_reconciliation_note: { old_value: 'Nội dung cũ', new_value: 'Nội dung mới' } }),
+    }));
   });
 
   it('uses freight as the receiver-paid amount for legacy CC bills without cc_amount', async () => {

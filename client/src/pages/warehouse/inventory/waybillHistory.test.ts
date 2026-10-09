@@ -12,6 +12,7 @@ describe('waybill edit history presentation', () => {
     expect(waybillHistoryActionLabel('LEGACY_UPDATE')).toContain('trước khi bật lịch sử');
     expect(waybillHistoryFieldLabel('receiver_address')).toBe('Địa chỉ nhận');
     expect(waybillHistoryFieldLabel('cod_fund_id')).toBe('Sổ quỹ nhận tiền');
+    expect(waybillHistoryFieldLabel('cod_reconciliation_note')).toBe('Nội dung xác nhận COD');
   });
 
   it('formats COD as Vietnamese money and preserves blank values', () => {

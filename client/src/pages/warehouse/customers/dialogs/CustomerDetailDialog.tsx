@@ -4,25 +4,27 @@ import { Building2, Edit, ExternalLink, Loader2, Package, Printer, Receipt, Truc
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import CashFundSelect from '../../../../components/finance/CashFundSelect';
+import { DayPicker } from '../../../../components/ui/DayPicker';
 import { ApiError, apiRequest } from '../../../../lib/api';
 import { formatAmountInput, formatAmountInputFromNumber, formatMoney, parseAmountInput } from '../../../../lib/formatMoney';
 import { specialGoodsLabels } from '../../../../lib/waybillSpecialGoods';
 import type { AuthUserProfile } from '../../../login/types';
 import { CUSTOMER_DETAIL_TABS, type CustomerDetailTabId } from '../customerDetailTabs';
 import type { InventoryListResponse, WaybillInventoryItem } from '../../inventory/types';
-import { resolveNoiDen } from '../../inventory/inventoryColumns';
+import { resolveLoadedAt, resolveNoiDen } from '../../inventory/inventoryColumns';
+import { applyAllOrdersColumnFilters } from '../../inventory/allOrdersColumnFilters';
 import LoadPlanningTruckBoard from '../../load-planning/LoadPlanningTruckBoard';
 import type { LoadPlanningBoardResponse } from '../../load-planning/types';
 import type { CustomerRecord } from '../customerFormTypes';
 import CustomerCashVouchersPanel, { type CashVoucherFilters } from '../panels/CustomerCashVouchersPanel';
 import CustomerBillsPanel from '../panels/CustomerBillsPanel';
 import {
-  buildPaidByWaybill,
-  computeCustomerDebtSummary,
-  computeVoucherMeta,
+  buildCustomerStatement,
+  customerBillsQuery,
   getBillFreight,
   resolvePaidForBill,
   type BillFilters,
+  type CustomerBillScope,
 } from '../utils/customerFinanceUtils';
 import type { WaybillCashVoucher } from '../../inventory/dialogs/WaybillCashVoucherDialog';
 import CustomerPayoutDialog from './CustomerPayoutDialog';
@@ -31,6 +33,7 @@ interface Props {
   customer: CustomerRecord | null;
   loading?: boolean;
   initialTab?: CustomerDetailTabId;
+  billScope?: CustomerBillScope;
   onClose: () => void;
   onEdit?: () => void;
 }
@@ -131,11 +134,11 @@ const dedupeWaybills = (lines: WaybillInventoryItem[]) => {
 const inventoryTotalFromResponse = (response: InventoryListResponse | WaybillInventoryItem[], fallback: number) =>
   Array.isArray(response) ? fallback : response.meta?.total_waybills ?? response.total ?? response.meta?.total ?? fallback;
 
-const CUSTOMER_BILL_PAGE_SIZE = 200;
+const CUSTOMER_BILL_PAGE_SIZE = 100;
 
-async function loadAllCustomerBills(customerCode: string) {
+async function loadAllCustomerBills(customerCode: string, scope?: CustomerBillScope, period?: Pick<BillFilters, 'fromDate' | 'toDate'>) {
   const requestPage = (page: number) => apiRequest<InventoryListResponse | WaybillInventoryItem[]>(
-    `/waybills/inventory/trip-lines?ma_kh=${encodeURIComponent(customerCode)}&list_scope=all_orders&limit=${CUSTOMER_BILL_PAGE_SIZE}&page=${page}`,
+    `/waybills/inventory/trip-lines?${customerBillsQuery(customerCode, page, scope, period)}`,
   );
   const firstResponse = await requestPage(1);
   const firstItems = normalizeInventoryList(firstResponse);
@@ -183,9 +186,9 @@ async function loadAllCustomerCashVouchers(customerCode: string) {
   return allItems;
 }
 
-export default function CustomerDetailDialog({ customer, loading, initialTab = 'chi-tiet', onClose, onEdit }: Props) {
+export default function CustomerDetailDialog({ customer, loading, initialTab = 'chi-tiet', billScope, onClose, onEdit }: Props) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<CustomerDetailTabId>('chi-tiet');
+  const [activeTab, setActiveTab] = useState<CustomerDetailTabId>(initialTab);
   const [inventoryItems, setInventoryItems] = useState<WaybillInventoryItem[]>([]);
   const [inventoryTotal, setInventoryTotal] = useState(0);
   const [inventoryLoading, setInventoryLoading] = useState(false);
@@ -201,8 +204,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
     voucherType: '',
   });
   const [billFilters, setBillFilters] = useState<BillFilters>({
-    fromDate: '',
-    toDate: '',
+    fromDate: new URLSearchParams(billScope?.query).get('sent_from') || '',
+    toDate: new URLSearchParams(billScope?.query).get('sent_to') || '',
     billCode: '',
     paymentType: '',
   });
@@ -231,11 +234,18 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   }, []);
 
   useEffect(() => {
-    if (customer) {
-      queueMicrotask(() => setActiveTab(initialTab));
+    if (customer?.id) {
+      queueMicrotask(() => {
+        setActiveTab(initialTab);
+        setBillFilters({
+          fromDate: new URLSearchParams(billScope?.query).get('sent_from') || '',
+          toDate: new URLSearchParams(billScope?.query).get('sent_to') || '',
+          billCode: '', paymentType: '',
+        });
+      });
       return;
     }
-    if (!customer) {
+    if (!customer?.id) {
       queueMicrotask(() => {
         setActiveTab('chi-tiet');
         setInventoryItems([]);
@@ -259,22 +269,25 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
         setIsPayoutOpen(false);
       });
     }
-  }, [customer?.id, initialTab]);
+  }, [customer?.id, initialTab, billScope]);
 
-  const statementData = useMemo(() => {
-    const paidMaps = buildPaidByWaybill(cashVouchers);
-    const voucherMeta = computeVoucherMeta(cashVouchers);
-    return {
-      paidMaps,
-      voucherMeta,
-      ...computeCustomerDebtSummary(inventoryItems, paidMaps, customer?.opening_debt, true),
-    };
-  }, [cashVouchers, customer?.opening_debt, inventoryItems]);
-  const collectableBills = useMemo(() => inventoryItems.map((item) => {
+  const scopedItems = useMemo(() => billScope
+    ? applyAllOrdersColumnFilters(inventoryItems, billScope.columnFilters) : inventoryItems, [inventoryItems, billScope]);
+  const statementData = useMemo(() => buildCustomerStatement(
+    scopedItems, cashVouchers, customer?.opening_debt, billFilters, !billScope,
+  ), [cashVouchers, customer?.opening_debt, scopedItems, billFilters, billScope]);
+  const inventoryPeriod = useMemo(() => billScope
+    ? { fromDate: billFilters.fromDate, toDate: billFilters.toDate } : undefined,
+  [billScope, billFilters.fromDate, billFilters.toDate]);
+  const invalidPeriod = Boolean(billFilters.fromDate && billFilters.toDate && billFilters.fromDate > billFilters.toDate);
+  const financeError = inventoryError || cashVouchersError || (invalidPeriod ? 'Ngày kết thúc phải từ ngày bắt đầu trở đi.' : '');
+  const financeLoading = loading || inventoryLoading || cashVouchersLoading;
+  const financeDisabled = Boolean(financeLoading || financeError || (!statementData.count && !statementData.openingDebtRemaining));
+  const collectableBills = useMemo(() => statementData.bills.map((item) => {
     const freight = getBillFreight(item);
     const paid = resolvePaidForBill(item, statementData.paidMaps);
     return { item, remaining: Math.max(0, freight - paid) };
-  }).filter(({ remaining }) => remaining > 0), [inventoryItems, statementData.paidMaps]);
+  }).filter(({ remaining }) => remaining > 0), [statementData]);
   const selectedCollectBills = useMemo(() => collectableBills.filter(({ item }) => (
     collectWaybillIds.includes(String(item.id))
   )), [collectWaybillIds, collectableBills]);
@@ -282,11 +295,11 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
     sum + parseAmountInput(collectAmounts[String(item.id)] || '')
   ), 0) + (collectOpeningDebt ? parseAmountInput(collectOpeningDebtAmount) : 0);
   const collectSelectionCount = selectedCollectBills.length + (collectOpeningDebt ? 1 : 0);
-  const creditBills = useMemo(() => inventoryItems.map((item) => {
+  const creditBills = useMemo(() => statementData.bills.map((item) => {
     const freight = getBillFreight(item);
     const paid = resolvePaidForBill(item, statementData.paidMaps);
     return { item, credit: Math.max(0, paid - freight) };
-  }).filter(({ credit }) => credit > 0), [inventoryItems, statementData.paidMaps]);
+  }).filter(({ credit }) => credit > 0), [statementData]);
 
   useEffect(() => {
     const needsInventory = activeTab === 'don-hang' || activeTab === 'bill' || activeTab === 'thanh-toan';
@@ -298,7 +311,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       setInventoryLoading(true);
       setInventoryError('');
 
-      loadAllCustomerBills(customer.code.trim())
+      loadAllCustomerBills(customer.code.trim(), billScope, inventoryPeriod)
         .then(({ items, total }) => {
           if (cancelled) return;
           setInventoryItems(items);
@@ -319,7 +332,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
     return () => {
       cancelled = true;
     };
-  }, [activeTab, customer?.code]);
+  }, [activeTab, customer?.code, billScope, inventoryPeriod]);
 
   const deliveryTenCty = customer?.code?.trim() || customer?.name?.trim() || '';
 
@@ -404,7 +417,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
     const maKh = customer?.code?.trim();
     if (!maKh) return;
     const [{ items, total }, vouchers] = await Promise.all([
-      loadAllCustomerBills(maKh),
+      loadAllCustomerBills(maKh, billScope, inventoryPeriod),
       loadAllCustomerCashVouchers(maKh),
     ]);
     setInventoryItems(items);
@@ -413,6 +426,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   };
 
   const openCollectDialog = () => {
+    if (financeDisabled) return;
     setCollectWaybillIds([]);
     setCollectAmounts({});
     setCollectOpeningDebt(false);
@@ -452,6 +466,10 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   };
 
   const submitCollectVoucher = async () => {
+    if (financeDisabled) {
+      setCollectError(financeError || 'Vui lòng chờ tải xong bảng kê.');
+      return;
+    }
     const maKh = customer?.code?.trim();
     if (!collectSelectionCount) {
       setCollectError('Chọn ít nhất một bill hoặc công nợ tồn cũ cần thanh toán.');
@@ -504,7 +522,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       });
       if (maKh) {
         const [{ items, total }] = await Promise.all([
-          loadAllCustomerBills(maKh),
+          loadAllCustomerBills(maKh, billScope, inventoryPeriod),
           loadCashVouchers(maKh),
         ]);
         setInventoryItems(items);
@@ -549,7 +567,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
     navigate(`/warehouse/priority?keyword=${encodeURIComponent(deliveryTenCty)}`);
   };
 
-  const printPaymentStatement = () => setIsStatementOpen(true);
+  const printPaymentStatement = () => { if (!financeDisabled) setIsStatementOpen(true); };
 
   if (!customer) return null;
 
@@ -638,8 +656,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[13px] font-bold text-foreground">
                 Mã KH: <span className="text-primary">{customer.code}</span>
-                {inventoryTotal > 0 && (
-                  <span className="ml-2 font-medium text-muted-foreground">({inventoryTotal} đơn)</span>
+                {statementData.count > 0 && (
+                  <span className="ml-2 font-medium text-muted-foreground">({statementData.count} đơn)</span>
                 )}
               </p>
               <button
@@ -658,7 +676,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
               </div>
             ) : inventoryError ? (
               <p className="py-8 text-center text-[13px] font-bold text-red-600">{inventoryError}</p>
-            ) : inventoryItems.length === 0 ? (
+            ) : statementData.bills.length === 0 ? (
               <div className="py-10 text-center">
                 <Package size={28} className="mx-auto mb-2 text-muted-foreground" />
                 <p className="text-[13px] font-medium text-muted-foreground">Chưa có đơn hàng với mã KH này.</p>
@@ -679,7 +697,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                     </tr>
                   </thead>
                   <tbody>
-                    {inventoryItems.map((order) => {
+                    {statementData.bills.map((order) => {
                       const state = String(order.current_state || '').toUpperCase();
                       const freight = order.freight_amount ?? order.cost_amount;
                       return (
@@ -788,10 +806,10 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
         return (
           <CustomerBillsPanel
             customerCode={customer.code}
-            items={inventoryItems}
+            items={scopedItems}
             totalCount={inventoryTotal}
             vouchers={cashVouchers}
-            openingDebt={customer.opening_debt}
+            openingDebt={billScope ? 0 : customer.opening_debt}
             filters={billFilters}
             loading={inventoryLoading}
             vouchersLoading={canViewCashVouchers && cashVouchersLoading}
@@ -817,16 +835,38 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
               <Row label="Mã hợp đồng" value={customer.contract_code} />
             </DetailSection>
 
+            {canViewCashVouchers && (
+              <Panel>
+                <p className="mb-3 text-[12px] font-extrabold uppercase tracking-wide text-primary">Kỳ đối soát · Ngày gửi trên bill</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block"><span className="mb-1 block text-[11px] font-bold text-muted-foreground">Từ ngày gửi</span>
+                    <DayPicker value={billFilters.fromDate} onChange={(value) => handleBillFiltersChange({ fromDate: value })} />
+                  </label>
+                  <label className="block"><span className="mb-1 block text-[11px] font-bold text-muted-foreground">Đến ngày gửi</span>
+                    <DayPicker value={billFilters.toDate} onChange={(value) => handleBillFiltersChange({ toDate: value })} />
+                  </label>
+                </div>
+                {financeError ? <p role="alert" className="mt-3 text-[13px] font-bold text-red-600">{financeError}</p>
+                  : financeLoading ? <p className="mt-3 text-[13px] text-muted-foreground">Đang tải bảng kê...</p>
+                    : <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[13px] font-bold" data-testid="customer-period-summary">
+                      <span>{statementData.count} đơn</span><span>Tổng cước: {printMoney(statementData.totalFreight)}</span>
+                      <span>{statementData.totalDebt < 0 ? 'ECO cần trả khách' : 'Còn phải thu'}: {printMoney(Math.abs(statementData.totalDebt))}</span>
+                    </div>}
+                {(billFilters.fromDate || billFilters.toDate || billFilters.billCode || billFilters.paymentType) && <button type="button" onClick={() => handleBillFiltersChange({ fromDate: '', toDate: '', billCode: '', paymentType: '' })} className="mt-3 text-[12px] font-bold text-red-500 hover:underline">× Xóa bộ lọc bill</button>}
+                <p className="mt-2 text-[12px] text-muted-foreground">In, thanh toán và chi trả theo các bill trong kỳ này. COD đối trừ theo từng bill.{(billScope || billFilters.fromDate || billFilters.toDate) ? ' Công nợ tồn cũ không tính vào kỳ đã chọn.' : ''}</p>
+              </Panel>
+            )}
             {canViewCashVouchers ? (
               <CustomerCashVouchersPanel
                 customerCode={customer.code}
-                vouchers={cashVouchers}
+                vouchers={statementData.vouchers}
                 filters={cashVoucherFilters}
-                loading={cashVouchersLoading}
-                error={cashVouchersError}
+                loading={Boolean(financeLoading)}
+                error={financeError}
+                actionsDisabled={financeDisabled}
                 onFiltersChange={handleCashVoucherFiltersChange}
                 onCollect={openCollectDialog}
-                onPayout={() => setIsPayoutOpen(true)}
+                onPayout={() => { if (!financeDisabled) setIsPayoutOpen(true); }}
                 onPrintStatement={printPaymentStatement}
               />
             ) : (
@@ -883,12 +923,13 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
 
             <div className="mt-4 grid gap-1 text-[13px]">
               <p><b>Khách hàng:</b> {customer.name || '—'}</p>
+              <p><b>Ngày gửi trên bill:</b> {billFilters.fromDate ? formatDate(billFilters.fromDate) : 'Tất cả'} — {billFilters.toDate ? formatDate(billFilters.toDate) : 'Tất cả'}{billScope ? ' · Theo bộ lọc danh sách đơn' : ''}</p>
               <p><b>Địa chỉ:</b> {customer.address || '—'}</p>
               <p><b>MST:</b> {customer.tax_id || '—'} <span className="mx-2">·</span> <b>Hợp đồng:</b> {customer.contract_code || '—'}</p>
             </div>
 
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <PrintMetric label="Số đơn" value={inventoryItems.length.toLocaleString('vi-VN')} />
+              <PrintMetric label="Số đơn" value={statementData.count.toLocaleString('vi-VN')} />
               <PrintMetric label="Công nợ tồn cũ" value={printMoney(statementData.openingDebt)} />
               <PrintMetric label="Tổng cước" value={printMoney(statementData.totalFreight)} />
             </div>
@@ -907,14 +948,14 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                 <tr>{['#', 'Số bill', 'Ngày', 'Nơi đến / người nhận', 'TT', 'Cước', 'Đã TT', 'Còn lại'].map((header) => <th key={header} className="border border-slate-300 px-2 py-2">{header}</th>)}</tr>
               </thead>
               <tbody>
-                {inventoryItems.length ? inventoryItems.map((item, index) => {
+                {statementData.bills.length ? statementData.bills.map((item, index) => {
                   const freight = getBillFreight(item);
                   const paid = resolvePaidForBill(item, statementData.paidMaps);
                   return (
                     <tr key={String(item.id)}>
                       <td className="border border-slate-300 px-2 py-2">{index + 1}</td>
                       <td className="border border-slate-300 px-2 py-2 font-bold">{item.waybill_code || item.code || item.order_code || item.id}</td>
-                      <td className="border border-slate-300 px-2 py-2">{formatDate(item.received_at || item.created_at)}</td>
+                      <td className="border border-slate-300 px-2 py-2">{formatDate(resolveLoadedAt(item))}</td>
                       <td className="border border-slate-300 px-2 py-2">{item.receiver_info || resolveNoiDen(item)}</td>
                       <td className="border border-slate-300 px-2 py-2">{item.payment_type || '—'}</td>
                       <td className="whitespace-nowrap border border-slate-300 px-2 py-2 text-right">{printMoney(freight)}</td>
@@ -932,7 +973,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                 <tr>{['#', 'Ngày', 'Số bill', 'Loại', 'Số tiền', 'Ghi chú', 'Người lập'].map((header) => <th key={header} className="border border-slate-300 px-2 py-2">{header}</th>)}</tr>
               </thead>
               <tbody>
-                {cashVouchers.length ? cashVouchers.map((voucher, index) => (
+                {statementData.vouchers.length ? statementData.vouchers.map((voucher, index) => (
                   <tr key={String(voucher.id)}>
                     <td className="border border-slate-300 px-2 py-2">{index + 1}</td>
                     <td className="border border-slate-300 px-2 py-2">{formatDate(voucher.created_at)}</td>

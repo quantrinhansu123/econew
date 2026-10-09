@@ -2,6 +2,26 @@ import type { WaybillCashVoucher } from '../../inventory/dialogs/WaybillCashVouc
 import type { WaybillInventoryItem } from '../../inventory/types';
 import type { CashVoucherFilters, CashVoucherMeta } from '../panels/CustomerCashVouchersPanel';
 import { formatMoney as formatSharedMoney } from '../../../../lib/formatMoney';
+import { resolveLoadedAt } from '../../inventory/inventoryColumns';
+import type { AllOrdersColumnFilters } from '../../inventory/allOrdersColumnFilters';
+
+export interface CustomerBillScope {
+  query: string;
+  columnFilters: AllOrdersColumnFilters;
+}
+
+export function customerBillsQuery(customerCode: string, page: number, scope?: CustomerBillScope, period?: Pick<BillFilters, 'fromDate' | 'toDate'>) {
+  const params = new URLSearchParams(scope?.query);
+  if (period) {
+    if (period.fromDate) params.set('sent_from', period.fromDate); else params.delete('sent_from');
+    if (period.toDate) params.set('sent_to', period.toDate); else params.delete('sent_to');
+  }
+  params.set('ma_kh', customerCode);
+  if (!params.has('list_scope')) params.set('list_scope', 'all_orders');
+  params.set('limit', '100');
+  params.set('page', String(page));
+  return params.toString();
+}
 
 export const formatMoney = (value?: number | string | null, empty = '—') =>
   formatSharedMoney(value, { empty });
@@ -22,15 +42,15 @@ export interface PaidByWaybillMaps {
 export function isDateInRange(value: string | null | undefined, fromDate: string, toDate: string) {
   if (!fromDate && !toDate) return true;
   if (!value) return false;
-  const date = new Date(value);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
   if (Number.isNaN(date.getTime())) return false;
   if (fromDate) {
-    const from = new Date(fromDate);
+    const from = new Date(`${fromDate}T00:00:00`);
     from.setHours(0, 0, 0, 0);
     if (date < from) return false;
   }
   if (toDate) {
-    const to = new Date(toDate);
+    const to = new Date(`${toDate}T00:00:00`);
     to.setHours(23, 59, 59, 999);
     if (date > to) return false;
   }
@@ -135,8 +155,7 @@ export function computeCustomerDebtSummary(
 export function filterBills(items: WaybillInventoryItem[], filters: BillFilters) {
   const billKeyword = filters.billCode.trim().toUpperCase();
   return items.filter((item) => {
-    const receivedAt = item.received_at || item.created_at;
-    if (!isDateInRange(receivedAt, filters.fromDate, filters.toDate)) return false;
+    if (!isDateInRange(resolveLoadedAt(item), filters.fromDate, filters.toDate)) return false;
     if (filters.paymentType && String(item.payment_type || '').toUpperCase() !== filters.paymentType) return false;
     if (billKeyword) {
       const code = (item.waybill_code || item.order_code || String(item.id)).toUpperCase();
@@ -144,4 +163,32 @@ export function filterBills(items: WaybillInventoryItem[], filters: BillFilters)
     }
     return true;
   });
+}
+
+export function hasBillFilters(filters: BillFilters) {
+  return Boolean(filters.fromDate || filters.toDate || filters.billCode.trim() || filters.paymentType);
+}
+
+export function scopeCashVouchersToBills(vouchers: WaybillCashVoucher[], items: WaybillInventoryItem[], includeOpeningDebt = false) {
+  const ids = new Set(items.map((item) => String(item.id)));
+  const codes = new Set(items.map((item) => (item.waybill_code || item.order_code || '').trim().toUpperCase()).filter(Boolean));
+  return vouchers.filter((voucher) => {
+    if (voucher.source_type === 'OPENING_DEBT') return includeOpeningDebt;
+    if (voucher.waybill_id != null) return ids.has(String(voucher.waybill_id));
+    return Boolean(voucher.waybill_code && codes.has(voucher.waybill_code.trim().toUpperCase()));
+  });
+}
+
+export function buildCustomerStatement(
+  items: WaybillInventoryItem[], vouchers: WaybillCashVoucher[],
+  openingDebt: number | string | null | undefined, filters: BillFilters, includeOpeningDebt = true,
+) {
+  const bills = filterBills(items, filters);
+  const includeDebt = includeOpeningDebt && !hasBillFilters(filters);
+  const scopedVouchers = scopeCashVouchersToBills(vouchers, bills, includeDebt);
+  const paidMaps = buildPaidByWaybill(scopedVouchers);
+  return {
+    bills, vouchers: scopedVouchers, paidMaps, voucherMeta: computeVoucherMeta(scopedVouchers),
+    ...computeCustomerDebtSummary(bills, paidMaps, includeDebt ? openingDebt : 0),
+  };
 }
