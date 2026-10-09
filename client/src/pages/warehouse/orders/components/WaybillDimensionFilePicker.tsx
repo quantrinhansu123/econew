@@ -35,7 +35,13 @@ export default function WaybillDimensionFilePicker({ url, name, waybillCode = ''
   const saveWorkbook = async () => {
     const validRows = rows.filter(hasCompleteDimensions);
     if (!validRows.length) { setError('Nhập đủ số kiện, chiều dài, chiều rộng và chiều cao cho ít nhất một dòng.'); return; }
-    await runUpload(createDimensionWorkbookFile(validRows, waybillCode), calculateDimensionTotals(validRows));
+    setUploading(true); onUploadingChange?.(true); setError('');
+    try {
+      await runUpload(await createDimensionWorkbookFile(validRows, waybillCode), calculateDimensionTotals(validRows));
+    } catch {
+      setError('Không tạo được file quy đổi.');
+      setUploading(false); onUploadingChange?.(false);
+    }
   };
 
   return <>

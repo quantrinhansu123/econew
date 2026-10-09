@@ -13,7 +13,6 @@ import type { LoadPlanningManifest } from '../warehouse/manifests/types';
 import DispatchPrintColumnDropdown from './DispatchPrintColumnDropdown';
 import type { DispatchPrintColumnId } from './dispatchPrintColumns';
 import { loadVisibleDispatchColumnIds, saveVisibleDispatchColumnIds } from './dispatchPrintColumns';
-import { downloadManifestPrintExcel } from '../warehouse/manifests/manifestPrintExcelUtils';
 import './inventory-stock-list.css';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -52,6 +51,8 @@ export default function PrintManifestPage() {
   const [manifest, setManifest] = useState<LoadPlanningManifest | null>(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(Boolean(id));
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const showPricing = canViewPricing();
   const [printColumnIds, setPrintColumnIds] = useState<DispatchPrintColumnId[]>(() => loadVisibleDispatchColumnIds(showPricing));
 
@@ -78,6 +79,20 @@ export default function PrintManifestPage() {
   const updatePrintColumnIds = (ids: DispatchPrintColumnId[]) => {
     saveVisibleDispatchColumnIds(ids);
     setPrintColumnIds(ids);
+  };
+
+  const exportExcel = async () => {
+    if (!manifest || isExporting) return;
+    setIsExporting(true);
+    setExportError('');
+    try {
+      const { downloadManifestPrintExcel } = await import('../warehouse/manifests/manifestPrintExcelUtils');
+      downloadManifestPrintExcel(manifest, destinationGroups, rows, printColumnIds);
+    } catch {
+      setExportError('Không tải được file Excel. Vui lòng thử lại.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (isLoading) {
@@ -127,10 +142,11 @@ export default function PrintManifestPage() {
           />
           <button
             type="button"
-            onClick={() => downloadManifestPrintExcel(manifest, destinationGroups, rows, printColumnIds)}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-[13px] font-bold text-emerald-700 hover:bg-emerald-100"
+            onClick={() => void exportExcel()}
+            disabled={isExporting}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-[13px] font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
           >
-            <Download size={16} />
+            {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
             Tải Excel
           </button>
           <button
@@ -144,6 +160,7 @@ export default function PrintManifestPage() {
         </div>
       </div>
 
+      {exportError && <p role="alert" className="mb-3 text-center text-sm text-red-700 print:hidden">{exportError}</p>}
       {destinationGroups.map((group) => (
         <ManifestDispatchPrintView
           key={group.key}

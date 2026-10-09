@@ -1,5 +1,3 @@
-import * as XLSX from 'xlsx';
-
 export const DIMENSION_WEIGHT_DIVISOR = 3_000;
 
 export interface DimensionRow {
@@ -57,7 +55,8 @@ export const hasCompleteDimensions = (row: DimensionRow) => {
   return result.quantity > 0 && result.lengthCm > 0 && result.widthCm > 0 && result.heightCm > 0;
 };
 
-export const createDimensionWorkbookFile = (rows: DimensionRow[], waybillCode: string) => {
+export const createDimensionWorkbookFile = async (rows: DimensionRow[], waybillCode: string) => {
+  const XLSX = await import('xlsx');
   const validRows = rows.filter(hasCompleteDimensions);
   const title = 'BẢNG QUY ĐỔI KÍCH THƯỚC HÀNG HÓA';
   const headers = ['STT', 'Số kiện', 'Dài (cm)', 'Rộng (cm)', 'Cao (cm)', 'CBM (m³)', 'TL quy đổi (kg)'];

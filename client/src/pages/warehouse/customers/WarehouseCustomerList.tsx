@@ -16,7 +16,6 @@ import {
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../../../lib/api';
 import { ConfirmDialog, type ConfirmDialogState } from '../../../components/ui/ConfirmDialog';
-import CustomerDetailDialog from './dialogs/CustomerDetailDialog';
 import CustomerFormDialog from './dialogs/CustomerFormDialog';
 import { emptyCustomerForm } from './customerFormTypes';
 import type { CustomerRecord } from './customerFormTypes';
@@ -26,6 +25,7 @@ import type { CustomerListItem, CustomerListResponse } from './types';
 import { formatMoney } from '../../../lib/formatMoney';
 
 const CustomerBulkImportDialog = lazy(() => import('./dialogs/CustomerBulkImportDialog'));
+const CustomerDetailDialog = lazy(() => import('./dialogs/CustomerDetailDialog'));
 
 interface Props {
   keyword?: string;
@@ -360,14 +360,14 @@ export default function WarehouseCustomerList({
         onChange={setFormField}
       />
 
-      <CustomerDetailDialog
+      {(detailCustomer || detailLoading) && <Suspense fallback={null}><CustomerDetailDialog
         customer={detailCustomer}
         loading={detailLoading}
         onClose={() => setDetailCustomer(null)}
         onEdit={() => {
           if (detailCustomer) void openEdit(detailCustomer);
         }}
-      />
+      /></Suspense>}
 
       {bulkImportOpen && (
         <Suspense fallback={null}>

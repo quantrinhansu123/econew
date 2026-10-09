@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, FileSpreadsheet, Loader2, ShieldAlert, Trash2, X } from 'lucide-react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { getLoginDisplayName, getStoredAuthUser } from '../lib/authUser';
 import { notifyWaybillListChanged } from '../lib/waybillListSync';
 import CreateWaybillSuccessDialog from './warehouse/orders/dialogs/CreateWaybillSuccessDialog';
-import OrderBulkImportDialog from './warehouse/orders/dialogs/OrderBulkImportDialog';
 import NewOrderWorkbench from './warehouse/orders/components/NewOrderWorkbench';
 import { emptyOrderForm } from './warehouse/orders/orderFormData';
 import {
@@ -30,6 +29,8 @@ import { nextEcoBillCodeFromCodes } from './warehouse/orders/waybillCodeUtils';
 import { getDefaultOriginHubId, getPreferredDestinationHub } from './warehouse/orders/orderHubUtils';
 import type { BadgeConfig, CreatedWaybill, HubSummary, PaymentType, UserSummary, WaybillDetail } from './warehouse/orders/types';
 import { canViewWaybillPricing } from './print/waybillPricingAccess';
+
+const OrderBulkImportDialog = lazy(() => import('./warehouse/orders/dialogs/OrderBulkImportDialog'));
 
 const USER_PROFILE_KEY = 'eco_user_profile';
 const CREATE_ROLES = 1 | 32 | 64;
@@ -699,7 +700,7 @@ export default function WarehouseOrderNewPage({
         }}
       />}
 
-      {!embedded && <OrderBulkImportDialog
+      {!embedded && isBulkImportOpen && <Suspense fallback={null}><OrderBulkImportDialog
         isOpen={isBulkImportOpen}
         onClose={() => setIsBulkImportOpen(false)}
         existingWaybillCodes={bills.map((bill) => bill.waybill_code)}
@@ -709,7 +710,7 @@ export default function WarehouseOrderNewPage({
           notifyWaybillListChanged();
           await loadBills(billFilterDate, billListLimitRef.current);
         }}
-      />}
+      /></Suspense>}
     </div>
   );
 }

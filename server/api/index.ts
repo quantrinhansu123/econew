@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { corsOriginDelegate } from '../src/cors.config';
+import { createResponseCompression } from '../src/response-compression';
 
 type ServerHandler = (request: unknown, response: unknown) => void;
 
@@ -8,6 +9,7 @@ let server: ServerHandler | undefined;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] });
+  app.use(createResponseCompression());
 
   app.enableCors({
     origin: corsOriginDelegate,

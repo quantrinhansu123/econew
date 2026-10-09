@@ -43,30 +43,37 @@ export class DashboardService {
     const waybillQb = this.baseWaybillQuery(range, scope);
     const tripQb = this.baseTripQuery(range, scope);
     const manifestQb = this.baseManifestQuery(range, scope);
-    const finance = await this.getFinanceSummary(range, currentUser);
-
-    const [totalWaybills, totalTrips, totalManifests, deliveredWaybills, returnedWaybills, inTransitWaybills, overdueWaybills] = await Promise.all([
-      waybillQb.clone().getCount(),
-      tripQb.clone().getCount(),
+    const [waybills, trips, totalManifests, overdueWaybills] = await Promise.all([
+      waybillQb.select('COUNT(*)', 'total')
+        .addSelect('COUNT(*) FILTER (WHERE waybill.current_state = :delivered)', 'delivered')
+        .addSelect('COUNT(*) FILTER (WHERE waybill.current_state = :returned)', 'returned')
+        .addSelect('COUNT(*) FILTER (WHERE waybill.current_state = :inTransit)', 'in_transit')
+        .addSelect('COALESCE(SUM(waybill.cost_amount), 0)', 'revenue')
+        .addSelect('COALESCE(SUM(waybill.cost_amount) FILTER (WHERE waybill.payment_type = :cod), 0)', 'cod')
+        .setParameters({ delivered: WaybillState.DELIVERED, returned: WaybillState.RETURNED, inTransit: WaybillState.IN_TRANSIT, cod: PaymentType.COD })
+        .getRawOne<Record<string, string>>(),
+      tripQb.select('COUNT(*)', 'total')
+        .addSelect('COALESCE(SUM(trip.fuel_cost), 0)', 'fuel')
+        .addSelect('COALESCE(SUM(trip.other_costs), 0)', 'other')
+        .getRawOne<Record<string, string>>(),
       manifestQb.clone().getCount(),
-      waybillQb.clone().andWhere('waybill.current_state = :delivered', { delivered: WaybillState.DELIVERED }).getCount(),
-      waybillQb.clone().andWhere('waybill.current_state = :returned', { returned: WaybillState.RETURNED }).getCount(),
-      waybillQb.clone().andWhere('waybill.current_state = :inTransit', { inTransit: WaybillState.IN_TRANSIT }).getCount(),
       this.countOverdueWaybills(range, scope),
     ]);
+    const totalRevenue = Number(waybills?.revenue ?? 0);
+    const totalCost = Number(trips?.fuel ?? 0) + Number(trips?.other ?? 0);
 
     return {
-      total_waybills: totalWaybills,
-      total_trips: totalTrips,
+      total_waybills: Number(waybills?.total ?? 0),
+      total_trips: Number(trips?.total ?? 0),
       total_manifests: totalManifests,
-      delivered_waybills: deliveredWaybills,
-      returned_waybills: returnedWaybills,
+      delivered_waybills: Number(waybills?.delivered ?? 0),
+      returned_waybills: Number(waybills?.returned ?? 0),
       overdue_waybills: overdueWaybills,
-      in_transit_waybills: inTransitWaybills,
-      pending_cod_amount: finance.pending_cod_amount,
-      total_revenue: finance.total_revenue,
-      total_cost: finance.total_cost,
-      estimated_profit: finance.estimated_profit,
+      in_transit_waybills: Number(waybills?.in_transit ?? 0),
+      pending_cod_amount: Number(waybills?.cod ?? 0),
+      total_revenue: totalRevenue,
+      total_cost: totalCost,
+      estimated_profit: totalRevenue - totalCost,
     };
   }
 
@@ -126,35 +133,53 @@ export class DashboardService {
     if (range.hub_id) hubsQb.where('hub.id = :hubId', { hubId: range.hub_id });
     const hubs = await hubsQb.orderBy('hub.code', 'ASC').getMany();
     const scope = this.buildDashboardScope(currentUser);
-    return Promise.all(hubs.map(async (hub) => {
-      const hubRange = { ...range, hub_id: String(hub.id) };
-      const hubScope = { ...scope, hubId: String(hub.id) };
-      const waybillQb = this.baseWaybillQuery(hubRange, hubScope);
-      const tripQb = this.baseTripQuery(hubRange, hubScope);
-      const [totalWaybills, totalTrips, totalInbound, totalOutbound, deliveredWaybills, returnedWaybills, overdueWaybills, codRow] = await Promise.all([
-        waybillQb.clone().getCount(),
-        tripQb.clone().getCount(),
-        waybillQb.clone().andWhere('waybill.dest_hub_id = :destinationHubId', { destinationHubId: hub.id }).getCount(),
-        waybillQb.clone().andWhere('waybill.origin_hub_id = :originHubId', { originHubId: hub.id }).getCount(),
-        waybillQb.clone().andWhere('waybill.current_state = :deliveredStatus', { deliveredStatus: WaybillState.DELIVERED }).getCount(),
-        waybillQb.clone().andWhere('waybill.current_state = :returnedStatus', { returnedStatus: WaybillState.RETURNED }).getCount(),
-        this.countOverdueWaybills(hubRange, hubScope),
-        waybillQb.clone().select('COALESCE(SUM(CASE WHEN waybill.payment_type = :cod THEN waybill.cost_amount ELSE 0 END), 0)', 'amount').setParameter('cod', PaymentType.COD).getRawOne<RawCount>(),
-      ]);
+    if (!hubs.length) return [];
+    const hubIds = hubs.map((hub) => String(hub.id));
+    const systemScope = { ...scope, hubId: undefined };
+    const waybillHubJoin = '(performance_hub.id = waybill.origin_hub_id OR performance_hub.id = waybill.dest_hub_id OR performance_hub.id = waybill.current_hub_id)';
+    const [waybillRows, tripRows, overdueRows] = await Promise.all([
+      this.baseWaybillQuery(range, systemScope)
+        .innerJoin(HubEntity, 'performance_hub', waybillHubJoin)
+        .andWhere('performance_hub.id IN (:...performanceHubIds)', { performanceHubIds: hubIds })
+        .select('performance_hub.id', 'hub_id')
+        .addSelect('COUNT(*)', 'total')
+        .addSelect('COUNT(*) FILTER (WHERE waybill.dest_hub_id = performance_hub.id)', 'inbound')
+        .addSelect('COUNT(*) FILTER (WHERE waybill.origin_hub_id = performance_hub.id)', 'outbound')
+        .addSelect('COUNT(*) FILTER (WHERE waybill.current_state = :deliveredStatus)', 'delivered')
+        .addSelect('COUNT(*) FILTER (WHERE waybill.current_state = :returnedStatus)', 'returned')
+        .addSelect('COALESCE(SUM(waybill.cost_amount) FILTER (WHERE waybill.payment_type = :cod), 0)', 'cod')
+        .setParameters({ deliveredStatus: WaybillState.DELIVERED, returnedStatus: WaybillState.RETURNED, cod: PaymentType.COD })
+        .groupBy('performance_hub.id').getRawMany<Record<string, string>>(),
+      this.baseTripQuery(range, systemScope)
+        .innerJoin(HubEntity, 'performance_hub', '(performance_hub.id = trip.start_hub_id OR performance_hub.id = trip.end_hub_id)')
+        .andWhere('performance_hub.id IN (:...performanceHubIds)', { performanceHubIds: hubIds })
+        .select('performance_hub.id', 'hub_id').addSelect('COUNT(*)', 'total')
+        .groupBy('performance_hub.id').getRawMany<Record<string, string>>(),
+      this.overdueWaybillQuery(range, systemScope)
+        .innerJoin(HubEntity, 'performance_hub', waybillHubJoin)
+        .andWhere('performance_hub.id IN (:...performanceHubIds)', { performanceHubIds: hubIds })
+        .select('performance_hub.id', 'hub_id').addSelect('COUNT(*)', 'total')
+        .groupBy('performance_hub.id').getRawMany<Record<string, string>>(),
+    ]);
+    const waybillsByHub = new Map(waybillRows.map((row) => [String(row.hub_id), row]));
+    const tripsByHub = new Map(tripRows.map((row) => [String(row.hub_id), row]));
+    const overdueByHub = new Map(overdueRows.map((row) => [String(row.hub_id), row]));
+    return hubs.map((hub) => {
+      const row = waybillsByHub.get(String(hub.id));
       return {
         hub_id: hub.id,
         hub_code: hub.code,
         hub_name: hub.name,
-        total_waybills: totalWaybills,
-        total_trips: totalTrips,
-        delivered_waybills: deliveredWaybills,
-        returned_waybills: returnedWaybills,
-        overdue_waybills: overdueWaybills,
-        total_inbound: totalInbound,
-        total_outbound: totalOutbound,
-        cod_pending: Number(codRow?.amount ?? 0),
+        total_waybills: Number(row?.total ?? 0),
+        total_trips: Number(tripsByHub.get(String(hub.id))?.total ?? 0),
+        delivered_waybills: Number(row?.delivered ?? 0),
+        returned_waybills: Number(row?.returned ?? 0),
+        overdue_waybills: Number(overdueByHub.get(String(hub.id))?.total ?? 0),
+        total_inbound: Number(row?.inbound ?? 0),
+        total_outbound: Number(row?.outbound ?? 0),
+        cod_pending: Number(row?.cod ?? 0),
       };
-    }));
+    });
   }
 
   async getFinanceSummary(query: QueryDashboardDto, currentUser: UserEntity) {

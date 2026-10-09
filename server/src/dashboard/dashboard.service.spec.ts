@@ -19,6 +19,7 @@ const createQueryBuilder = (options: { count?: number; many?: unknown[]; rawMany
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
+    innerJoin: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
     groupBy: jest.fn().mockReturnThis(),
@@ -107,14 +108,21 @@ describe('DashboardService', () => {
   });
 
   it('getKpiSummary returns waybill/trip/manifest totals', async () => {
-    waybillsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ count: 5, rawOne: { revenue: '1000', cod: '200', cc: '100' } }));
-    tripsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ count: 2, rawOne: { fuel: '100', other: '50' } }));
+    waybillsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ count: 5, rawOne: { total: '5', delivered: '3', returned: '1', in_transit: '1', revenue: '1000', cod: '200', cc: '100' } }));
+    tripsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ count: 2, rawOne: { total: '2', fuel: '100', other: '50' } }));
     manifestsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ count: 3 }));
     reconciliationsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ rawOne: { cod: '20', cc: '30', remitted: '40' } }));
     const result = await service.getKpiSummary({}, manager);
     expect(result.total_waybills).toBe(5);
     expect(result.total_trips).toBe(2);
     expect(result.total_manifests).toBe(3);
+    expect(result.delivered_waybills).toBe(3);
+    expect(result.returned_waybills).toBe(1);
+    expect(result.in_transit_waybills).toBe(1);
+    expect(result.pending_cod_amount).toBe(200);
+    expect(waybillsRepository.createQueryBuilder).toHaveBeenCalledTimes(2);
+    expect(tripsRepository.createQueryBuilder).toHaveBeenCalledTimes(1);
+    expect(reconciliationsRepository.createQueryBuilder).not.toHaveBeenCalled();
     expect(result.estimated_profit).toBe(850);
   });
 
@@ -166,8 +174,9 @@ describe('DashboardService', () => {
 
   it('getHubPerformance applies hub scope and returns metrics', async () => {
     hubsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ many: [hub] }));
-    waybillsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ count: 1, rawOne: { amount: '75' } }));
-    tripsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ count: 2 }));
+    waybillsRepository.createQueryBuilder.mockReturnValueOnce(createQueryBuilder({ rawMany: [{ hub_id: '10', total: '1', delivered: '1', returned: '1', inbound: '1', outbound: '1', cod: '75' }] }))
+      .mockReturnValueOnce(createQueryBuilder({ rawMany: [{ hub_id: '10', total: '1' }] }));
+    tripsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ rawMany: [{ hub_id: '10', total: '2' }] }));
     const result = await service.getHubPerformance({}, manager);
     expect(result[0]).toMatchObject({
       hub_id: '10',
@@ -180,6 +189,31 @@ describe('DashboardService', () => {
       total_outbound: 1,
       cod_pending: 75,
     });
+  });
+
+  it('uses a constant number of hub queries and fills hubs without orders with zero', async () => {
+    const hubs = Array.from({ length: 17 }, (_, index) => ({ id: String(index + 1), code: `H${index + 1}`, name: `Hub ${index + 1}` }));
+    const waybillQb = createQueryBuilder({ rawMany: [{ hub_id: '1', total: '3', inbound: '2', outbound: '1', delivered: '2', cod: '8115200' }] });
+    const overdueQb = createQueryBuilder({ rawMany: [{ hub_id: '1', total: '1' }] });
+    const tripQb = createQueryBuilder({ rawMany: [{ hub_id: '1', total: '2' }] });
+    hubsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder({ many: hubs }));
+    waybillsRepository.createQueryBuilder.mockReturnValueOnce(waybillQb).mockReturnValueOnce(overdueQb);
+    tripsRepository.createQueryBuilder.mockReturnValue(tripQb);
+    const result = await service.getHubPerformance({}, director);
+    expect(result).toHaveLength(17);
+    expect(result[0]).toMatchObject({ total_waybills: 3, total_trips: 2, total_inbound: 2, total_outbound: 1, delivered_waybills: 2, cod_pending: 8115200 });
+    expect(result[16]).toMatchObject({ total_waybills: 0, total_trips: 0, delivered_waybills: 0, overdue_waybills: 0, cod_pending: 0 });
+    expect(waybillsRepository.createQueryBuilder).toHaveBeenCalledTimes(2);
+    expect(tripsRepository.createQueryBuilder).toHaveBeenCalledTimes(1);
+    expect(hubsRepository.createQueryBuilder).toHaveBeenCalledTimes(1);
+    expect(waybillQb.andWhere).toHaveBeenCalledWith('performance_hub.id IN (:...performanceHubIds)', { performanceHubIds: hubs.map((row) => row.id) });
+  });
+
+  it('does not query metrics when there are no matching hubs', async () => {
+    hubsRepository.createQueryBuilder.mockReturnValue(createQueryBuilder());
+    await expect(service.getHubPerformance({}, director)).resolves.toEqual([]);
+    expect(waybillsRepository.createQueryBuilder).not.toHaveBeenCalled();
+    expect(tripsRepository.createQueryBuilder).not.toHaveBeenCalled();
   });
 
   it('getFinanceSummary aggregates COD/CC/remittance/cost', async () => {

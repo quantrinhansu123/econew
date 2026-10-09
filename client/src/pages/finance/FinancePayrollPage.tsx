@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import * as XLSX from "xlsx";
 import CashFundSelect from "../../components/finance/CashFundSelect";
 import { ApiError, apiRequest } from "../../lib/api";
 import {
@@ -102,7 +101,8 @@ export default function FinancePayrollPage() {
       setSavingId("");
     }
   };
-  const exportExcel = () => {
+  const exportExcel = async () => {
+    const XLSX = await import('xlsx');
     const data = rows.map((row, index) => toExcelRow(row, index + 1));
     const sheet = XLSX.utils.json_to_sheet(data);
     sheet["!cols"] = [
@@ -112,7 +112,8 @@ export default function FinancePayrollPage() {
     XLSX.utils.book_append_sheet(book, sheet, "Bảng lương");
     XLSX.writeFile(book, `bang-luong-${month}.xlsx`);
   };
-  const exportPayslip = (row: PayrollRow) => {
+  const exportPayslip = async (row: PayrollRow) => {
+    const XLSX = await import('xlsx');
     const sheet = XLSX.utils.json_to_sheet([toExcelRow(row, 1)]);
     sheet["!cols"] = [
       6, 14, 24, 18, 14, 16, 12, 16, 18, 18, 14, 16, 14, 18, 14, 16, 30,

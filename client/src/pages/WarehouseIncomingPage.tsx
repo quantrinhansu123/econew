@@ -33,7 +33,6 @@ import TripStatusActionDialog from './trips/dialogs/TripStatusActionDialog';
 import type { TripAction } from './trips/types';
 import { useIncomingTripActions } from './warehouse/incoming/useIncomingTripActions';
 import { useIncomingTrips } from './warehouse/incoming/useIncomingTrips';
-import { downloadIncomingTripsExcel } from './warehouse/incoming/incomingTripsExcelUtils';
 import type { IncomingTrip } from './warehouse/incoming/types';
 import VehicleManifestButton from './warehouse/inventory/VehicleManifestButton';
 import TripWorkspaceDialog from './trips/dialogs/TripWorkspaceDialog';
@@ -200,7 +199,7 @@ export default function WarehouseIncomingPage({
     ? `Không có chuyến phù hợp bộ lọc${filterFromDate || filterToDate ? ` (${formatFilterDateRangeLabel(filterFromDate, filterToDate)})` : ''}.`
     : '';
 
-  const handleDownloadExcel = useCallback(() => {
+  const handleDownloadExcel = useCallback(async () => {
     setExportError('');
     if (!displayTrips.length) {
       setExportError('Không có chuyến xe phù hợp để xuất Excel.');
@@ -216,6 +215,7 @@ export default function WarehouseIncomingPage({
         vendorCode ? `Mã NCC ${vendorCode}` : '',
         keyword.trim() ? `Tìm kiếm “${keyword.trim()}”` : '',
       ].filter(Boolean).join(' · ');
+      const { downloadIncomingTripsExcel } = await import('./warehouse/incoming/incomingTripsExcelUtils');
       const success = downloadIncomingTripsExcel(displayTrips, filterSummary, {
         title: title.toLocaleUpperCase('vi-VN'),
         filePrefix: mode === 'overview' ? 'tat-ca-chuyen-xe' : 'xe-dang-den',

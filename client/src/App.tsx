@@ -1,16 +1,17 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import AuthSessionGuard from './components/AuthSessionGuard';
 import MainLayout from './components/layout/MainLayout';
-import Dashboard from './pages/Dashboard';
 import LoginPage from './pages/LoginPage';
-import ModulePage from './pages/ModulePage';
-import WarehouseManifestsPage from './pages/WarehouseManifestsPage';
-import WarehouseManifestDetailPage from './pages/WarehouseManifestDetailPage';
 import { moduleRoutes } from './data/moduleData';
 import { getStoredAuthUser } from './lib/authUser';
 
 const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const ModulePage = lazy(() => import('./pages/ModulePage'));
+const WarehouseManifestsPage = lazy(() => import('./pages/WarehouseManifestsPage'));
+const WarehouseManifestDetailPage = lazy(() => import('./pages/WarehouseManifestDetailPage'));
 const AdminHubsPage = lazy(() => import('./pages/admin/AdminHubsPage'));
 const AdminTrucksPage = lazy(() => import('./pages/admin/AdminTrucksPage'));
 const AdminVendorsPage = lazy(() => import('./pages/admin/AdminVendorsPage'));
@@ -67,6 +68,8 @@ const PrintInventoryStockPage = lazy(() => import('./pages/print/PrintInventoryS
 const PrintLoadPlanningPage = lazy(() => import('./pages/print/PrintLoadPlanningPage'));
 const PrintManifestPage = lazy(() => import('./pages/print/PrintManifestPage'));
 const BusinessCrudPage = lazy(() => import('./pages/business/BusinessCrudPage'));
+
+const pageLoading = <div role="status" className="flex min-h-48 items-center justify-center gap-2 text-[13px] font-medium text-muted-foreground"><Loader2 size={18} className="animate-spin" />Đang tải...</div>;
 
 const businessRouteConfigs = {
   '/fleet/vehicle-costs': 'vehicleCosts',
@@ -207,16 +210,16 @@ function App() {
             </AuthSessionGuard>
           )}
         >
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Suspense fallback={pageLoading}><Dashboard /></Suspense>} />
           {moduleRoutes.map((path) => (
-            <Route key={path} path={path} element={<ModulePage />} />
+            <Route key={path} path={path} element={<Suspense fallback={pageLoading}><ModulePage /></Suspense>} />
           ))}
           {ecoRoutes.map((path) => (
             <Route
               key={path}
               path={path}
               element={(
-                <Suspense fallback={null}>
+                <Suspense fallback={pageLoading}>
                   {path in businessRouteConfigs ? <BusinessCrudPage configKey={businessRouteConfigs[path as keyof typeof businessRouteConfigs]} /> : path === '/hr/staff' ? <HrStaffListPage /> : path === '/hr/attendance' ? <HrAttendancePage /> : path === '/hr/attendance-admin' ? <AdminAttendanceLocationsPage /> : path === '/finance/staff' ? <FinanceStaffPage /> : path === '/finance/attendance' ? <FinanceAttendancePage /> : path === '/finance/payroll' ? <DirectorOnlyRoute><FinancePayrollPage /></DirectorOnlyRoute> : path === '/finance/salary-advances' ? <DirectorOnlyRoute><SalaryAdvancesPage /></DirectorOnlyRoute> : path === '/finance/expense-categories' ? <ExpenseCategoriesPage /> : path === '/admin/users' ? <AdminUsersPage /> : path === '/admin/hubs' || path === '/warehouse/hubs' ? <AdminHubsPage /> : path === '/admin/trucks' || path === '/fleet/internal-vehicles' || path === '/fleet/vehicles' || path === '/trucks' ? <AdminTrucksPage /> : path === '/admin/vendors' ? <AdminVendorsPage /> : path === '/admin/routes' ? <AdminRoutesPage /> : path === '/admin/backup' ? <DirectorOnlyRoute><AdminBackupPage /></DirectorOnlyRoute> : path === '/orders/new' ? <WarehouseOrderNewPage /> : path === '/orders/customers' || path === '/customers/directory' ? <WarehouseCustomersPage /> : path === '/warehouse/orders/:id/receive' ? <WarehouseOrderReceivePage /> : path === '/warehouse/orders' ? <WarehouseOrderListPage /> : path === '/warehouse/inventory' ? <WarehouseInventoryPage /> : path === '/warehouse/incoming' ? <WarehouseIncomingPage /> : path === '/warehouse/incoming_hcm' ? <WarehouseIncomingHcmPage /> : path === '/warehouse/priority' ? <WarehousePriorityPage /> : path === '/warehouse/load-planning' ? <WarehouseLoadPlanningPage /> : path === '/warehouse/manifests' ? <WarehouseManifestsPage /> : path === '/warehouse/manifests/:id' ? <WarehouseManifestDetailPage /> : path === '/delivery/expected-arrivals' ? <ExpectedArrivalsPage /> : path === '/delivery/handover' ? <DeliveryHandoverPage /> : path === '/delivery/en-route' ? <DeliveryEnRoutePage /> : path === '/delivery/hub-dropoff' ? <DeliveryHubDropoffPage /> : path === '/delivery/last-mile' ? <DeliveryLastMilePage /> : path === '/nhiem-vu-giao-hang' ? <NhiemVuGiaoHangPage /> : path === '/delivery/cod' ? <DeliveryCodPage /> : path === '/delivery/proof' ? <DeliveryProofPage /> : path === '/trips/list' ? <TripsPage /> : path === '/trips/expenses' ? <TripExpensesPage /> : path === '/trips/profit' ? <TripProfitPage /> : path === '/trips/:id' ? <TripDetailPage /> : path === '/trips/:id/loading-sequence' ? <TripLoadingSequencePage /> : path === '/trips/:id/expenses' ? <TripExpensesPage /> : path === '/trips/:id/profit' ? <TripProfitPage /> : path === '/trips/trunk-vehicles' ? <TrucksPage /> : path === '/drivers/performance' ? <DriverPerformancePage /> : path === '/search/general' ? <SearchPage /> : path === '/search/waybills' ? <SearchWaybillsPage /> : path === '/search/trips' ? <SearchTripsPage /> : path === '/finance/cod-reconciliation' || path === '/finance/hub-reconciliation' ? <FinanceHubReconciliationPage /> : path === '/finance/approve/internal' ? <FinanceApproveInternalPage /> : path === '/finance/approve/vendor' ? <FinanceApproveVendorPage /> : path === '/finance/vendor-debt' ? <FinanceVendorDebtPage /> : path === '/finance/vendor-trip-ledger' ? <FinanceVendorTripLedgerPage /> : path === '/finance/cash-journal' || path === '/finance/cash-vouchers' ? <FinanceCashJournalPage /> : path === '/finance/cashflow-dashboard' ? <FinanceCashflowDashboardPage /> : path === '/dashboard/kpi' ? <DashboardKpiPage /> : path === '/settings' ? <SettingsPage /> : <PlaceholderPage /> }
                 </Suspense>
               )}

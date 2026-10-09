@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Search, ChevronLeft } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ModuleCard } from '../components/ui/ModuleCard';
@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { getVisibleItems, moduleData } from '../data/moduleData';
 import { sidebarMenu } from '../data/sidebarMenu';
 import { getStoredAuthUser } from '../lib/authUser';
-import WarehouseCustomerList from './warehouse/customers/WarehouseCustomerList';
+const WarehouseCustomerList = lazy(() => import('./warehouse/customers/WarehouseCustomerList'));
 
 type ModuleTab = 'tat-ca' | 'danh-dau' | 'khach-hang';
 
@@ -119,7 +119,9 @@ const ModulePage: React.FC = () => {
       </div>
 
       {activeTab === 'khach-hang' && isOrders ? (
-        <WarehouseCustomerList embedded keyword={searchQuery} />
+        <Suspense fallback={<p className="py-8 text-center text-sm text-muted-foreground">Đang tải danh sách khách hàng...</p>}>
+          <WarehouseCustomerList embedded keyword={searchQuery} />
+        </Suspense>
       ) : activeTab === 'danh-dau' ? (
         <div className="text-center py-16 text-muted-foreground bg-card/50 rounded-2xl border border-border mt-4">
           Chưa có module nào được đánh dấu.

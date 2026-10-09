@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { AlertTriangle, ArrowLeft, Building2, CalendarDays, ChevronDown, CreditCard, Eye, FileSpreadsheet, Filter, Flag, HandCoins, Hash, Layers, Loader2, MoreHorizontal, Package, PackageCheck, Pencil, Printer, ReceiptText, RefreshCcw, Search, ShieldAlert, Tag, SlidersHorizontal, Truck, Unlink, X } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -16,8 +16,6 @@ import InlineTextInput from '../components/ui/InlineTextInput';
 import InlineSelect from '../components/ui/InlineSelect';
 import { DON_GIA_DON_VI_OPTIONS } from './warehouse/orders/orderFormData';
 import type { AuthUserProfile } from './login/types';
-import WaybillInventoryDetailDialog from './warehouse/inventory/dialogs/WaybillInventoryDetailDialog';
-import WaybillEditDialog from './warehouse/inventory/dialogs/WaybillEditDialog';
 import WarehouseOrderReceivePage from './WarehouseOrderReceivePage';
 import WaybillPriorityControl from './warehouse/inventory/WaybillPriorityControl';
 import WaybillRouteControl from './warehouse/inventory/WaybillRouteControl';
@@ -88,7 +86,9 @@ import { ORDER_STATUS_GROUP_OPTIONS } from './warehouse/inventory/orderStatusUti
 import type { BadgeConfig, FilterOption, HubSummary, InventoryFilters, InventoryListResponse, WaybillInventoryDetail, WaybillInventoryItem } from './warehouse/inventory/types';
 import { parseWaybillImages } from '../lib/waybillImages';
 import { buildDispatchBarcodeUrl } from './print/dispatchBarcode';
-import CustomerDetailDialog from './warehouse/customers/dialogs/CustomerDetailDialog';
+const CustomerDetailDialog = lazy(() => import('./warehouse/customers/dialogs/CustomerDetailDialog'));
+const WaybillInventoryDetailDialog = lazy(() => import('./warehouse/inventory/dialogs/WaybillInventoryDetailDialog'));
+const WaybillEditDialog = lazy(() => import('./warehouse/inventory/dialogs/WaybillEditDialog'));
 import type { CustomerRecord } from './warehouse/customers/customerFormTypes';
 import type { CustomerListItem, CustomerListResponse } from './warehouse/customers/types';
 
@@ -1288,12 +1288,12 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
       </div>
 
       {!isAllOrders && <FilterBottomSheet isOpen={isFilterOpen} draftFilters={draftFilters} setDraftFilters={setDraftFilters} openGroups={openGroups} setOpenGroups={setOpenGroups} groupSearch={groupSearch} setGroupSearch={setGroupSearch} hubOptions={hubOptions} onClose={() => setIsFilterOpen(false)} onApply={applyFilters} />}
-      <WaybillInventoryDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} canViewPricing={canViewPricing} waybill={detailWaybill} statusConfig={statusConfig} paymentConfig={paymentConfig} priorityConfig={priorityConfig} onClose={closeDetail} />
-      <WaybillEditDialog
+      {(isDetailOpen || isDetailClosing) && <Suspense fallback={null}><WaybillInventoryDetailDialog isOpen={isDetailOpen} isClosing={isDetailClosing} isLoading={isDetailLoading} canViewPricing={canViewPricing} waybill={detailWaybill} statusConfig={statusConfig} paymentConfig={paymentConfig} priorityConfig={priorityConfig} onClose={closeDetail} /></Suspense>}
+      {editWaybill && <Suspense fallback={null}><WaybillEditDialog
         waybill={editWaybill}
         onClose={() => setEditWaybill(null)}
         onSaved={handleEditSaved}
-      />
+      /></Suspense>}
       {receiveWaybill && (
         <WarehouseOrderReceivePage
           key={String(receiveWaybill.id)}
@@ -1319,14 +1319,14 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
         }}
         onClose={() => setIsColumnPickerOpen(false)}
       />
-      <CustomerDetailDialog
+      {ledgerCustomer && <Suspense fallback={null}><CustomerDetailDialog
         key={`${ledgerCustomer?.id || 'closed'}-${JSON.stringify(ledgerBillScope)}`}
         customer={ledgerCustomer}
         loading={isLedgerCustomerLoading}
         initialTab="thanh-toan"
         billScope={ledgerBillScope}
         onClose={() => setLedgerCustomer(null)}
-      />
+      /></Suspense>}
       <WaybillCashVoucherDialog
         key={cashVoucherWaybill ? String(cashVoucherWaybill.id) : 'cash-voucher'}
         isOpen={isCashVoucherOpen}

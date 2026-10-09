@@ -19,7 +19,6 @@ import { buildLoadPlanningQuery, mapLoadPlanningBoardToPrintPayload, mapSingleTr
 import LoadPlanningPrintTemplate from '../../print/LoadPlanningPrintTemplate';
 import '../../print/inventory-stock-list.css';
 import { formatDonGia, parseMoneyAmount } from '../orders/orderFormUtils';
-import { downloadLoadPlanningExcel } from './loadPlanningExcelUtils';
 import { defaultExpenseCategoryNames, loadExpenseCategoryNames } from '../../../lib/expenseCategories';
 
 const USER_PROFILE_KEY = 'eco_user_profile';
@@ -164,6 +163,7 @@ export default function LoadPlanningBoardPanel({
     setError('');
     try {
       const response = await apiRequest<LoadPlanningBoardResponse>(`/waybills/load-planning/board?${buildLoadPlanningQuery(filters, forcedLoadStatuses, 500)}`);
+      const { downloadLoadPlanningExcel } = await import('./loadPlanningExcelUtils');
       const exported = downloadLoadPlanningExcel(response, canViewCost, excelFileBaseName);
       if (!exported) {
         setError('Không có dữ liệu phù hợp bộ lọc để xuất Excel.');

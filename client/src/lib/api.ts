@@ -43,10 +43,18 @@ const REFRESH_TOKEN_KEY = 'eco_refresh_token';
 const USER_PROFILE_KEY = 'eco_user_profile';
 const ACTIVE_HUBS_PATH = '/hubs/active';
 const ACTIVE_HUBS_CACHE_TTL_MS = 5 * 60 * 1000;
+const DIRECTORY_CACHE_TTL_MS = 60 * 1000;
 
 let refreshPromise: Promise<RefreshResult> | null = null;
 const responseCache = new Map<string, { expiresAt: number; payload: unknown }>();
 const pendingCachedRequests = new Map<string, Promise<unknown>>();
+let cacheGeneration = 0;
+
+const clearResponseCache = () => {
+  cacheGeneration++;
+  responseCache.clear();
+  pendingCachedRequests.clear();
+};
 
 const redirectToLogin = () => {
   if (typeof window === 'undefined') return;
@@ -93,8 +101,7 @@ export const clearAuthSession = () => {
     storage.removeItem(REFRESH_TOKEN_KEY);
     storage.removeItem(USER_PROFILE_KEY);
   });
-  responseCache.clear();
-  pendingCachedRequests.clear();
+  clearResponseCache();
   dispatchAuthCleared();
 };
 
@@ -144,19 +151,23 @@ function enrichPlainTextApiError(status: number, text: string): string | null {
 }
 
 const normalizeRequestPath = (path: string) => (path.startsWith('/') ? path : `/${path}`);
+const copyResponsePayload = <T>(payload: T): T => {
+  if (payload === null || typeof payload !== 'object') return payload;
+  return typeof structuredClone === 'function' ? structuredClone(payload) : JSON.parse(JSON.stringify(payload)) as T;
+};
 
 const getCacheTtl = (requestPath: string, options: RequestOptions) => {
   const method = String(options.method || 'GET').toUpperCase();
   if (method !== 'GET') return 0;
-  return requestPath === ACTIVE_HUBS_PATH ? ACTIVE_HUBS_CACHE_TTL_MS : 0;
+  const pathname = requestPath.split('?')[0];
+  if (pathname === ACTIVE_HUBS_PATH) return ACTIVE_HUBS_CACHE_TTL_MS;
+  if (pathname === '/vendors/active' || pathname === '/routes/active') return DIRECTORY_CACHE_TTL_MS;
+  return 0;
 };
 
-const invalidateRelatedCache = (requestPath: string, options: RequestOptions) => {
+const invalidateRelatedCache = (options: RequestOptions) => {
   const method = String(options.method || 'GET').toUpperCase();
-  if (method !== 'GET' && requestPath.startsWith('/hubs')) {
-    responseCache.delete(ACTIVE_HUBS_PATH);
-    pendingCachedRequests.delete(ACTIVE_HUBS_PATH);
-  }
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) clearResponseCache();
 };
 
 async function performApiRequest<T>(requestPath: string, options: RequestOptions): Promise<T> {
@@ -175,7 +186,8 @@ async function performApiRequest<T>(requestPath: string, options: RequestOptions
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${requestPath}`, buildRequest(token ?? getStoredAccessToken()));
-  } catch {
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
     throw new ApiError(0, CONNECTION_ERROR, null);
   }
 
@@ -204,45 +216,43 @@ async function performApiRequest<T>(requestPath: string, options: RequestOptions
     throw new ApiError(response.status, getErrorMessage(payload, fallback), payload);
   }
 
-  invalidateRelatedCache(requestPath, options);
+  invalidateRelatedCache(options);
   return payload as T;
 }
 
 export function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const requestPath = normalizeRequestPath(path);
+  invalidateRelatedCache(options);
+  const canShareRequest = String(options.method || 'GET').toUpperCase() === 'GET'
+    && !options.signal && Object.keys(options).every((key) => ['method', 'token', 'signal'].includes(key));
+  if (!canShareRequest) return performApiRequest<T>(requestPath, options);
+  const generation = cacheGeneration;
+  const authorization = options.token ?? getStoredAccessToken();
+  const cacheKey = JSON.stringify([generation, authorization, requestPath]);
   const cacheTtl = getCacheTtl(requestPath, options);
-  if (!cacheTtl) return performApiRequest<T>(requestPath, options);
-
-  const cached = responseCache.get(requestPath);
+  const cached = responseCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
-    return Promise.resolve(cached.payload as T);
+    return Promise.resolve(copyResponsePayload(cached.payload as T));
   }
-  if (cached) responseCache.delete(requestPath);
-
-  if (!options.signal) {
-    const pending = pendingCachedRequests.get(requestPath);
-    if (pending) return pending as Promise<T>;
-  }
+  if (cached) responseCache.delete(cacheKey);
+  const pending = pendingCachedRequests.get(cacheKey);
+  if (pending) return (pending as Promise<T>).then(copyResponsePayload);
 
   const request = performApiRequest<T>(requestPath, options).then((payload) => {
-    responseCache.set(requestPath, {
-      expiresAt: Date.now() + cacheTtl,
-      payload,
-    });
+    if (cacheTtl && generation === cacheGeneration && authorization === (options.token ?? getStoredAccessToken())) {
+      if (responseCache.size >= 64) responseCache.delete(responseCache.keys().next().value!);
+      responseCache.set(cacheKey, { expiresAt: Date.now() + cacheTtl, payload });
+    }
     return payload;
   });
 
-  if (!options.signal) {
-    pendingCachedRequests.set(requestPath, request);
-    const clearPending = () => {
-      if (pendingCachedRequests.get(requestPath) === request) {
-        pendingCachedRequests.delete(requestPath);
-      }
-    };
-    void request.then(clearPending, clearPending);
-  }
+  pendingCachedRequests.set(cacheKey, request);
+  const clearPending = () => {
+    if (pendingCachedRequests.get(cacheKey) === request) pendingCachedRequests.delete(cacheKey);
+  };
+  void request.then(clearPending, clearPending);
 
-  return request;
+  return request.then(copyResponsePayload);
 }
 
 /** Làm mới access token (dùng khi focus tab / interval). Không xóa phiên khi server tạm ngắt. */
