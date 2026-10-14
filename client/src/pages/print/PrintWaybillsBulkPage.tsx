@@ -18,6 +18,8 @@ export default function PrintWaybillsBulkPage() {
   const autoPrint = searchParams.get('print') === '1';
   const roleMask = getStoredAuthUser()?.role_mask;
   const showPricing = shouldShowWaybillPricing(roleMask, searchParams.get('pricing'));
+  const hideMeasurementsParam = searchParams.get('hideMeasurements');
+  const hideMeasurements = hideMeasurementsParam === '1' ? true : hideMeasurementsParam === '0' ? false : undefined;
   const pageSizeRule = '@media print { @page { size: A4 portrait; margin: 5mm; } }';
 
   const [waybills, setWaybills] = useState<WaybillDetail[]>([]);
@@ -63,9 +65,9 @@ export default function PrintWaybillsBulkPage() {
 
   const printItems = useMemo(
     () => waybills.map((waybill) => (
-      buildWaybillPrintData(waybill, showPricing)
+      buildWaybillPrintData(waybill, showPricing, hideMeasurements)
     )),
-    [waybills, showPricing],
+    [waybills, showPricing, hideMeasurements],
   );
   const displayError = ids.length ? error : 'Chưa chọn vận đơn để in.';
 

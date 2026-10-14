@@ -371,6 +371,7 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
     thueSuat: parseNoteField(note, 'thue_suat') || '0%',
     vat: formatDonGia(parseNoteField(note, 'vat')) || '0',
     coVat: parseNoteField(note, 'co_vat') === '1',
+    hideMeasurementsOnPrint: parseNoteField(note, 'hide_kg_cbm') === '1',
     trangThai: String(waybill.current_state || waybill.status || 'RECEIVED'),
   };
 }
@@ -536,6 +537,7 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
       form.thueSuat && `thue_suat=${form.thueSuat}`,
       `vat=${parseMoneyAmount(form.vat)}`,
       `co_vat=${form.coVat ? 1 : 0}`,
+      form.hideMeasurementsOnPrint && 'hide_kg_cbm=1',
       form.trangThai && `trang_thai=${form.trangThai}`,
       `phu_phi=${surcharge}`,
       `thanh_toan=${thanhToan}`,

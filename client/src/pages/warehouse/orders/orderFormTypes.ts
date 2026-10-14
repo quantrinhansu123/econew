@@ -66,5 +66,6 @@ export interface NewOrderFormState {
   giamGia: string;
   thanhToan: string;
   coVat: boolean;
+  hideMeasurementsOnPrint: boolean;
   trangThai: string;
 }

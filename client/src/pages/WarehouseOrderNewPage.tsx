@@ -484,17 +484,20 @@ export default function WarehouseOrderNewPage({
     return bills.find((bill) => bill.waybill_code.toUpperCase() === code)?.id ?? null;
   }, [selectedBillId, form.soBill, bills]);
 
-  const buildPrintQuery = (params: Record<string, string> = {}) => {
+  const buildPrintQuery = (params: Record<string, string> = {}, overrideMeasurements = false) => {
     const query = new URLSearchParams(params);
     if (canViewPricing && showPricingOnPrint) query.set('pricing', 'show');
     else query.delete('pricing');
+    if (form.hideMeasurementsOnPrint || overrideMeasurements) {
+      query.set('hideMeasurements', form.hideMeasurementsOnPrint ? '1' : '0');
+    }
     return query.toString();
   };
 
   const openPrintBill = (params: Record<string, string> = {}, billId?: string | null) => {
     const id = billId ?? printableBillId;
     if (!id) return;
-    const query = buildPrintQuery(params);
+    const query = buildPrintQuery(params, id === printableBillId);
     window.open(`/print/waybill/${id}${query ? `?${query}` : ''}`, '_blank', 'noopener');
   };
 
@@ -696,7 +699,7 @@ export default function WarehouseOrderNewPage({
         onCreateAnother={handleCreateAnother}
         onPrint={() => {
           if (!createdId) return;
-          navigate(`/print/waybill/${createdId}?${buildPrintQuery({ print: '1' })}`);
+          navigate(`/print/waybill/${createdId}?${buildPrintQuery({ print: '1' }, true)}`);
         }}
       />}
 
@@ -705,6 +708,7 @@ export default function WarehouseOrderNewPage({
         onClose={() => setIsBulkImportOpen(false)}
         existingWaybillCodes={bills.map((bill) => bill.waybill_code)}
         defaultNvgn={loginName !== 'bạn' ? loginName : 'ADMIN'}
+        defaultHideMeasurementsOnPrint={form.hideMeasurementsOnPrint}
         hubs={hubs}
         onImported={async () => {
           notifyWaybillListChanged();

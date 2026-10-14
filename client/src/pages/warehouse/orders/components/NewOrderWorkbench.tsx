@@ -458,6 +458,16 @@ export default function NewOrderWorkbench({
                 Hiện cước khi in
               </label>
             )}
+            <label className="inline-flex h-9 cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 text-[12px] font-extrabold text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50">
+              <input
+                type="checkbox"
+                checked={form.hideMeasurementsOnPrint}
+                onChange={(event) => setField('hideMeasurementsOnPrint', event.target.checked)}
+                disabled={isBusy}
+                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+              />
+              Ẩn CBM và kg
+            </label>
           </div>
         </div>
 

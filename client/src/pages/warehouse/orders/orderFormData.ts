@@ -97,6 +97,7 @@ export const emptyOrderForm = (): NewOrderFormState => ({
   giamGia: '0',
   thanhToan: '',
   coVat: false,
+  hideMeasurementsOnPrint: false,
   trangThai: 'RECEIVED',
 });
 

@@ -24,6 +24,7 @@ interface Props {
   hubs: HubSummary[];
   existingWaybillCodes: string[];
   defaultNvgn: string;
+  defaultHideMeasurementsOnPrint?: boolean;
   onImported: () => void | Promise<void>;
 }
 
@@ -88,6 +89,7 @@ export default function OrderBulkImportDialog({
   hubs,
   existingWaybillCodes,
   defaultNvgn,
+  defaultHideMeasurementsOnPrint = false,
   onImported,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,6 +98,7 @@ export default function OrderBulkImportDialog({
   const [parseError, setParseError] = useState('');
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [hideMeasurementsOnPrint, setHideMeasurementsOnPrint] = useState(defaultHideMeasurementsOnPrint);
   const [results, setResults] = useState<ImportResult[]>([]);
 
   if (!isOpen) return null;
@@ -172,7 +175,7 @@ export default function OrderBulkImportDialog({
 
     for (const row of readyRows) {
       try {
-        const form = bulkRowToOrderForm(row.values, hubs, { nvgn: defaultNvgn });
+        const form = bulkRowToOrderForm(row.values, hubs, { nvgn: defaultNvgn, hideMeasurementsOnPrint });
         const created = await createBulkWaybillWithFreshCode({
           form,
           autoAssignedWaybillCode: row.autoAssignedWaybillCode === true,
@@ -277,6 +280,22 @@ export default function OrderBulkImportDialog({
                 {fileName}
               </span>
             )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="inline-flex h-9 cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-border bg-white px-3 text-[12px] font-extrabold text-foreground transition-colors hover:bg-muted/20">
+              <input
+                type="checkbox"
+                checked={hideMeasurementsOnPrint}
+                onChange={(event) => setHideMeasurementsOnPrint(event.target.checked)}
+                disabled={isImporting || isReadingFile}
+                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+              />
+              Ẩn CBM và kg
+            </label>
+            <p className="text-[12px] text-muted-foreground">
+              Áp dụng cho tất cả bill nhập từ file Excel này. Số liệu kg và CBM sẽ để trống khi in bill.
+            </p>
           </div>
 
           {parseError && (

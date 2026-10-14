@@ -147,8 +147,10 @@ function parseM3FromNote(note: string) {
 export function buildWaybillPrintData(
   waybill: WaybillDetail,
   showPricing = false,
+  hideMeasurements?: boolean,
 ): WaybillPrintData {
   const note = waybill.note || waybill.notes || '';
+  const measurementsHidden = hideMeasurements ?? (parseNoteField(note, 'hide_kg_cbm') === '1');
   const sender = parseContact(waybill.sender_info);
   const receiver = parseContact(waybill.receiver_info);
   const maKh = parseNoteField(note, 'ma_kh');
@@ -227,8 +229,8 @@ export function buildWaybillPrintData(
     moTaHang: noiDung,
     giaoHang,
     soKien: String(waybill.package_count ?? 1),
-    trongLuongQuyDoi: formatNum(volumetricWeight, 2) || '0.00',
-    cbm: formatNum(m3, 2) || '0.00',
+    trongLuongQuyDoi: measurementsHidden ? '' : formatNum(volumetricWeight, 2) || '0.00',
+    cbm: measurementsHidden ? '' : formatNum(m3, 2) || '0.00',
     ghiChu,
     noiDungHang: noiDung,
     hinhThucThanhToan: phuongThucToPrintLabel(phuongThuc, waybill.payment_type),

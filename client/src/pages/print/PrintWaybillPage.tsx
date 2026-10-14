@@ -20,6 +20,8 @@ export default function PrintWaybillPage() {
   const roleMask = getStoredAuthUser()?.role_mask;
   const canViewPricing = canViewWaybillPricing(roleMask);
   const showPricing = shouldShowWaybillPricing(roleMask, searchParams.get('pricing'));
+  const hideMeasurementsParam = searchParams.get('hideMeasurements');
+  const hideMeasurements = hideMeasurementsParam === '1' ? true : hideMeasurementsParam === '0' ? false : undefined;
   const pageSizeRule = '@media print { @page { size: A4 portrait; margin: 5mm; } }';
 
   const [waybill, setWaybill] = useState<WaybillDetail | null>(null);
@@ -77,10 +79,10 @@ export default function PrintWaybillPage() {
 
   const printData = useMemo(() => {
     if (!waybill) return null;
-    const base = buildWaybillPrintData(waybill, showPricing);
+    const base = buildWaybillPrintData(waybill, showPricing, hideMeasurements);
     if (!customer) return base;
     return mergeCustomerIntoPrintData(base, customer);
-  }, [waybill, customer, showPricing]);
+  }, [waybill, customer, showPricing, hideMeasurements]);
 
   return (
     <div className="waybill-invoice-wrap waybill-invoice-wrap--a4">
