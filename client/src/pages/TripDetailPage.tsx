@@ -129,6 +129,7 @@ export default function TripDetailPage({ tripId, onClose }: { tripId?: string; o
   const [isEditingManifest, setIsEditingManifest] = useState(() => searchParams.get('edit') === 'manifest');
   const [positionDrafts, setPositionDrafts] = useState<Record<string, string>>({});
   const [packageDrafts, setPackageDrafts] = useState<Record<string, string>>({});
+  const [manifestNoteDraft, setManifestNoteDraft] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
   const [expenseView, setExpenseView] = useState<'trip' | 'manifest' | null>(null);
   const [filters, setFilters] = useState<WaybillFilters>({ keyword: '', current_state: [], origin_hub_id: [], dest_hub_id: [], payment_type: [], page: 1, limit: 10 });
@@ -237,17 +238,19 @@ export default function TripDetailPage({ tripId, onClose }: { tripId?: string; o
       String(waybill.loading_position || index + 1),
     ])));
     setPackageDrafts(Object.fromEntries(allManifestWaybills.map((waybill) => [String(waybill.id), String(waybill.package_count || 1)])));
+    setManifestNoteDraft(manifest.note ?? '');
     setActionError('');
     setIsEditingManifest(true);
   }
   function closeManifestEditor() {
     setIsEditingManifest(false);
+    setManifestNoteDraft(null);
     setPositionDrafts({});
     setPackageDrafts({});
     if (!onClose && searchParams.get('edit') === 'manifest') navigate(`/trips/${trip?.id || id}`, { replace: true });
   }
   async function saveManifestPositions() {
-    if (!trip || !allManifestWaybills.length) return;
+    if (!trip || !manifest || !manifestEditActive || isSubmitting) return;
     const items = allManifestWaybills.map((waybill, index) => ({
       waybill_id: Number(waybill.id),
       loading_position: Number(positionDrafts[String(waybill.id)] ?? waybill.loading_position ?? index + 1),
@@ -268,14 +271,18 @@ export default function TripDetailPage({ tripId, onClose }: { tripId?: string; o
     }
     setIsSubmitting(true); setActionError('');
     try {
-      await apiRequest(`/trips/${trip.id}/loading-sequence`, { method: 'PATCH', body: { items } });
+      await apiRequest(`/trips/${trip.id}/loading-sequence`, {
+        method: 'PATCH',
+        body: { items, note: manifestNoteDraft ?? manifest.note ?? '' },
+      });
       setIsEditingManifest(false);
+      setManifestNoteDraft(null);
       setPositionDrafts({});
       setPackageDrafts({});
       await loadTrip();
       if (!onClose && searchParams.get('edit') === 'manifest') navigate(`/trips/${trip.id}`, { replace: true });
     } catch (submitError) {
-      setActionError(submitError instanceof ApiError ? submitError.message : 'Không lưu được vị trí xếp hàng.');
+      setActionError(submitError instanceof ApiError ? submitError.message : 'Không lưu được bảng kê.');
     } finally { setIsSubmitting(false); }
   }
   async function fetchWaybillChoices() {
@@ -376,12 +383,12 @@ export default function TripDetailPage({ tripId, onClose }: { tripId?: string; o
   function handleBack() {
     if (isSubmitting) return;
     const close = () => onClose ? onClose() : navigate(-1);
-    const hasDraftChanges = manifestEditActive && allManifestWaybills.some((waybill, index) => (
+    const hasDraftChanges = manifestEditActive && ((manifestNoteDraft ?? manifest?.note ?? '') !== (manifest?.note ?? '') || allManifestWaybills.some((waybill, index) => (
       String(positionDrafts[String(waybill.id)] ?? waybill.loading_position ?? index + 1) !== String(waybill.loading_position || index + 1)
       || String(packageDrafts[String(waybill.id)] ?? waybill.package_count ?? 1) !== String(waybill.package_count || 1)
-    ));
+    )));
     if (hasDraftChanges) {
-      setConfirmDialog({ title: 'Đóng khi chưa lưu?', message: 'Thay đổi vị trí hoặc số kiện chưa được lưu. Chọn Hủy để quay lại lưu bảng kê.', confirmLabel: 'Bỏ thay đổi và đóng', onConfirm: close });
+      setConfirmDialog({ title: 'Đóng khi chưa lưu?', message: 'Thay đổi vị trí, số kiện hoặc ghi chú BK chưa được lưu. Chọn Hủy để quay lại lưu bảng kê.', confirmLabel: 'Bỏ thay đổi và đóng', onConfirm: close });
     } else close();
   }
 
@@ -411,7 +418,7 @@ export default function TripDetailPage({ tripId, onClose }: { tripId?: string; o
             <FilterSelect multiple icon={Tag} placeholder="Loại thanh toán" options={paymentOptions} value={filters.payment_type} onValueChange={value => updateFilter('payment_type', value)} />
           </div>
           {actionError && !scheduleTrip && <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-bold text-red-700"><AlertTriangle size={14} />{actionError}</div>}
-          {trip && <TripInfo trip={trip} manifest={manifest} truck={truck} hubs={hubs} canOperateTrip={canOperateTrip} canEditTrip={canEditTrip} isFinal={isFinal} isEditingManifest={manifestEditActive} isSubmitting={isSubmitting} openAction={openAction} openManifest={() => manifest && setDetailManifest(manifest)} openTruck={() => truck && setDetailTruck(truck)} openTransportEditor={() => setTransportTrip(trip)} openScheduleEditor={openScheduleEditor} openAddWaybills={openAddWaybills} openManifestEditor={openManifestEditor} closeManifestEditor={closeManifestEditor} saveManifestPositions={saveManifestPositions} printManifest={printManifest} openExpenses={onClose ? () => setExpenseView('trip') : undefined} />}
+          {trip && <TripInfo trip={trip} manifest={manifest} truck={truck} hubs={hubs} canOperateTrip={canOperateTrip} canEditTrip={canEditTrip} isFinal={isFinal} isEditingManifest={manifestEditActive} isSubmitting={isSubmitting} manifestNote={manifestNoteDraft ?? manifest?.note ?? ''} onManifestNoteChange={setManifestNoteDraft} openAction={openAction} openManifest={() => manifest && setDetailManifest(manifest)} openTruck={() => truck && setDetailTruck(truck)} openTransportEditor={() => setTransportTrip(trip)} openScheduleEditor={openScheduleEditor} openAddWaybills={openAddWaybills} openManifestEditor={openManifestEditor} closeManifestEditor={closeManifestEditor} saveManifestPositions={saveManifestPositions} printManifest={printManifest} openExpenses={onClose ? () => setExpenseView('trip') : undefined} />}
         </div>
 
         {isLoading ? <StateBlock icon={<Loader2 className="animate-spin" size={28} />} title="Đang tải chi tiết chuyến xe" description="Hệ thống đang lấy dữ liệu thật từ API." /> : error ? <StateBlock icon={<AlertTriangle size={28} />} title="Không tải được dữ liệu" description={error} /> : !trip ? <StateBlock icon={<TruckIcon size={28} />} title="Không tìm thấy chuyến xe" description="Kiểm tra lại mã chuyến hoặc quyền truy cập." /> : !waybills.length ? <StateBlock icon={<Package size={28} />} title="Chưa có vận đơn phù hợp" description="Bảng kê chưa có vận đơn hoặc bộ lọc không có kết quả." /> : (
@@ -443,7 +450,7 @@ export default function TripDetailPage({ tripId, onClose }: { tripId?: string; o
   );
 }
 
-function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, isFinal, isEditingManifest, isSubmitting, openAction, openManifest, openTruck, openTransportEditor, openScheduleEditor, openAddWaybills, openManifestEditor, closeManifestEditor, saveManifestPositions, printManifest, openExpenses }: { trip: Trip; manifest: ManifestDetail | null; truck: TruckSummary | null; hubs: HubSummary[]; canOperateTrip: boolean; canEditTrip: boolean; isFinal: boolean; isEditingManifest: boolean; isSubmitting: boolean; openAction: (action: TripAction) => void; openManifest: () => void; openTruck: () => void; openTransportEditor: () => void; openScheduleEditor: () => void; openAddWaybills: () => void; openManifestEditor: () => void; closeManifestEditor: () => void; saveManifestPositions: () => void; printManifest: () => void; openExpenses?: () => void }) {
+function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, isFinal, isEditingManifest, isSubmitting, manifestNote, onManifestNoteChange, openAction, openManifest, openTruck, openTransportEditor, openScheduleEditor, openAddWaybills, openManifestEditor, closeManifestEditor, saveManifestPositions, printManifest, openExpenses }: { trip: Trip; manifest: ManifestDetail | null; truck: TruckSummary | null; hubs: HubSummary[]; canOperateTrip: boolean; canEditTrip: boolean; isFinal: boolean; isEditingManifest: boolean; isSubmitting: boolean; manifestNote: string; onManifestNoteChange: (value: string) => void; openAction: (action: TripAction) => void; openManifest: () => void; openTruck: () => void; openTransportEditor: () => void; openScheduleEditor: () => void; openAddWaybills: () => void; openManifestEditor: () => void; closeManifestEditor: () => void; saveManifestPositions: () => void; printManifest: () => void; openExpenses?: () => void }) {
   const navigate = useNavigate();
   return (
     <div className="grid gap-2 rounded-xl border border-border bg-muted/5 p-3 text-[12px] md:grid-cols-4">
@@ -458,6 +465,22 @@ function TripInfo({ trip, manifest, truck, hubs, canOperateTrip, canEditTrip, is
       <Info label="Khởi hành" value={formatDate(trip.departure_time)} />
       <Info label="Chốt cân/khối" value={`${formatNumber(trip.actual_total_weight, ' kg')} / ${formatNumber(trip.actual_total_volume, ' m³')}`} />
       <Info label="Trạng thái" value={<TripStatusBadge status={trip.status} />} />
+      {trip.manifest_id && (
+        <div className="min-w-0">
+          <p id={`manifest-note-label-${trip.id}`} className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Ghi chú BK</p>
+          {isEditingManifest ? (
+            <textarea
+              aria-labelledby={`manifest-note-label-${trip.id}`}
+              value={manifestNote}
+              onChange={event => onManifestNoteChange(event.target.value)}
+              disabled={isSubmitting}
+              rows={2}
+              placeholder="Nhập ghi chú cho bảng kê..."
+              className="mt-1 block w-full resize-y rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[12px] outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
+            />
+          ) : <p className="mt-1 whitespace-pre-wrap break-words font-bold text-foreground">{manifest?.note || '—'}</p>}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1 md:col-span-4">
         {canEditTrip && <button type="button" onClick={openTransportEditor} className="h-8 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-bold text-violet-800"><Pencil size={13} className="mr-1 inline" />Sửa BKS / NCC / tài xế / cước</button>}
         {canEditTrip && String(trip.status || '') !== 'CANCELLED' && <button type="button" onClick={openScheduleEditor} className="h-8 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[11px] font-bold text-primary"><Pencil size={13} className="mr-1 inline" />Sửa ngày chuyến</button>}

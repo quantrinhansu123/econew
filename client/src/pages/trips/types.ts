@@ -28,6 +28,7 @@ export interface WaybillSummary {
 }
 
 export interface ManifestDetail extends ManifestSummary {
+  note?: string | null;
   waybills?: WaybillSummary[];
   manifest_waybills?: Array<{ waybill_id?: string | number | null; loading_position?: number | string | null; dispatch_fields?: Record<string, string | number | null | undefined> | null; waybill?: WaybillSummary | null }>;
 }

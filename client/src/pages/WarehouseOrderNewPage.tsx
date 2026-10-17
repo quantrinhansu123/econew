@@ -484,12 +484,12 @@ export default function WarehouseOrderNewPage({
     return bills.find((bill) => bill.waybill_code.toUpperCase() === code)?.id ?? null;
   }, [selectedBillId, form.soBill, bills]);
 
-  const buildPrintQuery = (params: Record<string, string> = {}, overrideMeasurements = false) => {
+  const buildPrintQuery = (params: Record<string, string> = {}, hideMeasurements?: boolean) => {
     const query = new URLSearchParams(params);
     if (canViewPricing && showPricingOnPrint) query.set('pricing', 'show');
     else query.delete('pricing');
-    if (form.hideMeasurementsOnPrint || overrideMeasurements) {
-      query.set('hideMeasurements', form.hideMeasurementsOnPrint ? '1' : '0');
+    if (hideMeasurements !== undefined) {
+      query.set('hideMeasurements', hideMeasurements ? '1' : '0');
     }
     return query.toString();
   };
@@ -497,7 +497,7 @@ export default function WarehouseOrderNewPage({
   const openPrintBill = (params: Record<string, string> = {}, billId?: string | null) => {
     const id = billId ?? printableBillId;
     if (!id) return;
-    const query = buildPrintQuery(params, id === printableBillId);
+    const query = buildPrintQuery(params, form.hideMeasurementsOnPrint || id === printableBillId ? form.hideMeasurementsOnPrint : undefined);
     window.open(`/print/waybill/${id}${query ? `?${query}` : ''}`, '_blank', 'noopener');
   };
 
@@ -505,12 +505,12 @@ export default function WarehouseOrderNewPage({
     openPrintBill({ print: '1' }, bill.id);
   };
 
-  const handleBulkPrintBills = (billIds: string[]) => {
+  const handleBulkPrintBills = (billIds: string[], hideMeasurements: boolean) => {
     if (!billIds.length) return;
     const query = buildPrintQuery({
       ids: billIds.join(','),
       print: '1',
-    });
+    }, hideMeasurements);
     window.open(`/print/waybills?${query}`, '_blank', 'noopener');
   };
 

@@ -1009,52 +1009,62 @@ export class TripsService {
       throw new BadRequestException('Loading sequence cannot be updated for this trip status');
     }
     if (!trip.manifest_id) return this.getLoadingSequence(id, currentUser);
-    const rows = await this.manifestWaybillsRepository.find({ where: { manifest_id: trip.manifest_id } });
-    const rowByWaybill = new Map(rows.map((row) => [row.waybill_id, row]));
-    const positions = dto.items.map((item) => item.loading_position);
-    if (new Set(positions).size !== positions.length) {
-      throw new BadRequestException('Loading positions must be unique');
-    }
-
-    const now = new Date();
-    for (const item of dto.items) {
-      const row = rowByWaybill.get(String(item.waybill_id));
-      if (!row) throw new NotFoundException(`Waybill ${item.waybill_id} is not on this trip manifest`);
-      row.loading_position = item.loading_position;
-      row.loaded_at = row.loaded_at ?? now;
-
-      if (item.package_count !== undefined) {
-        const waybill = await this.waybillsRepository.findOne({ where: { id: String(item.waybill_id) } });
-        if (!waybill) throw new NotFoundException(`Waybill ${item.waybill_id} not found`);
-        const splits = await this.waybillSplitsRepository.find({ where: { waybill_id: String(item.waybill_id) } });
-        const tripSplits = splits.filter((split) => String(split.trip_id) === String(trip.id));
-        if (!tripSplits.length) throw new NotFoundException(`Waybill ${item.waybill_id} has no allocation on this trip`);
-        const allocatedElsewhere = splits
-          .filter((split) => String(split.trip_id) !== String(trip.id))
-          .reduce((sum, split) => sum + Number(split.package_count ?? 0), 0);
-        const totalPackages = Math.max(1, Number(waybill.package_count ?? 1));
-        const maxForTrip = totalPackages - allocatedElsewhere;
-        if (item.package_count > maxForTrip) {
-          throw new BadRequestException(`Waybill ${item.waybill_id} can carry at most ${maxForTrip} packages on this trip`);
-        }
-
-        tripSplits[0].package_count = item.package_count;
-        tripSplits[0].loading_position = item.loading_position;
-        await this.waybillSplitsRepository.save(tripSplits[0]);
-        if (tripSplits.length > 1) {
-          await this.waybillSplitsRepository.delete({ id: In(tripSplits.slice(1).map((split) => split.id)) });
-        }
-
-        row.dispatch_fields = { ...(row.dispatch_fields ?? {}), so_luong: String(item.package_count) };
-        const totalAllocated = allocatedElsewhere + item.package_count;
-        if (totalAllocated < totalPackages) {
-          waybill.current_state = WaybillState.IN_WAREHOUSE;
-          waybill.current_hub_id = String(trip.start_hub_id ?? waybill.origin_hub_id);
-        }
-        await this.waybillsRepository.save(waybill);
+    const manifestId = trip.manifest_id;
+    await this.runInTransaction(async (manager) => {
+      const manifestWaybillsRepository = manager?.getRepository(ManifestWaybillEntity) ?? this.manifestWaybillsRepository;
+      const waybillsRepository = manager?.getRepository(WaybillEntity) ?? this.waybillsRepository;
+      const waybillSplitsRepository = manager?.getRepository(WaybillSplitEntity) ?? this.waybillSplitsRepository;
+      const manifestsRepository = manager?.getRepository(ManifestEntity) ?? this.manifestsRepository;
+      const rows = await manifestWaybillsRepository.find({ where: { manifest_id: manifestId } });
+      const rowByWaybill = new Map(rows.map((row) => [row.waybill_id, row]));
+      const positions = dto.items.map((item) => item.loading_position);
+      if (new Set(positions).size !== positions.length) {
+        throw new BadRequestException('Loading positions must be unique');
       }
-    }
-    await this.manifestWaybillsRepository.save([...rowByWaybill.values()]);
+
+      const now = new Date();
+      for (const item of dto.items) {
+        const row = rowByWaybill.get(String(item.waybill_id));
+        if (!row) throw new NotFoundException(`Waybill ${item.waybill_id} is not on this trip manifest`);
+        row.loading_position = item.loading_position;
+        row.loaded_at = row.loaded_at ?? now;
+
+        if (item.package_count !== undefined) {
+          const waybill = await waybillsRepository.findOne({ where: { id: String(item.waybill_id) } });
+          if (!waybill) throw new NotFoundException(`Waybill ${item.waybill_id} not found`);
+          const splits = await waybillSplitsRepository.find({ where: { waybill_id: String(item.waybill_id) } });
+          const tripSplits = splits.filter((split) => String(split.trip_id) === String(trip.id));
+          if (!tripSplits.length) throw new NotFoundException(`Waybill ${item.waybill_id} has no allocation on this trip`);
+          const allocatedElsewhere = splits
+            .filter((split) => String(split.trip_id) !== String(trip.id))
+            .reduce((sum, split) => sum + Number(split.package_count ?? 0), 0);
+          const totalPackages = Math.max(1, Number(waybill.package_count ?? 1));
+          const maxForTrip = totalPackages - allocatedElsewhere;
+          if (item.package_count > maxForTrip) {
+            throw new BadRequestException(`Waybill ${item.waybill_id} can carry at most ${maxForTrip} packages on this trip`);
+          }
+
+          tripSplits[0].package_count = item.package_count;
+          tripSplits[0].loading_position = item.loading_position;
+          await waybillSplitsRepository.save(tripSplits[0]);
+          if (tripSplits.length > 1) {
+            await waybillSplitsRepository.delete({ id: In(tripSplits.slice(1).map((split) => split.id)) });
+          }
+
+          row.dispatch_fields = { ...(row.dispatch_fields ?? {}), so_luong: String(item.package_count) };
+          const totalAllocated = allocatedElsewhere + item.package_count;
+          if (totalAllocated < totalPackages) {
+            waybill.current_state = WaybillState.IN_WAREHOUSE;
+            waybill.current_hub_id = String(trip.start_hub_id ?? waybill.origin_hub_id);
+          }
+          await waybillsRepository.save(waybill);
+        }
+      }
+      await manifestWaybillsRepository.save([...rowByWaybill.values()]);
+      if (dto.note !== undefined) {
+        await manifestsRepository.update(manifestId, { note: dto.note });
+      }
+    });
     return this.getLoadingSequence(id, currentUser);
   }
 

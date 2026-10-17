@@ -16,7 +16,7 @@ interface Props {
   isLoading?: boolean;
   canLoadMore?: boolean;
   onLoadMore?: () => void;
-  onBulkPrint: (billIds: string[]) => void;
+  onBulkPrint: (billIds: string[], hideMeasurements: boolean) => void;
   onPrintBill?: (bill: BillListItem) => void;
 }
 
@@ -39,6 +39,7 @@ export default function BillListSidebar({
   onPrintBill,
 }: Props) {
   const [collapsedDates, setCollapsedDates] = useState<Record<string, boolean>>({});
+  const [hideMeasurements, setHideMeasurements] = useState(false);
   const checkedIds = useMemo(() => new Set(checkedBillIds), [checkedBillIds]);
 
   const filteredBills = useMemo(
@@ -88,7 +89,7 @@ export default function BillListSidebar({
   const handleBulkPrint = () => {
     const ids = filteredBills.filter((bill) => checkedIds.has(bill.id)).map((bill) => bill.id);
     if (!ids.length) return;
-    onBulkPrint(ids);
+    onBulkPrint(ids, hideMeasurements);
   };
 
   const columnCount = 8;
@@ -117,6 +118,15 @@ export default function BillListSidebar({
               Bỏ lọc
             </button>
           )}
+          <label className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 text-[11px] font-bold text-slate-700">
+            <input
+              type="checkbox"
+              checked={hideMeasurements}
+              onChange={(event) => setHideMeasurements(event.target.checked)}
+              className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary"
+            />
+            Ẩn CBM và kg
+          </label>
           <button
             type="button"
             onClick={handleBulkPrint}

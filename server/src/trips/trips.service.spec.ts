@@ -1030,6 +1030,78 @@ describe('TripsService', () => {
     });
   });
 
+  describe('updateLoadingSequence manifest note', () => {
+    beforeEach(() => {
+      mockFindOne({ id: '1', manifest_id: '10', status: TripStatus.PLANNED });
+      manifestWaybills.find.mockResolvedValue([{ waybill_id: '100', loading_position: 1 }]);
+      jest.spyOn(service, 'getLoadingSequence').mockResolvedValue({} as any);
+    });
+
+    it('saves the note together with loading positions', async () => {
+      await service.updateLoadingSequence('1', {
+        items: [{ waybill_id: 100, loading_position: 2 }], note: 'Giao trước 10h\nGọi kho trước khi đến',
+      }, dispatcher);
+
+      expect(manifestWaybills.save).toHaveBeenCalledWith([
+        expect.objectContaining({ waybill_id: '100', loading_position: 2 }),
+      ]);
+      expect(manifests.update).toHaveBeenCalledWith('10', { note: 'Giao trước 10h\nGọi kho trước khi đến' });
+    });
+
+    it('preserves the saved note when older clients omit it', async () => {
+      await service.updateLoadingSequence('1', { items: [{ waybill_id: 100, loading_position: 1 }] }, dispatcher);
+      expect(manifests.update).not.toHaveBeenCalled();
+    });
+
+    it('can clear the note or save a note on an empty manifest', async () => {
+      manifestWaybills.find.mockResolvedValue([]);
+      await service.updateLoadingSequence('1', { items: [], note: '' }, dispatcher);
+      expect(manifests.update).toHaveBeenCalledWith('10', { note: '' });
+    });
+
+    it('does not save the note when a bill is not on this manifest', async () => {
+      await expect(service.updateLoadingSequence('1', {
+        items: [{ waybill_id: 999, loading_position: 1 }], note: 'Không lưu',
+      }, dispatcher)).rejects.toBeInstanceOf(NotFoundException);
+      expect(manifests.update).not.toHaveBeenCalled();
+    });
+
+    it('does not save changes for a cancelled trip', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue({ id: '1', manifest_id: '10', status: 'CANCELLED' } as any);
+      await expect(service.updateLoadingSequence('1', { items: [], note: 'Không lưu' }, dispatcher))
+        .rejects.toBeInstanceOf(BadRequestException);
+      expect(manifests.update).not.toHaveBeenCalled();
+    });
+
+    it('uses the same transaction for package counts, loading positions and the note', async () => {
+      const transactionalRows = repo();
+      const transactionalBills = repo();
+      const transactionalSplits = repo();
+      const transactionalManifests = repo();
+      transactionalRows.find.mockResolvedValue([{ waybill_id: '100', loading_position: 1 }]);
+      transactionalBills.findOne.mockResolvedValue({ id: '100', package_count: 3 });
+      transactionalSplits.find.mockResolvedValue([{ id: '5', trip_id: '1', package_count: 3 }]);
+      const repositories = new Map<any, any>([
+        [ManifestWaybillEntity, transactionalRows], [WaybillEntity, transactionalBills],
+        [WaybillSplitEntity, transactionalSplits], [ManifestEntity, transactionalManifests],
+      ]);
+      trips.manager = { transaction: jest.fn(work => work({ getRepository: (entity: unknown) => repositories.get(entity) })) };
+
+      await service.updateLoadingSequence('1', {
+        items: [{ waybill_id: 100, loading_position: 1, package_count: 2 }], note: '2 kiện thực đi',
+      }, dispatcher);
+
+      expect(trips.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(transactionalSplits.save).toHaveBeenCalledWith(expect.objectContaining({ package_count: 2 }));
+      expect(transactionalRows.save).toHaveBeenCalledWith([
+        expect.objectContaining({ dispatch_fields: { so_luong: '2' } }),
+      ]);
+      expect(transactionalManifests.update).toHaveBeenCalledWith('10', { note: '2 kiện thực đi' });
+      expect(manifests.update).not.toHaveBeenCalled();
+      expect(manifestWaybills.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('updateCosts', () => {
     it('cập nhật fuel_actual, fuel_cost, other_costs thành công', async () => {
       mockFindOne({ id: '1', fuel_actual: null, fuel_cost: null, other_costs: null });

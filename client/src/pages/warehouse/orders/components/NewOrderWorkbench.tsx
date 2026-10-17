@@ -47,7 +47,7 @@ interface Props {
   isBillListLoading: boolean;
   hasMoreBills: boolean;
   onLoadMoreBills: () => void;
-  onBulkPrintBills: (billIds: string[]) => void;
+  onBulkPrintBills: (billIds: string[], hideMeasurements: boolean) => void;
   onPrintBill: (bill: BillListItem) => void;
   canManage: boolean;
   isSubmitting: boolean;

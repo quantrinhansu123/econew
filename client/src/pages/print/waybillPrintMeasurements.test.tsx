@@ -101,6 +101,19 @@ describe('hiding kg and CBM on bills', () => {
     expect(buildWaybillPrintData(savedBill(true), false, false).cbm).toBe('3.69');
   });
 
+  it('applies the bulk checkbox to all bills regardless of their saved preferences', () => {
+    const bills = [savedBill(true), savedBill(false)];
+    const original = JSON.stringify(bills);
+
+    for (const hideMeasurements of [true, false]) {
+      const data = bills.map(bill => buildWaybillPrintData(bill, false, hideMeasurements));
+      expect(data.map(bill => bill.cbm)).toEqual(hideMeasurements ? ['', ''] : ['3.69', '3.69']);
+      expect(data.map(bill => bill.trongLuongQuyDoi)).toEqual(hideMeasurements ? ['', ''] : ['370.00', '370.00']);
+      expect(data.map(bill => bill.soKien)).toEqual(['2', '2']);
+    }
+    expect(JSON.stringify(bills)).toBe(original);
+  });
+
   it('leaves both measurement cells blank while keeping the bill layout and package count', () => {
     const html = renderToStaticMarkup(<WaybillInvoiceTemplate data={buildWaybillPrintData(savedBill(true))} />);
     expect(html).toContain('Trọng lượng quy đổi');

@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsInt, IsOptional, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 
 export class LoadingSequenceItemDto {
   @ApiProperty()
@@ -25,8 +25,12 @@ export class LoadingSequenceItemDto {
 export class UpdateLoadingSequenceDto {
   @ApiProperty({ type: [LoadingSequenceItemDto] })
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => LoadingSequenceItemDto)
   items: LoadingSequenceItemDto[];
+
+  @ApiProperty({ required: false, description: 'Ghi chú chung của bảng kê' })
+  @IsOptional()
+  @IsString()
+  note?: string;
 }

@@ -23,6 +23,9 @@ export class ManifestEntity {
   @Column({ type: 'varchar' })
   status: string;
 
+  @Column({ type: 'text', nullable: true })
+  note: string | null;
+
   @CreateDateColumn({ type: 'timestamp' })
   created_at: Date;
 
