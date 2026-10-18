@@ -12,6 +12,7 @@ import { CashTransactionDetailModule } from './cash-transaction-details/cash-tra
 import { ChanhShipmentModule } from './chanh-shipments/chanh-shipment.module';
 import { CustomerDirectoryModule } from './customer-directory/customer-directory.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { DeliveryDistanceModule } from './delivery-distance/delivery-distance.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { FinanceModule } from './finance/finance.module';
 import { CustomersModule } from './customers/customers.module';
@@ -97,6 +98,7 @@ const getPositiveInteger = (value: string | undefined, fallback: number) => {
     AuthModule,
     BackupModule,
     DashboardModule,
+    DeliveryDistanceModule,
     SearchModule,
     FinanceModule,
     VehicleDirectoryModule,

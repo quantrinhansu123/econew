@@ -18,6 +18,8 @@ import CustomerMaKhCombobox from './CustomerMaKhCombobox';
 import ReceiverPhoneCombobox from './ReceiverPhoneCombobox';
 import WaybillImagePicker from './WaybillImagePicker';
 import WaybillDimensionFilePicker from './WaybillDimensionFilePicker';
+import DeliveryDistanceEstimate from './DeliveryDistanceEstimate';
+import { buildDeliveryAddress } from '../deliveryDistance';
 
 interface Props {
   embedded?: boolean;
@@ -209,6 +211,15 @@ export default function NewOrderWorkbench({
                       <CompactInput value={form.nguoiNhan} onChange={(e) => setField('nguoiNhan', e.target.value)} />
                     </CompactField>
                   </div>
+                  {canManage && (
+                    <DeliveryDistanceEstimate
+                      hubId={form.destHubId}
+                      address={buildDeliveryAddress(form)}
+                      hasStreetAddress={form.diaChiNhan.trim().length >= 5}
+                      billKey={selectedBillId || form.soBill}
+                      disabled={isBusy}
+                    />
+                  )}
                 </section>
               </div>
 
