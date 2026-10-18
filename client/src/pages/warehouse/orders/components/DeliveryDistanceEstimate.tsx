@@ -98,7 +98,7 @@ export default function DeliveryDistanceEstimate({ hubId, address, hasStreetAddr
   const visible = outcome?.key === scope ? outcome : null;
   const result = visible?.result;
   const hint = usageError || (!usage ? 'Đang kiểm tra hạn mức…' : !usage.configured ? 'Chưa bật HERE. Liên hệ quản trị viên để cấu hình.'
-    : blocked ? 'Đã chạm hạn mức hoặc đang chờ lượt trở lại. Tạm dừng tính km để không vượt mức miễn phí.'
+    : blocked ? 'Đã chạm hạn mức HERE hoặc đang chờ lượt trở lại. Tạm dừng tính km để không vượt hạn mức.'
       : !hubId ? 'Chọn HUB đến để tính quãng đường giao.'
         : invalidCoordinates ? 'Tọa độ cần có dạng vĩ độ,kinh độ và nằm trong phạm vi hợp lệ.'
           : missingLocation ? 'Nhập địa chỉ nhận cụ thể hoặc tọa độ điểm giao.' : 'Đường ô tô từ HUB đến; tham khảo tính cước, chưa xét kẹt xe/cấm tải.');
@@ -121,7 +121,7 @@ export default function DeliveryDistanceEstimate({ hubId, address, hasStreetAddr
         <div className="space-y-2">
           <QuotaMeter label="Tính đường" quota={usage.directions} />
           <QuotaMeter label="Tìm địa chỉ" quota={usage.geocoding} />
-          <p className="text-[10px] text-slate-500">Hạn mức miễn phí HERE: 30.000 lượt/tháng cho từng loại. Kỳ tháng theo UTC; đặt lại lúc 07:00 ngày 1 giờ Việt Nam.</p>
+          <p className="text-[10px] text-slate-500">Hạn mức HERE: 30.000 lượt/tháng cho từng loại. Kỳ tháng theo UTC; đặt lại lúc 07:00 ngày 1 giờ Việt Nam.</p>
         </div>
       )}
       <div role="status" aria-live="polite" aria-atomic="true">

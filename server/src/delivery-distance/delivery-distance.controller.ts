@@ -22,6 +22,6 @@ export class DeliveryDistanceController {
   @Post('estimate')
   @HttpCode(HttpStatus.OK)
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: 'Ước tính đường ô tô bằng HERE, chặn trước khi vượt hạn mức miễn phí' })
+  @ApiOperation({ summary: 'Ước tính đường ô tô bằng HERE, chặn trước khi vượt hạn mức HERE' })
   estimate(@Body() dto: EstimateDeliveryDistanceDto) { return this.service.estimate(dto); }
 }
