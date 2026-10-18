@@ -78,15 +78,24 @@ Các HUB khác cần bổ sung GPS riêng trong quản lý bưu cục trước k
 
 ## Triển khai lên Render và Vercel
 
-Trên Render, chọn service backend đang phục vụ `econew.onrender.com` → **Environment** → **Add Environment Variable** và thêm đủ bốn biến trong phần cấu hình backend ở trên.
+Luồng production đang sử dụng: **`econew-six.vercel.app` → `econew-sg.onrender.com/api/v1`**.
+Trên Render, chọn service backend **`econew-sg`** → **Environment** → **Add Environment Variable** và thêm đủ bốn biến trong phần cấu hình backend ở trên.
 Lấy giá trị `HERE_API_KEY` từ `server/.env` trên máy đã cấu hình; file này được bỏ qua bởi Git nên key không tự chuyển lên Render khi push.
 Không chép toàn bộ `.env` local lên production vì có các cấu hình database, cổng và CORS riêng.
 
 Chọn **Save, rebuild, and deploy** để dùng mã mới cùng các biến mới. Lệnh khởi động trong `server/render.yaml` đã tự chạy migration trước khi bật API.
 Nếu local và Render dùng cùng database, bộ đếm lượt thử đã nằm trong database; không cần khởi tạo lại hoặc xóa bộ đếm.
 
-Trên Vercel không cần thêm biến HERE. Frontend gọi backend qua URL API hiện có; chỉ cần bản deploy chứa commit mới.
+Trên Vercel không cần thêm biến HERE. Frontend đang dùng `VITE_API_URL=https://econew-sg.onrender.com/api/v1`; giữ cấu hình này và dùng bản deploy chứa commit mới.
 Sau khi cả hai bản deploy hoàn tất, mở form nhập bill và kiểm tra hai thanh hạn mức. Khi HUB chưa có GPS thật, chức năng tính km sẽ báo thiếu GPS và không gọi HERE.
+
+Kiểm tra đúng backend bằng lệnh sau trong `server/`, thay `SHA_DA_DEPLOY` bằng commit của đợt phát hành:
+
+```powershell
+pnpm deploy:verify SHA_DA_DEPLOY https://econew-sg.onrender.com/api/v1/health
+```
+
+Không dùng kết quả kiểm tra ở `econew.onrender.com` để kết luận tính năng đã hoạt động trên trang Vercel này.
 
 ## Kiểm tra địa chỉ
 
@@ -121,6 +130,13 @@ Hai tuyến được thử với dữ liệu HUB thật trong database; xác nh�
 Gọi thêm endpoint tính khoảng cách trên production với địa chỉ 2 Công xã Paris trả HTTP 200, cùng kết quả 16,273 km, tổng khoảng 2.964 ms.
 Sau các phép thử này bộ đếm tháng ghi nhận 7 Geocoding và 7 Routing; không hoàn lại lượt thử.
 Các kết quả là ước tính HERE, chưa đối chiếu tuyến đi ngoài thực địa hoặc chứng minh bằng số km Google Maps.
+
+### Xác minh đúng luồng Vercel → econew-sg
+
+Sau khi bổ sung biến HERE và deploy lại `econew-sg`, backend chạy commit `1aed14b` và endpoint hạn mức trả HTTP 200 cho tài khoản có quyền nhập bill.
+Đã thử trực tiếp form `econew-six.vercel.app/orders/new`: chọn HUB đến HCM, nhập 2 Công xã Paris / Hồ Chí Minh / Quận 1 rồi bấm **Ước tính km**.
+Trình duyệt gọi đúng `econew-sg`, hiển thị đủ hai thanh hạn mức và kết quả **16,273 km**. Một lần bấm gửi một yêu cầu tính khoảng cách; không tạo bill.
+Kiểm tra desktop và mobile 390px không có lỗi JavaScript hoặc tràn ngang. Sau lượt thử này bộ đếm tháng là 8 Geocoding và 8 Routing.
 
 ## Nguồn
 
