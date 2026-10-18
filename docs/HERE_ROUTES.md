@@ -64,6 +64,18 @@ Khởi tạo chỉ áp dụng đúng tháng đã chỉ định. Số này không
 Endpoint ứng dụng giữ nguyên `GET /api/v1/delivery-distance/usage` và `POST /api/v1/delivery-distance/estimate`.
 Các biến `ORS_*` và `GOOGLE_ROUTES_*` không được tính năng hiện tại sử dụng.
 
+## GPS HUB HCM
+
+Ngày 18/10/2026 đã cập nhật **HCM — Bưu cục Hồ Chí Minh** theo định vị được cung cấp:
+
+```text
+10.8793976,106.6563272
+```
+
+Tọa độ được lưu trong dữ liệu HUB ở cả `coordinates`, `latitude` và `longitude`; API production đã đọc lại đúng giá trị.
+Không cố định HUB HCM trong logic tính đường. Khi nhập bill, hệ thống lấy GPS của **HUB đến** đang chọn làm điểm xuất phát và địa chỉ người nhận làm điểm giao.
+Các HUB khác cần bổ sung GPS riêng trong quản lý bưu cục trước khi tính khoảng cách.
+
 ## Triển khai lên Render và Vercel
 
 Trên Render, chọn service backend đang phục vụ `econew.onrender.com` → **Environment** → **Add Environment Variable** và thêm đủ bốn biến trong phần cấu hình backend ở trên.
@@ -97,6 +109,18 @@ Giao diện ghi nguồn HERE và có link Google Maps mở đúng tọa độ đ
 | HCM | 135 Nam Kỳ Khởi Nghĩa, Quận 1 | 0,711 | 425 ms |
 | HAN | 1 Tràng Tiền, Hoàn Kiếm | 0,649 | 450 ms |
 | HAN | 58 Quốc Tử Giám, Đống Đa | 2,287 | 424 ms |
+
+### Thử từ GPS HUB HCM đã lưu
+
+| Điểm giao | Khoảng cách ô tô HERE từ HUB HCM |
+|---|---:|
+| 2 Công xã Paris, Quận 1, TP.HCM | 16,273 km |
+| 135 Nam Kỳ Khởi Nghĩa, Quận 1, TP.HCM | 15,502 km |
+
+Hai tuyến được thử với dữ liệu HUB thật trong database; xác nhận yêu cầu Routing và link kiểm tra đều dùng đúng `10.8793976,106.6563272` làm điểm đi.
+Gọi thêm endpoint tính khoảng cách trên production với địa chỉ 2 Công xã Paris trả HTTP 200, cùng kết quả 16,273 km, tổng khoảng 2.964 ms.
+Sau các phép thử này bộ đếm tháng ghi nhận 7 Geocoding và 7 Routing; không hoàn lại lượt thử.
+Các kết quả là ước tính HERE, chưa đối chiếu tuyến đi ngoài thực địa hoặc chứng minh bằng số km Google Maps.
 
 ## Nguồn
 
