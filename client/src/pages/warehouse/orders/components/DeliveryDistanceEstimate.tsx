@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ExternalLink, Loader2, RefreshCw, Route } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ApiError, apiRequest } from '../../../../lib/api';
@@ -8,6 +8,7 @@ interface Props { hubId: string; address: string; hasStreetAddress: boolean; bil
 const numberFormat = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 });
 const resetFormat = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
 const REFRESH_EVENT = 'eco-distance-usage-refresh';
+const AUTO_ESTIMATE_DELAY_MS = 1_000;
 
 export default function DeliveryDistanceEstimate({ hubId, address, hasStreetAddress, billKey, disabled }: Props) {
   const [usage, setUsage] = useState<DeliveryDistanceUsage | null>(null);
@@ -23,6 +24,7 @@ export default function DeliveryDistanceEstimate({ hubId, address, hasStreetAddr
   const currentScope = useRef(scope);
   const mounted = useRef(false);
   const inFlight = useRef(false);
+  const attemptedScope = useRef<string | null>(null);
   useLayoutEffect(() => { currentScope.current = scope; }, [scope]);
 
   useEffect(() => {
@@ -69,9 +71,12 @@ export default function DeliveryDistanceEstimate({ hubId, address, hasStreetAddr
 
   const blocked = isDistanceBlocked(usage, needsGeocoding);
   const missingLocation = needsGeocoding && !hasStreetAddress;
-  const calculate = async () => {
-    if (inFlight.current || disabled || !hubId || missingLocation || invalidCoordinates || blocked || usageError) return;
+  const canCalculate = !disabled && Boolean(hubId) && !missingLocation && !invalidCoordinates && !blocked && !usageError;
+  const calculate = useCallback(async () => {
+    if (inFlight.current || !canCalculate) return;
     inFlight.current = true;
+    // A failed attempt also counts: polling usage must never retry the same input.
+    attemptedScope.current = scope;
     setCalculating(true);
     setOutcome(null);
     const requestScope = scope;
@@ -93,7 +98,16 @@ export default function DeliveryDistanceEstimate({ hubId, address, hasStreetAddr
       inFlight.current = false;
       if (mounted.current) setCalculating(false);
     }
-  };
+  }, [canCalculate, scope, hubId, address, needsGeocoding, coordinates]);
+
+  useEffect(() => {
+    // Coordinates are an explicit override and are calculated only by the button.
+    if (!needsGeocoding || !canCalculate || calculating) return;
+    const timeout = window.setTimeout(() => {
+      if (currentScope.current === scope && attemptedScope.current !== scope) void calculate();
+    }, AUTO_ESTIMATE_DELAY_MS);
+    return () => window.clearTimeout(timeout);
+  }, [needsGeocoding, canCalculate, calculating, scope, calculate]);
 
   const visible = outcome?.key === scope ? outcome : null;
   const result = visible?.result;
@@ -107,15 +121,17 @@ export default function DeliveryDistanceEstimate({ hubId, address, hasStreetAddr
     <div className="mt-2.5 space-y-2 rounded-lg border border-violet-200 bg-white/80 p-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-slate-700"><Route size={14} aria-hidden="true" />Khoảng cách giao hàng</span>
-        <button type="button" onClick={() => { void calculate(); }} disabled={disabled || calculating || !hubId || missingLocation || invalidCoordinates || blocked || Boolean(usageError)} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 text-[11px] font-extrabold text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="button" onClick={() => { void calculate(); }} disabled={!canCalculate || calculating} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 text-[11px] font-extrabold text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50">
           {calculating && <Loader2 size={13} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-          {calculating ? 'Đang tính…' : result ? 'Tính lại km' : 'Ước tính km'}
+          {calculating ? 'Đang tính…' : 'Tính lại km'}
         </button>
       </div>
       <label className="block space-y-1 text-[10px] font-semibold text-slate-600">
         <span>Tọa độ điểm giao (nếu có)</span>
         <input value={coordinates} onChange={event => setCoordinateEntry({ scope: baseScope, value: event.target.value })} disabled={disabled || calculating} placeholder="vĩ độ,kinh độ · VD: 10.779971,106.700052" className="h-8 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-50" />
       </label>
+      <p className="text-[10px] leading-relaxed text-slate-500">Địa chỉ tự tính sau khi ngừng nhập 1 giây. Dán GPS thì bấm “Tính lại km”.</p>
+      {needsGeocoding && hasStreetAddress && <p className="break-words text-[10px] text-slate-600">Địa chỉ tính km: {address}</p>}
       <p className={clsx('text-[11px] leading-relaxed', blocked && usage?.configured || usageError || invalidCoordinates ? 'text-red-600' : 'text-slate-500')}>{hint}</p>
       {usage && (
         <div className="space-y-2">

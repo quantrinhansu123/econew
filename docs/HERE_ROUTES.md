@@ -1,6 +1,9 @@
 # Ước tính khoảng cách giao hàng bằng HERE
 
-Trên form nhập/sửa bill, phần **Thông tin người nhận → Khoảng cách giao hàng** có nút **Ước tính km**.
+Trên form nhập/sửa bill, phần **Thông tin người nhận → Khoảng cách giao hàng** tự ước tính sau khi ngừng nhập địa chỉ **1 giây**.
+Địa chỉ được ghép từ **Địa chỉ nhận + Phường/Xã + Quận/Huyện + Tỉnh/Thành**; các ô nhập riêng đều được gửi tới HERE và hiện ở dòng **Địa chỉ tính km**.
+Đổi bất kỳ phần địa chỉ hoặc HUB đến sẽ ẩn kết quả cũ và tự tính lại. Một lượt đang chạy được xử lý xong trước khi tính địa chỉ mới nhất; kết quả cũ không ghi đè địa chỉ mới.
+Khi dán **tọa độ điểm giao**, chỉ tính khi bấm **Tính lại km**. Đổi địa chỉ/HUB/bill sẽ xóa tọa độ nhập riêng để trở về tự tính theo địa chỉ.
 Điểm đi là GPS của **HUB đến** đang chọn, áp dụng cho HAN, HCM và các HUB khác trong Việt Nam.
 Kết quả chỉ để tham khảo báo cước, không tự thay đổi tiền bill.
 
@@ -28,7 +31,9 @@ HERE mặc định có thể tính tuyến theo thời gian hiện tại, nên p
 - Mọi lượt đã gửi đều được giữ dự phòng, kể cả lỗi, timeout, phản hồi không hợp lệ. Không hoàn lượt, không tự retry và không tự chuyển nhà cung cấp.
 - Giới hạn nội bộ 60 lượt/phút cho mỗi API; đây là giới hạn ứng dụng đặt thêm, không phải hạn mức miễn phí HERE công bố.
 - Kỳ tháng theo UTC. Đặt lại 00:00 UTC ngày 1, tương đương **07:00 ngày 1 giờ Việt Nam**. Ngừng gửi trong phút cuối tháng để hạn chế yêu cầu chạy qua ranh giới kỳ tính phí.
-- Mở bill, gõ địa chỉ, xem kết quả và làm mới bộ đếm không gọi dịch vụ bản đồ. Chỉ bấm tính mới gọi. Chống bấm đúp ở giao diện; backend vẫn bảo vệ tổng lượt khi nhiều người bấm cùng lúc.
+- Địa chỉ đủ cụ thể và HUB đến đã chọn sẽ được tự tính sau 1 giây ngừng nhập, kể cả khi mở bill có sẵn địa chỉ. Gõ liên tục sẽ dời lượt tính đến lần nhập cuối; mỗi lần dừng nhập rồi tính thành công thường dùng 1 Geocoding + 1 Routing.
+- Không tự tính khi đang nhập tọa độ, thiếu địa chỉ/HUB, đang lưu form, chưa đọc được hạn mức hoặc đã hết lượt. Làm mới bộ đếm không gửi lại địa chỉ đã thử; lỗi/timeout chỉ thử lại khi bấm **Tính lại km** hoặc đổi địa chỉ/HUB/bill.
+- Chống bấm đúp và gọi chồng ở giao diện; backend vẫn bảo vệ tổng lượt khi nhiều người dùng cùng tính.
 
 **Phạm vi bảo đảm:** bộ chặn kiểm soát các yêu cầu do phần mềm này gửi qua backend và database này. Hạn mức miễn phí thực tế phụ thuộc tài khoản/hợp đồng HERE và có thể được dùng bởi app/key khác. Không dùng cùng ngân sách HERE ở ngoài hệ thống; app riêng không tự tạo thêm hạn mức miễn phí. Nếu đã có lượt dùng trước khi bật tính năng, cộng số đó vào cấu hình khởi tạo bên dưới. Không xóa/sửa giảm bộ đếm tháng.
 
@@ -96,6 +101,18 @@ pnpm deploy:verify SHA_DA_DEPLOY https://econew-sg.onrender.com/api/v1/health
 ```
 
 Không dùng kết quả kiểm tra ở `econew.onrender.com` để kết luận tính năng đã hoạt động trên trang Vercel này.
+
+## Kiểm thử tự ước tính
+
+Trong `client/`, chạy `pnpm exec vite --host 127.0.0.1 --port 6061 --strictPort`, rồi dùng terminal khác:
+
+```powershell
+pnpm exec node scripts/check-delivery-distance.mjs
+```
+
+Script mở form nhập bill thật bằng Playwright và chặn toàn bộ API bằng dữ liệu giả; không dùng tài khoản thật, không gọi HERE, không dùng lượt hay lưu bill.
+Kiểm tra nhập liên tục, từng ô địa chỉ, đổi HUB, nhập GPS thủ công, kết quả đến muộn, lỗi không tự retry, hạn mức và layout mobile/desktop.
+Nếu Vite chạy ở cổng khác, đặt `DISTANCE_TEST_ORIGIN` theo URL local đó. Trên PowerShell chặn `pnpm.ps1`, dùng `pnpm.cmd` cho các lệnh trên.
 
 ## Kiểm tra địa chỉ
 

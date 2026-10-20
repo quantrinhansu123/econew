@@ -37,10 +37,23 @@ export interface DeliveryDistanceResult {
 }
 
 export function buildDeliveryAddress(form: Pick<NewOrderFormState, 'diaChiNhan' | 'phuongXa' | 'quanHuyen' | 'huyen'>) {
-  const parts: string[] = [];
-  for (const value of [form.diaChiNhan, form.phuongXa, form.quanHuyen, form.huyen, 'Việt Nam']) {
-    const part = value.trim();
-    if (part && !parts.join(', ').toLocaleLowerCase('vi').includes(part.toLocaleLowerCase('vi'))) parts.push(part);
+  const componentKey = (value: string) => value.normalize('NFC').toLocaleLowerCase('vi')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const street = form.diaChiNhan.trim().replace(/\s+/g, ' ');
+  const parts = street ? [street] : [];
+  const existing = street.split(/[,;|]/u)
+    .flatMap(part => [part, ...part.split(/\s+[-–—]\s+/u)]).map(componentKey);
+  for (const [value, prefix] of [
+    [form.phuongXa, /^(?:phường|xã|thị trấn|p|x|tt)\s+/u],
+    [form.quanHuyen, /^(?:quận|huyện|thị xã|q|h|tx)\s+/u],
+    [form.huyen, /^(?:tỉnh|thành phố|tp)\s+/u],
+    ['Việt Nam', /^$/u],
+  ] as const) {
+    const part = value.trim().replace(/\s+/g, ' ');
+    const key = componentKey(part).replace(prefix, '');
+    // Compare complete components of the street field, using the correct level.
+    // Phường 1 and Quận 1 must both survive, even though they share a number.
+    if (key && !existing.some(component => component.replace(prefix, '') === key)) parts.push(part);
   }
   return parts.join(', ');
 }

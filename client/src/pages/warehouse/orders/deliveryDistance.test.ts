@@ -14,6 +14,32 @@ describe('delivery distance address', () => {
   it('does not duplicate address components already present in a full address', () => {
     expect(buildDeliveryAddress({ diaChiNhan: '123 Nguyễn Huệ, Quận 1, TP HCM, Việt Nam', phuongXa: '', quanHuyen: 'Quận 1', huyen: 'TP HCM' })).toBe('123 Nguyễn Huệ, Quận 1, TP HCM, Việt Nam');
   });
+  it('uses separately entered ward and province for the reported address', () => {
+    expect(buildDeliveryAddress({ diaChiNhan: '26 Trần Hải Phụng', phuongXa: 'Tân Tạo', quanHuyen: '', huyen: 'Hồ Chí Minh' }))
+      .toBe('26 Trần Hải Phụng, Tân Tạo, Hồ Chí Minh, Việt Nam');
+  });
+  it('keeps a ward that shares its name with the street', () => {
+    expect(buildDeliveryAddress({ diaChiNhan: '26 Đường Tân Tạo', phuongXa: 'Tân Tạo', quanHuyen: 'Bình Tân', huyen: 'Hồ Chí Minh' }))
+      .toBe('26 Đường Tân Tạo, Tân Tạo, Bình Tân, Hồ Chí Minh, Việt Nam');
+  });
+  it('does not confuse a district with a substring of a different district', () => {
+    expect(buildDeliveryAddress({ diaChiNhan: '26 Nguyễn Huệ, Quận 11', phuongXa: '', quanHuyen: 'Quận 1', huyen: '' }))
+      .toBe('26 Nguyễn Huệ, Quận 11, Quận 1, Việt Nam');
+  });
+  it('recognizes administrative prefixes in a full address with dashes', () => {
+    expect(buildDeliveryAddress({ diaChiNhan: '26 Trần Hải Phụng - Phường Tân Tạo - TP. Hồ Chí Minh', phuongXa: 'Tân Tạo', quanHuyen: '', huyen: 'Hồ Chí Minh' }))
+      .toBe('26 Trần Hải Phụng - Phường Tân Tạo - TP. Hồ Chí Minh, Việt Nam');
+  });
+  it('keeps wards and districts with matching names or numbers at different levels', () => {
+    expect(buildDeliveryAddress({ diaChiNhan: '26 Nguyễn Huệ, Phường 1', phuongXa: 'Phường 1', quanHuyen: 'Quận 1', huyen: 'Hồ Chí Minh' }))
+      .toBe('26 Nguyễn Huệ, Phường 1, Quận 1, Hồ Chí Minh, Việt Nam');
+    expect(buildDeliveryAddress({ diaChiNhan: '26 Nguyễn Huệ', phuongXa: 'Tân Phú', quanHuyen: 'Tân Phú', huyen: 'Hồ Chí Minh' }))
+      .toBe('26 Nguyễn Huệ, Tân Phú, Tân Phú, Hồ Chí Minh, Việt Nam');
+  });
+  it('does not duplicate a province whose name contains a dash', () => {
+    expect(buildDeliveryAddress({ diaChiNhan: '1 Trần Hưng Đạo, Bà Rịa - Vũng Tàu', phuongXa: '', quanHuyen: '', huyen: 'Bà Rịa - Vũng Tàu' }))
+      .toBe('1 Trần Hưng Đạo, Bà Rịa - Vũng Tàu, Việt Nam');
+  });
   it.each(['10.779971,106.700052', ' 10.7, 106.6 ', '0,0'])('accepts latitude,longitude: %s', value => {
     expect(validDeliveryCoordinates(value)).toBe(true);
   });
