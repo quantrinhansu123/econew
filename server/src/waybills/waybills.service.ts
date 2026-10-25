@@ -52,6 +52,8 @@ import { UpdateWaybillPricingDto, WaybillPricingField } from './dto/update-waybi
 import { UpdateWaybillBillingUnitDto } from './dto/update-waybill-billing-unit.dto';
 import { VendorEntity } from '../vendors/vendor.entity';
 import { CustomerEntity } from '../customers/customer.entity';
+import { UpdateDeliveryDispatchDto } from './dto/update-delivery-dispatch.dto';
+import type { DeliveryDispatchSnapshot } from './delivery-dispatch.types';
 
 type WaybillRecord = WaybillEntity & Record<string, any>;
 type WaybillAuditValue = string | number | boolean | null;
@@ -339,9 +341,10 @@ export class WaybillsService {
     const page = query.page ?? 1;
     const limit = clampPaginationLimit(query.limit, 100);
     const requestedStatuses = this.parseList(query.status);
+    const includeFinished = requestedStatuses.some(status => [WaybillStatus.DELIVERED, WaybillStatus.RETURNED].includes(status as WaybillStatus));
     const deliveryTripStatuses = !requestedStatuses.length || requestedStatuses.includes(WaybillStatus.IN_TRANSIT)
-      ? [TripStatus.IN_TRANSIT, TripStatus.ARRIVED]
-      : [TripStatus.ARRIVED];
+      ? [TripStatus.IN_TRANSIT, TripStatus.ARRIVED, ...(includeFinished ? [TripStatus.COMPLETED] : [])]
+      : [TripStatus.ARRIVED, ...(includeFinished ? [TripStatus.COMPLETED] : [])];
     const qb = this.waybillsRepository.createQueryBuilder('waybill')
       .where('waybill.deleted_at IS NULL')
       .leftJoinAndSelect('waybill.origin_hub', 'origin_hub')
@@ -354,10 +357,10 @@ export class WaybillsService {
       .leftJoin('trips', 'delivery_trip', 'delivery_trip.id = delivery_split.trip_id')
       .andWhere(new Brackets((builder) => builder
         .where('waybill.current_state IN (:...deliveryStates)', {
-          deliveryStates: [WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY],
+          deliveryStates: [WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY, ...(includeFinished ? [WaybillStatus.DELIVERED, WaybillStatus.RETURNED] : [])],
         })
         .orWhere(
-          '(delivery_trip.status IN (:...deliveryTripStatuses) AND delivery_split.load_status NOT IN (:...finishedSplitStatuses))',
+          `(delivery_trip.status IN (:...deliveryTripStatuses)${includeFinished ? '' : ' AND delivery_split.load_status NOT IN (:...finishedSplitStatuses)'})`,
           {
             deliveryTripStatuses,
             finishedSplitStatuses: [WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED],
@@ -388,8 +391,8 @@ export class WaybillsService {
       splits.map((split) => split.trip_id).filter((tripId): tripId is string => Boolean(tripId)),
     );
     const activeSplitsByWaybill = splits.reduce<Map<string, WaybillSplitEntity[]>>((map, split) => {
-      if (![TripStatus.IN_TRANSIT, TripStatus.ARRIVED].includes(split.trip?.status as TripStatus)) return map;
-      if ([WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED].includes(split.load_status)) return map;
+      if (![TripStatus.IN_TRANSIT, TripStatus.ARRIVED, ...(includeFinished ? [TripStatus.COMPLETED] : [])].includes(split.trip?.status as TripStatus)) return map;
+      if (!includeFinished && [WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED].includes(split.load_status)) return map;
       const rows = map.get(String(split.waybill_id)) ?? [];
       rows.push(split);
       map.set(String(split.waybill_id), rows);
@@ -401,12 +404,7 @@ export class WaybillsService {
       const activeSplits = activeSplitsByWaybill.get(String(waybill.id)) ?? [];
       if (activeSplits.length) {
         return activeSplits.map((split) => {
-          const currentState = split.trip?.status === TripStatus.IN_TRANSIT
-            ? WaybillStatus.IN_TRANSIT
-            : split.load_status === WaybillSplitLoadStatus.OUT_FOR_DELIVERY
-            || this.getStatus(waybill as WaybillRecord) === WaybillStatus.OUT_FOR_DELIVERY
-              ? WaybillStatus.OUT_FOR_DELIVERY
-              : WaybillStatus.AT_DEST_HUB;
+          const currentState = this.deliveryTaskState(waybill as WaybillRecord, split, split.trip?.status);
           return {
             ...this.mapInventoryTripLine(sanitized, split),
             task_id: `split:${split.id}`,
@@ -417,7 +415,7 @@ export class WaybillsService {
         });
       }
       const currentState = this.getStatus(waybill as WaybillRecord);
-      if (![WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY].includes(currentState)) return [];
+      if (![WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY, ...(includeFinished ? [WaybillStatus.DELIVERED, WaybillStatus.RETURNED] : [])].includes(currentState)) return [];
       return [{
         ...this.mapInventoryTripLine(sanitized, null),
         task_id: `waybill:${waybill.id}`,
@@ -577,18 +575,151 @@ export class WaybillsService {
     return this.sanitize(saved as WaybillRecord, currentUser);
   }
 
-  async updateLastMileCost(id: string, dto: UpdateLastMileCostDto, currentUser: UserEntity) {
-    const waybill = await this.findEditable(id, currentUser);
-    if (!waybill.delivery_assignment_type || waybill.delivery_assignment_type === 'CUSTOMER_PICKUP') {
-      throw new BadRequestException('Vận đơn chưa được phân giao chặng cuối');
+  async updateDeliveryDispatch(id: string, dto: UpdateDeliveryDispatchDto, currentUser: UserEntity) {
+    if (!this.hasAnyRole(currentUser, [Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR])) {
+      throw new ForbiddenException('Chỉ điều phối hoặc quản lý được lưu kế hoạch điều phối');
     }
-    const before = this.buildAuditSnapshot(waybill);
-    waybill.last_mile_cost_amount = String(dto.amount);
-    waybill.updated_by = currentUser.id;
-    const saved = await this.waybillsRepository.save(waybill);
-    await this.recordWaybillChange(String(saved.id), 'LAST_MILE_COST_UPDATED', currentUser, before, saved);
-    if (saved.last_mile_vendor_id) await this.vendorsService.refreshPayableBalance(saved.last_mile_vendor_id);
-    return this.sanitize(saved, currentUser);
+    const result = await this.dataSource.transaction(async (manager) => {
+      const waybills = manager.getRepository(WaybillEntity);
+      const splits = manager.getRepository(WaybillSplitEntity);
+      const waybill = await waybills.findOne({ where: { id, deleted_at: IsNull() }, lock: { mode: 'pessimistic_write' } }) as WaybillRecord | null;
+      if (!waybill) throw new NotFoundException('Waybill not found');
+      this.assertWaybillAccess(waybill, currentUser);
+      if (!isManager(currentUser.role_mask) && !getAssignedHubIds(currentUser).includes(String(waybill.dest_hub_id))) {
+        throw new ForbiddenException('Chỉ được điều phối hàng thuộc HUB đến được phân công');
+      }
+      if (this.getStatus(waybill) === WaybillStatus.CANCELLED) throw new ConflictException('Cancelled waybill cannot be updated');
+      let split: WaybillSplitEntity | null = null;
+      if (dto.split_id) {
+        split = await splits.findOne({ where: { id: dto.split_id, waybill_id: id }, lock: { mode: 'pessimistic_write' } });
+        if (!split || (dto.trip_id && String(split.trip_id) !== String(dto.trip_id))) {
+          throw new BadRequestException('Dòng hàng không thuộc vận đơn/chuyến đã chọn');
+        }
+      } else {
+        const rows = await splits.find({ where: { waybill_id: id, ...(dto.trip_id ? { trip_id: dto.trip_id } : {}) } });
+        if (dto.trip_id && rows.length === 1) split = rows[0];
+        else if (rows.length || dto.trip_id) throw new BadRequestException('Chọn đúng dòng hàng trong chuyến để lưu điều phối');
+      }
+      const trip = split?.trip_id ? await manager.getRepository(TripEntity).findOne({ where: { id: split.trip_id } }) : null;
+      if (split && (!trip || ![TripStatus.IN_TRANSIT, TripStatus.ARRIVED, TripStatus.COMPLETED].includes(trip.status))) {
+        throw new BadRequestException('Chỉ lập kế hoạch khi xe đang chạy hoặc hàng đã đến HUB');
+      }
+      const status = this.deliveryTaskState(waybill, split, trip?.status);
+      if (![WaybillStatus.IN_TRANSIT, WaybillStatus.AT_DEST_HUB, WaybillStatus.OUT_FOR_DELIVERY, WaybillStatus.DELIVERED, WaybillStatus.RETURNED].includes(status)) {
+        throw new BadRequestException('Vận đơn chưa ở bước lập kế hoạch giao hàng');
+      }
+      const kind = [WaybillStatus.IN_TRANSIT, WaybillStatus.AT_DEST_HUB].includes(status) ? 'PLAN' : 'ASSIGNMENT';
+      const holder = split ?? waybill;
+      const previous = holder.delivery_dispatch ?? null;
+      if (dto.expected_version !== (previous?.version ?? 0)) {
+        throw new ConflictException('Điều phối đã được người khác cập nhật. Tải lại danh sách trước khi sửa tiếp.');
+      }
+      const candidate = { ...waybill, route_code: null, delivery_preparation_status: 'READY',
+        last_mile_cost_amount: String(previous?.delivery_cost ?? (kind === 'ASSIGNMENT' ? waybill.last_mile_cost_amount ?? 0 : 0)) } as WaybillRecord;
+      await this.applyLastMileAssignment(candidate, { ...dto, status: WaybillStatus.OUT_FOR_DELIVERY }, currentUser, false,
+        kind === 'ASSIGNMENT' ? previous ?? { driver_id: waybill.last_mile_driver_id ?? null, truck_id: waybill.last_mile_truck_id ?? null, vendor_id: waybill.last_mile_vendor_id ?? null } : null);
+      const vendor = candidate.last_mile_vendor_id
+        ? await manager.getRepository(VendorEntity).findOne({ where: { id: candidate.last_mile_vendor_id } }) : null;
+      const next = this.buildDeliveryDispatch(candidate, kind, previous, currentUser, {
+        note: dto.note?.trim() || null, scheduled_at: dto.scheduled_at ?? null, vendor_name: vendor?.name ?? null,
+      });
+      const before = previous ?? (kind === 'ASSIGNMENT'
+        ? this.buildDeliveryDispatch(waybill, 'ASSIGNMENT', null, currentUser) : null);
+      const changes = this.diffAuditSnapshots(this.dispatchAuditSnapshot(before), this.dispatchAuditSnapshot(next));
+      if (!Object.keys(changes).length) return { delivery_dispatch: previous, current_state: status, vendorIds: [] as string[] };
+      const previousVendorId = waybill.last_mile_vendor_id;
+      holder.delivery_dispatch = next;
+      if (split) await splits.save(split);
+      if (kind === 'ASSIGNMENT') Object.assign(waybill, this.deliveryAssignmentFields(next));
+      waybill.updated_by = currentUser.id;
+      waybill.last_audit_action = kind === 'PLAN' ? 'DELIVERY_PLAN_UPDATED' : 'DELIVERY_ASSIGNMENT_UPDATED';
+      waybill.last_audit_user_id = currentUser.id;
+      waybill.last_audit_at = new Date();
+      await waybills.save(waybill);
+      await this.recordWaybillChange(id, kind === 'PLAN'
+        ? previous ? 'DELIVERY_PLAN_UPDATED' : 'DELIVERY_PLAN_CREATED'
+        : 'DELIVERY_ASSIGNMENT_UPDATED', currentUser, undefined, undefined, {
+        ...changes,
+        ...(split ? { split_id: { old_value: split.id, new_value: split.id }, trip_id: { old_value: split.trip_id, new_value: split.trip_id } } : {}),
+      }, manager.getRepository(WaybillChangeLogEntity));
+      return { delivery_dispatch: next, current_state: status, vendorIds: kind === 'ASSIGNMENT'
+        ? [...new Set([previousVendorId, previous?.kind === 'ASSIGNMENT' ? previous.vendor_id : null, next.vendor_id].filter((value): value is string => Boolean(value)))] : [] };
+    });
+    await Promise.all(result.vendorIds.map(vendorId => this.vendorsService.refreshPayableBalance(vendorId)));
+    return { delivery_dispatch: result.delivery_dispatch, current_state: result.current_state };
+  }
+
+  private deliveryTaskState(waybill: WaybillRecord, split: WaybillSplitEntity | null, tripStatus?: TripStatus): WaybillStatus {
+    if (!split) return this.getStatus(waybill);
+    if (split.load_status === WaybillSplitLoadStatus.DELIVERED) return WaybillStatus.DELIVERED;
+    if (split.load_status === WaybillSplitLoadStatus.RETURNED) return WaybillStatus.RETURNED;
+    if (tripStatus === TripStatus.IN_TRANSIT) return WaybillStatus.IN_TRANSIT;
+    if (split.load_status === WaybillSplitLoadStatus.OUT_FOR_DELIVERY) return WaybillStatus.OUT_FOR_DELIVERY;
+    const legacyState = this.getStatus(waybill);
+    if (!split.delivery_dispatch && [WaybillStatus.OUT_FOR_DELIVERY, WaybillStatus.DELIVERED, WaybillStatus.RETURNED].includes(legacyState)) return legacyState;
+    return WaybillStatus.AT_DEST_HUB;
+  }
+
+  private deliveryAssignmentFields(value: DeliveryDispatchSnapshot) {
+    return { delivery_assignment_type: value.assignment_type, route_code: value.route_code,
+      last_mile_driver_id: value.driver_id, last_mile_driver_name: value.driver_name,
+      last_mile_truck_id: value.truck_id, last_mile_license_plate: value.license_plate,
+      last_mile_vendor_id: value.vendor_id, last_mile_cost_amount: String(value.delivery_cost), xe_phat: value.license_plate };
+  }
+
+  private buildDeliveryDispatch(waybill: WaybillRecord, kind: DeliveryDispatchSnapshot['kind'], previous: DeliveryDispatchSnapshot | null,
+    currentUser: UserEntity, extra: Partial<DeliveryDispatchSnapshot> = {}): DeliveryDispatchSnapshot {
+    return { kind, assignment_type: waybill.delivery_assignment_type as DeliveryDispatchSnapshot['assignment_type'],
+      route_code: waybill.route_code ?? null, driver_id: waybill.last_mile_driver_id ?? null,
+      driver_name: waybill.last_mile_driver_name ?? null, truck_id: waybill.last_mile_truck_id ?? null,
+      license_plate: waybill.last_mile_license_plate ?? null, vendor_id: waybill.last_mile_vendor_id ?? null,
+      vendor_name: waybill.last_mile_vendor?.name ?? (previous?.vendor_id === waybill.last_mile_vendor_id ? previous?.vendor_name : null) ?? null, delivery_cost: Number(waybill.last_mile_cost_amount ?? 0),
+      note: previous?.note ?? null, scheduled_at: previous?.scheduled_at ?? null,
+      version: (previous?.version ?? 0) + 1, updated_at: new Date().toISOString(),
+      updated_by_id: currentUser.id, updated_by_name: currentUser.full_name || currentUser.username || `User #${currentUser.id}`, ...extra };
+  }
+
+  private dispatchAuditSnapshot(value: DeliveryDispatchSnapshot | null): WaybillAuditSnapshot {
+    const fields: Array<keyof DeliveryDispatchSnapshot> = ['kind', 'assignment_type', 'route_code', 'driver_id', 'driver_name', 'truck_id', 'license_plate',
+      'vendor_id', 'vendor_name', 'delivery_cost', 'scheduled_at', 'note'];
+    return Object.fromEntries(fields.map(field => [`dispatch_${field}`, value?.[field] ?? null]));
+  }
+
+  private assertDispatchVersion(snapshot: DeliveryDispatchSnapshot | null | undefined, version?: number) {
+    if (version !== undefined && version !== (snapshot?.version ?? 0)) {
+      throw new ConflictException('Kế hoạch đã thay đổi. Tải lại danh sách trước khi bàn giao.');
+    }
+  }
+
+  async updateLastMileCost(id: string, dto: UpdateLastMileCostDto, currentUser: UserEntity) {
+    const result = await this.dataSource.transaction(async manager => {
+      const waybills = manager.getRepository(WaybillEntity);
+      const splits = manager.getRepository(WaybillSplitEntity);
+      const waybill = await waybills.findOne({ where: { id, deleted_at: IsNull() }, lock: { mode: 'pessimistic_write' } }) as WaybillRecord | null;
+      if (!waybill) throw new NotFoundException('Waybill not found');
+      this.assertWaybillAccess(waybill, currentUser);
+      if (this.getStatus(waybill) === WaybillStatus.CANCELLED) throw new ConflictException('Cancelled waybill cannot be updated');
+      if (!waybill.delivery_assignment_type || waybill.delivery_assignment_type === 'CUSTOMER_PICKUP') throw new BadRequestException('Vận đơn chưa được phân giao chặng cuối');
+      const assigned = (await splits.find({ where: { waybill_id: id } })).filter(split => split.delivery_dispatch?.kind === 'ASSIGNMENT');
+      if (assigned.length > 1) throw new BadRequestException('Vận đơn có nhiều dòng điều phối. Sửa chi phí từng dòng tại Nhiệm vụ giao hàng.');
+      const holder = assigned[0] ?? waybill;
+      const previous = holder.delivery_dispatch?.kind === 'ASSIGNMENT' ? holder.delivery_dispatch : null;
+      const before = this.buildAuditSnapshot(waybill);
+      if (previous) {
+        holder.delivery_dispatch = { ...previous, delivery_cost: dto.amount, version: previous.version + 1, updated_at: new Date().toISOString(),
+          updated_by_id: currentUser.id, updated_by_name: currentUser.full_name || currentUser.username || `User #${currentUser.id}` };
+        if (assigned[0]) await splits.save(assigned[0]);
+      }
+      waybill.last_mile_cost_amount = String(dto.amount);
+      waybill.updated_by = currentUser.id;
+      const saved = await waybills.save(waybill);
+      await this.recordWaybillChange(id, 'LAST_MILE_COST_UPDATED', currentUser, previous ? undefined : before, previous ? undefined : saved,
+        previous ? { dispatch_delivery_cost: { old_value: previous.delivery_cost, new_value: dto.amount },
+          ...(assigned[0] ? { split_id: { old_value: assigned[0].id, new_value: assigned[0].id } } : {}) } : {}, manager.getRepository(WaybillChangeLogEntity));
+      return { saved, vendors: [...new Set([saved.last_mile_vendor_id, previous?.vendor_id].filter((value): value is string => Boolean(value)))] };
+    });
+    await Promise.all(result.vendors.map(vendorId => this.vendorsService.refreshPayableBalance(vendorId)));
+    return this.sanitize(result.saved, currentUser);
   }
 
   private async activateScheduledDeliveryTasks(currentUser: UserEntity): Promise<void> {
@@ -633,7 +764,7 @@ export class WaybillsService {
     const drivers = await driversQb.getMany();
     const trucks = await this.trucksRepository.find({
       where: {
-        status: In([TruckStatus.AVAILABLE, TruckStatus.ASSIGNED]),
+        status: In([TruckStatus.AVAILABLE, TruckStatus.ASSIGNED, TruckStatus.IN_TRIP, TruckStatus.IN_USE]),
         ownership_type: 'INTERNAL',
         ...(hubId ? { hub_id: String(hubId) } : {}),
       } as any,
@@ -646,7 +777,7 @@ export class WaybillsService {
     });
     return {
       drivers: drivers.map((driver) => ({ id: driver.id, name: driver.full_name, username: driver.username, phone: driver.phone, hub_id: driver.hub_id })),
-      trucks: trucks.map((truck) => ({ id: truck.id, license_plate: truck.license_plate, bks: truck.bks, loai_xe: truck.loai_xe, ownership_type: truck.ownership_type, hub_id: truck.hub_id, vendor_id: truck.vendor_id, driver_id: truck.driver_id, driver_name: truck.driver?.full_name ?? truck.ten_lai_xe })),
+      trucks: trucks.map((truck) => ({ id: truck.id, license_plate: truck.license_plate, bks: truck.bks, loai_xe: truck.loai_xe, status: truck.status, ownership_type: truck.ownership_type, hub_id: truck.hub_id, vendor_id: truck.vendor_id, driver_id: truck.driver_id, driver_name: truck.driver?.full_name ?? truck.ten_lai_xe })),
       vendors: vendors.map((vendor) => ({ id: vendor.id, code: vendor.code, name: vendor.name, phone: vendor.phone, service_type: vendor.service_type })),
     };
   }
@@ -686,7 +817,7 @@ export class WaybillsService {
         auditedChanges.cod_reconciliation_note = { old_value: null, new_value: currentVoucher.note };
       }
       const changes = Object.fromEntries(Object.entries(auditedChanges).filter(([field]) => {
-        if (['cost_amount', 'freight_amount', 'cc_amount', 'last_mile_cost_amount'].includes(field)) return canViewPricing;
+        if (['cost_amount', 'freight_amount', 'cc_amount', 'last_mile_cost_amount', 'dispatch_delivery_cost'].includes(field)) return canViewPricing;
         if (['cod_amount', 'cod_collected_amount', 'cash_voucher_amount', 'cod_reconciliation_note'].includes(field)) return canViewCod;
         return true;
       }));
@@ -1037,6 +1168,25 @@ export class WaybillsService {
   }
 
   async updateStatus(id: string, dto: UpdateWaybillStatusDto, currentUser: UserEntity): Promise<WaybillRecord> {
+    if (dto.status !== WaybillStatus.OUT_FOR_DELIVERY || !dto.assignment_type) return this.performUpdateStatus(id, dto, currentUser);
+    const vendorIds = new Set<string>();
+    const result = await this.dataSource.transaction(async manager => {
+      // Use the same lock as plan edits, so a handover cannot overwrite a newer plan.
+      await manager.getRepository(WaybillEntity).findOne({ where: { id, deleted_at: IsNull() }, lock: { mode: 'pessimistic_write' } });
+      const transactional = new WaybillsService(
+        manager.getRepository(WaybillEntity), manager.getRepository(WaybillChangeLogEntity), manager.getRepository(HubEntity),
+        manager.getRepository(WaybillSplitEntity), manager.getRepository(TripEntity), manager.getRepository(TruckEntity),
+        manager.getRepository(UserEntity), manager.getRepository(VendorEntity), manager.getRepository(ManifestEntity),
+        manager.getRepository(ManifestWaybillEntity), manager.getRepository(WaybillCashVoucherEntity),
+        this.dataSource, this.ordersService, this.vendorsService,
+      );
+      return transactional.performUpdateStatus(id, dto, currentUser, vendorIds);
+    });
+    await Promise.all([...vendorIds].map(vendorId => this.vendorsService.refreshPayableBalance(vendorId)));
+    return result;
+  }
+
+  private async performUpdateStatus(id: string, dto: UpdateWaybillStatusDto, currentUser: UserEntity, deferredVendors?: Set<string>): Promise<WaybillRecord> {
     const waybill = await this.findEditable(id, currentUser);
     const auditBefore = this.buildAuditSnapshot(waybill);
     const previousLastMileVendorId = waybill.last_mile_vendor_id;
@@ -1049,14 +1199,19 @@ export class WaybillsService {
       }
       await this.applyLastMileAssignment(waybill, dto, currentUser);
     }
-    const splitDeliveryResult = await this.updateSplitDeliveryStatus(waybill, dto, currentUser, auditBefore);
+    const splitDeliveryResult = await this.updateSplitDeliveryStatus(waybill, dto, currentUser, auditBefore, deferredVendors);
     if (splitDeliveryResult) {
       const affectedVendorIds = [...new Set([previousLastMileVendorId, splitDeliveryResult.last_mile_vendor_id].filter((value): value is string => Boolean(value)))];
-      await Promise.all(affectedVendorIds.map((vendorId) => this.vendorsService.refreshPayableBalance(vendorId)));
+      if (deferredVendors) affectedVendorIds.forEach(vendorId => deferredVendors.add(vendorId));
+      else await Promise.all(affectedVendorIds.map((vendorId) => this.vendorsService.refreshPayableBalance(vendorId)));
       return splitDeliveryResult;
     }
     const currentStatus = this.getStatus(waybill);
     if (!STATE_TRANSITIONS[currentStatus]?.includes(dto.status)) throw new BadRequestException('Invalid waybill state transition');
+    if (dto.status === WaybillStatus.OUT_FOR_DELIVERY && dto.assignment_type) {
+      this.assertDispatchVersion(waybill.delivery_dispatch, dto.delivery_dispatch_version);
+      waybill.delivery_dispatch = this.buildDeliveryDispatch(waybill, 'ASSIGNMENT', waybill.delivery_dispatch ?? null, currentUser);
+    }
     if (dto.status === WaybillStatus.DELIVERED && !dto.delivery_photo_url && !waybill.delivery_photo_url) throw new BadRequestException('Delivery photo is required');
     this.setStatus(waybill, dto.status);
     Object.assign(waybill, { updated_by: currentUser.id, note: dto.note ?? waybill.note });
@@ -1067,7 +1222,8 @@ export class WaybillsService {
     if (dto.status === WaybillStatus.RETURNED) waybill.returned_at = new Date();
     const saved = await this.saveWithAudit(waybill, currentUser, 'STATUS_CHANGE');
     const affectedVendorIds = [...new Set([previousLastMileVendorId, saved.last_mile_vendor_id].filter((value): value is string => Boolean(value)))];
-    await Promise.all(affectedVendorIds.map((vendorId) => this.vendorsService.refreshPayableBalance(vendorId)));
+    if (deferredVendors) affectedVendorIds.forEach(vendorId => deferredVendors.add(vendorId));
+    else await Promise.all(affectedVendorIds.map((vendorId) => this.vendorsService.refreshPayableBalance(vendorId)));
     await this.recordWaybillChange(
       String(saved.id),
       dto.status === WaybillStatus.RETURNED ? 'DELIVERY_FAILED' : `DELIVERY_${dto.status}`,
@@ -3267,13 +3423,15 @@ export class WaybillsService {
     waybill: WaybillRecord,
     dto: UpdateWaybillStatusDto,
     currentUser: UserEntity,
+    useCurrentDriver = true,
+    existingAssignment?: Pick<DeliveryDispatchSnapshot, 'driver_id' | 'truck_id' | 'vendor_id'> | null,
   ): Promise<void> {
     if (waybill.delivery_preparation_status && waybill.delivery_preparation_status !== 'READY') {
       throw new BadRequestException('Vận đơn phải được xác nhận sẵn sàng giao trước khi điều phối');
     }
     const assignmentType = dto.assignment_type;
     if (!assignmentType) throw new BadRequestException('Phải chọn xe nội bộ, xe đối tác hoặc xe công nghệ');
-    const routeCode = dto.route_code?.trim() || waybill.route_code?.trim();
+    const routeCode = dto.route_code !== undefined ? dto.route_code.trim() : waybill.route_code?.trim();
     waybill.route_code = routeCode || null;
     const manualDriverName = dto.driver_name?.trim() || '';
     const manualLicensePlate = dto.license_plate?.trim().toUpperCase() || '';
@@ -3281,13 +3439,14 @@ export class WaybillsService {
     if (!Number.isFinite(deliveryCost) || deliveryCost < 0) throw new BadRequestException('Cước giao chặng cuối không hợp lệ');
 
     if (assignmentType === 'INTERNAL') {
-      const driverId = String(dto.driver_id || ((currentUser.role_mask & Roles.DRIVER) !== 0 ? currentUser.id : '')).trim();
+      const driverId = String(dto.driver_id || (useCurrentDriver && (currentUser.role_mask & Roles.DRIVER) !== 0 ? currentUser.id : '')).trim();
+      const preserveDriver = Boolean(driverId && existingAssignment?.driver_id === driverId);
       const driver = driverId
         ? await this.usersRepository.findOne({
-          where: { id: driverId, is_active: true } as any,
+          where: { id: driverId, ...(preserveDriver ? {} : { is_active: true }) } as any,
         })
         : null;
-      if (driverId && (!driver || (driver.role_mask & Roles.DRIVER) === 0)) throw new BadRequestException('Tài xế nội bộ không hợp lệ');
+      if (driverId && (!driver || (!preserveDriver && (driver.role_mask & Roles.DRIVER) === 0))) throw new BadRequestException('Tài xế nội bộ không hợp lệ');
       const driverName = manualDriverName || driver?.full_name?.trim() || '';
       if (!driverName) throw new BadRequestException('Phải nhập hoặc chọn tài xế nội bộ');
 
@@ -3295,8 +3454,10 @@ export class WaybillsService {
       if (dto.truck_id) {
         truck = await this.trucksRepository.findOne({ where: { id: String(dto.truck_id) } as any });
         if (!truck) throw new BadRequestException('Xe nội bộ không hợp lệ');
-        if (truck.ownership_type !== 'INTERNAL') throw new BadRequestException('Xe được chọn không phải xe nội bộ');
-        if (String(truck.hub_id || '') !== String(waybill.dest_hub_id)) {
+        const preserveTruck = existingAssignment?.truck_id === String(dto.truck_id);
+        if (!preserveTruck && truck.ownership_type !== 'INTERNAL') throw new BadRequestException('Xe được chọn không phải xe nội bộ');
+        if (!preserveTruck && [TruckStatus.INACTIVE, TruckStatus.MAINTENANCE].includes(truck.status as TruckStatus)) throw new BadRequestException('Xe đã ngừng hoạt động hoặc đang bảo dưỡng');
+        if (!preserveTruck && String(truck.hub_id || '') !== String(waybill.dest_hub_id)) {
           throw new BadRequestException('Xe nội bộ không thuộc HUB đến của vận đơn');
         }
       }
@@ -3315,7 +3476,7 @@ export class WaybillsService {
 
     if (assignmentType === 'PARTNER' && !dto.vendor_id) throw new BadRequestException('Phải chọn đối tác giao hàng');
     const vendor = dto.vendor_id
-      ? await this.vendorsRepository.findOne({ where: { id: String(dto.vendor_id), status: 'ACTIVE' } as any })
+      ? await this.vendorsRepository.findOne({ where: { id: String(dto.vendor_id), ...(existingAssignment?.vendor_id === String(dto.vendor_id) ? {} : { status: 'ACTIVE' }) } as any })
       : null;
     if (dto.vendor_id && !vendor) throw new BadRequestException('Đơn vị giao hàng không hợp lệ');
     if (assignmentType === 'TECHNOLOGY' && !vendor && !manualDriverName) {
@@ -3338,6 +3499,7 @@ export class WaybillsService {
     dto: UpdateWaybillStatusDto,
     currentUser: UserEntity,
     auditBefore: WaybillAuditSnapshot,
+    deferredVendors?: Set<string>,
   ): Promise<WaybillRecord | null> {
     if (!dto.trip_id) return null;
     if (![WaybillStatus.OUT_FOR_DELIVERY, WaybillStatus.DELIVERED, WaybillStatus.RETURNED].includes(dto.status)) {
@@ -3364,12 +3526,22 @@ export class WaybillsService {
     }
 
     const previousSplitStatus = splits.map((split) => split.load_status).join(', ');
+    if (dto.status === WaybillStatus.OUT_FOR_DELIVERY && splits.some(split => [WaybillSplitLoadStatus.OUT_FOR_DELIVERY, WaybillSplitLoadStatus.DELIVERED, WaybillSplitLoadStatus.RETURNED].includes(split.load_status))) {
+      throw new BadRequestException('Phần hàng đã được bàn giao hoặc hoàn tất. Dùng chỉnh sửa điều phối để giữ nguyên trạng thái giao hàng.');
+    }
     const splitStatus = dto.status === WaybillStatus.OUT_FOR_DELIVERY
       ? WaybillSplitLoadStatus.OUT_FOR_DELIVERY
       : dto.status === WaybillStatus.DELIVERED
         ? WaybillSplitLoadStatus.DELIVERED
         : WaybillSplitLoadStatus.RETURNED;
-    splits.forEach((split) => { split.load_status = splitStatus; });
+    splits.forEach((split) => {
+      if (dto.status === WaybillStatus.OUT_FOR_DELIVERY && dto.assignment_type) {
+        if (split.delivery_dispatch?.kind === 'ASSIGNMENT' && split.delivery_dispatch.vendor_id) deferredVendors?.add(split.delivery_dispatch.vendor_id);
+        this.assertDispatchVersion(split.delivery_dispatch, dto.delivery_dispatch_version);
+        split.delivery_dispatch = this.buildDeliveryDispatch(waybill, 'ASSIGNMENT', split.delivery_dispatch ?? null, currentUser);
+      }
+      split.load_status = splitStatus;
+    });
     await this.splitsRepository.save(splits);
 
     Object.assign(waybill, { updated_by: currentUser.id, note: dto.note ?? waybill.note });
@@ -4342,9 +4514,17 @@ export class WaybillsService {
     const unallocatedLabel = remainingPackages != null && remainingPackages < totalPackages
       ? `Còn ${remainingPackages} kiện · Chưa phân xe`
       : 'Chưa phân xe';
+    const dispatch = split ? split.delivery_dispatch ?? null : waybill.delivery_dispatch ?? null;
 
     return {
       ...waybill,
+      delivery_dispatch: dispatch,
+      ...(dispatch?.kind === 'ASSIGNMENT' ? {
+        ...this.deliveryAssignmentFields(dispatch),
+        last_mile_driver: dispatch.driver_id ? { id: dispatch.driver_id, name: dispatch.driver_name } : null,
+        last_mile_truck: dispatch.truck_id ? { id: dispatch.truck_id, license_plate: dispatch.license_plate } : null,
+        last_mile_vendor: dispatch.vendor_id ? { id: dispatch.vendor_id, name: dispatch.vendor_name ?? (String(waybill.last_mile_vendor?.id) === String(dispatch.vendor_id) ? waybill.last_mile_vendor?.name : null) } : null,
+      } : {}),
       weight: allocatedMetric(waybill.weight),
       actual_weight: allocatedMetric(waybill.actual_weight ?? waybill.weight),
       volumetric_weight: allocatedMetric(waybill.volumetric_weight),

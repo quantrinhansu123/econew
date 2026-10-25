@@ -3,6 +3,7 @@ import { TripEntity } from '../trips/trip.entity';
 import { TruckEntity } from '../trucks/truck.entity';
 import { WaybillEntity } from './waybill.entity';
 import { WaybillSplitLoadStatus } from './dto/waybill-split-load-status.enum';
+import type { DeliveryDispatchSnapshot } from './delivery-dispatch.types';
 
 @Entity('waybill_splits')
 export class WaybillSplitEntity {
@@ -35,6 +36,9 @@ export class WaybillSplitEntity {
 
   @Column({ type: 'timestamp', nullable: true })
   expected_arrival_at: Date | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  delivery_dispatch: DeliveryDispatchSnapshot | null;
 
   @Column({ type: 'bigint', nullable: true })
   created_by: string | null;

@@ -101,7 +101,7 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
       }
       onConfirm(status, undefined, {
         assignment_type: assignmentType,
-        route_code: routeCode || undefined,
+        route_code: routeCode,
         driver_name: driverName.trim() || undefined,
         license_plate: licensePlate.trim().toUpperCase() || undefined,
         delivery_cost: parseAmountInput(deliveryCost),
@@ -133,7 +133,8 @@ export default function UpdateDeliveryStatusDialog({ waybill, isSubmitting, erro
           <button onClick={onClose} disabled={isSubmitting} className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><X size={18} /></button>
         </div>
         <div className="space-y-3 p-4 text-[13px] text-muted-foreground">
-          <p>{isCustomerPickup ? 'Khách tới HUB lấy hàng: chụp ảnh xác nhận để báo phát thành công.' : 'Chọn trạng thái giao chặng cuối hợp lệ theo state machine cho vận đơn này.'}</p>
+          <p>{isCustomerPickup ? 'Khách tới HUB lấy hàng: chụp ảnh xác nhận để báo phát thành công.' : currentStatus === 'AT_DEST_HUB' ? 'Kiểm tra kế hoạch và xác nhận bàn giao hàng cho tài xế để bắt đầu giao.' : 'Cập nhật kết quả giao hàng và ảnh chứng từ.'}</p>
+          {currentStatus === 'AT_DEST_HUB' && waybill.delivery_dispatch?.note && <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-[12px] text-blue-800">Ghi chú điều phối: {waybill.delivery_dispatch.note}</p>}
           {currentStatus === 'AT_DEST_HUB' && !isCustomerPickup && resources && (
             <div className="space-y-3 rounded-xl border border-border bg-slate-50 p-3">
               <p className="font-black text-foreground">Phân giao chặng cuối</p>

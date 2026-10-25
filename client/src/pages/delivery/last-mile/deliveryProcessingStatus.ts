@@ -16,6 +16,7 @@ export interface DeliveryProcessingSource {
   last_mile_driver?: { name?: string | null; full_name?: string | null; username?: string | null } | null;
   last_mile_vendor?: { name?: string | null; code?: string | null } | null;
   last_delivery_failure_reason?: string | null;
+  delivery_dispatch?: { kind: 'PLAN' | 'ASSIGNMENT'; assignment_type: string; route_code: string | null; driver_name: string | null; license_plate: string | null; vendor_name: string | null; scheduled_at: string | null; note: string | null } | null;
 }
 
 export interface DeliveryProcessingPresentation {
@@ -63,7 +64,7 @@ export function resolveDeliveryProcessingStatus(source: DeliveryProcessingSource
   const currentState = compact(source.current_state || source.status).toUpperCase();
   const preparation = compact(source.delivery_preparation_status || 'PENDING_CONFIRMATION').toUpperCase();
   const assignmentType = source.delivery_assignment_type ?? null;
-  const note = compact(source.delivery_preparation_note);
+  const note = [...new Set([compact(source.delivery_preparation_note), compact(source.delivery_dispatch?.note)].filter(Boolean))].join(' · ');
 
   if (currentState === 'DELIVERED') {
     return {
@@ -90,6 +91,14 @@ export function resolveDeliveryProcessingStatus(source: DeliveryProcessingSource
       note,
       tone: assignmentType === 'CUSTOMER_PICKUP' ? 'violet' : 'blue',
     };
+  }
+
+  if (source.delivery_dispatch?.kind === 'PLAN') {
+    const plan = source.delivery_dispatch;
+    return { title: preparation === 'HOLD' ? 'Kế hoạch · chờ xử lý' : preparation === 'SCHEDULED' ? 'Kế hoạch · hẹn ngày giao' : preparation === 'NEEDS_ACTION' ? 'Kế hoạch · cần xử lý' : 'Đã lập kế hoạch · chưa bàn giao',
+      detail: [preparation === 'HOLD' ? compact(source.delivery_hold_reason) : preparation === 'SCHEDULED' || preparation === 'NEEDS_ACTION' ? formatScheduledAt(source.delivery_scheduled_at) : '',
+        plan.route_code ? `Tuyến ${plan.route_code}` : '', plan.vendor_name || plan.driver_name, plan.license_plate, formatScheduledAt(plan.scheduled_at)].filter(Boolean).join(' · '),
+      note, tone: preparation === 'HOLD' || preparation === 'SCHEDULED' ? 'amber' : preparation === 'NEEDS_ACTION' ? 'red' : 'violet' };
   }
 
   if (preparation === 'READY') {

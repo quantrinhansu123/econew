@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { WaybillStatus } from './waybill.enums';
 
 export class UpdateWaybillStatusDto {
@@ -16,6 +16,13 @@ export class UpdateWaybillStatusDto {
   @IsOptional()
   @IsString()
   split_id?: string;
+
+  @ApiPropertyOptional({ description: 'Version kế hoạch khi xác nhận bàn giao' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  delivery_dispatch_version?: number;
 
   @ApiPropertyOptional({ enum: ['INTERNAL', 'PARTNER', 'TECHNOLOGY'] })
   @IsOptional()

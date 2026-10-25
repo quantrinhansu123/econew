@@ -76,6 +76,7 @@ export interface LastMileWaybill {
   last_mile_driver_name?: string | null;
   last_mile_license_plate?: string | null;
   last_mile_cost_amount?: number | string | null;
+  delivery_dispatch?: DeliveryDispatchSnapshot | null;
   last_mile_truck?: { id: string | number; license_plate?: string | null; bks?: string | null; loai_xe?: string | null } | null;
   last_mile_vendor?: { id: string | number; code?: string | null; name?: string | null; phone?: string | null } | null;
   driver?: UserSummary | null;
@@ -107,9 +108,42 @@ export interface WaybillHistoryItem {
 }
 
 export interface DeliveryDriverOption { id: string | number; name?: string | null; username?: string | null; phone?: string | null; hub_id?: string | number | null }
-export interface DeliveryTruckOption { id: string | number; license_plate?: string | null; bks?: string | null; loai_xe?: string | null; ownership_type?: 'INTERNAL' | 'VENDOR' | null; hub_id?: string | number | null; driver_id?: string | number | null; driver_name?: string | null }
+export interface DeliveryTruckOption { id: string | number; license_plate?: string | null; bks?: string | null; loai_xe?: string | null; status?: string | null; ownership_type?: 'INTERNAL' | 'VENDOR' | null; hub_id?: string | number | null; driver_id?: string | number | null; driver_name?: string | null }
 export interface DeliveryVendorOption { id: string | number; code?: string | null; name?: string | null; phone?: string | null; service_type?: string | null }
 export interface DeliveryResources { drivers: DeliveryDriverOption[]; trucks: DeliveryTruckOption[]; vendors: DeliveryVendorOption[] }
+
+export interface DeliveryDispatchSnapshot {
+  kind: 'PLAN' | 'ASSIGNMENT';
+  assignment_type: 'INTERNAL' | 'PARTNER' | 'TECHNOLOGY';
+  route_code: string | null;
+  driver_id: string | null;
+  driver_name: string | null;
+  truck_id: string | null;
+  license_plate: string | null;
+  vendor_id: string | null;
+  vendor_name: string | null;
+  delivery_cost: number;
+  scheduled_at: string | null;
+  note: string | null;
+  version: number;
+  updated_at: string;
+  updated_by_id: string;
+  updated_by_name: string;
+}
+
+export interface DeliveryDispatchInput {
+  assignment_type: DeliveryDispatchSnapshot['assignment_type'];
+  driver_id?: string;
+  driver_name?: string;
+  truck_id?: string;
+  license_plate?: string;
+  vendor_id?: string;
+  route_code?: string;
+  delivery_cost: number;
+  note: string;
+  scheduled_at?: string;
+  expected_version: number;
+}
 
 export type LastMileWaybillDetail = LastMileWaybill;
 

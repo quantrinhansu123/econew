@@ -20,6 +20,7 @@ import { CustomerPaymentStatus, PaymentType, TripStatus } from '../common/enums'
 import { CashFundEntity } from '../finance/cash-fund.entity';
 import { WarehouseIntakeMethod } from './dto/receive-waybill.dto';
 import { WaybillPricingField } from './dto/update-waybill-pricing.dto';
+import { UserEntity } from '../users/user.entity';
 
 const manager = { id: 'u1', role_mask: Roles.MANAGER, hub_id: '1' } as any;
 const warehouse = { id: 'u2', role_mask: Roles.WAREHOUSE, hub_id: '1' } as any;
@@ -183,6 +184,7 @@ describe('WaybillsService', () => {
     };
     const transactionRepositories = new Map<any, any>([
       [WaybillEntity, waybillsRepository],
+      [UserEntity, usersRepository],
       [HubEntity, hubsRepository],
       [ManifestEntity, manifestsRepository],
       [ManifestWaybillEntity, manifestWaybillsRepository],
@@ -2038,6 +2040,142 @@ describe('WaybillsService', () => {
         trip_package_count: 60,
       }),
     ]);
+  });
+
+  describe('delivery dispatch plans and edits', () => {
+    const input = { assignment_type: 'TECHNOLOGY' as const, driver_name: 'Grab / Anh Nam', license_plate: '51h-12345', delivery_cost: 150000, route_code: 'HCM-01', note: 'Gọi trước 15 phút', expected_version: 0 };
+
+    it('saves a per-split plan in transit without dispatching, changing other splits, or creating payable costs', async () => {
+      const waybill = makeWaybill({ current_state: WaybillStatus.IN_WAREHOUSE, status: WaybillStatus.IN_WAREHOUSE });
+      const split = { id: 's1', waybill_id: '1', trip_id: 't1', load_status: WaybillSplitLoadStatus.IN_TRANSIT };
+      waybillsRepository.findOne.mockResolvedValue(waybill);
+      splitsRepository.findOne.mockResolvedValue(split);
+      tripsRepository.findOne.mockResolvedValue({ id: 't1', status: TripStatus.IN_TRANSIT });
+      const result = await service.updateDeliveryDispatch('1', { ...input, split_id: 's1', trip_id: 't1' }, manager);
+      expect(result).toMatchObject({ current_state: WaybillStatus.IN_TRANSIT, delivery_dispatch: {
+        kind: 'PLAN', driver_name: 'Grab / Anh Nam', license_plate: '51H-12345', delivery_cost: 150000, version: 1, updated_by_id: manager.id,
+      } });
+      expect(waybill.current_state).toBe(WaybillStatus.IN_WAREHOUSE);
+      expect((waybill as any).last_mile_vendor_id).toBeUndefined();
+      expect((waybill as any).delivery_dispatch).toBeUndefined();
+      expect(split.load_status).toBe(WaybillSplitLoadStatus.IN_TRANSIT);
+      expect(splitsRepository.save).toHaveBeenCalledTimes(1);
+      expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ action: 'DELIVERY_PLAN_CREATED', changed_by_id: manager.id, changes: expect.objectContaining({
+        dispatch_driver_name: { old_value: null, new_value: 'Grab / Anh Nam' }, split_id: { old_value: 's1', new_value: 's1' },
+      }) }));
+      expect(vendorsService.refreshPayableBalance).not.toHaveBeenCalled();
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a plan before READY and preserves the original waybill status and carrier fields', async () => {
+      const waybill = makeWaybill({ current_state: WaybillStatus.AT_DEST_HUB, status: WaybillStatus.AT_DEST_HUB, delivery_preparation_status: 'PENDING_CONFIRMATION' });
+      waybillsRepository.findOne.mockResolvedValue(waybill);
+      await service.updateDeliveryDispatch('1', input, manager);
+      expect(waybill).toMatchObject({ current_state: WaybillStatus.AT_DEST_HUB, delivery_preparation_status: 'PENDING_CONFIRMATION', delivery_dispatch: { kind: 'PLAN' } });
+      expect((waybill as any).delivery_assignment_type).toBeUndefined();
+    });
+
+    it('records old/new values for every changed plan and rejects stale edits', async () => {
+      const waybill = makeWaybill({ current_state: WaybillStatus.AT_DEST_HUB, status: WaybillStatus.AT_DEST_HUB });
+      waybillsRepository.findOne.mockResolvedValue(waybill);
+      await service.updateDeliveryDispatch('1', input, manager);
+      await service.updateDeliveryDispatch('1', { ...input, driver_name: 'Grab / Anh Bình', expected_version: 1 }, manager);
+      expect((waybill as any).delivery_dispatch.version).toBe(2);
+      expect(changeLogsRepository.save).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'DELIVERY_PLAN_UPDATED', changes: expect.objectContaining({
+        dispatch_driver_name: { old_value: 'Grab / Anh Nam', new_value: 'Grab / Anh Bình' },
+      }) }));
+      await expect(service.updateDeliveryDispatch('1', { ...input, expected_version: 1 }, manager)).rejects.toThrow(ConflictException);
+      expect(changeLogsRepository.save).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps a partner plan out of the actual carrier and payable balance', async () => {
+      const waybill = makeWaybill({ current_state: WaybillStatus.AT_DEST_HUB, status: WaybillStatus.AT_DEST_HUB,
+        last_mile_vendor_id: 'old-vendor', last_mile_cost_amount: '20000' });
+      waybillsRepository.findOne.mockResolvedValue(waybill);
+      vendorsRepository.findOne.mockResolvedValue({ id: 'new-vendor', name: 'NCC dự kiến', status: 'ACTIVE' });
+      await service.updateDeliveryDispatch('1', { ...input, assignment_type: 'PARTNER', vendor_id: 'new-vendor' }, manager);
+      expect(waybill).toMatchObject({ last_mile_vendor_id: 'old-vendor', last_mile_cost_amount: '20000',
+        delivery_dispatch: { kind: 'PLAN', vendor_id: 'new-vendor', vendor_name: 'NCC dự kiến', delivery_cost: 150000 } });
+      expect(vendorsService.refreshPayableBalance).not.toHaveBeenCalled();
+    });
+
+    it('keeps a legacy assignment editable when its split was never given a last-mile state', async () => {
+      waybillsRepository.findOne.mockResolvedValue(makeWaybill({ current_state: WaybillStatus.OUT_FOR_DELIVERY, status: WaybillStatus.OUT_FOR_DELIVERY, delivery_assignment_type: 'TECHNOLOGY' }));
+      splitsRepository.findOne.mockResolvedValue({ id: 's1', waybill_id: '1', trip_id: 't1', load_status: WaybillSplitLoadStatus.ARRIVED });
+      tripsRepository.findOne.mockResolvedValue({ id: 't1', status: TripStatus.ARRIVED });
+      const result = await service.updateDeliveryDispatch('1', { ...input, split_id: 's1', trip_id: 't1' }, manager);
+      expect(result).toMatchObject({ current_state: WaybillStatus.OUT_FOR_DELIVERY, delivery_dispatch: { kind: 'ASSIGNMENT' } });
+    });
+
+    it.each([WaybillStatus.OUT_FOR_DELIVERY, WaybillStatus.DELIVERED, WaybillStatus.RETURNED])('edits an existing %s assignment without changing status, proof, or delivery time', async status => {
+      const waybill = makeWaybill({ current_state: status, status, delivery_assignment_type: 'PARTNER', last_mile_vendor_id: 'old-vendor',
+        delivery_photo_url: 'https://example.com/proof.jpg', delivery_time: new Date('2026-10-20T01:00:00Z') });
+      waybillsRepository.findOne.mockResolvedValue(waybill);
+      await service.updateDeliveryDispatch('1', input, manager);
+      expect(waybill).toMatchObject({ current_state: status, status, delivery_photo_url: 'https://example.com/proof.jpg',
+        delivery_time: new Date('2026-10-20T01:00:00Z'), delivery_assignment_type: 'TECHNOLOGY', last_mile_vendor_id: null,
+        delivery_dispatch: { kind: 'ASSIGNMENT', version: 1 } });
+      expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ action: 'DELIVERY_ASSIGNMENT_UPDATED' }));
+      expect(vendorsService.refreshPayableBalance).toHaveBeenCalledWith('old-vendor');
+    });
+
+    it('rejects unauthorized users, incorrect splits, cancelled bills, and pre-departure plans', async () => {
+      await expect(service.updateDeliveryDispatch('1', input, warehouse)).rejects.toThrow(ForbiddenException);
+      waybillsRepository.findOne.mockResolvedValue(makeWaybill());
+      await expect(service.updateDeliveryDispatch('1', input, manager)).rejects.toThrow(BadRequestException);
+      await expect(service.updateDeliveryDispatch('1', { ...input, split_id: 'other-split' }, manager)).rejects.toThrow(BadRequestException);
+      waybillsRepository.findOne.mockResolvedValue(makeWaybill({ current_state: WaybillStatus.CANCELLED, status: WaybillStatus.CANCELLED }));
+      await expect(service.updateDeliveryDispatch('1', input, manager)).rejects.toThrow(ConflictException);
+      expect(changeLogsRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects a dispatcher assigned only to the origin hub', async () => {
+      waybillsRepository.findOne.mockResolvedValue(makeWaybill({ current_state: WaybillStatus.AT_DEST_HUB, status: WaybillStatus.AT_DEST_HUB }));
+      await expect(service.updateDeliveryDispatch('1', input, { id: 'dispatch', role_mask: Roles.DISPATCHER, hub_id: '1' } as any)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('uses the transaction repository for history and fails the save if history cannot be written', async () => {
+      waybillsRepository.findOne.mockResolvedValue(makeWaybill({ current_state: WaybillStatus.AT_DEST_HUB, status: WaybillStatus.AT_DEST_HUB }));
+      changeLogsRepository.save.mockRejectedValue(new Error('history unavailable'));
+      await expect(service.updateDeliveryDispatch('1', input, manager)).rejects.toThrow('history unavailable');
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(vendorsService.refreshPayableBalance).not.toHaveBeenCalled();
+    });
+
+    it('does not start delivery or apply a stale plan during handover', async () => {
+      const waybill = makeWaybill({ current_state: WaybillStatus.AT_DEST_HUB, status: WaybillStatus.AT_DEST_HUB, delivery_preparation_status: 'READY', delivery_dispatch: { version: 2 } });
+      waybillsRepository.findOne.mockResolvedValue(waybill);
+      await expect(service.updateStatus('1', { status: WaybillStatus.OUT_FOR_DELIVERY, assignment_type: 'TECHNOLOGY', driver_name: 'Grab', delivery_dispatch_version: 1 }, manager)).rejects.toThrow(ConflictException);
+      expect(waybillsRepository.save).not.toHaveBeenCalled();
+      expect(changeLogsRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('keeps reconciliation cost and the saved assignment version in sync', async () => {
+      const waybill = makeWaybill({ current_state: WaybillStatus.OUT_FOR_DELIVERY, status: WaybillStatus.OUT_FOR_DELIVERY, delivery_assignment_type: 'PARTNER', last_mile_vendor_id: 'v1', last_mile_cost_amount: '100000' });
+      const split = { id: 's1', waybill_id: '1', delivery_dispatch: { kind: 'ASSIGNMENT', delivery_cost: 100000, vendor_id: 'v1', version: 2 } };
+      waybillsRepository.findOne.mockResolvedValue(waybill);
+      splitsRepository.find.mockResolvedValue([split]);
+      await service.updateLastMileCost('1', { amount: 120000 }, accountant);
+      expect(split.delivery_dispatch).toMatchObject({ delivery_cost: 120000, version: 3 });
+      expect(waybill).toMatchObject({ last_mile_cost_amount: '120000' });
+      expect(vendorsService.refreshPayableBalance).toHaveBeenCalledWith('v1');
+      expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ action: 'LAST_MILE_COST_UPDATED' }));
+    });
+
+    it('requires per-line cost edits if a bill has several actual assignments', async () => {
+      waybillsRepository.findOne.mockResolvedValue(makeWaybill({ current_state: WaybillStatus.OUT_FOR_DELIVERY, status: WaybillStatus.OUT_FOR_DELIVERY, delivery_assignment_type: 'PARTNER' }));
+      splitsRepository.find.mockResolvedValue([{ delivery_dispatch: { kind: 'ASSIGNMENT' } }, { delivery_dispatch: { kind: 'ASSIGNMENT' } }]);
+      await expect(service.updateLastMileCost('1', { amount: 120000 }, accountant)).rejects.toThrow('nhiều dòng điều phối');
+      expect(waybillsRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('allows correcting a historical assignment after its existing driver has been deactivated', async () => {
+      waybillsRepository.findOne.mockResolvedValue(makeWaybill({ current_state: WaybillStatus.DELIVERED, status: WaybillStatus.DELIVERED, delivery_assignment_type: 'INTERNAL', last_mile_driver_id: 'd1' }));
+      usersRepository.findOne.mockResolvedValue({ id: 'd1', full_name: 'Tài xế cũ', role_mask: 0, is_active: false });
+      await service.updateDeliveryDispatch('1', { ...input, assignment_type: 'INTERNAL', driver_id: 'd1', driver_name: 'Tài xế cũ' }, manager);
+      expect(usersRepository.findOne).toHaveBeenCalledWith({ where: { id: 'd1' } });
+      expect(changeLogsRepository.save).toHaveBeenCalledWith(expect.objectContaining({ action: 'DELIVERY_ASSIGNMENT_UPDATED' }));
+    });
   });
 
   it('updateDeliveryPreparation allows calling the receiver while the split trip is in transit', async () => {

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, EntityManager, In, IsNull, Repository } from 'typeorm';
+import { Brackets, EntityManager, In, IsNull, Raw, Repository } from 'typeorm';
 import { clampPaginationLimit } from '../common/pagination';
 import { TripStatus, VendorTripPaymentStatus } from '../common/enums';
 import { Roles, isManager } from '../common/roles';
@@ -11,6 +11,7 @@ import { ExpenseEntity } from '../expenses/expense.entity';
 import { TripEntity } from '../trips/trip.entity';
 import { UserEntity } from '../users/user.entity';
 import { WaybillEntity } from '../waybills/waybill.entity';
+import { WaybillSplitEntity } from '../waybills/waybill-split.entity';
 import { BulkUpdateTripVendorPaymentDto } from './dto/bulk-update-trip-vendor-payment.dto';
 import { CreateVendorPaymentDto } from './dto/create-vendor-payment.dto';
 import { VendorPaymentAllocationDto } from './dto/create-vendor-payment.dto';
@@ -782,13 +783,32 @@ export class VendorsService {
     return map;
   }
 
+  private async queryLastMileCosts(vendorId: string, manager?: EntityManager): Promise<Array<WaybillEntity & { last_mile_split_id?: string }>> {
+    const waybills = manager?.getRepository(WaybillEntity) ?? this.waybillsRepository;
+    const splits = (manager ?? waybills.manager).getRepository(WaybillSplitEntity);
+    const [legacy, assigned] = await Promise.all([
+      waybills.find({ where: { last_mile_vendor_id: vendorId } as any, order: { created_at: 'ASC' } }),
+      splits.find({ where: { delivery_dispatch: Raw(alias => `${alias} ->> 'kind' = 'ASSIGNMENT' AND ${alias} ->> 'vendor_id' = :dispatchVendor`, { dispatchVendor: vendorId }) } as any, relations: ['waybill'] }),
+    ]);
+    const covered = legacy.length ? await splits.find({
+      select: { waybill_id: true },
+      where: { waybill_id: In(legacy.map(waybill => String(waybill.id))), delivery_dispatch: Raw(alias => `${alias} ->> 'kind' = 'ASSIGNMENT'`) } as any,
+    }) : [];
+    const coveredIds = new Set(covered.map(split => String(split.waybill_id)));
+    return [
+      ...legacy.filter(waybill => !coveredIds.has(String(waybill.id))),
+      ...assigned.filter(split => split.delivery_dispatch?.kind === 'ASSIGNMENT' && split.delivery_dispatch.vendor_id === vendorId && split.waybill && !split.waybill.deleted_at)
+        .map(split => ({ ...split.waybill, last_mile_split_id: String(split.id), last_mile_vendor_id: vendorId,
+          last_mile_cost_amount: String(split.delivery_dispatch!.delivery_cost), last_mile_license_plate: split.delivery_dispatch!.license_plate })),
+    ];
+  }
+
   private async computeBalancesForVendors(vendorIds: string[], manager?: EntityManager) {
     const map = new Map<string, { total_incurred: number; total_paid: number; remaining: number }>();
     if (!vendorIds.length) return map;
 
     const vendorsRepository = manager?.getRepository(VendorEntity) ?? this.vendorsRepository;
     const expensesRepository = manager?.getRepository(ExpenseEntity) ?? this.expensesRepository;
-    const waybillsRepository = manager?.getRepository(WaybillEntity) ?? this.waybillsRepository;
     const debtEntriesRepository = manager?.getRepository(VendorDebtEntryEntity) ?? this.debtEntriesRepository;
     const paymentsRepository = manager?.getRepository(VendorPaymentEntity) ?? this.paymentsRepository;
 
@@ -798,7 +818,7 @@ export class VendorsService {
       const tripIncurred = trips.reduce((sum, t) => sum + this.tripCost(t), 0);
       const [vendorExpenses, lastMileCosts] = await Promise.all([
         expensesRepository.find({ where: { vendor_id: vendorId, fund_id: IsNull() } }),
-        waybillsRepository.find({ where: { last_mile_vendor_id: vendorId } as any }),
+        this.queryLastMileCosts(vendorId, manager),
       ]);
       const expenseIncurred = vendorExpenses.reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
       const lastMileIncurred = lastMileCosts.reduce((sum, waybill) => sum + Number(waybill.last_mile_cost_amount ?? 0), 0);
@@ -865,10 +885,7 @@ export class VendorsService {
         relations: ['trip'],
         order: { created_at: 'ASC' },
       }),
-      this.waybillsRepository.find({
-        where: { last_mile_vendor_id: vendorId } as any,
-        order: { created_at: 'ASC' },
-      }),
+      this.queryLastMileCosts(vendorId),
     ]);
     for (const expense of vendorExpenses) {
       const amount = Number(expense.amount ?? 0);
@@ -887,7 +904,7 @@ export class VendorsService {
       const amount = Number(waybill.last_mile_cost_amount ?? 0);
       if (amount <= 0) continue;
       events.push({
-        id: `last-mile-${waybill.id}`,
+        id: `last-mile-${waybill.id}${waybill.last_mile_split_id ? `-split-${waybill.last_mile_split_id}` : ''}`,
         type: 'COST',
         date: waybill.delivery_confirmed_at ?? waybill.created_at,
         amount,

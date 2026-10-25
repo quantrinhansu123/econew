@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { UpdateDeliveryDispatchDto } from './dto/update-delivery-dispatch.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
@@ -44,6 +45,13 @@ export class WaybillsController {
     private readonly waybillsService: WaybillsService,
     private readonly geminiRecognitionService: GeminiWaybillRecognitionService,
   ) {}
+
+  @Patch(':id/delivery-dispatch')
+  @RequireRoles(Roles.DISPATCHER, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Lưu kế hoạch hoặc sửa điều phối, giữ nguyên trạng thái giao hàng' })
+  updateDeliveryDispatch(@Param('id') id: string, @Body() dto: UpdateDeliveryDispatchDto, @CurrentUser() currentUser: UserEntity) {
+    return this.waybillsService.updateDeliveryDispatch(id, dto, currentUser);
+  }
 
   @Post()
   @RequireRoles(Roles.WAREHOUSE, Roles.MANAGER, Roles.DIRECTOR)

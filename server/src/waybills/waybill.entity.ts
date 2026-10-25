@@ -6,6 +6,7 @@ import { OrderEntity } from '../orders/order.entity';
 import { UserEntity } from '../users/user.entity';
 import { TruckEntity } from '../trucks/truck.entity';
 import { VendorEntity } from '../vendors/vendor.entity';
+import type { DeliveryDispatchSnapshot } from './delivery-dispatch.types';
 
 @Entity('waybills')
 @Index('UQ_waybills_waybill_code_active', ['waybill_code'], { unique: true, where: '"deleted_at" IS NULL' })
@@ -135,6 +136,9 @@ export class WaybillEntity {
 
   @Column({ type: 'timestamp', nullable: true })
   delivery_confirmed_at: Date | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  delivery_dispatch: DeliveryDispatchSnapshot | null;
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   last_delivery_failure_reason: string | null;

@@ -20,4 +20,12 @@ describe('waybill edit history presentation', () => {
     expect(formatWaybillHistoryValue('cod_collected_amount', 850000)).toBe('850.000 đ');
     expect(formatWaybillHistoryValue('receiver_address', null)).toBe('—');
   });
+  it('presents dispatch edits with clear old/new values and money', () => {
+    expect(waybillHistoryActionLabel('DELIVERY_PLAN_CREATED')).toBe('Lập kế hoạch điều phối');
+    expect(waybillHistoryActionLabel('DELIVERY_ASSIGNMENT_UPDATED')).toBe('Chỉnh sửa điều phối giao hàng');
+    expect(waybillHistoryFieldLabel('dispatch_driver_name')).toBe('Tài xế điều phối');
+    expect(formatWaybillHistoryValue('dispatch_assignment_type', 'PARTNER')).toBe('Xe đối tác');
+    expect(formatWaybillHistoryValue('dispatch_kind', 'PLAN')).toBe('Kế hoạch');
+    expect(formatWaybillHistoryValue('dispatch_delivery_cost', 120000)).toBe('120.000 đ');
+  });
 });

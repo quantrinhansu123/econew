@@ -36,6 +36,10 @@ const ACTION_LABELS: Record<string, string> = {
   DELIVERY_OUT_FOR_DELIVERY: 'Điều phối xe đi giao',
   DELIVERY_DELIVERED: 'Giao hàng thành công',
   DELIVERY_FAILED: 'Giao hàng không thành công',
+  DELIVERY_PLAN_CREATED: 'Lập kế hoạch điều phối',
+  DELIVERY_PLAN_UPDATED: 'Chỉnh sửa kế hoạch điều phối',
+  DELIVERY_ASSIGNMENT_UPDATED: 'Chỉnh sửa điều phối giao hàng',
+  LAST_MILE_COST_UPDATED: 'Cập nhật chi phí giao chặng cuối',
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -99,9 +103,25 @@ const FIELD_LABELS: Record<string, string> = {
   sent_date: 'Ngày gửi trên bill',
   split_status: 'Trạng thái phần hàng',
   trip_id: 'Chuyến nguồn',
+  split_id: 'Dòng hàng trong chuyến',
+  dispatch_kind: 'Giai đoạn điều phối',
+  dispatch_assignment_type: 'Hình thức điều phối',
+  dispatch_route_code: 'Tuyến điều phối',
+  dispatch_driver_id: 'Mã tài xế điều phối',
+  dispatch_driver_name: 'Tài xế điều phối',
+  dispatch_truck_id: 'Mã xe điều phối',
+  dispatch_license_plate: 'Biển kiểm soát điều phối',
+  dispatch_vendor_id: 'Mã đối tác giao',
+  dispatch_vendor_name: 'Đối tác giao',
+  dispatch_delivery_cost: 'Chi phí giao dự kiến / thực tế',
+  dispatch_scheduled_at: 'Ngày giờ giao dự kiến',
+  dispatch_note: 'Ghi chú điều phối',
+  last_mile_driver_name: 'Tài xế giao',
+  last_mile_license_plate: 'Biển kiểm soát giao',
+  last_mile_cost_amount: 'Chi phí giao chặng cuối',
 };
 
-const MONEY_FIELDS = new Set(['cod_amount', 'freight_amount', 'cc_amount', 'cod_collected_amount']);
+const MONEY_FIELDS = new Set(['cod_amount', 'freight_amount', 'cc_amount', 'cod_collected_amount', 'dispatch_delivery_cost', 'last_mile_cost_amount']);
 const CENTIMETER_FIELDS = new Set(['length', 'width', 'height']);
 
 export const waybillHistoryActionLabel = (action: string) => ACTION_LABELS[action] || action;
@@ -110,7 +130,8 @@ export const waybillHistoryFieldLabel = (field: string) => FIELD_LABELS[field] |
 
 export function formatWaybillHistoryValue(field: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
-  if (field === 'delivery_assignment_type') {
+  if (field === 'dispatch_kind') return value === 'PLAN' ? 'Kế hoạch' : value === 'ASSIGNMENT' ? 'Đã bàn giao' : String(value);
+  if (field === 'delivery_assignment_type' || field === 'dispatch_assignment_type') {
     return ({
       INTERNAL: 'Xe nội bộ',
       PARTNER: 'Xe đối tác',
@@ -127,7 +148,7 @@ export function formatWaybillHistoryValue(field: string, value: unknown): string
   }
   if (field === 'tinh_chat_hang_hoa') return specialGoodsLabels(value).join(', ') || '—';
   if (MONEY_FIELDS.has(field)) return formatMoney(value as number | string);
-  if (field === 'cod_reconciled_at') return new Date(String(value)).toLocaleString('vi-VN');
+  if (['cod_reconciled_at', 'dispatch_scheduled_at'].includes(field)) return new Date(String(value)).toLocaleString('vi-VN');
   if (field === 'weight' || field === 'volumetric_weight') return `${value} kg`;
   if (field === 'the_tich_m3') return `${value} m³`;
   if (CENTIMETER_FIELDS.has(field)) return `${value} cm`;
