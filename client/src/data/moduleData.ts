@@ -162,15 +162,15 @@ export const moduleGroups: ModuleGroup[] = [
       },
       {
         icon: Clock,
-        title: 'Chấm công GPS',
-        description: 'Nhân viên check-in/check-out bằng vị trí trình duyệt.',
+        title: 'Chấm công',
+        description: 'Check-in/check-out bằng mạng văn phòng hoặc vị trí GPS.',
         colorScheme: 'teal',
         path: '/hr/attendance',
       },
       {
         icon: MapPin,
         title: 'Quản lý điểm chấm công',
-        description: 'Tạo điểm GPS, bán kính và xem log audit toàn bộ nhân viên.',
+        description: 'Đăng ký mạng văn phòng, điểm GPS và xem lịch sử chấm công.',
         colorScheme: 'purple',
         path: '/hr/attendance-admin',
         requiredRoleMask: MANAGER_ROLES,

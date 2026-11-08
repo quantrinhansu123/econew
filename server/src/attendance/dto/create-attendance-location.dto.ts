@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { AttendanceVerificationMethod } from '../attendance.enums';
 
 export class CreateAttendanceLocationDto {
   @ApiProperty()
@@ -12,19 +13,34 @@ export class CreateAttendanceLocationDto {
   @IsString()
   address?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(-90)
   @Max(90)
-  latitude: number;
+  latitude?: number;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(-180)
   @Max(180)
-  longitude: number;
+  longitude?: number;
+
+  @ApiPropertyOptional({ enum: AttendanceVerificationMethod, default: AttendanceVerificationMethod.GPS })
+  @IsOptional()
+  @IsEnum(AttendanceVerificationMethod)
+  verification_method?: AttendanceVerificationMethod;
+
+  @ApiPropertyOptional({ type: [String], description: 'Public IP addresses or office IPv6 prefixes' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(64, { each: true })
+  allowed_ips?: string[];
 
   @ApiPropertyOptional({ default: 100, minimum: 50, maximum: 500 })
   @IsOptional()

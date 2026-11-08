@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { UserEntity } from '../users/user.entity';
-import { AttendanceCheckType, AttendanceLogStatus } from './attendance.enums';
+import { AttendanceCheckType, AttendanceLogStatus, AttendanceVerificationMethod } from './attendance.enums';
 import { AttendanceLocationEntity } from './attendance-location.entity';
 
 @Entity('attendance_logs')
@@ -25,11 +25,17 @@ export class AttendanceLogEntity {
   @Column({ type: 'varchar', length: 16 })
   type: AttendanceCheckType;
 
-  @Column({ type: 'double precision' })
-  user_latitude: number;
+  @Column({ type: 'double precision', nullable: true })
+  user_latitude: number | null;
 
-  @Column({ type: 'double precision' })
-  user_longitude: number;
+  @Column({ type: 'double precision', nullable: true })
+  user_longitude: number | null;
+
+  @Column({ type: 'varchar', length: 45, nullable: true })
+  source_ip: string | null;
+
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  verification_method: AttendanceVerificationMethod | null;
 
   @Column({ type: 'double precision', nullable: true })
   accuracy: number | null;

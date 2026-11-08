@@ -1,11 +1,13 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Headers, HttpCode, HttpStatus, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequireRoles } from '../auth/decorators/require-roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../common/roles';
 import { UserEntity } from '../users/user.entity';
+import { getClientIp } from '../proxy.config';
 import { AttendanceService } from './attendance.service';
 import { AttendanceCheckDto } from './dto/attendance-check.dto';
 import { CreateAttendanceLocationDto } from './dto/create-attendance-location.dto';
@@ -38,7 +40,14 @@ export class AttendanceController {
   @Get('locations/active')
   @ApiOperation({ summary: 'List active attendance locations' })
   findActiveLocations() {
-    return this.attendanceService.findActiveLocations();
+    return this.attendanceService.listActiveLocations();
+  }
+
+  @Get('network')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'Detect current network and eligible IP attendance location' })
+  getNetworkStatus(@Req() request: Request) {
+    return this.attendanceService.getNetworkStatus(getClientIp(request));
   }
 
   @Put('locations/:id')
@@ -75,9 +84,9 @@ export class AttendanceController {
   }
 
   @Post('check')
-  @ApiOperation({ summary: 'Check in or check out by GPS' })
-  checkAttendance(@Body() dto: AttendanceCheckDto, @CurrentUser() user: UserEntity, @Headers('user-agent') userAgent?: string) {
-    return this.attendanceService.checkAttendance(user, dto, userAgent);
+  @ApiOperation({ summary: 'Check in or check out by registered network or GPS' })
+  checkAttendance(@Body() dto: AttendanceCheckDto, @CurrentUser() user: UserEntity, @Req() request: Request, @Headers('user-agent') userAgent?: string) {
+    return this.attendanceService.checkAttendance(user, dto, userAgent, getClientIp(request));
   }
 
   @Get('my-logs')

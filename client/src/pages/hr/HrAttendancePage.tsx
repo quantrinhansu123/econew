@@ -1,46 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, Loader2, LogIn, LogOut, MapPin, Navigation } from 'lucide-react';
+import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Clock, Loader2, LogIn, LogOut, MapPin, Navigation, Wifi } from 'lucide-react';
 import { ApiError, apiRequest } from '../../lib/api';
-
-type AttendanceLog = {
-  id: string;
-  type: 'check_in' | 'check_out';
-  status: 'success' | 'failed';
-  distance_meters: number | null;
-  accuracy: number | null;
-  accuracy_warning: boolean;
-  created_at: string;
-  location?: AttendanceLocation | null;
-};
-
-type AttendanceLocation = {
-  id: string;
-  name: string;
-  address: string | null;
-  latitude: number;
-  longitude: number;
-  radius_meters: number;
-  is_active: boolean;
-};
+import { getAttendanceNetwork, submitAttendanceCheck } from './attendanceApi';
+import type { AttendanceLocation, AttendanceLog, AttendanceNetworkStatus } from './attendanceTypes';
 
 type TodayStatus = {
   date: string;
   check_in: AttendanceLog | null;
   check_out: AttendanceLog | null;
-};
-
-type CheckResponse = {
-  success: boolean;
-  message: string;
-  accuracy_warning: boolean;
-  distance_meters: number;
-  location: AttendanceLocation;
-};
-
-const geolocationOptions: PositionOptions = {
-  enableHighAccuracy: true,
-  timeout: 15_000,
-  maximumAge: 0,
 };
 
 const formatTime = (value?: string | null) => value ? new Date(value).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—';
@@ -56,6 +23,7 @@ const gpsErrorMessage = (error: GeolocationPositionError) => {
 export default function HrAttendancePage() {
   const [today, setToday] = useState<TodayStatus | null>(null);
   const [activeLocations, setActiveLocations] = useState<AttendanceLocation[]>([]);
+  const [network, setNetwork] = useState<AttendanceNetworkStatus | null>(null);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState<AttendanceLog['type'] | null>(null);
@@ -68,17 +36,17 @@ export default function HrAttendancePage() {
   }, [today]);
 
   const loadData = useCallback(async () => {
-    setLoading(true);
-    setMessage(null);
     try {
-      const [todayRes, locationsRes, logsRes] = await Promise.all([
+      const [todayRes, locationsRes, logsRes, networkRes] = await Promise.all([
         apiRequest<TodayStatus>('/attendance/today'),
         apiRequest<AttendanceLocation[]>('/attendance/locations/active'),
         apiRequest<{ items: AttendanceLog[] }>('/attendance/my-logs?limit=10'),
+        getAttendanceNetwork(),
       ]);
       setToday(todayRes);
       setActiveLocations(locationsRes);
       setLogs(logsRes.items ?? []);
+      setNetwork(networkRes);
     } catch (error) {
       setMessage({ tone: 'error', text: error instanceof ApiError ? error.message : 'Không tải được dữ liệu chấm công.' });
     } finally {
@@ -87,39 +55,21 @@ export default function HrAttendancePage() {
   }, []);
 
   useEffect(() => {
-    void loadData();
+    startTransition(async () => { await loadData(); });
   }, [loadData]);
-
-  const getPosition = () => new Promise<GeolocationPosition>((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Trình duyệt không hỗ trợ GPS.'));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, geolocationOptions);
-  });
 
   async function submitCheck(type: AttendanceLog['type']) {
     setChecking(type);
-    setMessage({ tone: 'warning', text: 'Đang xin quyền GPS và lấy tọa độ hiện tại...' });
     try {
-      const position = await getPosition();
-      const res = await apiRequest<CheckResponse>('/attendance/check', {
-        method: 'POST',
-        body: {
-          type,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-        },
-      });
+      const { result: res } = await submitAttendanceCheck(type, (text) => setMessage({ tone: 'warning', text }));
       setMessage({
         tone: res.accuracy_warning ? 'warning' : 'success',
-        text: `${res.message} Địa điểm: ${res.location.name}, khoảng cách ${Math.round(res.distance_meters)}m.`,
+        text: `${res.message} Địa điểm: ${res.location.name}${res.verification_method === 'ip' ? ' · xác thực bằng mạng văn phòng.' : `, khoảng cách ${Math.round(res.distance_meters ?? 0)}m.`}`,
       });
       await loadData();
     } catch (error) {
-      if (error instanceof GeolocationPositionError) {
-        setMessage({ tone: 'error', text: gpsErrorMessage(error) });
+      if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'number') {
+        setMessage({ tone: 'error', text: gpsErrorMessage(error as GeolocationPositionError) });
       } else if (error instanceof Error && error.message === 'Trình duyệt không hỗ trợ GPS.') {
         setMessage({ tone: 'error', text: error.message });
       } else if (error instanceof ApiError) {
@@ -139,17 +89,17 @@ export default function HrAttendancePage() {
     <div className="h-full min-h-0 flex flex-col gap-4 p-4 md:p-6 overflow-auto custom-scrollbar">
       <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
         <div>
-          <p className="text-[12px] font-bold uppercase tracking-wide text-primary">GPS Attendance</p>
-          <h1 className="text-2xl font-black text-foreground">Chấm công theo vị trí</h1>
-          <p className="text-sm text-muted-foreground">Hệ thống lấy GPS trực tiếp, không dùng vị trí cache.</p>
+          <p className="text-[12px] font-bold uppercase tracking-wide text-primary">Chấm công nhân viên</p>
+          <h1 className="text-2xl font-black text-foreground">Chấm công</h1>
+          <p className="text-sm text-muted-foreground">Xác thực bằng mạng văn phòng hoặc vị trí theo cấu hình từng điểm.</p>
         </div>
-        <button type="button" onClick={() => void loadData()} className="h-11 rounded-xl border border-border px-4 text-[13px] font-bold hover:bg-muted sm:h-10">
+        <button type="button" disabled={loading || checking !== null} onClick={() => { setLoading(true); setMessage(null); void loadData(); }} className="h-11 rounded-xl border border-border px-4 text-[13px] font-bold hover:bg-muted disabled:opacity-50 sm:h-10">
           Làm mới
         </button>
       </div>
 
       {message && (
-        <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${message.tone === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : message.tone === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+        <div role="status" aria-live="polite" className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${message.tone === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : message.tone === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
           {message.text}
         </div>
       )}
@@ -182,8 +132,8 @@ export default function HrAttendancePage() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[11px] font-black uppercase tracking-wide text-white/75 group-disabled:text-slate-500">{nextAction === 'check_in' ? 'Bước 1' : 'Bước 2'}</span>
-                  <span className="block text-lg font-black leading-tight">{checking ? 'Đang lấy vị trí GPS...' : nextAction === 'check_in' ? 'Check-in ngay' : 'Check-out ngay'}</span>
-                  <span className="mt-1 block text-xs font-semibold text-white/80 group-disabled:text-slate-500">Hệ thống sẽ xin quyền vị trí và kiểm tra bán kính tự động.</span>
+                  <span className="block text-lg font-black leading-tight">{checking ? 'Đang kiểm tra...' : nextAction === 'check_in' ? 'Check-in ngay' : 'Check-out ngay'}</span>
+                  <span className="mt-1 block text-xs font-semibold text-white/80 group-disabled:text-slate-500">{network?.matched_location ? 'Đã kết nối mạng chấm công. Không cần cấp quyền GPS.' : 'Hệ thống tự kiểm tra mạng hoặc vị trí hợp lệ.'}</span>
                 </span>
               </button>
             ) : (
@@ -207,14 +157,19 @@ export default function HrAttendancePage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><MapPin size={24} /></div>
             <div>
               <h2 className="text-lg font-black">Điểm đang hoạt động</h2>
-              <p className="text-sm text-muted-foreground">Cần nằm trong bán kính của một điểm.</p>
+              <p className="text-sm text-muted-foreground">Kết nối đúng mạng hoặc ở trong bán kính của điểm GPS.</p>
             </div>
           </div>
+          {network && <div className={`mt-4 rounded-2xl border p-3 text-sm ${network.matched_location ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-border bg-slate-50 text-muted-foreground'}`}>
+            <p className="flex items-center gap-2 font-bold"><Wifi size={16} aria-hidden="true" />{network.matched_location ? `Mạng hợp lệ: ${network.matched_location.name}` : 'Chưa kết nối mạng chấm công đã đăng ký'}</p>
+            <p className="mt-1 break-all text-xs">IP hiện tại: {network.ip ?? 'Không xác định'}</p>
+            {!network.is_public && <p className="mt-1 text-xs">Chưa xác định được IP public. Chấm công theo mạng cần truy cập qua hệ thống đã triển khai.</p>}
+          </div>}
           <div className="mt-4 space-y-2">
             {activeLocations.length ? activeLocations.map((location) => (
               <div key={location.id} className="rounded-2xl border border-border p-3">
                 <p className="font-bold text-foreground">{location.name}</p>
-                <p className="text-xs text-muted-foreground">{location.address || 'Chưa có địa chỉ'} · Bán kính {location.radius_meters}m</p>
+                <p className="text-xs text-muted-foreground">{location.address || 'Chưa có địa chỉ'} · {location.verification_method === 'ip' ? 'Mạng văn phòng' : `Bán kính ${location.radius_meters}m`}</p>
               </div>
             )) : <EmptyState text="Chưa có điểm chấm công hoạt động." />}
           </div>
@@ -233,7 +188,7 @@ export default function HrAttendancePage() {
             <div className="hidden overflow-auto md:block">
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <tr>{['Thời gian', 'Loại', 'Địa điểm', 'Khoảng cách', 'GPS', 'Trạng thái'].map((h) => <th key={h} className="px-4 py-3 font-black">{h}</th>)}</tr>
+                  <tr>{['Thời gian', 'Loại', 'Địa điểm', 'Khoảng cách', 'Xác thực', 'Trạng thái'].map((h) => <th key={h} className="px-4 py-3 font-black">{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {logs.map((log) => <LogRow key={log.id} log={log} />)}
@@ -276,7 +231,7 @@ function LogCard({ log }: { log: AttendanceLog }) {
       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
         <InfoChip label="Địa điểm" value={log.location?.name ?? '—'} />
         <InfoChip label="Khoảng cách" value={log.distance_meters == null ? '—' : `${Math.round(log.distance_meters)}m`} />
-        <InfoChip label="GPS" value={log.accuracy == null ? '—' : `${Math.round(log.accuracy)}m`} />
+        <InfoChip label="Xác thực" value={log.verification_method === 'ip' ? 'Mạng văn phòng' : log.accuracy == null ? '—' : `GPS ±${Math.round(log.accuracy)}m`} />
         <InfoChip label="Cảnh báo" value={log.accuracy_warning ? 'Có' : 'Không'} />
       </div>
     </article>
@@ -288,7 +243,7 @@ function InfoChip({ label, value }: { label: string; value: string }) {
 }
 
 function LogRow({ log }: { log: AttendanceLog }) {
-  return <tr className="hover:bg-muted/40"><td className="px-4 py-3 font-semibold">{new Date(log.created_at).toLocaleString('vi-VN')}</td><td className="px-4 py-3">{logTypeLabel(log.type)}</td><td className="px-4 py-3">{log.location?.name ?? '—'}</td><td className="px-4 py-3">{log.distance_meters == null ? '—' : `${Math.round(log.distance_meters)}m`}</td><td className="px-4 py-3">{log.accuracy == null ? '—' : `${Math.round(log.accuracy)}m`}{log.accuracy_warning ? ' · cảnh báo' : ''}</td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${log.status === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{log.status === 'success' ? 'Thành công' : 'Thất bại'}</span></td></tr>;
+  return <tr className="hover:bg-muted/40"><td className="px-4 py-3 font-semibold">{new Date(log.created_at).toLocaleString('vi-VN')}</td><td className="px-4 py-3">{logTypeLabel(log.type)}</td><td className="px-4 py-3">{log.location?.name ?? '—'}</td><td className="px-4 py-3">{log.distance_meters == null ? '—' : `${Math.round(log.distance_meters)}m`}</td><td className="px-4 py-3">{log.verification_method === 'ip' ? 'Mạng văn phòng' : log.accuracy == null ? '—' : `GPS ±${Math.round(log.accuracy)}m`}{log.accuracy_warning ? ' · cảnh báo' : ''}</td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${log.status === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{log.status === 'success' ? 'Thành công' : 'Thất bại'}</span></td></tr>;
 }
 
 function EmptyState({ text }: { text: string }) {

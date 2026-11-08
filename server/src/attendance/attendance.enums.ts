@@ -7,3 +7,8 @@ export enum AttendanceLogStatus {
   SUCCESS = 'success',
   FAILED = 'failed',
 }
+
+export enum AttendanceVerificationMethod {
+  GPS = 'gps',
+  IP = 'ip',
+}

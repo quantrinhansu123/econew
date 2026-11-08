@@ -50,3 +50,4 @@ Chi tiết: [docs/DEPLOY.md](docs/DEPLOY.md)
 - [AGENTS.md](AGENTS.md) — quy ước nghiệp vụ & tech stack
 - [STYLE_GUIDE.md](STYLE_GUIDE.md) — UI/component patterns
 - [docs/MONEY_FORMAT.md](docs/MONEY_FORMAT.md) — định dạng VNĐ
+- [docs/ATTENDANCE_NETWORK.md](docs/ATTENDANCE_NETWORK.md) — đăng ký mạng văn phòng và chấm công theo IP/GPS
