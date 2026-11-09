@@ -2,6 +2,7 @@ import React from 'react';
 import { clsx } from 'clsx';
 import { HelpCircle, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { buildEcoSsoToken, isStandaloneAppNavigationPath } from '../../lib/hrmLink';
 
 export interface ModuleCardProps {
   icon: React.ElementType;
@@ -33,14 +34,17 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({
   path
 }) => {
   const navigate = useNavigate();
-  const isExternalUrl = Boolean(path && /^https?:\/\//i.test(path));
-  const isPlaceholderPath = (!isExternalUrl && path?.includes('/:')) ?? false;
+  const isStandaloneApp = isStandaloneAppNavigationPath(path);
+  const isPlaceholderPath = (!isStandaloneApp && path?.includes('/:')) ?? false;
   const isNavigable = Boolean(path) && !isPlaceholderPath;
 
   const handleClick = () => {
     if (!isNavigable || !path) return;
-    if (isExternalUrl) {
-      window.location.assign(path);
+    if (isStandaloneApp) {
+      const baseWithoutOldSso = path.replace(/([?&])eco_sso=[^&]*/g, '').replace(/[?&]$/, '');
+      const sep = baseWithoutOldSso.includes('?') ? '&' : '?';
+      const freshSsoUrl = `${baseWithoutOldSso}${sep}eco_sso=${encodeURIComponent(buildEcoSsoToken())}`;
+      window.location.assign(freshSsoUrl);
       return;
     }
     navigate(path);
@@ -62,22 +66,30 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({
       >
         <Icon size={22} />
       </div>
-      
+
       <div className="flex-1 min-w-0 pr-2">
-        <h3 className="font-bold text-[14px] text-foreground mb-0.5 truncate transition-colors">
+        <h3 className="text-[14px] font-medium text-foreground truncate group-hover:text-primary transition-colors">
           {title}
         </h3>
-        <p className="text-[12px] text-muted-foreground truncate leading-snug">
+        <p className="text-[12px] text-muted-foreground line-clamp-2 mt-0.5 leading-snug">
           {description}
         </p>
       </div>
 
-      <div className="flex shrink-0 flex-col gap-1 text-muted-foreground/30" onClick={(e) => e.stopPropagation()}>
-        <button className="flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-amber-50 hover:text-amber-500" title="Đánh dấu" aria-label={`Đánh dấu ${title}`}>
-          <Star size={15} />
+      <div className="flex flex-col items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity self-start mt-0.5 shrink-0">
+        <button 
+          type="button" 
+          onClick={(e) => { e.stopPropagation(); }}
+          className="text-muted-foreground hover:text-amber-400 transition-colors p-0.5"
+        >
+          <Star size={14} />
         </button>
-        <button className="flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-primary/5 hover:text-primary" title="Hướng dẫn sử dụng" aria-label={`Hướng dẫn ${title}`}>
-          <HelpCircle size={15} />
+        <button 
+          type="button" 
+          onClick={(e) => { e.stopPropagation(); }}
+          className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+        >
+          <HelpCircle size={14} />
         </button>
       </div>
     </div>
