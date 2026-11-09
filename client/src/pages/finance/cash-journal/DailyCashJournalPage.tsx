@@ -21,6 +21,7 @@ import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '../../../lib/api';
 import { formatAmountInput, formatMoney, parseAmountInput } from '../../../lib/formatMoney';
+import DraggableScrollTableContainer from '../../../components/ui/DraggableScrollTableContainer';
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { ReceiptImageLinks, ReceiptImagePicker } from '../../../components/finance/ReceiptImagePicker';
 import { defaultExpenseCategoryNames, loadExpenseCategoryNames } from '../../../lib/expenseCategories';
@@ -643,7 +644,7 @@ export default function DailyCashJournalPage() {
   const colFilterInputClass = 'mt-1 h-7 w-full min-w-[72px] rounded border border-slate-300 bg-white px-2 text-[11px] font-medium normal-case text-slate-800 outline-none focus:border-primary';
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex h-[calc(100dvh-108px)] max-h-[calc(100dvh-108px)] min-h-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-white px-3 py-3">
         <button type="button" onClick={() => navigate(-1)} title="Quay lại" className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted"><ArrowLeft size={16} /></button>
         <div className="min-w-0 flex-1">
@@ -726,7 +727,7 @@ export default function DailyCashJournalPage() {
       {syncMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] font-bold text-emerald-800">{syncMessage}</p>}
       {syncError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-bold text-red-700">{syncError}</p>}
 
-      <div className="min-h-0 flex-1 overflow-auto bg-white custom-scrollbar">
+      <DraggableScrollTableContainer>
         {loading ? <State icon={<Loader2 className="animate-spin" />} title="Đang tải nhật ký" /> : error ? <State icon={<AlertTriangle />} title={error} /> : entries.length === 0 ? <State icon={<Receipt />} title="Chưa có giao dịch phù hợp" /> : <>
           <table className="hidden min-w-[1650px] w-full border-collapse text-left md:table">
             <thead className="sticky top-0 z-10 bg-slate-100 text-[10px] uppercase text-slate-600">
@@ -805,7 +806,7 @@ export default function DailyCashJournalPage() {
           </table>
           <div className="grid gap-2 p-3 md:hidden">{filteredEntries.map((entry) => <JournalCard key={entry.id} entry={entry} syncing={syncingId === entry.id} onSync={() => void syncFromWaybill(entry)} onEdit={() => openEdit(entry)} onRemove={() => void remove(entry)} />)}</div>
         </>}
-      </div>
+      </DraggableScrollTableContainer>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-white px-3 py-2 text-[12px] text-muted-foreground">
         <span>

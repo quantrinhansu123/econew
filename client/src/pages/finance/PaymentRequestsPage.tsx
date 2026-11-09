@@ -31,6 +31,7 @@ import {
   ReceiptImageLinks,
   ReceiptImagePicker,
 } from "../../components/finance/ReceiptImagePicker";
+import DraggableScrollTableContainer from "../../components/ui/DraggableScrollTableContainer";
 import { SearchableSelect } from "../../components/ui/SearchableSelect";
 
 export interface PaymentRequestItem {
@@ -359,7 +360,7 @@ export default function PaymentRequestsPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex h-[calc(100dvh-108px)] max-h-[calc(100dvh-108px)] min-h-0 flex-col gap-3">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-white p-4 shadow-sm">
         <div>
@@ -501,7 +502,7 @@ export default function PaymentRequestsPage() {
       )}
 
       {/* Table */}
-      <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-border bg-white shadow-sm">
+      <DraggableScrollTableContainer>
         {loading ? (
           <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">
             <Loader2 size={18} className="mr-2 animate-spin" />
@@ -805,7 +806,7 @@ export default function PaymentRequestsPage() {
             </tbody>
           </table>
         )}
-      </div>
+      </DraggableScrollTableContainer>
 
       {/* Create Modal */}
       {createOpen && (

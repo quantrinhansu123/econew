@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import DraggableScrollTableContainer from "../../components/ui/DraggableScrollTableContainer";
 import CashFundSelect from "../../components/finance/CashFundSelect";
 import { ApiError, apiRequest } from "../../lib/api";
 import {
@@ -328,22 +329,19 @@ export default function FinancePayrollPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex h-[calc(100dvh-108px)] max-h-[calc(100dvh-108px)] min-h-0 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-black">
-              Bảng lương tổng hợp (Giao diện nhập nhanh Excel)
-            </h1>
+            <h1 className="text-xl font-black">Bảng lương tổng hợp</h1>
             <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-primary">
               Độc lập theo từng tháng
             </span>
           </div>
           <p className="text-sm text-muted-foreground">
-            Gõ trực tiếp trên từng dòng như Excel: Công thử việc (80%) + Công
-            chính (100%) + Tăng ca + Phụ cấp + Thưởng = Tổng lương nhận − BHXH −
-            Đã ứng = Thực nhận. Bấm vào nhân sự để xem Bảng phân bổ cấu thành
-            lương.
+            Công thử việc (80%) + Công chính (100%) + Tăng ca + Phụ cấp + Thưởng
+            = Tổng lương nhận − BHXH − Đã ứng = Thực nhận. Bấm vào nhân sự để
+            xem Bảng phân bổ cấu thành lương.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -421,7 +419,7 @@ export default function FinancePayrollPage() {
         </p>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-white shadow-sm">
+      <DraggableScrollTableContainer>
         {loading ? (
           <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">
             <Loader2 size={18} className="mr-2 animate-spin" />
@@ -442,7 +440,7 @@ export default function FinancePayrollPage() {
             onPay={setPayingRow}
           />
         )}
-      </div>
+      </DraggableScrollTableContainer>
 
       {selectedRow && (
         <PayrollPayslipDrawer
