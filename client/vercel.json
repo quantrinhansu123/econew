@@ -6,6 +6,14 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/hrm",
+      "destination": "/hrm/index.html"
+    },
+    {
+      "source": "/hrm/(.*)",
+      "destination": "/hrm/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
