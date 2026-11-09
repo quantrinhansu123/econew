@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { AlertCircle, ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Truck } from 'lucide-react';
+import { AlertCircle, ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { ApiError, apiRequest } from '../lib/api';
@@ -123,8 +123,8 @@ const LoginPage: React.FC = () => {
         <div className="relative hidden overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-blue-800 p-10 text-white lg:flex lg:flex-col lg:justify-between">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(59,130,246,0.38),transparent_34%),radial-gradient(circle_at_80%_10%,rgba(14,165,233,0.24),transparent_28%)]" />
           <div className="relative z-10 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/12 shadow-lg ring-1 ring-white/15 backdrop-blur">
-              <Truck size={26} />
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-1.5 shadow-lg ring-1 ring-white/25">
+              <img src="/logo-express-exacting.png" alt="ECO Transport" className="h-full w-full object-contain" />
             </div>
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.32em] text-blue-100/80">ECO Transport</p>

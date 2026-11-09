@@ -28,6 +28,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import type { ModuleCardProps } from '../components/ui/ModuleCard';
+import { getHrmUrl } from '../lib/hrmLink';
 
 const WAREHOUSE_STAFF = 1;
 const PACKER = 2;
@@ -152,6 +153,21 @@ export const moduleGroups: ModuleGroup[] = [
     section: 'Nhân sự',
     requiredRoleMask: MANAGER_ROLES,
     items: [
+      {
+        icon: Clock,
+        title: 'Cổng Chấm công Online & Wi-Fi (HRM)',
+        description: 'Mở hệ thống HRM riêng để chấm công online, chụp ảnh và kiểm tra Wi-Fi văn phòng.',
+        colorScheme: 'blue',
+        path: getHrmUrl('/cham-cong-online'),
+      },
+      {
+        icon: IdCard,
+        title: 'Quản trị Nhân sự & Bảng công (HRM)',
+        description: 'Mở bảng công tổng hợp, lịch sử chấm công, đăng ký ca và cài đặt Wi-Fi trên HRM.',
+        colorScheme: 'emerald',
+        path: getHrmUrl('/bang-cong-preview'),
+        requiredRoleMask: MANAGER_ROLES,
+      },
       {
         icon: Users,
         title: 'Danh sách nhân sự',

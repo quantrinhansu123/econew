@@ -1,6 +1,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, Loader2, LogIn, LogOut, MapPin, Navigation, Wifi } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Loader2, LogIn, LogOut, MapPin, Navigation, Wifi } from 'lucide-react';
 import { ApiError, apiRequest } from '../../lib/api';
+import { getHrmUrl } from '../../lib/hrmLink';
 import { getAttendanceNetwork, submitAttendanceCheck } from './attendanceApi';
 import type { AttendanceLocation, AttendanceLog, AttendanceNetworkStatus } from './attendanceTypes';
 
@@ -93,9 +94,18 @@ export default function HrAttendancePage() {
           <h1 className="text-2xl font-black text-foreground">Chấm công</h1>
           <p className="text-sm text-muted-foreground">Xác thực bằng mạng văn phòng hoặc vị trí theo cấu hình từng điểm.</p>
         </div>
-        <button type="button" disabled={loading || checking !== null} onClick={() => { setLoading(true); setMessage(null); void loadData(); }} className="h-11 rounded-xl border border-border px-4 text-[13px] font-bold hover:bg-muted disabled:opacity-50 sm:h-10">
-          Làm mới
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={getHrmUrl('/cham-cong-online')}
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-bold text-white shadow-sm hover:bg-primary/90 sm:h-10"
+          >
+            <ExternalLink size={15} />
+            <span>Mở Chấm công Online / Wi-Fi (HRM)</span>
+          </a>
+          <button type="button" disabled={loading || checking !== null} onClick={() => { setLoading(true); setMessage(null); void loadData(); }} className="h-11 rounded-xl border border-border px-4 text-[13px] font-bold hover:bg-muted disabled:opacity-50 sm:h-10">
+            Làm mới
+          </button>
+        </div>
       </div>
 
       {message && (

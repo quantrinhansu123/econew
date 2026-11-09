@@ -4,7 +4,6 @@ import { sidebarMenu, extraMenuItems } from '../../data/sidebarMenu';
 import type { SidebarItem } from '../../data/sidebarMenu';
 import { getModulePathForRoute } from '../../data/moduleData';
 import { clsx } from 'clsx';
-import { Sparkles } from 'lucide-react'; // Placeholder for the app logo icon
 
 interface SidebarProps {
   isOpen: boolean;
@@ -37,14 +36,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
           isOpen ? "px-4" : "justify-center"
         )}>
           <div className={clsx(
-            "rounded-xl bg-primary text-white flex items-center justify-center shrink-0 transition-all duration-300",
-            isOpen ? "w-8 h-8" : "w-10 h-10"
+            "rounded-xl bg-white border border-border flex items-center justify-center shrink-0 transition-all duration-300 p-1 shadow-xs",
+            isOpen ? "w-9 h-9" : "w-10 h-10"
           )}>
-            <Sparkles size={20} />
+            <img src="/logo-express-exacting.png" alt="ECO Transport" className="h-full w-full object-contain" />
           </div>
           <div className={clsx("flex flex-col ml-3 whitespace-nowrap transition-opacity duration-300", !isOpen && "opacity-0 hidden")}>
             <span className="font-bold text-[15px] leading-tight text-foreground">ECO Transport</span>
-            <span className="text-[11px] text-muted-foreground leading-tight">Logistics B2B Management</span>
+            <span className="text-[11px] text-muted-foreground leading-tight">Express &amp; Exacting</span>
           </div>
         </div>
 

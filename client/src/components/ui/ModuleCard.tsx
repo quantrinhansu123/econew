@@ -33,13 +33,17 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({
   path
 }) => {
   const navigate = useNavigate();
-  const isPlaceholderPath = path?.includes('/:') ?? false;
+  const isExternalUrl = Boolean(path && /^https?:\/\//i.test(path));
+  const isPlaceholderPath = (!isExternalUrl && path?.includes('/:')) ?? false;
   const isNavigable = Boolean(path) && !isPlaceholderPath;
 
   const handleClick = () => {
-    if (isNavigable && path) {
-      navigate(path);
+    if (!isNavigable || !path) return;
+    if (isExternalUrl) {
+      window.location.assign(path);
+      return;
     }
+    navigate(path);
   };
 
   return (
