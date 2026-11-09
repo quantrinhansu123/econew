@@ -106,6 +106,7 @@ export class StaffMemberService {
     const department = dto.department_id ? await this.getActiveDepartment(dto.department_id) : null;
     await this.assertUnique(dto.employee_code ?? entity.employee_code, dto.phone ?? entity.phone, dto.user_id === undefined ? entity.user_id ?? undefined : dto.user_id, id);
     await this.assertReferences(dto.hub_id, dto.user_id);
+    await this.snapshotPreviousMonthsCompensationIfNeeded(entity, dto);
     Object.assign(entity, this.mapDto(dto));
     if (dto.employee_code !== undefined) entity.employee_code = dto.employee_code.trim().toUpperCase();
     if (dto.full_name !== undefined) entity.full_name = dto.full_name.trim();
@@ -250,7 +251,24 @@ export class StaffMemberService {
         hub_id: String(hubId),
         cash_journal_entry_id: journal.id,
         created_by: currentUser.id,
-      }));
+      })).then(async (savedPayment) => {
+        const adjRepo = manager.getRepository(StaffPayrollAdjustmentEntity);
+        let adj = await adjRepo.findOne({ where: { staff_member_id: staff.id, payroll_month: month } });
+        if (!adj) {
+          adj = adjRepo.create({ staff_member_id: staff.id, payroll_month: month, reward_amount: '0' });
+        }
+        if (adj.base_salary_override == null) {
+          adj.base_salary_override = String(Number(payrollRow.base_salary || staff.base_salary || 0));
+        }
+        if (adj.allowance_override == null) {
+          adj.allowance_override = String(Number(payrollRow.allowance_total || 0));
+        }
+        if (adj.standard_days_override == null) {
+          adj.standard_days_override = String(Number(payrollRow.standard_work_days || staff.standard_work_days || 26));
+        }
+        await adjRepo.save(adj);
+        return savedPayment;
+      });
     });
   }
 
@@ -433,9 +451,73 @@ export class StaffMemberService {
     if (!await this.staffRepository.exist({ where: { id: staffId } })) throw new NotFoundException('Không tìm thấy nhân sự');
     let adjustment = await this.payrollAdjustmentRepository.findOne({ where: { staff_member_id: staffId, payroll_month: month } });
     if (!adjustment) adjustment = this.payrollAdjustmentRepository.create({ staff_member_id: staffId, payroll_month: month });
-    adjustment.reward_amount = String(dto.reward_amount);
-    adjustment.note = dto.note?.trim() || null;
+    if (dto.reward_amount !== undefined) adjustment.reward_amount = String(dto.reward_amount);
+    if (dto.base_salary_override !== undefined) {
+      adjustment.base_salary_override = dto.base_salary_override == null ? null : String(dto.base_salary_override);
+    }
+    if (dto.allowance_override !== undefined) {
+      adjustment.allowance_override = dto.allowance_override == null ? null : String(dto.allowance_override);
+    }
+    if (dto.standard_days_override !== undefined) {
+      adjustment.standard_days_override = dto.standard_days_override == null ? null : String(dto.standard_days_override);
+    }
+    if (dto.probation_days !== undefined) adjustment.probation_days = String(dto.probation_days);
+    if (dto.probation_rate !== undefined) adjustment.probation_rate = String(dto.probation_rate);
+    if (dto.official_days_override !== undefined) {
+      adjustment.official_days_override = dto.official_days_override == null ? null : String(dto.official_days_override);
+    }
+    if (dto.overtime_hours_override !== undefined) {
+      adjustment.overtime_hours_override = dto.overtime_hours_override == null ? null : String(dto.overtime_hours_override);
+    }
+    if (dto.overtime_pay_override !== undefined) {
+      adjustment.overtime_pay_override = dto.overtime_pay_override == null ? null : String(dto.overtime_pay_override);
+    }
+    if (dto.insurance_deduction !== undefined) adjustment.insurance_deduction = String(dto.insurance_deduction);
+    if (dto.advance_override !== undefined) {
+      adjustment.advance_override = dto.advance_override == null ? null : String(dto.advance_override);
+    }
+    if (dto.salary_tiers !== undefined) {
+      adjustment.salary_tiers = Array.isArray(dto.salary_tiers) ? dto.salary_tiers : [];
+    }
+    if (dto.note !== undefined) adjustment.note = dto.note?.trim() || null;
     return this.payrollAdjustmentRepository.save(adjustment);
+  }
+
+  private async snapshotPreviousMonthsCompensationIfNeeded(entity: StaffMemberEntity, dto: Partial<CreateStaffMemberDto>) {
+    const salaryChanged = dto.base_salary !== undefined && Number(dto.base_salary) !== Number(entity.base_salary || 0);
+    const allowanceChanged = (
+      (dto.meal_allowance !== undefined && Number(dto.meal_allowance) !== Number(entity.meal_allowance || 0))
+      || (dto.transport_allowance !== undefined && Number(dto.transport_allowance) !== Number(entity.transport_allowance || 0))
+      || (dto.other_allowance !== undefined && Number(dto.other_allowance) !== Number(entity.other_allowance || 0))
+    );
+    if ((!salaryChanged && !allowanceChanged) || typeof this.payrollAdjustmentRepository?.findOne !== 'function') {
+      return;
+    }
+    const now = new Date();
+    const prevDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const prevMonth = prevDate.toISOString().slice(0, 7);
+    const oldBase = Number(entity.base_salary || 0);
+    const oldAllowance = Number(entity.meal_allowance || 0) + Number(entity.transport_allowance || 0) + Number(entity.other_allowance || 0);
+    const oldStdDays = Math.max(1, Number(entity.standard_work_days || 26));
+
+    const existingPrev = await this.payrollAdjustmentRepository.findOne({
+      where: { staff_member_id: entity.id, payroll_month: prevMonth },
+    });
+    if (!existingPrev) {
+      await this.payrollAdjustmentRepository.save(this.payrollAdjustmentRepository.create({
+        staff_member_id: entity.id,
+        payroll_month: prevMonth,
+        base_salary_override: String(oldBase),
+        allowance_override: String(oldAllowance),
+        standard_days_override: String(oldStdDays),
+        reward_amount: '0',
+      }));
+    } else if (existingPrev.base_salary_override == null) {
+      existingPrev.base_salary_override = String(oldBase);
+      if (existingPrev.allowance_override == null) existingPrev.allowance_override = String(oldAllowance);
+      if (existingPrev.standard_days_override == null) existingPrev.standard_days_override = String(oldStdDays);
+      await this.payrollAdjustmentRepository.save(existingPrev);
+    }
   }
 
   private mapDto(dto: Partial<CreateStaffMemberDto>) {
@@ -548,27 +630,100 @@ export class StaffMemberService {
     const staffAdjustments = adjustments.filter((item) => String(item.staff_member_id) === String(staff.id));
     const firstDataMonth = [staff.hire_date?.slice(0, 7), staffAttendance[0]?.work_date?.slice(0, 7), staffAdvances[0]?.advance_date?.slice(0, 7), selectedMonth].filter(Boolean).sort()[0] as string;
     let carry = -Number(staff.opening_salary_debt || 0);
-    let selected: Record<string, number | string | null> = {};
+    let selected: Record<string, unknown> = {};
     for (const cursor of this.monthSequence(firstDataMonth, selectedMonth)) {
       const monthAttendance = this.attendanceRecordsWithDefaults(staff, cursor, staffAttendance);
-      const workDays = monthAttendance.reduce((sum, item) => sum + Number(item.work_days || 0), 0);
-      const overtimeHours = monthAttendance.reduce((sum, item) => sum + Number(item.overtime_hours || 0), 0);
-      const standardDays = Math.max(1, Number(staff.standard_work_days || 26));
-      const baseSalary = Number(staff.base_salary || 0);
-      const allowanceTotal = Number(staff.meal_allowance || 0) + Number(staff.transport_allowance || 0) + Number(staff.other_allowance || 0);
-      const baseByAttendance = Math.round(baseSalary / standardDays * workDays);
-      const allowanceByAttendance = Math.round(allowanceTotal / standardDays * workDays);
-      const overtimePay = Math.round(Number(staff.overtime_hourly_rate || 0) * overtimeHours);
+      const attendanceWorkDays = monthAttendance.reduce((sum, item) => sum + Number(item.work_days || 0), 0);
+      const attendanceOvertimeHours = monthAttendance.reduce((sum, item) => sum + Number(item.overtime_hours || 0), 0);
       const adjustment = staffAdjustments.find((item) => item.payroll_month === cursor);
+
+      const standardDays = Math.max(
+        1,
+        adjustment?.standard_days_override != null
+          ? Number(adjustment.standard_days_override)
+          : Number(staff.standard_work_days || 26),
+      );
+      const baseSalary = adjustment?.base_salary_override != null
+        ? Number(adjustment.base_salary_override)
+        : Number(staff.base_salary || 0);
+      const allowanceTotal = adjustment?.allowance_override != null
+        ? Number(adjustment.allowance_override)
+        : Number(staff.meal_allowance || 0) + Number(staff.transport_allowance || 0) + Number(staff.other_allowance || 0);
+
+      const probationDays = Math.max(0, Number(adjustment?.probation_days || 0));
+      const probationRate = adjustment?.probation_rate != null ? Number(adjustment.probation_rate) : 80;
+      const officialDays = adjustment?.official_days_override != null
+        ? Math.max(0, Number(adjustment.official_days_override))
+        : Math.max(0, attendanceWorkDays - probationDays);
+      const workDays = probationDays + officialDays;
+
+      const tiers = Array.isArray(adjustment?.salary_tiers) ? adjustment.salary_tiers : [];
+      const probationSalary = Math.round((baseSalary / standardDays) * probationDays * (probationRate / 100));
+      const officialSalary = Math.round((baseSalary / standardDays) * officialDays);
+
+      let baseByAttendance = 0;
+      if (tiers.length > 0) {
+        baseByAttendance = Math.round(
+          tiers.reduce(
+            (sum, tier) => sum + (Number(tier.base_salary || baseSalary) / standardDays) * Number(tier.work_days || 0) * (Number(tier.rate_percent ?? 100) / 100),
+            0,
+          ),
+        );
+      } else if (probationDays > 0 || adjustment?.official_days_override != null) {
+        baseByAttendance = probationSalary + officialSalary;
+      } else {
+        baseByAttendance = Math.round((baseSalary / standardDays) * workDays);
+      }
+
+      const allowanceByAttendance = Math.round((allowanceTotal / standardDays) * workDays);
+      const overtimeHours = adjustment?.overtime_hours_override != null
+        ? Math.max(0, Number(adjustment.overtime_hours_override))
+        : attendanceOvertimeHours;
+      const overtimePay = adjustment?.overtime_pay_override != null
+        ? Math.round(Number(adjustment.overtime_pay_override))
+        : Math.round(Number(staff.overtime_hourly_rate || 0) * overtimeHours);
       const rewardAmount = Number(adjustment?.reward_amount || 0);
-      const advanceAmount = staffAdvances.filter((item) => item.advance_date.startsWith(cursor)).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      const insuranceDeduction = Math.round(Number(adjustment?.insurance_deduction || 0));
+      const advancesFromVouchers = staffAdvances
+        .filter((item) => item.advance_date.startsWith(cursor))
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      const advanceAmount = adjustment?.advance_override != null
+        ? Math.round(Number(adjustment.advance_override))
+        : advancesFromVouchers;
       const carryIn = carry;
       const salaryBeforeAdvance = Math.round(baseByAttendance + allowanceByAttendance + overtimePay + rewardAmount);
-      const netSalary = Math.round(salaryBeforeAdvance + carryIn - advanceAmount);
+      const netSalary = Math.round(salaryBeforeAdvance + carryIn - insuranceDeduction - advanceAmount);
       carry = Math.min(0, netSalary);
       if (cursor === selectedMonth) {
         const payment = payments.find((item) => String(item.staff_member_id) === String(staff.id) && item.payroll_month === cursor);
-        selected = { work_days: workDays, overtime_hours: overtimeHours, base_by_attendance: baseByAttendance, allowance_total: allowanceTotal, allowance_by_attendance: allowanceByAttendance, overtime_pay: overtimePay, reward_amount: rewardAmount, advance_amount: advanceAmount, carry_in: carryIn, gross_salary: salaryBeforeAdvance, net_salary: netSalary, carry_out: carry, payroll_note: adjustment?.note ?? null, salary_paid_amount: Number(payment?.amount || 0), salary_payment_id: payment?.id || null };
+        selected = {
+          base_salary: String(baseSalary),
+          standard_work_days: String(standardDays),
+          work_days: workDays,
+          attendance_work_days: attendanceWorkDays,
+          probation_days: probationDays,
+          probation_rate: probationRate,
+          probation_salary: probationSalary,
+          official_days: officialDays,
+          official_salary: officialSalary,
+          overtime_hours: overtimeHours,
+          base_by_attendance: baseByAttendance,
+          allowance_total: allowanceTotal,
+          allowance_by_attendance: allowanceByAttendance,
+          overtime_pay: overtimePay,
+          reward_amount: rewardAmount,
+          insurance_deduction: insuranceDeduction,
+          advances_from_vouchers: advancesFromVouchers,
+          advance_amount: advanceAmount,
+          carry_in: carryIn,
+          gross_salary: salaryBeforeAdvance,
+          net_salary: netSalary,
+          carry_out: carry,
+          salary_tiers: tiers,
+          payroll_note: adjustment?.note ?? null,
+          salary_paid_amount: Number(payment?.amount || 0),
+          salary_payment_id: payment?.id || null,
+        };
       }
     }
     return { ...staff, month: selectedMonth, ...selected };

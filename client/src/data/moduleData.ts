@@ -199,6 +199,7 @@ export const moduleGroups: ModuleGroup[] = [
     section: 'Tài chính kế toán',
     requiredRoleMask: ACCOUNTANT | DIRECTOR,
     items: [
+      { icon: ClipboardCheck, title: 'Đề nghị thanh toán', description: 'Các bộ phận lập đề nghị thanh toán; Kế toán & Giám đốc duyệt chuyển thẳng sang Sổ nhật ký thu chi.', colorScheme: 'emerald', path: '/finance/payment-requests' },
       { icon: ClipboardCheck, title: 'Phê duyệt chi phí xe nội bộ', description: 'Duyệt chi phí phát sinh cho xe công ty.', colorScheme: 'blue', path: '/finance/approve/internal', requiredRoleMask: ACCOUNTANT },
       { icon: CreditCard, title: 'Phê duyệt chi phí NCC', description: 'Duyệt chi phí nhà cung cấp vận tải.', colorScheme: 'purple', path: '/finance/approve/vendor', requiredRoleMask: ACCOUNTANT },
       { icon: Building2, title: 'Công nợ & Thanh toán NCC', description: 'Bảng kê chuyến, phiếu chi và sổ cái dư nợ nhà xe.', colorScheme: 'pink', path: '/finance/vendor-debt', requiredRoleMask: ACCOUNTANT },
@@ -232,6 +233,7 @@ export const moduleGroups: ModuleGroup[] = [
     path: '/admin',
     section: 'Dùng chung',
     items: [
+      { icon: ClipboardCheck, title: 'Đề nghị thanh toán', description: 'Các bộ phận lập đề nghị thanh toán trình Kế toán & Giám đốc duyệt.', colorScheme: 'emerald', path: '/finance/payment-requests' },
       { icon: Building2, title: 'Quản lý bưu cục', description: 'Quản lý bưu cục HAN, HCM và thông tin liên quan.', colorScheme: 'blue', path: '/admin/hubs', requiredRoleMask: DIRECTOR },
       { icon: TruckIcon, title: 'Xe nội bộ + tài xế', description: 'Quản lý xe nội bộ HAN/HCM; không gán cố định tài xế vào xe.', colorScheme: 'teal', path: '/admin/trucks', requiredRoleMask: DIRECTOR },
       { icon: Route, title: 'Danh mục tuyến giao', description: 'Mã tuyến dùng khi gán vận đơn và in tồn kho.', colorScheme: 'cyan', path: '/admin/routes', requiredRoleMask: DISPATCHER | MANAGER_ROLES },

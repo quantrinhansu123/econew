@@ -105,8 +105,24 @@ export interface CashFund {
   name: string;
   hub_id?: string | number | null;
   is_active: boolean;
+  opening_balance?: number | string | null;
   note?: string | null;
   balance_amount?: number | string | null;
   collection_count?: number | string | null;
   hub?: HubSummary | null;
+}
+
+export interface CashFundTransfer {
+  id: string;
+  from_fund_id: string;
+  from_fund_code?: string | null;
+  from_fund_name?: string | null;
+  to_fund_id: string;
+  to_fund_code?: string | null;
+  to_fund_name?: string | null;
+  transfer_date: string;
+  amount: number;
+  note?: string | null;
+  created_by_name?: string | null;
+  created_at?: string | null;
 }

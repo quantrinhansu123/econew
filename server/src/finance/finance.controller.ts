@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequireRoles } from '../auth/decorators/require-roles.decorator';
@@ -9,9 +9,11 @@ import { UserEntity } from '../users/user.entity';
 import { ApproveInternalCostDto } from './dto/approve-internal-cost.dto';
 import { ApproveVendorCostDto } from './dto/approve-vendor-cost.dto';
 import { CodReconciliationQueryDto } from './dto/cod-reconciliation-query.dto';
+import { CreateCashFundTransferDto } from './dto/create-cash-fund-transfer.dto';
 import { CreateCashFundDto } from './dto/create-cash-fund.dto';
 import { CreateReconciliationDto } from './dto/create-reconciliation.dto';
 import { HubReconciliationQueryDto } from './dto/hub-reconciliation-query.dto';
+import { ApprovePaymentRequestDto, CreatePaymentRequestDto, QueryPaymentRequestsDto, RejectPaymentRequestDto } from './dto/payment-request.dto';
 import { QueryCashFundsDto } from './dto/query-cash-funds.dto';
 import { QueryHubCodWaybillsDto } from './dto/query-hub-cod-waybills.dto';
 import { QueryReconciliationsDto } from './dto/query-reconciliations.dto';
@@ -21,6 +23,15 @@ import { UpdateRemittanceStatusDto } from './dto/update-remittance-status.dto';
 import { FinanceService } from './finance.service';
 
 const FINANCE_ROLES = [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR];
+const ALL_STAFF_ROLES = [
+  Roles.WAREHOUSE,
+  Roles.PACKER,
+  Roles.DRIVER,
+  Roles.DISPATCHER,
+  Roles.ACCOUNTANT,
+  Roles.MANAGER,
+  Roles.DIRECTOR,
+];
 
 @ApiTags('Finance')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -47,6 +58,62 @@ export class FinanceController {
   @ApiOperation({ summary: 'Update a cash fund' })
   updateCashFund(@Param('id') id: string, @Body() dto: UpdateCashFundDto, @CurrentUser() currentUser: UserEntity) {
     return this.financeService.updateCashFund(id, dto, currentUser);
+  }
+
+  @Get('cash-fund-transfers')
+  @RequireRoles(...FINANCE_ROLES)
+  @ApiOperation({ summary: 'List internal transfers between cash funds' })
+  listCashFundTransfers(@Query('fund_id') fundId: string | undefined, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.listCashFundTransfers(fundId, currentUser);
+  }
+
+  @Post('cash-fund-transfers')
+  @RequireRoles(...FINANCE_ROLES)
+  @ApiOperation({ summary: 'Transfer money between cash funds without recording as expense' })
+  createCashFundTransfer(@Body() dto: CreateCashFundTransferDto, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.createCashFundTransfer(dto, currentUser);
+  }
+
+  @Delete('cash-fund-transfers/:id')
+  @RequireRoles(...FINANCE_ROLES)
+  @ApiOperation({ summary: 'Delete an internal cash fund transfer' })
+  removeCashFundTransfer(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.removeCashFundTransfer(id, currentUser);
+  }
+
+  @Get('payment-requests')
+  @RequireRoles(...ALL_STAFF_ROLES)
+  @ApiOperation({ summary: 'List payment requests' })
+  listPaymentRequests(@Query() query: QueryPaymentRequestsDto, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.listPaymentRequests(query, currentUser);
+  }
+
+  @Post('payment-requests')
+  @RequireRoles(...ALL_STAFF_ROLES)
+  @ApiOperation({ summary: 'Create a payment request' })
+  createPaymentRequest(@Body() dto: CreatePaymentRequestDto, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.createPaymentRequest(dto, currentUser);
+  }
+
+  @Patch('payment-requests/:id/approve')
+  @RequireRoles(...FINANCE_ROLES)
+  @ApiOperation({ summary: 'Approve payment request and optionally post to cash journal' })
+  approvePaymentRequest(@Param('id') id: string, @Body() dto: ApprovePaymentRequestDto, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.approvePaymentRequest(id, dto, currentUser);
+  }
+
+  @Patch('payment-requests/:id/reject')
+  @RequireRoles(...FINANCE_ROLES)
+  @ApiOperation({ summary: 'Reject a payment request' })
+  rejectPaymentRequest(@Param('id') id: string, @Body() dto: RejectPaymentRequestDto, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.rejectPaymentRequest(id, dto, currentUser);
+  }
+
+  @Delete('payment-requests/:id')
+  @RequireRoles(...ALL_STAFF_ROLES)
+  @ApiOperation({ summary: 'Delete a pending payment request' })
+  removePaymentRequest(@Param('id') id: string, @CurrentUser() currentUser: UserEntity) {
+    return this.financeService.removePaymentRequest(id, currentUser);
   }
 
   @Get('hub-cod-waybills')

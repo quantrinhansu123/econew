@@ -26,7 +26,7 @@ export class CashJournalEntryService {
   async list(query: QueryCashJournalEntryDto, currentUser: UserEntity) {
     this.assertFinanceAccess(currentUser);
     const page = query.page ?? 1;
-    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+    const limit = Math.min(5000, Math.max(1, query.limit ?? 20));
     const params: unknown[] = [];
     const where: string[] = [];
     const addParam = (value: unknown) => {
@@ -138,6 +138,113 @@ export class CashJournalEntryService {
   async remove(id: string, currentUser: UserEntity): Promise<void> {
     const entry = await this.findOne(id, currentUser);
     await this.repository.remove(entry);
+  }
+
+  async importEntries(rows: Array<Record<string, unknown>>, currentUser: UserEntity) {
+    this.assertFinanceAccess(currentUser);
+    if (!Array.isArray(rows) || !rows.length) {
+      throw new BadRequestException('File Excel không có dòng dữ liệu hợp lệ');
+    }
+    if (rows.length > 1000) {
+      throw new BadRequestException('Mỗi lần đồng bộ Excel tối đa 1.000 dòng');
+    }
+
+    const [funds, hubs, vendors] = await Promise.all([
+      this.repository.manager.getRepository(CashFundEntity).find({ where: { is_active: true }, relations: ['hub'] }),
+      this.repository.manager.getRepository(HubEntity).find({ where: { is_active: true } }),
+      this.repository.manager.getRepository(VendorEntity).find(),
+    ]);
+
+    const matchFund = (raw: unknown) => {
+      const text = String(raw ?? '').trim().toLocaleLowerCase('vi-VN');
+      if (!text) return funds[0] || null;
+      return funds.find((f) =>
+        String(f.id) === text
+        || f.code?.toLocaleLowerCase('vi-VN') === text
+        || f.name?.toLocaleLowerCase('vi-VN') === text
+        || text.includes(f.code?.toLocaleLowerCase('vi-VN') || '___')
+        || text.includes(f.name?.toLocaleLowerCase('vi-VN') || '___'),
+      ) || null;
+    };
+
+    const matchHub = (raw: unknown) => {
+      const text = String(raw ?? '').trim().toLocaleLowerCase('vi-VN');
+      if (!text) return null;
+      return hubs.find((h) =>
+        String(h.id) === text
+        || h.code?.toLocaleLowerCase('vi-VN') === text
+        || h.name?.toLocaleLowerCase('vi-VN') === text
+        || text.includes(h.code?.toLocaleLowerCase('vi-VN') || '___')
+        || text.includes(h.name?.toLocaleLowerCase('vi-VN') || '___'),
+      ) || null;
+    };
+
+    const matchVendor = (raw: unknown) => {
+      const text = String(raw ?? '').trim().toLocaleLowerCase('vi-VN');
+      if (!text || text === '—' || text === '-') return null;
+      return vendors.find((v) =>
+        String(v.id) === text
+        || v.code?.toLocaleLowerCase('vi-VN') === text
+        || v.name?.toLocaleLowerCase('vi-VN') === text
+        || text.includes(v.code?.toLocaleLowerCase('vi-VN') || '___'),
+      ) || null;
+    };
+
+    const createdByName = currentUser.full_name?.trim() || currentUser.username || 'Kế toán';
+    const entities: CashJournalEntryEntity[] = [];
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const item = rows[index];
+      const rowNo = index + 2;
+      const rawType = String(item.voucher_type || item.type || '').trim().toLocaleLowerCase('vi-VN');
+      const incomeVal = Math.round(Math.abs(Number(item.income_amount ?? 0)));
+      const expenseVal = Math.round(Math.abs(Number(item.expense_amount ?? 0)));
+      const directAmount = Math.round(Math.abs(Number(item.amount ?? 0)));
+      const voucherType: 'Thu' | 'Chi' = rawType.includes('thu') || (incomeVal > 0 && expenseVal === 0) ? 'Thu' : 'Chi';
+      const amount = voucherType === 'Thu' ? (incomeVal || directAmount) : (expenseVal || directAmount);
+
+      if (!amount || amount <= 0) {
+        throw new BadRequestException(`Dòng ${rowNo}: Số tiền phải lớn hơn 0`);
+      }
+
+      const fund = matchFund(item.fund_id || item.fund_code || item.fund_name || item.fund);
+      if (!fund) {
+        throw new BadRequestException(`Dòng ${rowNo}: Không tìm thấy sổ quỹ "${String(item.fund || item.fund_code || '')}"`);
+      }
+
+      const hub = matchHub(item.hub_id || item.hub_code || item.hub_name || item.hub)
+        || (fund.hub_id ? hubs.find((h) => String(h.id) === String(fund.hub_id)) || null : null)
+        || hubs[0]
+        || null;
+
+      const vendor = matchVendor(item.vendor_id || item.vendor_code || item.vendor_name || item.vendor);
+      const entryDate = String(item.entry_date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+      const detail = String(item.detail || item.beneficiary || item.content || 'Đồng bộ Excel').trim();
+      const content = String(item.content || item.detail || 'Đồng bộ từ file Excel').trim();
+      const costCategory = String(item.cost_category || (voucherType === 'Thu' ? 'Thu khác' : '642- chi phí quản lý doanh nghiệp')).trim();
+      const source = String(item.source || (voucherType === 'Thu' ? 'Khách hàng' : 'Nội bộ')).trim();
+
+      entities.push(this.repository.create({
+        entry_date: entryDate,
+        voucher_type: voucherType,
+        source,
+        fund_id: String(fund.id),
+        hub_id: hub ? String(hub.id) : null,
+        vendor_id: vendor ? String(vendor.id) : null,
+        cost_category: costCategory,
+        detail,
+        content,
+        note: String(item.note || '').trim() || null,
+        income_amount: voucherType === 'Thu' ? String(amount) : '0',
+        expense_amount: voucherType === 'Chi' ? String(amount) : '0',
+        attachment_urls: [],
+        created_by_id: currentUser.id,
+        created_by_name: createdByName,
+      }));
+    }
+
+    const saved = await this.repository.save(entities);
+    return { imported: saved.length };
   }
 
   private assertAmounts(dto: Pick<CreateCashJournalEntryDto, 'voucher_type' | 'income_amount' | 'expense_amount'>) {

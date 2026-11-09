@@ -88,15 +88,29 @@ export class FinanceService {
         SELECT expense.fund_id, -expense.amount AS amount
         FROM expenses expense
         WHERE expense.fund_id = ANY($1::bigint[])
+
+        UNION ALL
+
+        SELECT transfer_out.from_fund_id AS fund_id, -transfer_out.amount AS amount
+        FROM cash_fund_transfers transfer_out
+        WHERE transfer_out.from_fund_id = ANY($1::bigint[])
+
+        UNION ALL
+
+        SELECT transfer_in.to_fund_id AS fund_id, transfer_in.amount AS amount
+        FROM cash_fund_transfers transfer_in
+        WHERE transfer_in.to_fund_id = ANY($1::bigint[])
       ) movement
       GROUP BY movement.fund_id
     `, [funds.map((fund) => String(fund.id))]) as Array<{ fund_id: string; balance: string; collection_count: string }>;
     const balanceByFund = new Map(balances.map((row) => [String(row.fund_id), row]));
     return funds.map((fund) => {
       const balance = balanceByFund.get(String(fund.id));
+      const openingBalance = Number((fund as any).opening_balance ?? 0);
       return {
         ...fund,
-        balance_amount: Number(balance?.balance ?? 0),
+        opening_balance: openingBalance,
+        balance_amount: openingBalance + Number(balance?.balance ?? 0),
         collection_count: Number(balance?.collection_count ?? 0),
       };
     });
@@ -120,6 +134,7 @@ export class FinanceService {
       name,
       hub_id: hubId,
       is_active: dto.is_active ?? true,
+      opening_balance: String(Number(dto.opening_balance ?? 0)),
       note: dto.note?.trim() || null,
       created_by: currentUser.id,
     });
@@ -153,6 +168,7 @@ export class FinanceService {
       fund.hub_id = hubId;
     }
     if (dto.is_active !== undefined) fund.is_active = dto.is_active;
+    if (dto.opening_balance !== undefined) fund.opening_balance = String(Number(dto.opening_balance));
     if (dto.note !== undefined) fund.note = dto.note.trim() || null;
     return this.sanitizeCashFund(await this.cashFundsRepository.save(fund));
   }
@@ -438,6 +454,395 @@ export class FinanceService {
     return { hubId: getDefaultHubId(currentUser), canViewSystem: isManager(currentUser.role_mask), canViewProfit: isManager(currentUser.role_mask) };
   }
 
+  async listCashFundTransfers(fundId: string | undefined, currentUser: UserEntity): Promise<Record<string, unknown>[]> {
+    this.assertFinanceRole(currentUser);
+    const params: unknown[] = [];
+    let whereSql = '';
+    if (fundId?.trim()) {
+      params.push(fundId.trim());
+      whereSql = `WHERE (t.from_fund_id = $1::bigint OR t.to_fund_id = $1::bigint)`;
+    }
+    const rows = await this.cashFundsRepository.query(`
+      SELECT
+        t.id::text AS id,
+        t.from_fund_id::text AS from_fund_id,
+        ff.code AS from_fund_code,
+        ff.name AS from_fund_name,
+        t.to_fund_id::text AS to_fund_id,
+        tf.code AS to_fund_code,
+        tf.name AS to_fund_name,
+        t.transfer_date,
+        t.amount,
+        t.note,
+        t.created_by::text AS created_by,
+        t.created_by_name,
+        t.created_at
+      FROM cash_fund_transfers t
+      LEFT JOIN cash_funds ff ON ff.id = t.from_fund_id
+      LEFT JOIN cash_funds tf ON tf.id = t.to_fund_id
+      ${whereSql}
+      ORDER BY t.transfer_date DESC, t.id DESC
+      LIMIT 200
+    `, params) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      ...row,
+      amount: Number(row.amount ?? 0),
+    }));
+  }
+
+  async createCashFundTransfer(dto: { from_fund_id: string; to_fund_id: string; transfer_date?: string; amount: number; note?: string }, currentUser: UserEntity): Promise<Record<string, unknown>> {
+    this.assertFinanceRole(currentUser);
+    const fromFundId = String(dto.from_fund_id || '').trim();
+    const toFundId = String(dto.to_fund_id || '').trim();
+    const amount = Math.round(Number(dto.amount || 0));
+    if (!fromFundId || !toFundId) throw new BadRequestException('Vui lòng chọn sổ quỹ chuyển và sổ quỹ nhận');
+    if (fromFundId === toFundId) throw new BadRequestException('Sổ quỹ chuyển đi và sổ quỹ nhận phải khác nhau');
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('Số tiền chuyển quỹ phải lớn hơn 0');
+
+    const [fromFund, toFund] = await Promise.all([
+      this.cashFundsRepository.findOne({ where: { id: fromFundId, is_active: true } }),
+      this.cashFundsRepository.findOne({ where: { id: toFundId, is_active: true } }),
+    ]);
+    if (!fromFund) throw new NotFoundException('Sổ quỹ chuyển đi không tồn tại hoặc đã ngừng sử dụng');
+    if (!toFund) throw new NotFoundException('Sổ quỹ nhận không tồn tại hoặc đã ngừng sử dụng');
+
+    const transferDate = dto.transfer_date?.trim() || new Date().toISOString().slice(0, 10);
+    const createdByName = (currentUser as any).full_name?.trim() || (currentUser as any).name?.trim() || currentUser.username || 'Kế toán';
+    const inserted = await this.cashFundsRepository.query(`
+      INSERT INTO cash_fund_transfers (from_fund_id, to_fund_id, transfer_date, amount, note, created_by, created_by_name)
+      VALUES ($1::bigint, $2::bigint, $3::date, $4::numeric, $5, $6::bigint, $7)
+      RETURNING id::text AS id, from_fund_id::text AS from_fund_id, to_fund_id::text AS to_fund_id, transfer_date, amount, note, created_by_name, created_at
+    `, [fromFund.id, toFund.id, transferDate, String(amount), dto.note?.trim() || null, currentUser.id, createdByName]) as Array<Record<string, unknown>>;
+
+    return {
+      ...inserted[0],
+      from_fund_code: fromFund.code,
+      from_fund_name: fromFund.name,
+      to_fund_code: toFund.code,
+      to_fund_name: toFund.name,
+      amount,
+    };
+  }
+
+  async removeCashFundTransfer(id: string, currentUser: UserEntity): Promise<{ success: boolean }> {
+    this.assertFinanceRole(currentUser);
+    const deleted = await this.cashFundsRepository.query(
+      `DELETE FROM cash_fund_transfers WHERE id = $1::bigint RETURNING id`,
+      [id],
+    ) as Array<{ id: string }>;
+    if (!deleted.length) throw new NotFoundException('Không tìm thấy giao dịch chuyển quỹ');
+    return { success: true };
+  }
+
+  async listPaymentRequests(query: { q?: string; status?: string; hub_id?: string; date_from?: string; date_to?: string }, currentUser: UserEntity): Promise<Record<string, unknown>[]> {
+    const params: unknown[] = [];
+    const where: string[] = [];
+    const addParam = (value: unknown) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+
+    if (query.q?.trim()) {
+      const kw = addParam(`%${query.q.trim()}%`);
+      where.push(`(pr.request_code ILIKE ${kw} OR pr.beneficiary_name ILIKE ${kw} OR pr.content ILIKE ${kw} OR pr.requester_name ILIKE ${kw} OR pr.department_name ILIKE ${kw} OR COALESCE(pr.cost_category, '') ILIKE ${kw})`);
+    }
+    if (query.status?.trim()) {
+      where.push(`pr.status = ${addParam(query.status.trim())}`);
+    }
+    if (query.hub_id?.trim()) {
+      where.push(`pr.hub_id = ${addParam(query.hub_id.trim())}::bigint`);
+    }
+    if (query.date_from?.trim()) {
+      where.push(`pr.request_date >= ${addParam(query.date_from.trim())}::date`);
+    }
+    if (query.date_to?.trim()) {
+      where.push(`pr.request_date <= ${addParam(query.date_to.trim())}::date`);
+    }
+
+    const isFinanceOrMgr = [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR].some((role) => hasRole(currentUser.role_mask, role));
+    if (!isFinanceOrMgr) {
+      const assignedHubIds = getAssignedHubIds(currentUser);
+      if (assignedHubIds.length) {
+        where.push(`(pr.requester_id = ${addParam(currentUser.id)}::bigint OR pr.hub_id = ANY(${addParam(assignedHubIds)}::bigint[]))`);
+      } else {
+        where.push(`pr.requester_id = ${addParam(currentUser.id)}::bigint`);
+      }
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const rows = await this.cashFundsRepository.query(`
+      SELECT
+        pr.id::text AS id,
+        pr.request_code,
+        pr.request_date,
+        pr.department_name,
+        pr.hub_id::text AS hub_id,
+        h.code AS hub_code,
+        h.name AS hub_name,
+        pr.requester_id::text AS requester_id,
+        pr.requester_name,
+        pr.beneficiary_name,
+        pr.vendor_id::text AS vendor_id,
+        v.code AS vendor_code,
+        v.name AS vendor_name,
+        pr.amount,
+        pr.content,
+        pr.note,
+        pr.attachment_urls,
+        pr.status,
+        pr.fund_id::text AS fund_id,
+        f.code AS fund_code,
+        f.name AS fund_name,
+        pr.cost_category,
+        pr.source,
+        pr.accountant_approved_by::text AS accountant_approved_by,
+        pr.accountant_approved_name,
+        pr.accountant_approved_at,
+        pr.director_approved_by::text AS director_approved_by,
+        pr.director_approved_name,
+        pr.director_approved_at,
+        pr.rejected_by_name,
+        pr.rejected_reason,
+        pr.cash_journal_entry_id::text AS cash_journal_entry_id,
+        pr.created_at,
+        pr.updated_at
+      FROM payment_requests pr
+      LEFT JOIN hubs h ON h.id = pr.hub_id
+      LEFT JOIN vendors v ON v.id = pr.vendor_id
+      LEFT JOIN cash_funds f ON f.id = pr.fund_id
+      ${whereSql}
+      ORDER BY pr.request_date DESC, pr.id DESC
+      LIMIT 300
+    `, params) as Array<Record<string, unknown>>;
+
+    return rows.map((row) => ({
+      ...row,
+      amount: Number(row.amount ?? 0),
+    }));
+  }
+
+  async createPaymentRequest(dto: any, currentUser: UserEntity): Promise<Record<string, unknown>> {
+    const amount = Math.round(Number(dto.amount || 0));
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('Số tiền đề nghị phải lớn hơn 0');
+    if (!dto.beneficiary_name?.trim() || !dto.content?.trim()) {
+      throw new BadRequestException('Vui lòng nhập đối tượng nhận và nội dung đề nghị thanh toán');
+    }
+    const requestDate = dto.request_date?.trim() || new Date().toISOString().slice(0, 10);
+    const ym = requestDate.slice(0, 7).replace('-', '');
+    const countRows = await this.cashFundsRepository.query(
+      `SELECT COUNT(*)::int AS cnt FROM payment_requests WHERE request_code LIKE $1`,
+      [`DNTT-${ym}-%`],
+    ) as Array<{ cnt: number }>;
+    const seq = Number(countRows[0]?.cnt ?? 0) + 1;
+    const requestCode = `DNTT-${ym}-${String(seq).padStart(4, '0')}`;
+    const requesterName = (currentUser as any).full_name?.trim() || (currentUser as any).name?.trim() || currentUser.username || 'Nhân sự';
+    const defaultHubId = dto.hub_id?.trim() || getDefaultHubId(currentUser) || null;
+    const attachments = Array.isArray(dto.attachment_urls) ? JSON.stringify(dto.attachment_urls) : '[]';
+
+    const inserted = await this.cashFundsRepository.query(`
+      INSERT INTO payment_requests (
+        request_code, request_date, department_name, hub_id, requester_id, requester_name,
+        beneficiary_name, vendor_id, amount, content, note, attachment_urls,
+        status, fund_id, cost_category, source
+      ) VALUES (
+        $1, $2::date, $3, $4::bigint, $5::bigint, $6,
+        $7, $8::bigint, $9::numeric, $10, $11, $12::jsonb,
+        'PENDING_ACCOUNTANT', $13::bigint, $14, $15
+      )
+      RETURNING id::text AS id, request_code, request_date, status, amount
+    `, [
+      requestCode,
+      requestDate,
+      dto.department_name?.trim() || null,
+      defaultHubId,
+      currentUser.id,
+      requesterName,
+      dto.beneficiary_name.trim(),
+      dto.vendor_id?.trim() || null,
+      String(amount),
+      dto.content.trim(),
+      dto.note?.trim() || null,
+      attachments,
+      dto.fund_id?.trim() || null,
+      dto.cost_category?.trim() || null,
+      dto.source?.trim() || 'Nội bộ',
+    ]) as Array<Record<string, unknown>>;
+
+    return {
+      ...inserted[0],
+      amount,
+    };
+  }
+
+  async approvePaymentRequest(id: string, dto: any, currentUser: UserEntity): Promise<Record<string, unknown>> {
+    this.assertFinanceRole(currentUser);
+    const existingRows = await this.cashFundsRepository.query(
+      `SELECT * FROM payment_requests WHERE id = $1::bigint`,
+      [id],
+    ) as Array<Record<string, any>>;
+    const request = existingRows[0];
+    if (!request) throw new NotFoundException('Không tìm thấy đề nghị thanh toán');
+    if (request.status === 'APPROVED') throw new ConflictException('Đề nghị thanh toán này đã được duyệt và hạch toán');
+    if (request.status === 'REJECTED') throw new BadRequestException('Đề nghị thanh toán đã bị từ chối');
+
+    const fundId = String(dto.fund_id || request.fund_id || '').trim();
+    const costCategory = String(dto.cost_category || request.cost_category || '').trim();
+    if (!fundId) throw new BadRequestException('Vui lòng chọn sổ quỹ chi tiền');
+    if (!costCategory) throw new BadRequestException('Vui lòng chọn mục hạch toán (loại chi phí)');
+
+    const fund = await this.cashFundsRepository.findOne({ where: { id: fundId, is_active: true } });
+    if (!fund) throw new NotFoundException('Sổ quỹ không tồn tại hoặc đã ngừng sử dụng');
+
+    const resolvedHubId = String(dto.hub_id || request.hub_id || fund.hub_id || getDefaultHubId(currentUser) || '').trim() || null;
+    if (!resolvedHubId) {
+      throw new BadRequestException('Vui lòng chọn bưu cục (HUB) nhận khoản chi');
+    }
+    const resolvedVendorId = String(dto.vendor_id ?? request.vendor_id ?? '').trim() || null;
+    const resolvedSource = String(dto.source || request.source || 'Nội bộ').trim();
+    const resolvedBeneficiary = String(dto.beneficiary_name || request.beneficiary_name || '').trim();
+    const resolvedNote = dto.note !== undefined ? (dto.note?.trim() || null) : request.note;
+    const approverName = (currentUser as any).full_name?.trim() || (currentUser as any).name?.trim() || currentUser.username || 'Người duyệt';
+    const userIsDirector = (Number(currentUser.role_mask || 0) & (Roles.DIRECTOR | Roles.MANAGER)) !== 0;
+    const shouldFinalize = dto.post_to_journal === true || (dto.post_to_journal !== false && (userIsDirector || request.status === 'PENDING_DIRECTOR'));
+
+    if (!shouldFinalize) {
+      const updated = await this.cashFundsRepository.query(`
+        UPDATE payment_requests
+        SET
+          status = 'PENDING_DIRECTOR',
+          fund_id = $2::bigint,
+          cost_category = $3,
+          hub_id = $4::bigint,
+          vendor_id = $5::bigint,
+          source = $6,
+          beneficiary_name = $7,
+          note = $8,
+          accountant_approved_by = $9::bigint,
+          accountant_approved_name = $10,
+          accountant_approved_at = now(),
+          updated_at = now()
+        WHERE id = $1::bigint
+        RETURNING id::text AS id, request_code, status
+      `, [
+        id,
+        fund.id,
+        costCategory,
+        resolvedHubId,
+        resolvedVendorId,
+        resolvedSource,
+        resolvedBeneficiary,
+        resolvedNote,
+        currentUser.id,
+        approverName,
+      ]) as Array<Record<string, unknown>>;
+      return updated[0];
+    }
+
+    const entryDate = new Date().toISOString().slice(0, 10);
+    const journalContent = `[${request.request_code}] ${request.content}`;
+    const attachmentsJson = typeof request.attachment_urls === 'string'
+      ? request.attachment_urls
+      : JSON.stringify(request.attachment_urls || []);
+
+    const journalRows = await this.cashFundsRepository.query(`
+      INSERT INTO cash_journal_entries (
+        entry_date, voucher_type, source, fund_id, vendor_id, hub_id,
+        cost_category, detail, note, content, income_amount, expense_amount,
+        attachment_urls, created_by_id, created_by_name
+      ) VALUES (
+        $1::date, 'Chi', $2, $3::bigint, $4::bigint, $5::bigint,
+        $6, $7, $8, $9, 0, $10::numeric,
+        $11::jsonb, $12::bigint, $13
+      )
+      RETURNING id::text AS id
+    `, [
+      entryDate,
+      resolvedSource,
+      fund.id,
+      resolvedVendorId,
+      resolvedHubId,
+      costCategory,
+      resolvedBeneficiary,
+      resolvedNote,
+      journalContent,
+      String(request.amount),
+      attachmentsJson,
+      currentUser.id,
+      approverName,
+    ]) as Array<{ id: string }>;
+
+    const journalId = journalRows[0]?.id;
+    const updated = await this.cashFundsRepository.query(`
+      UPDATE payment_requests
+      SET
+        status = 'APPROVED',
+        fund_id = $2::bigint,
+        cost_category = $3,
+        hub_id = $4::bigint,
+        vendor_id = $5::bigint,
+        source = $6,
+        beneficiary_name = $7,
+        note = $8,
+        accountant_approved_by = COALESCE(accountant_approved_by, $9::bigint),
+        accountant_approved_name = COALESCE(accountant_approved_name, $10),
+        accountant_approved_at = COALESCE(accountant_approved_at, now()),
+        director_approved_by = $9::bigint,
+        director_approved_name = $10,
+        director_approved_at = now(),
+        cash_journal_entry_id = $11::bigint,
+        updated_at = now()
+      WHERE id = $1::bigint
+      RETURNING id::text AS id, request_code, status, cash_journal_entry_id::text AS cash_journal_entry_id
+    `, [
+      id,
+      fund.id,
+      costCategory,
+      resolvedHubId,
+      resolvedVendorId,
+      resolvedSource,
+      resolvedBeneficiary,
+      resolvedNote,
+      currentUser.id,
+      approverName,
+      journalId,
+    ]) as Array<Record<string, unknown>>;
+
+    return updated[0];
+  }
+
+  async rejectPaymentRequest(id: string, dto: { reason?: string }, currentUser: UserEntity): Promise<Record<string, unknown>> {
+    this.assertFinanceRole(currentUser);
+    const existingRows = await this.cashFundsRepository.query(
+      `SELECT id, status FROM payment_requests WHERE id = $1::bigint`,
+      [id],
+    ) as Array<{ id: string; status: string }>;
+    if (!existingRows.length) throw new NotFoundException('Không tìm thấy đề nghị thanh toán');
+    if (existingRows[0].status === 'APPROVED') throw new ConflictException('Không thể từ chối đề nghị đã duyệt chi');
+    const rejectedBy = (currentUser as any).full_name?.trim() || (currentUser as any).name?.trim() || currentUser.username || 'Người duyệt';
+    const updated = await this.cashFundsRepository.query(`
+      UPDATE payment_requests
+      SET status = 'REJECTED', rejected_by_name = $2, rejected_reason = $3, updated_at = now()
+      WHERE id = $1::bigint
+      RETURNING id::text AS id, request_code, status, rejected_by_name, rejected_reason
+    `, [id, rejectedBy, dto.reason?.trim() || 'Không đạt yêu cầu']) as Array<Record<string, unknown>>;
+    return updated[0];
+  }
+
+  async removePaymentRequest(id: string, currentUser: UserEntity): Promise<{ success: boolean }> {
+    const existingRows = await this.cashFundsRepository.query(
+      `SELECT id, status, requester_id FROM payment_requests WHERE id = $1::bigint`,
+      [id],
+    ) as Array<{ id: string; status: string; requester_id: string }>;
+    if (!existingRows.length) throw new NotFoundException('Không tìm thấy đề nghị thanh toán');
+    if (existingRows[0].status === 'APPROVED') throw new ConflictException('Không thể xóa đề nghị đã duyệt vào sổ nhật ký');
+    const isFinanceOrMgr = [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR].some((role) => hasRole(currentUser.role_mask, role));
+    if (!isFinanceOrMgr && String(existingRows[0].requester_id) !== String(currentUser.id)) {
+      throw new ForbiddenException('Không có quyền xóa đề nghị của người khác');
+    }
+    await this.cashFundsRepository.query(`DELETE FROM payment_requests WHERE id = $1::bigint`, [id]);
+    return { success: true };
+  }
+
   private sanitizeCashFund(fund: CashFundEntity): Record<string, unknown> {
     return {
       id: fund.id,
@@ -445,6 +850,7 @@ export class FinanceService {
       name: fund.name,
       hub_id: fund.hub_id,
       is_active: fund.is_active,
+      opening_balance: Number((fund as any).opening_balance ?? 0),
       note: fund.note,
       hub: fund.hub ? { id: fund.hub.id, code: fund.hub.code, name: fund.hub.name } : null,
       created_at: fund.created_at,

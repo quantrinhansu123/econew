@@ -22,6 +22,13 @@ export class CashJournalEntryController {
   @ApiOperation({ summary: 'List Cash Journal Entries' })
   list(@Query() query: QueryCashJournalEntryDto, @CurrentUser() currentUser: UserEntity) { return this.cashJournalEntryService.list(query, currentUser); }
 
+  @Post('import')
+  @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
+  @ApiOperation({ summary: 'Bulk import Cash Journal Entries from Excel' })
+  importEntries(@Body() body: { items: Array<Record<string, unknown>> }, @CurrentUser() currentUser: UserEntity) {
+    return this.cashJournalEntryService.importEntries(body?.items ?? [], currentUser);
+  }
+
   @Get(':id')
   @RequireRoles(Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR)
   @ApiOperation({ summary: 'Get Cash Journal Entries record' })

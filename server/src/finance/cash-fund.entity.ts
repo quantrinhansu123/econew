@@ -22,6 +22,9 @@ export class CashFundEntity {
   @Column({ type: 'varchar', length: 500, nullable: true })
   note: string | null;
 
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  opening_balance: string;
+
   @Column({ type: 'bigint', nullable: true })
   created_by: string | null;
 
