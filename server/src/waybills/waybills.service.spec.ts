@@ -2541,6 +2541,60 @@ describe('WaybillsService', () => {
     expect(result.note).toContain('tong_cuoc=200000');
   });
 
+  it.each([
+    { manual: 0, vat: 13600, expectedVat: 16000, expectedFreight: 216000 },
+    { manual: 1, vat: 12000, expectedVat: 12000, expectedFreight: 212000 },
+  ])('preserves VAT mode $manual when an inline unit price changes', async ({ manual, vat, expectedVat, expectedFreight }) => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      id: '76',
+      volumetric_weight: '100',
+      freight_amount: String(170000 + vat),
+      note: `billing_unit=Kg | unit_price=1500 | phu_phi=20000 | cuoc_chinh=150000 | vat_enabled=1 | vat_manual=${manual} | vat=${vat}`,
+    }));
+    const result = await service.updatePricing('76', { field: WaybillPricingField.UNIT_PRICE, amount: 1800 }, manager);
+    expect(result.freight_amount).toBe(expectedFreight);
+    expect(result.note).toContain(`vat=${expectedVat}`);
+    expect(result.note).toContain(`thanh_toan=${expectedFreight}`);
+  });
+
+  it('includes VAT when inline extra services change', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      id: '76',
+      freight_amount: '183600',
+      note: 'cuoc_chinh=150000 | phu_phi=20000 | vat_enabled=1 | vat_manual=0 | vat=13600',
+    }));
+    const result = await service.updatePricing('76', { field: WaybillPricingField.SURCHARGE, amount: 50000 }, manager);
+    expect(result.freight_amount).toBe(216000);
+    expect(result.note).toContain('vat=16000');
+  });
+
+  it('retains VAT when changing COD without taxing the COD amount', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      id: '76',
+      freight_amount: '183600',
+      cod_amount: '500000',
+      note: 'phuong_thuc=Người nhận thanh toán | cuoc_chinh=150000 | phu_phi=20000 | vat_enabled=1 | vat=13600',
+    }));
+    const result = await service.updatePricing('76', { field: WaybillPricingField.COD_AMOUNT, amount: 600000 }, manager);
+    expect(result.freight_amount).toBe(183600);
+    expect(result.cc_amount).toBe(183600);
+    expect(result.note).toContain('vat=13600');
+    expect(result.note).toContain('thanh_toan=783600');
+  });
+
+  it('recalculates automatic VAT when the inline billing unit changes', async () => {
+    waybillsRepository.findOne.mockResolvedValue(makeWaybill({
+      id: '76',
+      volumetric_weight: '100',
+      freight_amount: '183600',
+      note: 'billing_unit=Kg | unit_price=1500 | phu_phi=20000 | cuoc_chinh=150000 | vat_enabled=1 | vat_manual=0 | vat=13600',
+    }));
+    const result = await service.updateBillingUnit('76', { billing_unit: 'Trọn gói' }, manager);
+    expect(result.freight_amount).toBe(23220);
+    expect(result.note).toContain('vat=1720');
+    expect(result.note).toContain('thanh_toan=23220');
+  });
+
   it('updates inline billing_unit and recalculates freight if unit_price is present', async () => {
     const waybill = makeWaybill({
       id: '77',

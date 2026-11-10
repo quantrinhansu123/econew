@@ -191,6 +191,37 @@ describe('buildWaybillPrintData receiver fields', () => {
     expect(data.tongPhaiThuPhat).toBe('1,057,000');
   });
 
+  it('includes saved VAT exactly once in printed freight and receiver collection', () => {
+    const data = buildWaybillPrintData(waybill({
+      payment_type: 'CC',
+      freight_amount: 601_560,
+      cod_amount: 500_000,
+      note: 'phuong_thuc=Người nhận thanh toán | cuoc_chinh=532000 | phu_phi=25000 | vat_enabled=1 | vat=44560',
+    }), true);
+
+    expect(data.vat).toBe('44.560 đ');
+    expect(data.tongCuoc).toBe('601.560 đ');
+    expect(data.tongPhaiThuPhat).toBe('1,101,560');
+  });
+
+  it('keeps manual VAT when main freight is zero', () => {
+    const data = buildWaybillPrintData(waybill({
+      freight_amount: 15_000,
+      note: 'cuoc_chinh=0 | phu_phi=10000 | vat_enabled=1 | vat_manual=1 | vat=5000',
+    }), true);
+    expect(data.cuocChinh).toBe('0 đ');
+    expect(data.tongCuoc).toBe('15.000 đ');
+  });
+
+  it('does not apply VAT just because an invoice is requested', () => {
+    const data = buildWaybillPrintData(waybill({
+      freight_amount: 532_000,
+      note: 'co_vat=1',
+    }), true);
+    expect(data.vat).toBeUndefined();
+    expect(data.tongCuoc).toBe('532.000 đ');
+  });
+
   it('automatically shows freight for receiver-paid bills', () => {
     const data = buildWaybillPrintData(waybill({
       payment_type: 'CC',

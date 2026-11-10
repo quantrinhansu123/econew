@@ -36,6 +36,7 @@ export interface WaybillPrintData {
   ngayGuiDon: string;
   cuocChinh: string;
   dichVuCongThem: string;
+  vat?: string;
   tongCuoc: string;
   tongPhaiThuPhat: string;
   dichVu: string;
@@ -90,7 +91,7 @@ function parseContact(info?: string | null) {
 }
 
 function parseNoteField(note: string, key: string) {
-  const match = note.match(new RegExp(`${key}=([^|]+)`));
+  const match = note.match(new RegExp(`(?:^|\\|)\\s*${key}=([^|]*)`));
   return match?.[1]?.trim() || '';
 }
 
@@ -184,12 +185,16 @@ export function buildWaybillPrintData(
 
   const cod = Number(waybill.cod_amount) || 0;
   const storedFreight = Number(waybill.freight_amount) || Number(waybill.cost_amount) || 0;
-  const notedMainFreight = parseAmountInput(parseNoteField(note, 'cuoc_chinh'));
+  const mainFreightValue = parseNoteField(note, 'cuoc_chinh');
+  const notedMainFreight = parseAmountInput(mainFreightValue);
   const serviceExtra = parseAmountInput(
     parseNoteField(note, 'phu_phi') || parseNoteField(note, 'giamGia'),
   );
-  const mainFreight = notedMainFreight || storedFreight;
-  const totalFreight = mainFreight + serviceExtra;
+  const vatEnabled = parseNoteField(note, 'vat_enabled') === '1'
+    || (!parseNoteField(note, 'vat_enabled') && parseAmountInput(parseNoteField(note, 'vat')) > 0);
+  const vat = vatEnabled ? parseAmountInput(parseNoteField(note, 'vat')) : 0;
+  const mainFreight = mainFreightValue ? notedMainFreight : Math.max(0, storedFreight - vat);
+  const totalFreight = mainFreight + serviceExtra + vat;
   const paymentType = String(waybill.payment_type || '').toUpperCase();
   const phuongThuc = parseNoteField(note, 'phuong_thuc');
   const receiverPays =
@@ -239,6 +244,7 @@ export function buildWaybillPrintData(
     ngayGuiDon: formatDate(sentAt),
     cuocChinh: pricingVisible ? formatMoney(mainFreight) : '',
     dichVuCongThem: pricingVisible ? formatMoney(serviceExtra) : '',
+    vat: pricingVisible && vatEnabled ? formatMoney(vat) : undefined,
     tongCuoc: pricingVisible ? formatMoney(totalFreight) : '',
     tongPhaiThuPhat: formatNum(totalToCollect, 0) || '0',
     dichVu: (dichVu || loaiBp || 'ĐƯỜNG BỘ').toUpperCase(),

@@ -96,8 +96,19 @@ const currentVietnamDate = (date = new Date()) => {
   return `${value.year}-${value.month}-${value.day}`;
 };
 const parseNoteField = (note: string | null | undefined, key: string) => {
-  const match = (note || '').match(new RegExp(`${key}=([^|]+)`, 'i'));
+  const match = (note || '').match(new RegExp(`(?:^|\\|)\\s*${key}=([^|]*)`, 'i'));
   return match?.[1]?.trim() || '';
+};
+
+const hasWaybillVat = (note: string) => parseNoteField(note, 'vat_enabled') === '1'
+  || (!parseNoteField(note, 'vat_enabled') && Number(parseNoteField(note, 'vat')) > 0);
+
+const resolveWaybillVat = (note: string, subtotal: number) => {
+  if (!hasWaybillVat(note)) return 0;
+  if (parseNoteField(note, 'vat_manual') === '1' || !parseNoteField(note, 'vat_enabled')) {
+    return Math.max(0, Number(parseNoteField(note, 'vat')) || 0);
+  }
+  return Math.round(subtotal * 0.08);
 };
 
 const normalizeReceiverPhone = (value: string | null | undefined) => {
@@ -994,11 +1005,12 @@ export class WaybillsService {
     const currentFreight = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
     const currentCod = Number(waybill.cod_amount ?? 0) || 0;
     const currentSurcharge = Number(parseNoteField(note, 'phu_phi') || parseNoteField(note, 'giamGia')) || 0;
+    let vat = hasWaybillVat(note) ? Number(parseNoteField(note, 'vat')) || 0 : 0;
     const storedMainFreightValue = parseNoteField(note, 'cuoc_chinh');
     const storedMainFreight = Number(storedMainFreightValue);
     let mainFreight = storedMainFreightValue && Number.isFinite(storedMainFreight) && storedMainFreight >= 0
       ? storedMainFreight
-      : Math.max(0, currentFreight - currentSurcharge);
+      : Math.max(0, currentFreight - currentSurcharge - vat);
     let surcharge = currentSurcharge;
     let freight = currentFreight;
     let cod = currentCod;
@@ -1014,25 +1026,34 @@ export class WaybillsService {
           : Number(waybill.volumetric_weight ?? waybill.weight ?? 0) || 0;
       if (quantity > 0) {
         mainFreight = Math.round(quantity * dto.amount);
-        freight = mainFreight + surcharge;
+        vat = resolveWaybillVat(note, mainFreight + surcharge);
+        freight = mainFreight + surcharge + vat;
       }
     } else if (dto.field === WaybillPricingField.SURCHARGE) {
       surcharge = dto.amount;
-      freight = mainFreight + surcharge;
+      vat = resolveWaybillVat(note, mainFreight + surcharge);
+      freight = mainFreight + surcharge + vat;
     } else if (dto.field === WaybillPricingField.TRANSIT_FEE) {
       notePatch.trung_chuyen = dto.amount;
     } else if (dto.field === WaybillPricingField.TOTAL_AMOUNT) {
       const receiverPays = parseNoteField(note, 'phuong_thuc') === 'Người nhận thanh toán';
       freight = receiverPays ? Math.max(0, dto.amount - cod) : dto.amount;
-      mainFreight = Math.max(0, freight - surcharge);
+      mainFreight = Math.max(0, freight - surcharge - vat);
     } else if (dto.field === WaybillPricingField.FREIGHT_AMOUNT) {
       freight = dto.amount;
-      mainFreight = Math.max(0, freight - surcharge);
+      mainFreight = Math.max(0, freight - surcharge - vat);
     } else if (dto.field === WaybillPricingField.COD_AMOUNT) {
       cod = dto.amount;
     }
 
     if (dto.field !== WaybillPricingField.TRANSIT_FEE) {
+      if (hasWaybillVat(note)) {
+        notePatch.vat = vat;
+        // A directly entered gross total keeps its VAT amount as an explicit override.
+        if (dto.field === WaybillPricingField.TOTAL_AMOUNT || dto.field === WaybillPricingField.FREIGHT_AMOUNT) {
+          notePatch.vat_manual = 1;
+        }
+      }
       Object.assign(notePatch, {
         phu_phi: surcharge,
         cuoc_chinh: mainFreight,
@@ -1060,8 +1081,9 @@ export class WaybillsService {
     const currentCod = Number(waybill.cod_amount ?? 0) || 0;
     const currentSurcharge = Number(parseNoteField(note, 'phu_phi') || parseNoteField(note, 'giamGia')) || 0;
     const unitPrice = Number(parseNoteField(note, 'unit_price')) || 0;
+    const currentVat = hasWaybillVat(note) ? Number(parseNoteField(note, 'vat')) || 0 : 0;
 
-    let mainFreight = Math.max(0, currentFreight - currentSurcharge);
+    let mainFreight = Math.max(0, currentFreight - currentSurcharge - currentVat);
     let freight = currentFreight;
     const notePatch: Record<string, string | number> = {
       billing_unit: newUnit,
@@ -1076,7 +1098,9 @@ export class WaybillsService {
           : Number(waybill.volumetric_weight ?? waybill.weight ?? 0) || 0;
       if (quantity > 0) {
         mainFreight = Math.round(quantity * unitPrice);
-        freight = mainFreight + currentSurcharge;
+        const vat = resolveWaybillVat(note, mainFreight + currentSurcharge);
+        freight = mainFreight + currentSurcharge + vat;
+        if (hasWaybillVat(note)) notePatch.vat = vat;
         notePatch.cuoc_chinh = mainFreight;
         notePatch.tong_cuoc = freight;
         const receiverPays = parseNoteField(note, 'phuong_thuc') === 'Người nhận thanh toán';

@@ -92,6 +92,8 @@ export const emptyOrderForm = (): NewOrderFormState => ({
   phuongThuc: 'Công nợ tháng',
   thueSuat: '0%',
   vat: '0',
+  vatEnabled: false,
+  vatManual: false,
   cod: '0',
   tongCuoc: '',
   giamGia: '0',

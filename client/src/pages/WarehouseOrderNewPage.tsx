@@ -324,6 +324,8 @@ export default function WarehouseOrderNewPage({
     }
     setForm((prev) => {
       let next = { ...prev, [key]: value };
+      if (key === 'vat') next.vatManual = true;
+      if (key === 'vatEnabled') next.vatManual = false;
       if (key === 'huyen' && typeof value === 'string' && selectedCustomerRef.current) {
         next = {
           ...next,

@@ -1,6 +1,7 @@
 import type { HubSummary, PaymentType, WaybillDetail } from './types';
 import { emptyOrderForm, normalizeDeliveryMethod } from './orderFormData';
 import type { BillListItem, NewOrderFormState } from './orderFormTypes';
+import { formatAmountInputFromNumber, parseAmountInput } from '../../../lib/formatMoney';
 import { canonicalProvinceLabel, extractProvinceFromAddress } from '../../../lib/vietnamProvince';
 import { extractVietnamAddressParts } from '../../../lib/vietnamAddressParts';
 import { joinWaybillImages, parseWaybillImages } from '../../../lib/waybillImages';
@@ -98,14 +99,18 @@ export function calcOrderPricing(form: NewOrderFormState) {
   const cuocChinhAmount = calcCuocChinhAmount(form);
   const cod = parseMoneyAmount(form.cod);
   const dichVuCongThem = parseMoneyAmount(form.giamGia);
-  const tongCuoc = cuocChinhAmount + dichVuCongThem;
+  const subtotal = cuocChinhAmount + dichVuCongThem;
+  const vat = form.vatEnabled
+    ? form.vatManual ? parseAmountInput(form.vat) : Math.round(subtotal * 0.08)
+    : 0;
+  const tongCuoc = subtotal + vat;
   const receiverPays = form.phuongThuc.trim() === 'Người nhận thanh toán';
   const thanhToan = tongCuoc + (receiverPays ? cod : 0);
 
   return {
     cuocChinh: formatDisplayNumber(cuocChinhAmount, 0),
     tongCuoc: formatDisplayNumber(tongCuoc, 0),
-    vat: '0',
+    vat: formatAmountInputFromNumber(vat) || '0',
     thanhToan: formatDisplayNumber(thanhToan, 0),
   };
 }
@@ -119,6 +124,8 @@ const PRICING_TRIGGER_FIELDS: (keyof NewOrderFormState)[] = [
   'm3',
   'donGiaDonVi',
   'phuongThuc',
+  'vatEnabled',
+  'vat',
 ];
 
 export function isPricingField(key: keyof NewOrderFormState) {
@@ -130,6 +137,7 @@ export function applyPricingToForm(form: NewOrderFormState): NewOrderFormState {
   return {
     ...form,
     ...pricing,
+    thueSuat: form.vatEnabled ? '8%' : '0%',
     donGia: formatDonGia(form.donGia),
     cod: formatDonGia(form.cod),
     giamGia: formatDonGia(form.giamGia),
@@ -210,6 +218,8 @@ const NOTE_METADATA_KEYS = new Set([
   'tong_cuoc',
   'thue_suat',
   'vat',
+  'vat_enabled',
+  'vat_manual',
   'co_vat',
   'trang_thai',
   'dimensions_cm',
@@ -370,6 +380,10 @@ function waybillToOrderFormBase(waybill: WaybillDetail, hubs: HubSummary[]): New
       || formatDateInput(waybill.created_at || waybill.received_at),
     thueSuat: parseNoteField(note, 'thue_suat') || '0%',
     vat: formatDonGia(parseNoteField(note, 'vat')) || '0',
+    vatEnabled: parseNoteField(note, 'vat_enabled') === '1'
+      || (!parseNoteField(note, 'vat_enabled') && parseAmountInput(parseNoteField(note, 'vat')) > 0),
+    vatManual: parseNoteField(note, 'vat_manual') === '1'
+      || (!parseNoteField(note, 'vat_enabled') && parseAmountInput(parseNoteField(note, 'vat')) > 0),
     coVat: parseNoteField(note, 'co_vat') === '1',
     hideMeasurementsOnPrint: parseNoteField(note, 'hide_kg_cbm') === '1',
     trangThai: String(waybill.current_state || waybill.status || 'RECEIVED'),
@@ -426,7 +440,7 @@ export function phuongThucToPrintLabel(phuongThuc?: string, paymentType?: string
 }
 
 function parseNoteField(note: string, key: string) {
-  const match = note.match(new RegExp(`${key}=([^|]+)`));
+  const match = note.match(new RegExp(`(?:^|\\|)\\s*${key}=([^|]*)`));
   return match?.[1]?.trim() || '';
 }
 
@@ -448,8 +462,10 @@ function resolveBillingUnit(waybill: WaybillDetail): string {
 
 function resolveUnitPrice(waybill: WaybillDetail, billingUnit: string): number {
   const note = waybill.note || waybill.notes || '';
+  const notedUnitPrice = parseNoteField(note, 'unit_price');
+  if (notedUnitPrice !== '') return parseMoneyAmount(notedUnitPrice);
   const storedUnitPrice =
-    Number((waybill as { don_gia?: number }).don_gia) || parseMoneyAmount(parseNoteField(note, 'unit_price'));
+    Number((waybill as { don_gia?: number }).don_gia);
   if (storedUnitPrice) return storedUnitPrice;
 
   const totalFreight = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0);
@@ -473,8 +489,10 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
   const freight = calcCuocChinhAmount(form);
   const cod = parseMoneyAmount(form.cod);
   const surcharge = parseMoneyAmount(form.giamGia);
+  const pricing = calcOrderPricing(form);
+  const vat = parseAmountInput(pricing.vat);
   const receiverPays = form.phuongThuc.trim() === 'Người nhận thanh toán';
-  const totalFreight = freight + surcharge;
+  const totalFreight = freight + surcharge + vat;
   const thanhToan = totalFreight + (receiverPays ? cod : 0);
   const weight = parseDecimalNumber(form.klKg);
   const rawVolumeM3 = parseDecimalNumber(form.m3);
@@ -534,8 +552,10 @@ export function buildCreatePayload(form: NewOrderFormState, volumetricWeight: nu
       form.dvdb && `dvdb=${parseMoneyAmount(form.dvdb)}`,
       `cuoc_chinh=${freight}`,
       `tong_cuoc=${totalFreight}`,
-      form.thueSuat && `thue_suat=${form.thueSuat}`,
-      `vat=${parseMoneyAmount(form.vat)}`,
+      `thue_suat=${form.vatEnabled ? '8%' : '0%'}`,
+      `vat=${vat}`,
+      `vat_enabled=${form.vatEnabled ? 1 : 0}`,
+      `vat_manual=${form.vatEnabled && form.vatManual ? 1 : 0}`,
       `co_vat=${form.coVat ? 1 : 0}`,
       form.hideMeasurementsOnPrint && 'hide_kg_cbm=1',
       form.trangThai && `trang_thai=${form.trangThai}`,

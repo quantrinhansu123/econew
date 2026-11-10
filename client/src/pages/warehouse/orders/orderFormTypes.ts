@@ -61,6 +61,8 @@ export interface NewOrderFormState {
   phuongThuc: string;
   thueSuat: string;
   vat: string;
+  vatEnabled: boolean;
+  vatManual: boolean;
   cod: string;
   tongCuoc: string;
   giamGia: string;

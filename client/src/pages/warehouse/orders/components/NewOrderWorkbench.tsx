@@ -12,6 +12,7 @@ import type { BillListItem, NewOrderFormState } from '../orderFormTypes';
 import type { CustomerRecord } from '../../customers/customerFormTypes';
 import { VIETNAM_PROVINCES_63 } from '../../../../lib/vietnamProvince';
 import { WAYBILL_SPECIAL_GOODS_OPTIONS } from '../../../../lib/waybillSpecialGoods';
+import { formatAmountInput } from '../../../../lib/formatMoney';
 import { CompactField, CompactInput, CompactSelect, CompactTextarea, FormSection } from './CompactField';
 import BillListSidebar from './BillListSidebar';
 import CustomerMaKhCombobox from './CustomerMaKhCombobox';
@@ -387,8 +388,8 @@ export default function NewOrderWorkbench({
               </div>
 
               <GroupTitle>Thanh toán</GroupTitle>
-              <div className="grid grid-cols-12 items-end gap-x-2.5 gap-y-2">
-                <CompactField label="Phương thức" className="col-span-12 sm:col-span-6 xl:col-span-2">
+              <div className="grid grid-cols-2 items-end gap-x-2.5 gap-y-2 sm:grid-cols-3 xl:grid-cols-7">
+                <CompactField label="Phương thức" className="col-span-2 sm:col-span-1">
                   <CompactSelect value={form.phuongThuc} onChange={(e) => setField('phuongThuc', e.target.value)}>
                     {PHUONG_THUC_OPTIONS.map((o) => (
                       <option key={o} value={o}>
@@ -397,7 +398,7 @@ export default function NewOrderWorkbench({
                     ))}
                   </CompactSelect>
                 </CompactField>
-                <CompactField label="Đơn giá" className="col-span-6 sm:col-span-3 xl:col-span-2">
+                <CompactField label="Đơn giá">
                   <CompactInput
                     value={form.donGia}
                     onChange={(e) => setField('donGia', e.target.value)}
@@ -406,7 +407,7 @@ export default function NewOrderWorkbench({
                     className="text-right tabular-nums"
                   />
                 </CompactField>
-                <CompactField label="COD" className="col-span-6 sm:col-span-3 xl:col-span-2">
+                <CompactField label="COD">
                   <CompactInput
                     value={form.cod}
                     onChange={(e) => setField('cod', e.target.value)}
@@ -415,15 +416,15 @@ export default function NewOrderWorkbench({
                     className="text-right tabular-nums"
                   />
                 </CompactField>
-                <CompactField label="Tổng cước" className="col-span-6 sm:col-span-4 xl:col-span-2">
+                <CompactField label="Tổng cước">
                   <CompactInput
                     value={pricing.tongCuoc}
                     readOnly
                     className="bg-slate-50 text-right font-bold tabular-nums"
-                    title="Tổng cước vận chuyển"
+                    title="Cước vận chuyển + Dịch vụ cộng thêm + VAT (nếu có)"
                   />
                 </CompactField>
-                <CompactField label="Dịch vụ cộng thêm" className="col-span-6 sm:col-span-4 xl:col-span-2">
+                <CompactField label="Dịch vụ cộng thêm">
                   <CompactInput
                     value={form.giamGia}
                     onChange={(e) => setField('giamGia', e.target.value)}
@@ -432,7 +433,29 @@ export default function NewOrderWorkbench({
                     className="text-right tabular-nums"
                   />
                 </CompactField>
-                <CompactField label="Thanh toán" className="col-span-12 sm:col-span-4 xl:col-span-2">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <label className="flex min-h-[15px] cursor-pointer items-center gap-1.5 text-[11px] font-extrabold text-slate-700">
+                    <input
+                      type="checkbox"
+                      name="vatEnabled"
+                      checked={form.vatEnabled}
+                      onChange={(event) => setField('vatEnabled', event.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 accent-primary"
+                    />
+                    VAT 8%
+                  </label>
+                  <CompactInput
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Tiền VAT"
+                    value={pricing.vat}
+                    onChange={(event) => setField('vat', formatAmountInput(event.target.value) || '0')}
+                    disabled={!form.vatEnabled}
+                    className="text-right tabular-nums disabled:bg-slate-50 disabled:text-slate-400"
+                    title="VAT mặc định 8% của cước và dịch vụ cộng thêm; có thể sửa số tiền"
+                  />
+                </div>
+                <CompactField label="Thanh toán" className="col-span-2 sm:col-span-1">
                   <CompactInput
                     value={pricing.thanhToan}
                     readOnly
