@@ -38,6 +38,7 @@ export enum VendorTripPaymentStatus {
 }
 
 export enum CustomerPaymentStatus {
+  PARTIAL = 'PARTIAL',
   SENT_STATEMENT = 'SENT_STATEMENT',
   PAID = 'PAID',
 }

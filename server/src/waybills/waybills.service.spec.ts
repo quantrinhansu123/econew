@@ -199,6 +199,7 @@ describe('WaybillsService', () => {
     ]);
     dataSource = {
       transaction: jest.fn(async (callback: (manager: any) => Promise<any>) => callback({
+        query: jest.fn().mockResolvedValue([]),
         getRepository: (entity: any) => transactionRepositories.get(entity),
       })),
     };

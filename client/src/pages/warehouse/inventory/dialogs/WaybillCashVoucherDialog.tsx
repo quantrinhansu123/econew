@@ -38,7 +38,7 @@ interface Props {
   isClosing: boolean;
   waybill: WaybillInventoryItem | null;
   onClose: () => void;
-  onSaved?: (voucher: WaybillCashVoucher & { customer_payment_status?: 'PAID' | 'SENT_STATEMENT' | null }) => void | Promise<void>;
+  onSaved?: (voucher: WaybillCashVoucher & { customer_payment_status?: 'PAID' | 'PARTIAL' | 'SENT_STATEMENT' | null }) => void | Promise<void>;
 }
 
 const formatDateTime = (value?: string | null) =>
@@ -196,7 +196,7 @@ export default function WaybillCashVoucherDialog({ isOpen, isClosing, waybill, o
     try {
       const waybillCode = displayCode(waybill);
       const uploadedImageUrl = imageFile ? await uploadCashVoucherImage(imageFile) : imageUrl.trim() || undefined;
-      const saved = await apiRequest<WaybillCashVoucher & { customer_payment_status?: 'PAID' | 'SENT_STATEMENT' | null }>(
+      const saved = await apiRequest<WaybillCashVoucher & { customer_payment_status?: 'PAID' | 'PARTIAL' | 'SENT_STATEMENT' | null }>(
         `/waybills/${waybill.id}/cash-vouchers`,
         {
           method: 'POST',

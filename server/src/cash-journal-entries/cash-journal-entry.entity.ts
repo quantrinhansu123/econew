@@ -30,6 +30,9 @@ export class CashJournalEntryEntity {
   @Column({ type: 'varchar' })
   cost_category: string;
 
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  customer_code: string | null;
+
   @Column({ type: 'varchar' })
   detail: string;
 

@@ -16,6 +16,9 @@ export class WaybillCashVoucherEntity {
   waybill_code: string | null;
 
   @Column({ type: 'bigint', nullable: true })
+  journal_entry_id: string | null;
+
+  @Column({ type: 'bigint', nullable: true })
   customer_id: string | null;
 
   @Column({ type: 'varchar', length: 64, nullable: true })

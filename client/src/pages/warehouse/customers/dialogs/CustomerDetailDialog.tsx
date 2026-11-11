@@ -216,12 +216,36 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
   const [collectAmounts, setCollectAmounts] = useState<Record<string, string>>({});
   const [collectOpeningDebt, setCollectOpeningDebt] = useState(false);
   const [collectOpeningDebtAmount, setCollectOpeningDebtAmount] = useState('');
+  const [collectMode, setCollectMode] = useState<'bills' | 'amount'>('bills');
+  const [collectCustomAmount, setCollectCustomAmount] = useState('');
+  const [collectAccountDebt, setCollectAccountDebt] = useState<number | null>(null);
   const [collectNote, setCollectNote] = useState('');
   const [collectFundId, setCollectFundId] = useState('');
   const [collectSubmitting, setCollectSubmitting] = useState(false);
   const [collectError, setCollectError] = useState('');
   const [isStatementOpen, setIsStatementOpen] = useState(false);
   const [isPayoutOpen, setIsPayoutOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isCollectOpen || collectMode !== 'amount' || !customer?.code) return;
+    let cancelled = false;
+    const code = customer.code;
+    const openingDebt = customer.opening_debt;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setCollectAccountDebt(null);
+      Promise.all([loadAllCustomerBills(code), loadAllCustomerCashVouchers(code)])
+        .then(([{ items }, vouchers]) => {
+          if (cancelled) return;
+          const statement = buildCustomerStatement(items, vouchers, openingDebt, { fromDate: '', toDate: '', billCode: '', paymentType: '' });
+          setCollectAccountDebt(Math.max(0, statement.totalDebt));
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) setCollectError(error instanceof ApiError ? error.message : 'Không tải được dư nợ toàn bộ mã KH.');
+        });
+    });
+    return () => { cancelled = true; };
+  }, [isCollectOpen, collectMode, customer?.code, customer?.opening_debt]);
 
   const canViewCost = useMemo(() => {
     const user = getStoredUser();
@@ -434,6 +458,8 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
     setCollectNote('');
     setCollectFundId('');
     setCollectError('');
+    setCollectMode('bills');
+    setCollectCustomAmount('');
     setIsCollectOpen(true);
   };
 
@@ -471,7 +497,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       return;
     }
     const maKh = customer?.code?.trim();
-    if (!collectSelectionCount) {
+    if (collectMode === 'bills' && !collectSelectionCount) {
       setCollectError('Chọn ít nhất một bill hoặc công nợ tồn cũ cần thanh toán.');
       return;
     }
@@ -484,7 +510,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       remaining,
       amount: parseAmountInput(collectAmounts[String(item.id)] || ''),
     }));
-    const invalidPayment = paymentItems.find(({ amount, remaining }) => amount <= 0 || amount > remaining);
+    const invalidPayment = collectMode === 'amount' ? undefined : paymentItems.find(({ amount, remaining }) => amount <= 0 || amount > remaining);
     if (invalidPayment) {
       const billCode = invalidPayment.item.waybill_code || invalidPayment.item.code || String(invalidPayment.item.id);
       setCollectError(
@@ -495,7 +521,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       return;
     }
     const openingDebtAmount = collectOpeningDebt ? parseAmountInput(collectOpeningDebtAmount) : 0;
-    if (collectOpeningDebt && (openingDebtAmount <= 0 || openingDebtAmount > statementData.openingDebtRemaining)) {
+    if (collectMode === 'bills' && collectOpeningDebt && (openingDebtAmount <= 0 || openingDebtAmount > statementData.openingDebtRemaining)) {
       setCollectError(
         openingDebtAmount <= 0
           ? 'Nhập số tiền thanh toán công nợ tồn cũ.'
@@ -503,10 +529,29 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
       );
       return;
     }
+    if (collectMode === 'amount' && parseAmountInput(collectCustomAmount) <= 0) {
+      setCollectError('Nhập số tiền lớn hơn 0.');
+      return;
+    }
+    if (collectMode === 'amount' && (collectAccountDebt === null || parseAmountInput(collectCustomAmount) > collectAccountDebt)) {
+      setCollectError(collectAccountDebt === null ? 'Chờ tải dư nợ toàn bộ mã KH.' : `Số tiền không được vượt quá dư nợ ${formatMoney(collectAccountDebt)}.`);
+      return;
+    }
     setCollectSubmitting(true);
     setCollectError('');
     try {
-      await apiRequest('/waybills/cash-vouchers/bulk-payment', {
+      if (collectMode === 'amount') {
+        await apiRequest('/cash-journal-entries', {
+          method: 'POST',
+          body: {
+            entry_date: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }),
+            voucher_type: 'Thu', source: 'Khách hàng', fund_id: collectFundId,
+            customer_code: maKh, cost_category: 'Thu cước vận đơn', detail: maKh,
+            content: `Thu công nợ khách hàng ${maKh}`, note: collectNote.trim(),
+            income_amount: parseAmountInput(collectCustomAmount), expense_amount: 0,
+          },
+        });
+      } else await apiRequest('/waybills/cash-vouchers/bulk-payment', {
         method: 'POST',
         body: {
           items: paymentItems.map(({ item, amount }) => ({
@@ -853,7 +898,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                       <span>{statementData.totalDebt < 0 ? 'ECO cần trả khách' : 'Còn phải thu'}: {printMoney(Math.abs(statementData.totalDebt))}</span>
                     </div>}
                 {(billFilters.fromDate || billFilters.toDate || billFilters.billCode || billFilters.paymentType) && <button type="button" onClick={() => handleBillFiltersChange({ fromDate: '', toDate: '', billCode: '', paymentType: '' })} className="mt-3 text-[12px] font-bold text-red-500 hover:underline">× Xóa bộ lọc bill</button>}
-                <p className="mt-2 text-[12px] text-muted-foreground">In, thanh toán và chi trả theo các bill trong kỳ này. COD đối trừ theo từng bill.{(billScope || billFilters.fromDate || billFilters.toDate) ? ' Công nợ tồn cũ không tính vào kỳ đã chọn.' : ''}</p>
+                <p className="mt-2 text-[12px] text-muted-foreground">In, thanh toán theo bill và chi trả theo các bill trong kỳ này. Chế độ nhập số tiền khác trừ công nợ toàn bộ mã KH. COD đối trừ theo từng bill.{(billScope || billFilters.fromDate || billFilters.toDate) ? ' Công nợ tồn cũ không tính vào kỳ đã chọn.' : ''}</p>
               </Panel>
             )}
             {canViewCashVouchers ? (
@@ -1084,7 +1129,17 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                 </button>
               </div>
 
-              <div className="mb-3">
+              <div className="mb-3 flex gap-2" role="group" aria-label="Cách thanh toán">
+                <button type="button" disabled={collectSubmitting} onClick={() => { setCollectMode('bills'); setCollectError(''); }} className={clsx('flex-1 rounded-lg border px-3 py-2 text-[12px] font-bold', collectMode === 'bills' && 'border-emerald-400 bg-emerald-50 text-emerald-800')}>Theo từng bill</button>
+                <button type="button" disabled={collectSubmitting} onClick={() => { setCollectMode('amount'); setCollectError(''); }} className={clsx('flex-1 rounded-lg border px-3 py-2 text-[12px] font-bold', collectMode === 'amount' && 'border-emerald-400 bg-emerald-50 text-emerald-800')}>Nhập số tiền khác</button>
+              </div>
+              {collectMode === 'amount' && <label className="mb-3 block">
+                <span className="mb-2 block text-[13px] font-bold text-emerald-800">Dư nợ toàn bộ mã KH: {collectAccountDebt === null ? 'Đang tải...' : formatMoney(collectAccountDebt)}</span>
+                <span className="mb-1 block text-[11px] font-bold uppercase">Số tiền khách thanh toán</span>
+                <input aria-label="Số tiền khách thanh toán" type="text" inputMode="numeric" value={collectCustomAmount} onChange={(event) => { setCollectCustomAmount(formatAmountInput(event.target.value)); setCollectError(''); }} disabled={collectSubmitting} className="h-11 w-full rounded-xl border border-border px-3 font-bold tabular-nums" />
+                <p className="mt-2 text-[11px] text-muted-foreground">Trừ công nợ toàn bộ mã KH, không phụ thuộc bộ lọc bảng kê. Số tiền được phân bổ theo tỷ lệ khoản còn nợ; đơn chưa đủ tiền hiện TT một phần, đủ tiền hiện Đã TT.</p>
+              </label>}
+              {collectMode === 'bills' && <><div className="mb-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Chọn khoản thanh toán</span>
                   <div className="flex gap-1.5">
@@ -1217,6 +1272,7 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
                 <p className="mt-1 text-[11px] font-medium text-emerald-700">Mỗi khoản được ghi đúng số tiền thanh toán đã nhập.</p>
               </div>
 
+              </>}
               <CashFundSelect value={collectFundId} onChange={(value) => { setCollectFundId(value); setCollectError(''); }} className="mb-3" />
 
               <label className="mb-3 block">
@@ -1235,12 +1291,12 @@ export default function CustomerDetailDialog({ customer, loading, initialTab = '
 
               <button
                 type="button"
-                disabled={collectSubmitting || inventoryLoading || collectSelectionCount === 0 || collectTotal <= 0}
+                disabled={collectSubmitting || inventoryLoading || (collectMode === 'bills' ? collectSelectionCount === 0 || collectTotal <= 0 : collectAccountDebt === null || parseAmountInput(collectCustomAmount) <= 0)}
                 onClick={() => void submitCollectVoucher()}
                 className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 text-[13px] font-extrabold text-white hover:bg-emerald-700 disabled:opacity-60"
               >
                 {collectSubmitting ? <Loader2 className="animate-spin" size={16} /> : <Receipt size={16} />}
-                Thanh toán {collectSelectionCount} khoản · {formatMoney(collectTotal)}
+                Thanh toán {collectMode === 'bills' ? `${collectSelectionCount} khoản · ` : ''}{formatMoney(collectMode === 'amount' ? parseAmountInput(collectCustomAmount) : collectTotal)}
               </button>
             </div>
           </div>

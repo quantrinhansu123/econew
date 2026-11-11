@@ -25,6 +25,8 @@ import {
   getVendorPaymentStatusLabel,
   getVendorPaymentStatusTone,
   getVehicleType,
+  getTripStatusLabel,
+  getTripStatusTone,
 } from './incomingTripUtils';
 
 const HEADERS = [
@@ -33,6 +35,7 @@ const HEADERS = [
   'Tuyến',
   'Mã bảng kê',
   'NCC & loại xe',
+  'Trạng thái chuyến',
   'BKS',
   '# Chuyến',
   'Tổng cước các đơn',
@@ -243,6 +246,7 @@ export function IncomingTripTable({
                         {[vendorName, getVehicleType(trip)].filter((value) => value && value !== '—' && value !== vendorCode).join(' · ') || '—'}
                       </div>
                     </td>
+                    <td className="whitespace-nowrap px-3 py-2.5"><span className={clsx('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-extrabold', getTripStatusTone(trip))}>{getTripStatusLabel(trip)}</span></td>
                     <td className="whitespace-nowrap px-3 py-2.5 font-extrabold text-foreground">{getPlateLabel(trip)}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-center">
                       <button type="button" onClick={() => (onOpenTrip ?? onView)?.(trip)} className="font-extrabold text-primary hover:underline">

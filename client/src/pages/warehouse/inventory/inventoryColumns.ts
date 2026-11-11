@@ -127,6 +127,7 @@ export const INVENTORY_PRINT_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, nu
   billing_qty_detail: 7.5,
   unit_price: 5.5,
   surcharge: 5,
+  vat: 5,
   transit_fee: 5,
   total_amount: 5.5,
   thu_ho_khach: 5.5,
@@ -181,6 +182,9 @@ export type InventoryColumnId =
   | 'billing_unit'
   | 'billing_qty_detail'
   | 'unit_price'
+  | 'vat_invoice'
+  | 'vat_rate'
+  | 'vat'
   | 'surcharge'
   | 'transit_fee'
   | 'total_amount'
@@ -240,6 +244,9 @@ export const INVENTORY_COLUMNS: InventoryColumnDef[] = [
   { id: 'billing_unit', label: 'ĐVT cước', defaultVisible: false },
   { id: 'billing_qty_detail', label: 'Kg / khối', defaultVisible: false, align: 'right' },
   { id: 'unit_price', label: 'Đơn giá', defaultVisible: false, align: 'right' },
+  { id: 'vat_invoice', label: 'Xuất hóa đơn GTGT', defaultVisible: false },
+  { id: 'vat_rate', label: 'Thuế suất VAT', defaultVisible: false, managerOnly: true },
+  { id: 'vat', label: 'VAT', defaultVisible: false, managerOnly: true, align: 'right' },
   { id: 'surcharge', label: 'Dịch vụ cộng thêm', defaultVisible: false, managerOnly: true, align: 'right' },
   { id: 'transit_fee', label: 'Trung chuyển', defaultVisible: false, align: 'right' },
   { id: 'total_amount', label: 'Thành tiền', defaultVisible: false, managerOnly: true, align: 'right' },
@@ -345,6 +352,9 @@ export const ALL_ORDERS_SENDER_COLUMN_IDS: InventoryColumnId[] = [
 export const ALL_ORDERS_FINANCIAL_COLUMN_IDS: InventoryColumnId[] = [
   'unit_price',
   'surcharge',
+  'vat',
+  'vat_rate',
+  'vat_invoice',
   'transit_fee',
   'freight',
   'total_amount',
@@ -395,6 +405,7 @@ export const ALL_ORDERS_COLUMN_WIDTHS: Partial<Record<InventoryColumnId, number>
   priority: 110,
   unit_price: 100,
   surcharge: 150,
+  vat: 115,
   transit_fee: 120,
   freight: 120,
   total_amount: 120,
@@ -663,7 +674,7 @@ export function resolvePrintColumnIds(visibleColumnIds: InventoryColumnId[]): In
 }
 
 const parseNote = (note: string | null | undefined, key: string) => {
-  const m = (note || '').match(new RegExp(`${key}=([^|]+)`));
+  const m = (note || '').match(new RegExp(`(?:^|\\|)\\s*${key}=([^|]*)`));
   return m?.[1]?.trim() || '';
 };
 
@@ -771,6 +782,21 @@ export function resolveReceiverWard(waybill: WaybillInventoryItem): string {
     || parseNote(waybill.note || waybill.notes, 'phuong_xa')
     || parseNote(waybill.order?.note, 'phuong_xa');
   return resolveVietnamWard(explicit, address);
+}
+
+export function resolveVatInvoice(waybill: WaybillInventoryItem): string {
+  return parseNote(waybill.note || waybill.notes, 'co_vat') === '1' ? 'Có' : 'Không';
+}
+
+export function resolveVatRate(waybill: WaybillInventoryItem): string {
+  const note = waybill.note || waybill.notes;
+  return parseNote(note, 'vat_enabled') === '0' ? '0%' : parseNote(note, 'thue_suat') || (resolveVat(waybill) > 0 ? '8%' : '0%');
+}
+
+export function resolveVat(waybill: WaybillInventoryItem): number {
+  const note = waybill.note || waybill.notes || '';
+  if (parseNote(note, 'vat_enabled') === '0') return 0;
+  return Number(parseNote(note, 'vat').replace(/\D/g, '')) || 0;
 }
 
 export function resolveSurcharge(waybill: WaybillInventoryItem): number {

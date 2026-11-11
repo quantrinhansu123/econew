@@ -33,6 +33,11 @@ export class CreateCashJournalEntryDto {
   @IsNotEmpty()
   cost_category: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  customer_code?: string;
+
   @IsString()
   @IsNotEmpty()
   detail: string;

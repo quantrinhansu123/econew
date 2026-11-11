@@ -36,6 +36,9 @@ import {
   resolveRoute,
   resolveServiceType,
   resolveSurcharge,
+  resolveVat,
+  resolveVatInvoice,
+  resolveVatRate,
   resolveTotalAmount,
   resolveTransitFee,
   resolveUnitPrice,
@@ -448,6 +451,12 @@ function inventoryExcelCellValue(
         : resolveBillingQtyDetail(waybill);
     case 'unit_price':
       return finiteNumber(resolveUnitPrice(waybill));
+    case 'vat_invoice':
+      return resolveVatInvoice(waybill);
+    case 'vat_rate':
+      return showPricing ? resolveVatRate(waybill) : '';
+    case 'vat':
+      return showPricing ? resolveVat(waybill) : '';
     case 'surcharge':
       return showPricing ? resolveSurcharge(waybill) : '';
     case 'transit_fee':
@@ -459,7 +468,7 @@ function inventoryExcelCellValue(
     case 'customer_payment_status':
       return waybill.customer_payment_status === 'PAID'
         ? 'Đã TT'
-        : waybill.customer_payment_status === 'SENT_STATEMENT'
+        : waybill.customer_payment_status === 'PARTIAL' ? 'TT một phần' : waybill.customer_payment_status === 'SENT_STATEMENT'
           ? 'Đã gửi bảng kê'
           : '';
     case 'payment_method':

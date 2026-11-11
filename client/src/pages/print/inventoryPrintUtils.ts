@@ -28,6 +28,9 @@ import {
   resolveWarehouseIntakePresentation,
   resolveInventoryTripHistoryText,
   resolveSurcharge,
+  resolveVat,
+  resolveVatInvoice,
+  resolveVatRate,
   resolveUserNote,
   resolveVolumeM3,
   resolveVolumetricWeightKg,
@@ -35,6 +38,7 @@ import {
 } from '../warehouse/inventory/inventoryColumns';
 import type { InventoryFilters, WaybillInventoryItem } from '../warehouse/inventory/types';
 import { parseWaybillImages } from '../../lib/waybillImages';
+import { formatMoney as formatVndMoney } from '../../lib/formatMoney';
 
 export const INVENTORY_PRINT_STORAGE_KEY = 'eco_inventory_print_v1';
 
@@ -121,6 +125,12 @@ export function inventoryPrintCellValue(
       return resolveBillingQtyDetail(waybill);
     case 'unit_price':
       return formatMoney(resolveUnitPrice(waybill));
+    case 'vat_invoice':
+      return resolveVatInvoice(waybill);
+    case 'vat_rate':
+      return showPricing ? resolveVatRate(waybill) : '';
+    case 'vat':
+      return showPricing ? formatVndMoney(resolveVat(waybill)) : '';
     case 'surcharge':
       return showPricing ? formatMoney(resolveSurcharge(waybill)) : '';
     case 'transit_fee':
@@ -134,7 +144,7 @@ export function inventoryPrintCellValue(
     case 'customer_payment_status':
       return waybill.customer_payment_status === 'PAID'
         ? 'Đã TT'
-        : waybill.customer_payment_status === 'SENT_STATEMENT'
+        : waybill.customer_payment_status === 'PARTIAL' ? 'TT một phần' : waybill.customer_payment_status === 'SENT_STATEMENT'
           ? 'Đã gửi bảng kê'
           : '';
     case 'customer_payment_note':

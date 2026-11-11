@@ -14,11 +14,13 @@ export const tripStatusLabel: Record<string, string> = {
   ASSIGNED_TO_TRIP: 'Đã xếp lên xe',
   IN_TRANSIT: 'Đang chạy',
   DEPARTED: 'Đã khởi hành',
-  ARRIVED: 'Đã đến',
+  ARRIVED: 'Đến HUB',
+  CANCELLED: 'Đã hủy',
   COMPLETED: 'Hoàn tất',
 };
 
 export const tripStatusTone: Record<string, string> = {
+  CANCELLED: 'border-red-200 bg-red-50 text-red-700',
   PLANNED: 'border-slate-200 bg-slate-50 text-slate-700',
   ASSIGNED: 'border-indigo-200 bg-indigo-50 text-indigo-700',
   ASSIGNED_TO_TRIP: 'border-indigo-200 bg-indigo-50 text-indigo-700',

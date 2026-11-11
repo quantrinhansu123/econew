@@ -23,6 +23,9 @@ import {
   resolveRoute,
   resolveServiceType,
   resolveSurcharge,
+  resolveVat,
+  resolveVatInvoice,
+  resolveVatRate,
   resolveTransitFee,
   resolveTotalAmount,
   resolveUnitPrice,
@@ -92,6 +95,7 @@ export const ALL_ORDERS_FILTERABLE_COLUMN_IDS: InventoryColumnId[] = [
 const paymentStatusLabel = (waybill: WaybillInventoryItem) => {
   const status = String(waybill.customer_payment_status || '').toUpperCase();
   if (status === 'PAID') return 'Đã TT';
+  if (status === 'PARTIAL') return 'TT một phần';
   if (status === 'SENT_STATEMENT') return 'Đã gửi bảng kê';
   return EMPTY_VALUE;
 };
@@ -142,6 +146,12 @@ export function getAllOrdersColumnValue(waybill: WaybillInventoryItem, columnId:
       return resolveBillingQtyDetail(waybill) || EMPTY_VALUE;
     case 'unit_price':
       return moneyValue(resolveUnitPrice(waybill), true);
+    case 'vat_invoice':
+      return resolveVatInvoice(waybill);
+    case 'vat_rate':
+      return resolveVatRate(waybill);
+    case 'vat':
+      return moneyValue(resolveVat(waybill));
     case 'surcharge':
       return moneyValue(resolveSurcharge(waybill));
     case 'transit_fee':

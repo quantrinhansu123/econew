@@ -71,6 +71,9 @@ import {
   resolveVolumeM3,
   resolveWeightKg,
   resolveSurcharge,
+  resolveVat,
+  resolveVatInvoice,
+  resolveVatRate,
   resolveTotalAmount,
   resolveBillingQtyDetail,
   resolveOrderStatusBadge,
@@ -111,10 +114,12 @@ const billingUnitFilterOptions: FilterOption[] = [
 ];
 const customerPaymentStatusOptions: FilterOption[] = [
   { value: 'PAID', label: 'Đã TT' },
+  { value: 'PARTIAL', label: 'TT một phần' },
   { value: 'SENT_STATEMENT', label: 'Đã gửi bảng kê' },
 ];
 const customerPaymentStatusText: Record<string, string> = {
   PAID: 'Đã TT',
+  PARTIAL: 'TT một phần',
   SENT_STATEMENT: 'Đã gửi bảng kê',
 };
 
@@ -264,7 +269,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [selectedWaybillCache, setSelectedWaybillCache] = useState<Map<string, WaybillInventoryItem>>(() => new Map());
   const selectedWaybillIds = useMemo(() => [...selectedWaybillCache.keys()], [selectedWaybillCache]);
   const [isPaymentStatusDialogOpen, setIsPaymentStatusDialogOpen] = useState(false);
-  const [customerPaymentStatus, setCustomerPaymentStatus] = useState<'PAID' | 'SENT_STATEMENT' | ''>('');
+  const [customerPaymentStatus, setCustomerPaymentStatus] = useState<'PAID' | 'PARTIAL' | 'SENT_STATEMENT' | ''>('');
   const [customerPaymentNote, setCustomerPaymentNote] = useState('');
   const [isStackOpen, setIsStackOpen] = useState(false);
   const [isStackClosing, setIsStackClosing] = useState(false);
@@ -1369,7 +1374,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                 Trạng thái
                 <select
                   value={customerPaymentStatus}
-                  onChange={(e) => setCustomerPaymentStatus(e.target.value as 'PAID' | 'SENT_STATEMENT' | '')}
+                  onChange={(e) => setCustomerPaymentStatus(e.target.value as 'PAID' | 'PARTIAL' | 'SENT_STATEMENT' | '')}
                   className="mt-1 h-10 w-full rounded-lg border border-border px-3 text-[13px] font-bold"
                 >
                   <option value="">Bỏ trống</option>
@@ -1706,6 +1711,12 @@ function InventoryRow({
             />
           </td>
         );
+      case 'vat_invoice':
+        return <td className={cellClass}>{resolveVatInvoice(waybill)}</td>;
+      case 'vat_rate':
+        return <td className={cellClass}>{canViewPricing ? resolveVatRate(waybill) : '—'}</td>;
+      case 'vat':
+        return <td className={clsx(cellClass, 'text-right tabular-nums')}>{canViewPricing ? formatMoney(resolveVat(waybill)) : '—'}</td>;
       case 'surcharge':
         return (
           <td className={clsx(cellClass, 'font-bold text-right tabular-nums', isAllOrders && 'bg-orange-50/70 text-orange-900')}>
@@ -1752,7 +1763,7 @@ function InventoryRow({
       case 'customer_payment_status': {
         const status = String(waybill.customer_payment_status || '');
         const label = customerPaymentStatusText[status] || '—';
-        const tone = status === 'PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : status === 'SENT_STATEMENT' ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200';
+        const tone = status === 'PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (status === 'SENT_STATEMENT' || status === 'PARTIAL') ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200';
         return (
           <td className={clsx(cellClass, isAllOrders && 'bg-yellow-50/80')}>
             <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${tone}`}>{label}</span>

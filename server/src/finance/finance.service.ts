@@ -69,7 +69,7 @@ export class FinanceService {
         SELECT voucher.fund_id,
           CASE WHEN LOWER(voucher.voucher_type) = 'thu' THEN voucher.amount ELSE -voucher.amount END AS amount
         FROM waybill_cash_vouchers voucher
-        WHERE voucher.fund_id = ANY($1::bigint[])
+        WHERE voucher.fund_id = ANY($1::bigint[]) AND voucher.journal_entry_id IS NULL
 
         UNION ALL
 

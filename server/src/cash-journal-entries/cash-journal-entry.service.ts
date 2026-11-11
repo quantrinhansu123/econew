@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { syncCustomerReceipt } from '../waybills/customer-payment-allocation';
 import { Repository } from 'typeorm';
 import { Roles, hasRole, isManager } from '../common/roles';
 import { getAssignedHubIds } from '../common/user-hub-scope';
@@ -36,7 +37,7 @@ export class CashJournalEntryService {
 
     if (query.q?.trim()) {
       const key = addParam(`%${query.q.trim()}%`);
-      where.push(`(entry.detail ILIKE ${key} OR entry.content ILIKE ${key} OR entry.note ILIKE ${key} OR entry.source ILIKE ${key} OR entry.vendor_name ILIKE ${key} OR entry.fund_code ILIKE ${key} OR entry.hub_code ILIKE ${key} OR entry.hub_name ILIKE ${key})`);
+      where.push(`(entry.customer_code ILIKE ${key} OR entry.detail ILIKE ${key} OR entry.content ILIKE ${key} OR entry.note ILIKE ${key} OR entry.source ILIKE ${key} OR entry.vendor_name ILIKE ${key} OR entry.fund_code ILIKE ${key} OR entry.hub_code ILIKE ${key} OR entry.hub_name ILIKE ${key})`);
     }
     if (query.date_from) where.push(`entry.entry_date >= ${addParam(query.date_from)}::date`);
     if (query.date_to) where.push(`entry.entry_date <= ${addParam(query.date_to)}::date`);
@@ -100,6 +101,7 @@ export class CashJournalEntryService {
       fund_id: String(fund.id),
       hub_id: hub ? String(hub.id) : null,
       vendor_id: vendor ? String(vendor.id) : null,
+      customer_code: dto.customer_code?.trim().toUpperCase() || null,
       note: dto.note?.trim() || null,
       created_by_id: currentUser.id,
       created_by_name: currentUser.full_name?.trim() || currentUser.username,
@@ -107,7 +109,12 @@ export class CashJournalEntryService {
       expense_amount: String(dto.expense_amount),
       attachment_urls: this.normalizeAttachmentUrls(dto.attachment_urls),
     });
-    return this.repository.save(entry);
+    if (!entry.customer_code) return this.repository.save(entry);
+    return this.repository.manager.transaction(async (manager) => {
+      const saved = await manager.getRepository(CashJournalEntryEntity).save(entry);
+      await syncCustomerReceipt(manager, saved, currentUser);
+      return saved;
+    });
   }
 
   async update(id: string, dto: UpdateCashJournalEntryDto, currentUser: UserEntity) {
@@ -132,12 +139,24 @@ export class CashJournalEntryService {
     if (dto.attachment_urls !== undefined) next.attachment_urls = this.normalizeAttachmentUrls(dto.attachment_urls);
     next.income_amount = String(next.income_amount);
     next.expense_amount = String(next.expense_amount);
-    return this.repository.save(next);
+    if (dto.customer_code !== undefined) next.customer_code = dto.customer_code?.trim().toUpperCase() || null;
+    if (!entry.customer_code && !next.customer_code) return this.repository.save(next);
+    return this.repository.manager.transaction(async (manager) => {
+      await manager.query('SELECT id FROM cash_journal_entries WHERE id = $1 FOR UPDATE', [id]);
+      const saved = await manager.getRepository(CashJournalEntryEntity).save(next);
+      await syncCustomerReceipt(manager, saved, currentUser);
+      return saved;
+    });
   }
 
   async remove(id: string, currentUser: UserEntity): Promise<void> {
     const entry = await this.findOne(id, currentUser);
-    await this.repository.remove(entry);
+    if (!entry.customer_code) { await this.repository.remove(entry); return; }
+    await this.repository.manager.transaction(async (manager) => {
+      await manager.query('SELECT id FROM cash_journal_entries WHERE id = $1 FOR UPDATE', [id]);
+      await syncCustomerReceipt(manager, { ...entry, customer_code: null }, currentUser);
+      await manager.getRepository(CashJournalEntryEntity).remove(entry);
+    });
   }
 
   async importEntries(rows: Array<Record<string, unknown>>, currentUser: UserEntity) {
@@ -233,6 +252,7 @@ export class CashJournalEntryService {
         vendor_id: vendor ? String(vendor.id) : null,
         cost_category: costCategory,
         detail,
+        customer_code: String(item.customer_code || '').trim().toUpperCase() || null,
         content,
         note: String(item.note || '').trim() || null,
         income_amount: voucherType === 'Thu' ? String(amount) : '0',
@@ -243,7 +263,15 @@ export class CashJournalEntryService {
       }));
     }
 
-    const saved = await this.repository.save(entities);
+    const saved = entities.some((entry) => entry.customer_code)
+      ? await this.repository.manager.transaction(async (manager) => {
+        const records = await manager.getRepository(CashJournalEntryEntity).save(entities);
+        for (const record of records) {
+          if (record.customer_code) await syncCustomerReceipt(manager, record, currentUser);
+        }
+        return records;
+      })
+      : await this.repository.save(entities);
     return { imported: saved.length };
   }
 
@@ -320,6 +348,7 @@ export class CashJournalEntryService {
         journal.source,
         journal.cost_category,
         journal.detail,
+        journal.customer_code,
         journal.note,
         journal.content,
         journal.income_amount,
@@ -361,6 +390,7 @@ export class CashJournalEntryService {
           ELSE 'Điều chỉnh vận đơn'
         END::varchar AS cost_category,
         COALESCE(voucher.waybill_code, voucher.customer_code, 'Công nợ tồn cũ')::varchar AS detail,
+        NULL::varchar AS customer_code,
         voucher.note,
         COALESCE(voucher.note, CASE
           WHEN voucher.source_type = 'OPENING_DEBT' THEN CONCAT('Thanh toán công nợ tồn cũ ', voucher.customer_code)
@@ -387,7 +417,7 @@ export class CashJournalEntryService {
       FROM waybill_cash_vouchers voucher
       LEFT JOIN cash_funds fund ON fund.id = voucher.fund_id
       LEFT JOIN hubs fund_hub ON fund_hub.id = fund.hub_id
-      WHERE voucher.fund_id IS NOT NULL
+      WHERE voucher.fund_id IS NOT NULL AND voucher.journal_entry_id IS NULL
 
       UNION ALL
 
@@ -401,6 +431,7 @@ export class CashJournalEntryService {
         'Nhà cung cấp'::varchar AS source,
         COALESCE(payment.cost_category, 'Thanh toán NCC')::varchar AS cost_category,
         COALESCE(vendor.code, vendor.name, CONCAT('#', payment.vendor_id))::varchar AS detail,
+        NULL::varchar AS customer_code,
         payment.description AS note,
         COALESCE(payment.description, CONCAT('Thanh toán NCC ', COALESCE(vendor.code, vendor.name)))::varchar AS content,
         0::numeric AS income_amount,
@@ -447,6 +478,7 @@ export class CashJournalEntryService {
         'Chi phí chuyến'::varchar AS source,
         COALESCE(expense.category, 'Chi phí khác')::varchar AS cost_category,
         COALESCE(manifest.manifest_code, CONCAT('Chuyến #', expense.trip_id))::varchar AS detail,
+        NULL::varchar AS customer_code,
         expense.description AS note,
         COALESCE(
           expense.description,

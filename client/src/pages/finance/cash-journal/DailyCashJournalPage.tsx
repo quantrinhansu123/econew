@@ -25,8 +25,6 @@ import DraggableScrollTableContainer from '../../../components/ui/DraggableScrol
 import { SearchableSelect } from '../../../components/ui/SearchableSelect';
 import { ReceiptImageLinks, ReceiptImagePicker } from '../../../components/finance/ReceiptImagePicker';
 import { defaultExpenseCategoryNames, loadExpenseCategoryNames } from '../../../lib/expenseCategories';
-import { normalizeUserList } from '../../../lib/userNormalize';
-import type { UserAccount } from '../../admin/users/types';
 import CashFundManagerDialog from '../hub-reconciliation/dialogs/CashFundManagerDialog';
 import type { CashFund as ManagedCashFund } from '../hub-reconciliation/types';
 
@@ -60,6 +58,7 @@ interface Vendor {
 interface JournalEntry {
   id: string;
   record_id: string;
+  customer_code?: string | null;
   source_type: string;
   editable: boolean;
   entry_date: string;
@@ -142,6 +141,7 @@ interface EntryForm {
   source: string;
   cost_category: string;
   detail: string;
+  customer_code: string;
   content: string;
   note: string;
   amount: string;
@@ -149,6 +149,7 @@ interface EntryForm {
 }
 
 interface ImportRowPreview {
+  customer_code?: string;
   entry_date: string;
   voucher_type: VoucherType;
   source: string;
@@ -191,6 +192,7 @@ const newForm = (): EntryForm => ({
   source: 'Nội bộ',
   cost_category: expenseCategories[0],
   detail: '',
+  customer_code: '',
   content: '',
   note: '',
   amount: '',
@@ -198,7 +200,6 @@ const newForm = (): EntryForm => ({
 });
 const normalizeList = <T,>(response: T[] | { items?: T[]; data?: T[] }) => (Array.isArray(response) ? response : response.items || response.data || []);
 const errorMessage = (error: unknown) => (error instanceof ApiError ? error.message : error instanceof Error ? error.message : 'Không xử lý được dữ liệu.');
-const accountantDetail = (accountant: UserAccount) => [accountant.name, accountant.username].filter(Boolean).join(' · ') || String(accountant.id);
 
 function buildQuery(filters: Filters, overrideLimit?: number) {
   const params = new URLSearchParams({
@@ -243,7 +244,6 @@ export default function DailyCashJournalPage() {
   const [allFunds, setAllFunds] = useState<CashFund[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [hubs, setHubs] = useState<Hub[]>([]);
-  const [accountants, setAccountants] = useState<UserAccount[]>([]);
   const [savedExpenseCategories, setSavedExpenseCategories] = useState<string[]>([]);
   const [meta, setMeta] = useState<JournalResponse['meta']>({ total: 0, page: 1, limit: 50, total_pages: 1, total_income: 0, total_expense: 0, balance: 0 });
   const [loading, setLoading] = useState(true);
@@ -268,17 +268,15 @@ export default function DailyCashJournalPage() {
   const funds = useMemo(() => allFunds.filter((f) => f.is_active !== false), [allFunds]);
 
   const loadReferences = useCallback(async () => {
-    const [fundResponse, vendorResponse, hubResponse, accountantResponse, categoryResponse] = await Promise.all([
+    const [fundResponse, vendorResponse, hubResponse, categoryResponse] = await Promise.all([
       apiRequest<CashFund[] | { items?: CashFund[]; data?: CashFund[] }>('/finance/cash-funds?include_inactive=true'),
       apiRequest<Vendor[] | { items?: Vendor[]; data?: Vendor[] }>('/vendors?status=ACTIVE&limit=500'),
       apiRequest<Hub[] | { items?: Hub[]; data?: Hub[] }>('/hubs/active'),
-      apiRequest<unknown>('/users?role_mask=16&is_active=true&limit=100'),
       loadExpenseCategoryNames(),
     ]);
     setAllFunds(normalizeList(fundResponse));
     setVendors(normalizeList(vendorResponse));
     setHubs(normalizeList(hubResponse));
-    setAccountants(normalizeUserList(accountantResponse).users);
     setSavedExpenseCategories(Array.isArray(categoryResponse) ? categoryResponse : []);
   }, []);
 
@@ -340,7 +338,7 @@ export default function DailyCashJournalPage() {
         && matchText(entry.voucher_type, colFilters.type)
         && matchText(entry.source, colFilters.source)
         && matchText(hubLabel, colFilters.hub)
-        && matchText(entry.detail, colFilters.detail)
+        && matchText([entry.customer_code, entry.detail].filter(Boolean).join(' '), colFilters.detail)
         && matchText(vendorLabel, colFilters.vendor)
         && matchText(entry.cost_category, colFilters.category)
         && matchText(fundLabel, colFilters.fund)
@@ -381,7 +379,8 @@ export default function DailyCashJournalPage() {
         'Loại': entry.voucher_type,
         'Nguồn': entry.source,
         'HUB': [entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || '',
-        'Đối tượng': entry.detail || '',
+        'Mã KH': entry.customer_code || '',
+        'Chi tiết': entry.detail || '',
         'NCC': [entry.vendor_code, entry.vendor_name].filter(Boolean).join(' · ') || '',
         'Phân loại': entry.cost_category || '',
         'Sổ quỹ': [entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || '',
@@ -477,6 +476,7 @@ export default function DailyCashJournalPage() {
           voucher_type: voucherType,
           source: String(getVal('Nguồn', 'source') || (voucherType === 'Thu' ? 'Khách hàng' : 'Nội bộ')).trim(),
           hub: String(getVal('HUB', 'Bưu cục', 'hub_code') || '').trim(),
+          customer_code: String(getVal('Mã KH', 'customer_code') || '').trim().toUpperCase(),
           detail: String(getVal('Đối tượng', 'Chi tiết', 'detail') || 'Đồng bộ Excel').trim(),
           vendor: String(getVal('NCC', 'Nhà cung cấp', 'vendor') || '').trim(),
           cost_category: String(getVal('Phân loại', 'Loại chi phí', 'Loại thu/chi', 'cost_category') || (voucherType === 'Thu' ? 'Thu khác' : '642- chi phí quản lý doanh nghiệp')).trim(),
@@ -537,6 +537,7 @@ export default function DailyCashJournalPage() {
       source: entry.source || 'Khác',
       cost_category: entry.cost_category,
       detail: entry.detail,
+      customer_code: entry.customer_code || '',
       content: entry.content,
       note: entry.note || '',
       amount: formatAmountInput(String(entry.voucher_type === 'Thu' ? entry.income_amount : entry.expense_amount)),
@@ -557,7 +558,7 @@ export default function DailyCashJournalPage() {
 
   const submit = async () => {
     const amount = parseAmountInput(form.amount);
-    if (!form.fund_id || !form.cost_category.trim() || (form.voucher_type === 'Chi' && !form.hub_id) || !form.detail.trim() || !form.content.trim() || amount <= 0) {
+    if (!form.fund_id || !form.cost_category.trim() || (form.voucher_type === 'Chi' && !form.hub_id) || !form.content.trim() || amount <= 0) {
       setFormError(!form.fund_id
         ? 'Vui lòng chọn sổ quỹ.'
         : !form.cost_category.trim()
@@ -566,7 +567,7 @@ export default function DailyCashJournalPage() {
           ? 'Vui lòng chọn bưu cục nhận khoản chi.'
           : amount <= 0
             ? 'Nhập số tiền lớn hơn 0.'
-            : 'Nhập đối tượng và nội dung giao dịch.');
+            : 'Nhập nội dung giao dịch.');
       return;
     }
     setSubmitting(true);
@@ -582,7 +583,8 @@ export default function DailyCashJournalPage() {
           vendor_id: form.vendor_id,
           hub_id: form.hub_id || undefined,
           cost_category: form.cost_category,
-          detail: form.detail.trim(),
+          detail: form.customer_code.trim() || form.detail.trim() || form.content.trim(),
+          customer_code: form.customer_code.trim().toUpperCase(),
           content: form.content.trim(),
           note: form.note.trim(),
           income_amount: form.voucher_type === 'Thu' ? amount : 0,
@@ -753,8 +755,8 @@ export default function DailyCashJournalPage() {
                   <input value={colFilters.hub} onChange={(e) => updateColFilters({ hub: e.target.value })} placeholder="Lọc HUB..." className={colFilterInputClass} />
                 </th>
                 <th className="border-b border-r border-border px-2.5 py-2 font-extrabold">
-                  <div>Đối tượng</div>
-                  <input value={colFilters.detail} onChange={(e) => updateColFilters({ detail: e.target.value })} placeholder="Lọc đối tượng..." className={colFilterInputClass} />
+                  <div>Mã KH / chi tiết</div>
+                  <input value={colFilters.detail} onChange={(e) => updateColFilters({ detail: e.target.value })} placeholder="Lọc mã KH / chi tiết..." className={colFilterInputClass} />
                 </th>
                 <th className="border-b border-r border-border px-2.5 py-2 font-extrabold">
                   <div>NCC</div>
@@ -822,7 +824,7 @@ export default function DailyCashJournalPage() {
         </div>
       </div>
 
-      {formOpen && <EntryDialog form={form} editing={Boolean(editingId)} categories={categoryOptions} funds={funds} hubs={hubs} vendors={vendors} accountants={accountants} submitting={submitting} uploadingReceipt={uploadingReceipt} error={formError} onChange={updateForm} onUploadingReceiptChange={setUploadingReceipt} onTypeChange={changeVoucherType} onClose={() => setFormOpen(false)} onSubmit={() => void submit()} />}
+      {formOpen && <EntryDialog form={form} editing={Boolean(editingId)} categories={categoryOptions} funds={funds} hubs={hubs} vendors={vendors} submitting={submitting} uploadingReceipt={uploadingReceipt} error={formError} onChange={updateForm} onUploadingReceiptChange={setUploadingReceipt} onTypeChange={changeVoucherType} onClose={() => setFormOpen(false)} onSubmit={() => void submit()} />}
 
       <CashFundManagerDialog
         open={fundManagerOpen}
@@ -935,19 +937,15 @@ function SyncButton({ onClick, syncing }: { onClick: () => void; syncing: boolea
 }
 
 function JournalRow({ entry, onEdit, onRemove, onSync, syncing }: { entry: JournalEntry; onEdit: () => void; onRemove: () => void; onSync: () => void; syncing: boolean }) {
-  return <tr className="border-b border-border text-[12px] hover:bg-muted/20"><td className="border-r border-border px-3 py-2.5 font-bold">{new Date(entry.entry_date).toLocaleDateString('vi-VN')}</td><td className="border-r border-border px-3 py-2.5"><TypeBadge value={entry.voucher_type} /></td><td className="border-r border-border px-3 py-2.5">{canSyncVoucher(entry) ? <button type="button" disabled={syncing} onClick={onSync} title="Cập nhật phiếu thu theo vận đơn" className="inline-flex items-center gap-1 font-bold text-primary hover:underline disabled:opacity-50">Vận đơn<RefreshCw size={12} className={syncing ? "animate-spin" : ""} /></button> : entry.source}</td><td className="border-r border-border px-3 py-2.5 font-bold">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || '—'}</td><td className="border-r border-border px-3 py-2.5 font-bold">{entry.detail}</td><td className="border-r border-border px-3 py-2.5">{[entry.vendor_code, entry.vendor_name].filter(Boolean).join(' · ') || '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.cost_category}</td><td className="border-r border-border px-3 py-2.5 font-bold">{[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</td><td className="max-w-[280px] border-r border-border px-3 py-2.5"><p className="truncate" title={entry.content}>{entry.content}</p>{entry.note && <p className="mt-0.5 truncate text-[10px] text-muted-foreground" title={entry.note}>{entry.note}</p>}</td><td className="border-r border-border px-3 py-2.5"><ReceiptImageLinks images={entry.attachment_urls} /></td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-emerald-700">{entry.income_amount > 0 ? formatMoney(entry.income_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-red-600">{entry.expense_amount > 0 ? formatMoney(entry.expense_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.created_by_name || '—'}</td><td className="px-2 py-2.5">{canSyncVoucher(entry) && <SyncButton onClick={onSync} syncing={syncing} />}{entry.editable && <div className="flex gap-1"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary hover:bg-blue-50"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50"><Trash2 size={14} /></button></div>}</td></tr>;
+  return <tr className="border-b border-border text-[12px] hover:bg-muted/20"><td className="border-r border-border px-3 py-2.5 font-bold">{new Date(entry.entry_date).toLocaleDateString('vi-VN')}</td><td className="border-r border-border px-3 py-2.5"><TypeBadge value={entry.voucher_type} /></td><td className="border-r border-border px-3 py-2.5">{canSyncVoucher(entry) ? <button type="button" disabled={syncing} onClick={onSync} title="Cập nhật phiếu thu theo vận đơn" className="inline-flex items-center gap-1 font-bold text-primary hover:underline disabled:opacity-50">Vận đơn<RefreshCw size={12} className={syncing ? "animate-spin" : ""} /></button> : entry.source}</td><td className="border-r border-border px-3 py-2.5 font-bold">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || '—'}</td><td className="border-r border-border px-3 py-2.5 font-bold">{entry.customer_code || entry.detail}</td><td className="border-r border-border px-3 py-2.5">{[entry.vendor_code, entry.vendor_name].filter(Boolean).join(' · ') || '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.cost_category}</td><td className="border-r border-border px-3 py-2.5 font-bold">{[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</td><td className="max-w-[280px] border-r border-border px-3 py-2.5"><p className="truncate" title={entry.content}>{entry.content}</p>{entry.note && <p className="mt-0.5 truncate text-[10px] text-muted-foreground" title={entry.note}>{entry.note}</p>}</td><td className="border-r border-border px-3 py-2.5"><ReceiptImageLinks images={entry.attachment_urls} /></td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-emerald-700">{entry.income_amount > 0 ? formatMoney(entry.income_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5 text-right font-extrabold text-red-600">{entry.expense_amount > 0 ? formatMoney(entry.expense_amount) : '—'}</td><td className="border-r border-border px-3 py-2.5">{entry.created_by_name || '—'}</td><td className="px-2 py-2.5">{canSyncVoucher(entry) && <SyncButton onClick={onSync} syncing={syncing} />}{entry.editable && <div className="flex gap-1"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary hover:bg-blue-50"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50"><Trash2 size={14} /></button></div>}</td></tr>;
 }
 
 function JournalCard({ entry, onEdit, onRemove, onSync, syncing }: { entry: JournalEntry; onEdit: () => void; onRemove: () => void; onSync: () => void; syncing: boolean }) {
-  return <article className="rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-2"><div><TypeBadge value={entry.voucher_type} /><p className="mt-2 text-[14px] font-extrabold">{entry.detail}</p><p className="text-[11px] text-muted-foreground">{new Date(entry.entry_date).toLocaleDateString('vi-VN')} · {[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</p><p className="text-[11px] font-bold text-primary">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || 'Chưa gắn HUB'}</p></div><p className={clsx('text-[15px] font-black', entry.voucher_type === 'Thu' ? 'text-emerald-700' : 'text-red-600')}>{formatMoney(entry.voucher_type === 'Thu' ? entry.income_amount : entry.expense_amount)}</p></div><p className="mt-2 text-[12px]">{entry.content}</p><p className="mt-1 text-[11px] font-bold text-muted-foreground">{entry.cost_category}{entry.vendor_name ? ` · ${entry.vendor_name}` : ''}</p><div className="mt-2"><ReceiptImageLinks images={entry.attachment_urls} /></div>{canSyncVoucher(entry) && <div className="mt-3 flex justify-end border-t border-border pt-2"><SyncButton onClick={onSync} syncing={syncing} /></div>}{entry.editable && <div className="mt-3 flex justify-end gap-1 border-t border-border pt-2"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600"><Trash2 size={14} /></button></div>}</article>;
+  return <article className="rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-2"><div><TypeBadge value={entry.voucher_type} /><p className="mt-2 text-[14px] font-extrabold">{entry.customer_code || entry.detail}</p><p className="text-[11px] text-muted-foreground">{new Date(entry.entry_date).toLocaleDateString('vi-VN')} · {[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</p><p className="text-[11px] font-bold text-primary">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || 'Chưa gắn HUB'}</p></div><p className={clsx('text-[15px] font-black', entry.voucher_type === 'Thu' ? 'text-emerald-700' : 'text-red-600')}>{formatMoney(entry.voucher_type === 'Thu' ? entry.income_amount : entry.expense_amount)}</p></div><p className="mt-2 text-[12px]">{entry.content}</p><p className="mt-1 text-[11px] font-bold text-muted-foreground">{entry.cost_category}{entry.vendor_name ? ` · ${entry.vendor_name}` : ''}</p><div className="mt-2"><ReceiptImageLinks images={entry.attachment_urls} /></div>{canSyncVoucher(entry) && <div className="mt-3 flex justify-end border-t border-border pt-2"><SyncButton onClick={onSync} syncing={syncing} /></div>}{entry.editable && <div className="mt-3 flex justify-end gap-1 border-t border-border pt-2"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600"><Trash2 size={14} /></button></div>}</article>;
 }
 
-function EntryDialog({ form, editing, categories, funds, hubs, vendors, accountants, submitting, uploadingReceipt, error, onChange, onUploadingReceiptChange, onTypeChange, onClose, onSubmit }: { form: EntryForm; editing: boolean; categories: string[]; funds: CashFund[]; hubs: Hub[]; vendors: Vendor[]; accountants: UserAccount[]; submitting: boolean; uploadingReceipt: boolean; error: string; onChange: (patch: Partial<EntryForm>) => void; onUploadingReceiptChange: (uploading: boolean) => void; onTypeChange: (value: VoucherType) => void; onClose: () => void; onSubmit: () => void }) {
+function EntryDialog({ form, editing, categories, funds, hubs, vendors, submitting, uploadingReceipt, error, onChange, onUploadingReceiptChange, onTypeChange, onClose, onSubmit }: { form: EntryForm; editing: boolean; categories: string[]; funds: CashFund[]; hubs: Hub[]; vendors: Vendor[]; submitting: boolean; uploadingReceipt: boolean; error: string; onChange: (patch: Partial<EntryForm>) => void; onUploadingReceiptChange: (uploading: boolean) => void; onTypeChange: (value: VoucherType) => void; onClose: () => void; onSubmit: () => void }) {
   const inputClass = 'h-11 w-full rounded-lg border border-border bg-white px-3 text-[13px] outline-none focus:border-primary';
-  const accountantOptions = accountants.map((accountant) => ({ value: accountantDetail(accountant), label: accountantDetail(accountant) }));
-  if (form.detail && !accountantOptions.some((option) => option.value === form.detail)) {
-    accountantOptions.unshift({ value: form.detail, label: `${form.detail} · dữ liệu cũ` });
-  }
   return (
     <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-slate-900/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
       <div className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-border bg-white shadow-2xl sm:rounded-lg">
@@ -972,7 +970,7 @@ function EntryDialog({ form, editing, categories, funds, hubs, vendors, accounta
             <Field label={form.voucher_type === 'Chi' ? 'Chi cho bưu cục (HUB) *' : 'Bưu cục ghi nhận'}><select value={form.hub_id} onChange={(event) => onChange({ hub_id: event.target.value })} className={`${inputClass} font-bold`}><option value="">Chọn bưu cục</option>{hubs.map((hub) => <option key={String(hub.id)} value={String(hub.id)}>{[hub.code, hub.name].filter(Boolean).join(' · ')}</option>)}</select></Field>
             <Field label="Loại thu/chi"><SearchableSelect value={form.cost_category} onValueChange={(value) => onChange({ cost_category: value })} options={categories.map((category) => ({ value: category, label: category }))} placeholder="Chọn loại thu/chi" searchPlaceholder="Tìm loại thu/chi..." emptyMessage="Chưa có loại chi phí trong danh mục." disabled={submitting} className="h-11 rounded-lg bg-white px-3 font-bold" /></Field>
             <Field label="Nhà cung cấp (nếu có)"><select value={form.vendor_id} onChange={(event) => onChange({ vendor_id: event.target.value })} className={`${inputClass} font-bold`}><option value="">Không gắn NCC</option>{vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{[vendor.code, vendor.name].filter(Boolean).join(' · ')}</option>)}</select></Field>
-            <Field label="Đối tượng / chi tiết *"><SearchableSelect value={form.detail} onValueChange={(value) => onChange({ detail: value })} options={accountantOptions} placeholder="Chọn tài khoản kế toán" searchPlaceholder="Tìm tên hoặc tài khoản kế toán..." emptyMessage="Chưa có tài khoản đang hoạt động được cấp quyền Kế toán." disabled={submitting} className="h-11 rounded-lg bg-white px-3 font-bold" /></Field>
+            <Field label="Mã KH (nếu có)"><input aria-label="Mã KH (nếu có)" value={form.customer_code} onChange={(event) => onChange({ customer_code: event.target.value.toUpperCase() })} placeholder="Nhập mã KH để trừ công nợ khi thu" disabled={submitting} className={inputClass} />{form.voucher_type === 'Thu' && form.customer_code.trim() && <p className="mt-1 text-[11px] text-emerald-700">Khoản thu sẽ trừ công nợ của mã KH này.</p>}</Field>
             <Field label="Nội dung"><input value={form.content} onChange={(event) => onChange({ content: event.target.value })} placeholder="Nội dung thu hoặc chi..." className={inputClass} /></Field>
           </div>
           <Field label="Ghi chú" className="mt-3"><textarea value={form.note} onChange={(event) => onChange({ note: event.target.value })} rows={3} className="w-full rounded-lg border border-border px-3 py-2 text-[13px] outline-none focus:border-primary" /></Field>

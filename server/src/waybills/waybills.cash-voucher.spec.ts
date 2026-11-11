@@ -65,6 +65,7 @@ describe('WaybillsService cash voucher reconciliation', () => {
       save: jest.fn(async (value) => value),
     } as unknown as Repository<WaybillChangeLogEntity>;
     const manager = {
+      query: jest.fn().mockResolvedValue([]),
       getRepository: jest.fn((entity) => {
         if (entity === WaybillCashVoucherEntity) return voucherRepository;
         if (entity === WaybillEntity) return transactionalWaybillRepository;

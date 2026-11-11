@@ -1816,6 +1816,7 @@ export class WaybillsService {
       const cashVouchersRepository = manager.getRepository(WaybillCashVoucherEntity);
       const waybillsRepository = manager.getRepository(WaybillEntity);
       const fund = await this.findActiveCashFund(manager, dto.fund_id, currentUser);
+      await manager.query('SELECT id FROM waybills WHERE id = $1 FOR UPDATE', [waybill.id]);
       const paymentSummary = await cashVouchersRepository.createQueryBuilder('voucher')
         .select(
           `COALESCE(SUM(CASE WHEN LOWER(voucher.voucher_type) = 'thu' THEN voucher.amount ELSE -voucher.amount END), 0)`,
@@ -1865,9 +1866,7 @@ export class WaybillsService {
       const netPaid = paidBefore + (dto.voucher_type === 'Thu' ? dto.amount : -dto.amount);
       const nextPaymentStatus = totalDue > 0 && netPaid >= totalDue
         ? CustomerPaymentStatus.PAID
-        : waybill.customer_payment_status === CustomerPaymentStatus.PAID
-          ? null
-          : waybill.customer_payment_status ?? null;
+        : netPaid > 0 ? CustomerPaymentStatus.PARTIAL : waybill.customer_payment_status === CustomerPaymentStatus.SENT_STATEMENT ? CustomerPaymentStatus.SENT_STATEMENT : null;
 
       let waybillChanged = nextPaymentStatus !== (waybill.customer_payment_status ?? null);
       const reconciliationBefore = this.getCodReconciliationSnapshot(waybill);
@@ -1936,6 +1935,10 @@ export class WaybillsService {
       const waybillsRepository = manager.getRepository(WaybillEntity);
       const customersRepository = manager.getRepository(CustomerEntity);
       const fund = await this.findActiveCashFund(manager, dto.fund_id, currentUser);
+      if (openingDebtAmount > 0) {
+        await manager.query('SELECT id FROM customers WHERE UPPER(TRIM(code)) = UPPER(TRIM($1)) AND deleted_at IS NULL FOR UPDATE', [dto.customer_code]);
+      }
+      await manager.query('SELECT id FROM waybills WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE', [waybillIds]);
       const waybills = await waybillsRepository.find({
         where: { id: In(waybillIds), deleted_at: IsNull() } as any,
       }) as WaybillRecord[];
@@ -2049,9 +2052,7 @@ export class WaybillsService {
         const netPaid = paidByWaybillId.get(String(waybill.id)) ?? 0;
         const nextStatus = totalDue > 0 && netPaid >= totalDue
           ? CustomerPaymentStatus.PAID
-          : waybill.customer_payment_status === CustomerPaymentStatus.PAID
-            ? null
-            : waybill.customer_payment_status ?? null;
+          : netPaid > 0 ? CustomerPaymentStatus.PARTIAL : waybill.customer_payment_status === CustomerPaymentStatus.SENT_STATEMENT ? CustomerPaymentStatus.SENT_STATEMENT : null;
         let changed = nextStatus !== (waybill.customer_payment_status ?? null);
         if (changed) waybill.customer_payment_status = nextStatus;
         const collectAmount = this.getCollectOnDeliveryAmount(waybill);
@@ -2322,7 +2323,7 @@ export class WaybillsService {
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
     if (!voucher || !voucher.waybill_id) throw new NotFoundException('Không tìm thấy phiếu thu vận đơn');
-    if (voucher.source_type !== 'MANUAL' || voucher.voucher_type !== 'Thu' || !voucher.fund_id) {
+    if (voucher.journal_entry_id || voucher.source_type !== 'MANUAL' || voucher.voucher_type !== 'Thu' || !voucher.fund_id) {
       throw new BadRequestException('Chỉ cập nhật được phiếu thu cước vận đơn vào sổ quỹ');
     }
     const waybill = await manager.getRepository(WaybillEntity).findOne({
@@ -4490,9 +4491,7 @@ export class WaybillsService {
     const netPaid = Number(paymentSummary?.net_paid ?? 0) || 0;
     waybill.customer_payment_status = totalDue > 0 && netPaid >= totalDue
       ? CustomerPaymentStatus.PAID
-      : waybill.customer_payment_status === CustomerPaymentStatus.PAID
-        ? null
-        : waybill.customer_payment_status ?? null;
+      : netPaid > 0 ? CustomerPaymentStatus.PARTIAL : waybill.customer_payment_status === CustomerPaymentStatus.SENT_STATEMENT ? CustomerPaymentStatus.SENT_STATEMENT : null;
   }
 
   private async clearCodCollection(waybill: WaybillRecord): Promise<WaybillRecord> {

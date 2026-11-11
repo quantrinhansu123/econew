@@ -1,11 +1,15 @@
 import { Fragment } from 'react';
 import { clsx } from 'clsx';
+import { formatMoney } from '../../../lib/formatMoney';
 import type { InventoryColumnDef, InventoryColumnId } from './inventoryColumns';
 import {
   getStorageAgeRowClass,
   formatInventoryDate,
   resolveCongSg,
   resolveFreight,
+  resolveVat,
+  resolveVatInvoice,
+  resolveVatRate,
   resolveCustomerName,
   resolveServiceType,
   resolveBillingUnit,
@@ -103,6 +107,12 @@ function renderCell(
       return <td className={cellClass}>{displayValue(resolveUnitPrice(waybill), ' đ')}</td>;
     case 'transit_fee':
       return <td className={cellClass}>{displayValue(resolveTransitFee(waybill), ' đ')}</td>;
+    case 'vat_invoice':
+      return <td className={cellClass}>{resolveVatInvoice(waybill)}</td>;
+    case 'vat_rate':
+      return <td className={cellClass}>{resolveVatRate(waybill)}</td>;
+    case 'vat':
+      return <td className={cellClass}>{formatMoney(resolveVat(waybill))}</td>;
     case 'total_amount':
       return <td className={cellClass}>{displayValue(resolveFreight(waybill) + resolveTransitFee(waybill), ' đ')}</td>;
     case 'thu_ho_khach':
@@ -110,7 +120,7 @@ function renderCell(
     case 'payment_method':
       return <td className={cellClass}>{resolvePaymentMethod(waybill)}</td>;
     case 'customer_payment_status':
-      return <td className={cellClass}>{waybill.customer_payment_status === 'PAID' ? 'Đã TT' : waybill.customer_payment_status === 'SENT_STATEMENT' ? 'Đã gửi bảng kê' : '—'}</td>;
+      return <td className={cellClass}>{waybill.customer_payment_status === 'PAID' ? 'Đã TT' : waybill.customer_payment_status === 'PARTIAL' ? 'TT một phần' : waybill.customer_payment_status === 'SENT_STATEMENT' ? 'Đã gửi bảng kê' : '—'}</td>;
     case 'customer_payment_note':
       return <td className={cellClass}>{waybill.customer_payment_note || '—'}</td>;
     case 'user_note':
