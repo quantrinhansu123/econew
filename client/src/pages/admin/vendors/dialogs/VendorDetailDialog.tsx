@@ -4,7 +4,7 @@ import { Building2, Edit, ExternalLink, Loader2, Printer, Receipt, Truck, X } fr
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import CashFundSelect from '../../../../components/finance/CashFundSelect';
-import { apiRequest } from '../../../../lib/api';
+import { ApiError, apiRequest } from '../../../../lib/api';
 import { formatAmountInput, formatMoney, parseAmountInput } from '../../../../lib/formatMoney';
 import { defaultExpenseCategoryNames, loadExpenseCategoryNames } from '../../../../lib/expenseCategories';
 import type { AuthUserProfile } from '../../../login/types';
@@ -16,6 +16,8 @@ import {
   formatStatus,
 } from '../data';
 import type { Vendor } from '../types';
+import VendorSettlementsPanel from '../panels/VendorSettlementsPanel';
+import { settlementLabel, settlementToday, type SettlementRange, type VendorSettlement } from '../settlementTypes';
 import type { InventoryListResponse, WaybillInventoryItem } from '../../../warehouse/inventory/types';
 import LoadPlanningTruckBoard from '../../../warehouse/load-planning/LoadPlanningTruckBoard';
 import type { LoadPlanningBoardResponse } from '../../../warehouse/load-planning/types';
@@ -32,6 +34,8 @@ interface Props {
   loading?: boolean;
   canManage: boolean;
   initialTab?: VendorDetailTabId;
+  initialSettlementRange?: SettlementRange;
+  onPaymentsChanged?: () => void | Promise<void>;
   onClose: () => void;
   onEdit: (vendor: Vendor) => void;
 }
@@ -122,7 +126,7 @@ interface VendorDebtDashboardResponse {
   trips?: VendorDebtTrip[];
 }
 
-export default function VendorDetailDialog({ vendor, loading, canManage, initialTab = 'chi-tiet', onClose, onEdit }: Props) {
+export default function VendorDetailDialog({ vendor, loading, canManage, initialTab = 'chi-tiet', initialSettlementRange, onPaymentsChanged, onClose, onEdit }: Props) {
   const navigate = useNavigate();
   const vendorId = vendor?.id != null ? String(vendor.id) : '';
   const [activeTab, setActiveTab] = useState<VendorDetailTabId>(initialTab);
@@ -147,8 +151,11 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerError, setLedgerError] = useState('');
   const [isSpendOpen, setIsSpendOpen] = useState(false);
+  const [settlementRevision, setSettlementRevision] = useState(0);
+  const [spendPeriodId, setSpendPeriodId] = useState('');
+  const [spendPeriods, setSpendPeriods] = useState<VendorSettlement[]>([]);
   const [spendAmount, setSpendAmount] = useState('');
-  const [spendDate, setSpendDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [spendDate, setSpendDate] = useState(() => settlementToday());
   const [spendType, setSpendType] = useState(vendorExpenseTypes[0]);
   const [expenseCategoryOptions, setExpenseCategoryOptions] = useState<string[]>(vendorExpenseTypes);
   const [spendFundId, setSpendFundId] = useState('');
@@ -199,7 +206,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
       setLedgerError('');
       setIsSpendOpen(false);
       setSpendAmount('');
-      setSpendDate(new Date().toISOString().slice(0, 10));
+      setSpendDate(settlementToday());
       setSpendType(vendorExpenseTypes[0]);
       setSpendNote('');
       setSpendError('');
@@ -367,11 +374,24 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
     const response = await apiRequest<{ entries?: VendorLedgerEntry[]; balance?: VendorLedgerBalance }>(`/vendors/${vendorId}/ledger`);
     setLedgerEntries(response.entries ?? []);
     setLedgerBalance(response.balance ?? {});
+    setSettlementRevision((previous) => previous + 1);
+    await onPaymentsChanged?.();
   };
 
-  const openSpendDialog = () => {
+  useEffect(() => {
+    if (!isSpendOpen || !vendorId) return;
+    const abort = new AbortController();
+    void apiRequest<{ items: VendorSettlement[] }>(`/vendors/${vendorId}/settlements`, { signal: abort.signal })
+      .then((response) => { if (!abort.signal.aborted) setSpendPeriods(response.items); })
+      .catch((error) => { if (!abort.signal.aborted) setSpendError(error instanceof ApiError ? error.message : 'Không tải được kỳ thanh toán.'); });
+    return () => abort.abort();
+  }, [isSpendOpen, vendorId]);
+
+  const openSpendDialog = (period?: VendorSettlement) => {
+    setSpendPeriodId(period?.id || '');
+    setSpendPeriods(period ? [period] : []);
     setSpendAmount('');
-    setSpendDate(new Date().toISOString().slice(0, 10));
+    setSpendDate(settlementToday());
     setSpendType(vendorExpenseTypes[0]);
     setSpendFundId('');
     setSpendNote('');
@@ -380,10 +400,15 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
   };
 
   const submitVendorPayment = async () => {
+    if (!spendPeriodId) { setSpendError('Chọn kỳ thanh toán hoặc chọn chi chung chưa phân bổ.'); return; }
+    const period = spendPeriods.find((item) => item.id === spendPeriodId);
     const amount = parseAmountInput(spendAmount);
     if (amount <= 0) {
       setSpendError('Nhập số tiền chi lớn hơn 0.');
       return;
+    }
+    if (spendPeriodId !== 'unallocated' && (!period || amount > period.remaining_amount)) {
+      setSpendError('Số tiền vượt công nợ còn lại của kỳ.'); return;
     }
     if (!spendFundId) {
       setSpendError('Vui lòng chọn sổ quỹ chi tiền.');
@@ -392,20 +417,22 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
     setSpendSubmitting(true);
     setSpendError('');
     try {
-      await apiRequest(`/vendors/${vendorId}/payments`, {
+      await apiRequest(spendPeriodId === 'unallocated' ? `/vendors/${vendorId}/payments` : `/vendors/${vendorId}/settlements/${spendPeriodId}/payments`, {
         method: 'POST',
         body: {
-          payment_date: new Date(`${spendDate || new Date().toISOString().slice(0, 10)}T12:00:00`).toISOString(),
+          payment_date: new Date(`${spendDate || settlementToday()}T12:00:00+07:00`).toISOString(),
           amount,
           fund_id: spendFundId,
           cost_category: spendType,
           description: `[${spendType}] ${spendNote.trim() || `Chi thanh toán NCC ${vendor?.code || vendor?.name || vendorId}`}`,
         },
       });
-      await reloadLedger();
       setIsSpendOpen(false);
-    } catch {
-      setSpendError('Không lưu được phiếu chi NCC.');
+      try { await reloadLedger(); } catch {
+        setLedgerError('Đã lưu phiếu chi. Chưa tải lại được số liệu, vui lòng mở lại tab Thanh toán.');
+      }
+    } catch (error) {
+      setSpendError(error instanceof ApiError ? error.message : 'Không lưu được phiếu chi NCC.');
     } finally {
       setSpendSubmitting(false);
     }
@@ -433,7 +460,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
               <Row label="Loại hợp đồng" value={formatContractType(vendor.contract_type)} />
               <Row label="Trạng thái" value={formatStatus(vendor.status)} />
               <Row label="Công nợ tồn đầu kỳ" value={formatMoney(vendor.opening_debt)} />
-              <Row label="Công nợ phải trả" value={formatMoney(vendor.payable_balance)} />
+              <Row label="Công nợ phải trả" value={formatMoney(ledgerBalance.remaining ?? vendor.payable_balance)} />
             </DetailSection>
 
             <DetailSection title="Liên hệ">
@@ -600,6 +627,8 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
       case 'thanh-toan':
         return (
           <div className="space-y-4">
+            {canViewFinance && <VendorSettlementsPanel key={vendorId} vendorId={vendorId} initialRange={initialSettlementRange}
+              revision={settlementRevision} onSpend={openSpendDialog} onChanged={reloadLedger} />}
             <DetailSection title="Thông tin thanh toán NCC">
               <Row label="Loại hợp đồng" value={formatContractType(vendor.contract_type)} />
               <Row label="Công nợ tồn đầu kỳ" value={formatMoney(vendor.opening_debt)} />
@@ -626,7 +655,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
                 loading={ledgerLoading}
                 error={ledgerError}
                 onFiltersChange={(patch) => setPaymentFilters((prev) => ({ ...prev, ...patch }))}
-                onSpend={openSpendDialog}
+                onSpend={() => openSpendDialog()}
                 onPrintStatement={() => setIsStatementOpen(true)}
               />
             ) : (
@@ -775,7 +804,7 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
 
         {isSpendOpen && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-2xl border border-border bg-white p-4 shadow-2xl">
+            <div className="max-h-full w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-white p-4 shadow-2xl">
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[12px] font-extrabold uppercase tracking-wide text-emerald-600">Lập phiếu chi NCC</p>
@@ -787,6 +816,15 @@ export default function VendorDetailDialog({ vendor, loading, canManage, initial
                 </button>
               </div>
 
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Kỳ thanh toán</span>
+                <select value={spendPeriodId} onChange={(event) => { setSpendPeriodId(event.target.value); setSpendError(''); }} className="h-11 w-full rounded-xl border border-border bg-white px-3 text-[13px] font-bold">
+                  <option value="">Chọn kỳ thanh toán</option>
+                  {spendPeriods.filter((period) => period.remaining_amount > 0).map((period) => <option key={period.id} value={period.id}>{settlementLabel(period)} · Còn {formatMoney(period.remaining_amount)}</option>)}
+                  <option value="unallocated">Chi chung NCC / chưa phân bổ</option>
+                </select>
+              </label>
+              {spendPeriodId === 'unallocated' && <p className="mb-3 text-[12px] text-amber-700">Phiếu chi chung chưa trừ vào chuyến. Có thể gắn vào kỳ sau khi chốt công nợ.</p>}
               <label className="mb-3 block">
                 <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Ngày chi</span>
                 <input

@@ -432,6 +432,8 @@ export default function WarehouseIncomingPage({
         loading={isLedgerVendorLoading}
         canManage={false}
         initialTab="thanh-toan"
+        initialSettlementRange={{ fromDate: filterFromDate, toDate: filterToDate }}
+        onPaymentsChanged={() => refresh(false)}
         onClose={() => setLedgerVendor(null)}
         onEdit={() => undefined}
       />

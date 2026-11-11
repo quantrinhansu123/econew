@@ -46,10 +46,8 @@ describe('VendorsService payment safety', () => {
     } as any;
     const debtEntriesRepository = { find: jest.fn().mockResolvedValue([]) } as any;
     const paymentsRepository = {
-      find: jest.fn()
-        .mockResolvedValueOnce([payment])
-        .mockResolvedValue([]),
-      remove: jest.fn().mockResolvedValue(undefined),
+      find: jest.fn().mockResolvedValue([payment]),
+      remove: jest.fn(async () => { paymentsRepository.find.mockResolvedValue([]); }),
     } as any;
     const tripsRepository = {
       createQueryBuilder: jest.fn().mockReturnValue(tripQb),
@@ -70,6 +68,7 @@ describe('VendorsService payment safety', () => {
     ]);
     const transaction = jest.fn(async (work) => work({
       getRepository: (entity: any) => repositories.get(entity),
+      query: jest.fn().mockResolvedValue([]),
     }));
     paymentsRepository.manager = { transaction };
 

@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import 'dotenv/config';
+import { VendorSettlementEntity, VendorSettlementItemEntity } from './vendors/vendor-settlement.entity';
 import { DataSource } from 'typeorm';
 import { AttendanceLocationEntity } from './attendance/attendance-location.entity';
 import { AttendanceLogEntity } from './attendance/attendance-log.entity';
@@ -63,6 +64,8 @@ export default new DataSource({
     idleTimeoutMillis: getPositiveInteger(process.env.DB_IDLE_TIMEOUT_MS, 10_000),
   },
   entities: [
+    VendorSettlementEntity,
+    VendorSettlementItemEntity,
     AttendanceLocationEntity,
     AttendanceLogEntity,
     CarrierDirectoryEntity,

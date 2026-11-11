@@ -7,6 +7,7 @@ import { corsOriginDelegate } from './cors.config';
 import { buildHealthResponse } from './health-response';
 import { createResponseCompression } from './response-compression';
 import { getTrustProxyConfig } from './proxy.config';
+import { VendorSettlementConflictFilter } from './vendors/vendor-settlement-conflict.filter';
 
 function registerHealthRoute(app: NestExpressApplication) {
   const express = app.getHttpAdapter().getInstance();
@@ -17,6 +18,7 @@ function registerHealthRoute(app: NestExpressApplication) {
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.useGlobalFilters(new VendorSettlementConflictFilter(app.getHttpAdapter()));
   app.set('trust proxy', getTrustProxyConfig());
   app.use(createResponseCompression());
   app.enableCors({

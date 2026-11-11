@@ -537,6 +537,13 @@ export class VendorsService {
     await this.runInTransaction(async (manager) => {
       const paymentsRepository = manager?.getRepository(VendorPaymentEntity) ?? this.paymentsRepository;
       const tripsRepository = manager?.getRepository(TripEntity) ?? this.tripsRepository;
+      if (manager) {
+        // Serialize deletion with attaching an existing payment to a period, then reload its allocations.
+        await manager.query('SELECT id FROM vendor_payments WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE', [ids]);
+        const current = await paymentsRepository.find({ where: { id: In(ids) }, relations: ['trips', 'allocations'] });
+        if (current.length !== ids.length) throw new NotFoundException('One or more vendor payments not found');
+        payments.splice(0, payments.length, ...current);
+      }
       const lockedTrips = await this.lockTripsForPaymentUpdate(
         [...payments.reduce((map, payment) => {
           for (const trip of payment.trips ?? []) map.set(String(trip.id), trip);

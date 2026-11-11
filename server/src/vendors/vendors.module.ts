@@ -11,11 +11,14 @@ import { VendorPaymentEntity } from './vendor-payment.entity';
 import { VendorEntity } from './vendor.entity';
 import { VendorsController } from './vendors.controller';
 import { VendorsService } from './vendors.service';
+import { VendorSettlementEntity, VendorSettlementItemEntity } from './vendor-settlement.entity';
+import { VendorSettlementsService } from './vendor-settlements.service';
+import { VendorSettlementsController } from './vendor-settlements.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([VendorEntity, VendorDebtEntryEntity, VendorPaymentEntity, VendorPaymentAllocationEntity, TripEntity, ManifestWaybillEntity, ExpenseEntity, WaybillEntity, CashFundEntity])],
-  controllers: [VendorsController],
-  providers: [VendorsService],
+  imports: [TypeOrmModule.forFeature([VendorEntity, VendorDebtEntryEntity, VendorPaymentEntity, VendorPaymentAllocationEntity, VendorSettlementEntity, VendorSettlementItemEntity, TripEntity, ManifestWaybillEntity, ExpenseEntity, WaybillEntity, CashFundEntity])],
+  controllers: [VendorsController, VendorSettlementsController],
+  providers: [VendorsService, VendorSettlementsService],
   exports: [VendorsService],
 })
 export class VendorsModule {}

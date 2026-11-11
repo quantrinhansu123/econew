@@ -1,6 +1,7 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { TripEntity } from '../trips/trip.entity';
 import { VendorPaymentEntity } from './vendor-payment.entity';
+import { VendorSettlementEntity } from './vendor-settlement.entity';
 
 /**
  * The amount of a vendor payment assigned to an individual trip.
@@ -20,6 +21,13 @@ export class VendorPaymentAllocationEntity {
 
   @Column({ type: 'numeric', precision: 18, scale: 2 })
   amount: string;
+
+  @Column({ type: 'bigint', nullable: true })
+  settlement_id: string | null;
+
+  @ManyToOne(() => VendorSettlementEntity, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'settlement_id' })
+  settlement: VendorSettlementEntity | null;
 
   @CreateDateColumn({ type: 'timestamp' })
   created_at: Date;
