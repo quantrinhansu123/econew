@@ -55,6 +55,17 @@ interface Vendor {
   name?: string | null;
 }
 
+interface Customer {
+  code: string;
+  name?: string | null;
+}
+
+interface CustomerListResponse {
+  items?: Customer[];
+  data?: Customer[];
+  meta?: { total?: number; total_pages?: number };
+}
+
 interface JournalEntry {
   id: string;
   record_id: string;
@@ -201,6 +212,18 @@ const newForm = (): EntryForm => ({
 const normalizeList = <T,>(response: T[] | { items?: T[]; data?: T[] }) => (Array.isArray(response) ? response : response.items || response.data || []);
 const errorMessage = (error: unknown) => (error instanceof ApiError ? error.message : error instanceof Error ? error.message : 'Không xử lý được dữ liệu.');
 
+async function loadCustomerOptions() {
+  const requestPage = (page: number) => apiRequest<Customer[] | CustomerListResponse>(`/customers?page=${page}&limit=100`);
+  const first = await requestPage(1);
+  const customers = [...normalizeList(first)];
+  const totalPages = Array.isArray(first) ? 1 : first.meta?.total_pages ?? Math.ceil((first.meta?.total ?? customers.length) / 100);
+  for (let page = 2; page <= totalPages; page += 4) {
+    const responses = await Promise.all(Array.from({ length: Math.min(4, totalPages - page + 1) }, (_, index) => requestPage(page + index)));
+    responses.forEach((response) => customers.push(...normalizeList(response)));
+  }
+  return customers;
+}
+
 function buildQuery(filters: Filters, overrideLimit?: number) {
   const params = new URLSearchParams({
     page: overrideLimit ? '1' : String(filters.page),
@@ -243,6 +266,7 @@ export default function DailyCashJournalPage() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [allFunds, setAllFunds] = useState<CashFund[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [hubs, setHubs] = useState<Hub[]>([]);
   const [savedExpenseCategories, setSavedExpenseCategories] = useState<string[]>([]);
   const [meta, setMeta] = useState<JournalResponse['meta']>({ total: 0, page: 1, limit: 50, total_pages: 1, total_income: 0, total_expense: 0, balance: 0 });
@@ -268,14 +292,16 @@ export default function DailyCashJournalPage() {
   const funds = useMemo(() => allFunds.filter((f) => f.is_active !== false), [allFunds]);
 
   const loadReferences = useCallback(async () => {
-    const [fundResponse, vendorResponse, hubResponse, categoryResponse] = await Promise.all([
+    const [fundResponse, vendorResponse, hubResponse, categoryResponse, customerResponse] = await Promise.all([
       apiRequest<CashFund[] | { items?: CashFund[]; data?: CashFund[] }>('/finance/cash-funds?include_inactive=true'),
       apiRequest<Vendor[] | { items?: Vendor[]; data?: Vendor[] }>('/vendors?status=ACTIVE&limit=500'),
       apiRequest<Hub[] | { items?: Hub[]; data?: Hub[] }>('/hubs/active'),
       loadExpenseCategoryNames(),
+      loadCustomerOptions(),
     ]);
     setAllFunds(normalizeList(fundResponse));
     setVendors(normalizeList(vendorResponse));
+    setCustomers(customerResponse);
     setHubs(normalizeList(hubResponse));
     setSavedExpenseCategories(Array.isArray(categoryResponse) ? categoryResponse : []);
   }, []);
@@ -824,7 +850,7 @@ export default function DailyCashJournalPage() {
         </div>
       </div>
 
-      {formOpen && <EntryDialog form={form} editing={Boolean(editingId)} categories={categoryOptions} funds={funds} hubs={hubs} vendors={vendors} submitting={submitting} uploadingReceipt={uploadingReceipt} error={formError} onChange={updateForm} onUploadingReceiptChange={setUploadingReceipt} onTypeChange={changeVoucherType} onClose={() => setFormOpen(false)} onSubmit={() => void submit()} />}
+      {formOpen && <EntryDialog form={form} editing={Boolean(editingId)} categories={categoryOptions} funds={funds} hubs={hubs} vendors={vendors} customers={customers} submitting={submitting} uploadingReceipt={uploadingReceipt} error={formError} onChange={updateForm} onUploadingReceiptChange={setUploadingReceipt} onTypeChange={changeVoucherType} onClose={() => setFormOpen(false)} onSubmit={() => void submit()} />}
 
       <CashFundManagerDialog
         open={fundManagerOpen}
@@ -944,7 +970,7 @@ function JournalCard({ entry, onEdit, onRemove, onSync, syncing }: { entry: Jour
   return <article className="rounded-lg border border-border bg-white p-3"><div className="flex items-start justify-between gap-2"><div><TypeBadge value={entry.voucher_type} /><p className="mt-2 text-[14px] font-extrabold">{entry.customer_code || entry.detail}</p><p className="text-[11px] text-muted-foreground">{new Date(entry.entry_date).toLocaleDateString('vi-VN')} · {[entry.fund_code, entry.fund_name].filter(Boolean).join(' · ') || 'Chưa chi quỹ'}</p><p className="text-[11px] font-bold text-primary">{[entry.hub_code, entry.hub_name].filter(Boolean).join(' · ') || 'Chưa gắn HUB'}</p></div><p className={clsx('text-[15px] font-black', entry.voucher_type === 'Thu' ? 'text-emerald-700' : 'text-red-600')}>{formatMoney(entry.voucher_type === 'Thu' ? entry.income_amount : entry.expense_amount)}</p></div><p className="mt-2 text-[12px]">{entry.content}</p><p className="mt-1 text-[11px] font-bold text-muted-foreground">{entry.cost_category}{entry.vendor_name ? ` · ${entry.vendor_name}` : ''}</p><div className="mt-2"><ReceiptImageLinks images={entry.attachment_urls} /></div>{canSyncVoucher(entry) && <div className="mt-3 flex justify-end border-t border-border pt-2"><SyncButton onClick={onSync} syncing={syncing} /></div>}{entry.editable && <div className="mt-3 flex justify-end gap-1 border-t border-border pt-2"><button type="button" title="Sửa" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-primary"><Pencil size={14} /></button><button type="button" title="Xóa" onClick={onRemove} className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600"><Trash2 size={14} /></button></div>}</article>;
 }
 
-function EntryDialog({ form, editing, categories, funds, hubs, vendors, submitting, uploadingReceipt, error, onChange, onUploadingReceiptChange, onTypeChange, onClose, onSubmit }: { form: EntryForm; editing: boolean; categories: string[]; funds: CashFund[]; hubs: Hub[]; vendors: Vendor[]; submitting: boolean; uploadingReceipt: boolean; error: string; onChange: (patch: Partial<EntryForm>) => void; onUploadingReceiptChange: (uploading: boolean) => void; onTypeChange: (value: VoucherType) => void; onClose: () => void; onSubmit: () => void }) {
+function EntryDialog({ form, editing, categories, funds, hubs, vendors, customers, submitting, uploadingReceipt, error, onChange, onUploadingReceiptChange, onTypeChange, onClose, onSubmit }: { form: EntryForm; editing: boolean; categories: string[]; funds: CashFund[]; hubs: Hub[]; vendors: Vendor[]; customers: Customer[]; submitting: boolean; uploadingReceipt: boolean; error: string; onChange: (patch: Partial<EntryForm>) => void; onUploadingReceiptChange: (uploading: boolean) => void; onTypeChange: (value: VoucherType) => void; onClose: () => void; onSubmit: () => void }) {
   const inputClass = 'h-11 w-full rounded-lg border border-border bg-white px-3 text-[13px] outline-none focus:border-primary';
   return (
     <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-slate-900/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
@@ -970,7 +996,7 @@ function EntryDialog({ form, editing, categories, funds, hubs, vendors, submitti
             <Field label={form.voucher_type === 'Chi' ? 'Chi cho bưu cục (HUB) *' : 'Bưu cục ghi nhận'}><select value={form.hub_id} onChange={(event) => onChange({ hub_id: event.target.value })} className={`${inputClass} font-bold`}><option value="">Chọn bưu cục</option>{hubs.map((hub) => <option key={String(hub.id)} value={String(hub.id)}>{[hub.code, hub.name].filter(Boolean).join(' · ')}</option>)}</select></Field>
             <Field label="Loại thu/chi"><SearchableSelect value={form.cost_category} onValueChange={(value) => onChange({ cost_category: value })} options={categories.map((category) => ({ value: category, label: category }))} placeholder="Chọn loại thu/chi" searchPlaceholder="Tìm loại thu/chi..." emptyMessage="Chưa có loại chi phí trong danh mục." disabled={submitting} className="h-11 rounded-lg bg-white px-3 font-bold" /></Field>
             <Field label="Nhà cung cấp (nếu có)"><select value={form.vendor_id} onChange={(event) => onChange({ vendor_id: event.target.value })} className={`${inputClass} font-bold`}><option value="">Không gắn NCC</option>{vendors.map((vendor) => <option key={String(vendor.id)} value={String(vendor.id)}>{[vendor.code, vendor.name].filter(Boolean).join(' · ')}</option>)}</select></Field>
-            <Field label="Mã KH (nếu có)"><input aria-label="Mã KH (nếu có)" value={form.customer_code} onChange={(event) => onChange({ customer_code: event.target.value.toUpperCase() })} placeholder="Nhập mã KH để trừ công nợ khi thu" disabled={submitting} className={inputClass} />{form.voucher_type === 'Thu' && form.customer_code.trim() && <p className="mt-1 text-[11px] text-emerald-700">Khoản thu sẽ trừ công nợ của mã KH này.</p>}</Field>
+            <Field label="Mã KH (nếu có)"><select aria-label="Mã KH (nếu có)" value={form.customer_code} onChange={(event) => onChange({ customer_code: event.target.value })} disabled={submitting} className={`${inputClass} font-bold`}><option value="">Không gắn KH</option>{form.customer_code && !customers.some((customer) => customer.code === form.customer_code) && <option value={form.customer_code}>{form.customer_code}</option>}{customers.map((customer) => <option key={customer.code} value={customer.code}>{[customer.code, customer.name].filter(Boolean).join(' · ')}</option>)}</select>{form.voucher_type === 'Thu' && form.customer_code.trim() && <p className="mt-1 text-[11px] text-emerald-700">Khoản thu sẽ trừ công nợ của mã KH này.</p>}</Field>
             <Field label="Nội dung"><input value={form.content} onChange={(event) => onChange({ content: event.target.value })} placeholder="Nội dung thu hoặc chi..." className={inputClass} /></Field>
           </div>
           <Field label="Ghi chú" className="mt-3"><textarea value={form.note} onChange={(event) => onChange({ note: event.target.value })} rows={3} className="w-full rounded-lg border border-border px-3 py-2 text-[13px] outline-none focus:border-primary" /></Field>
