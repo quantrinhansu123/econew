@@ -10,6 +10,10 @@ import {
 } from './inventoryPrintUtils';
 
 describe('inventory stock-list print columns', () => {
+  it('keeps no-charge status visible on the printed stock list', () => {
+    const payload = mapWaybillsToPrintRows([{ id: 1, customer_payment_status: 'NO_CHARGE' }], true, ['customer_payment_status']);
+    expect(payload.rows[0].customer_payment_status).toBe('Không thu cước');
+  });
   it('filters print data by the selected origin HUB', () => {
     const query = new URLSearchParams(buildInventoryQueryForPrint({
       keyword: '',

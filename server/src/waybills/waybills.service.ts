@@ -37,6 +37,7 @@ import { WaybillSplitEntity } from './waybill-split.entity';
 import { WaybillCashVoucherEntity } from './waybill-cash-voucher.entity';
 import { BulkStackOntoTruckDto } from './dto/bulk-stack-onto-truck.dto';
 import { BulkUpdateCustomerPaymentStatusDto } from './dto/bulk-update-customer-payment-status.dto';
+import { resolveCustomerPaymentStatus } from './customer-payment-status';
 import { SaveWaybillSplitsDto } from './dto/save-waybill-splits.dto';
 import { QueryLoadPlanningBoardDto } from './dto/query-load-planning-board.dto';
 import { UpdateSplitLoadStatusDto } from './dto/update-split-load-status.dto';
@@ -931,6 +932,9 @@ export class WaybillsService {
         || waybill.noi_den;
     }
 
+    if (waybill.customer_payment_status === CustomerPaymentStatus.NO_CHARGE && Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) > 0) {
+      await this.applyCustomerPaymentStatus(this.dataSource.manager, waybill);
+    }
     let saved = destChanged && requestedDestHubId
       ? await this.rerouteDestinationBeforeDeparture(
           id,
@@ -1332,6 +1336,9 @@ export class WaybillsService {
     if ([dto.cod_amount, dto.freight_amount, dto.cc_amount].some((value) => value !== undefined && value < 0)) throw new BadRequestException('COD and fee amounts cannot be negative');
     if (!MUTABLE_STATUSES.includes(this.getStatus(waybill)) && !this.hasAnyRole(currentUser, [Roles.ACCOUNTANT, Roles.MANAGER, Roles.DIRECTOR])) throw new ForbiddenException('Insufficient role permissions to update locked fees');
     Object.assign(waybill, { ...dto, updated_by: currentUser.id });
+    if (waybill.customer_payment_status === CustomerPaymentStatus.NO_CHARGE && Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) > 0) {
+      await this.applyCustomerPaymentStatus(this.dataSource.manager, waybill);
+    }
     let saved = await this.waybillsRepository.save(waybill);
     const collectionAmountChanged = this.getCollectOnDeliveryAmount(saved as WaybillRecord) !== collectionAmountBefore;
     if (collectionAmountChanged && saved.cod_reconciled_at) {
@@ -1740,12 +1747,15 @@ export class WaybillsService {
 
     const rows = await this.waybillsRepository.find({
       where: { id: In(ids), deleted_at: IsNull() } as any,
-      select: ['id', 'customer_payment_status', 'customer_payment_note'],
+      select: ['id', 'waybill_code', 'freight_amount', 'cost_amount', 'customer_payment_status', 'customer_payment_note'],
     }) as WaybillRecord[];
     if (rows.length !== ids.length) throw new NotFoundException('One or more waybills not found');
 
     const status = dto.status !== undefined ? (dto.status ?? null) : undefined;
     const note = dto.note !== undefined ? (dto.note?.trim() || null) : undefined;
+    if (status === CustomerPaymentStatus.NO_CHARGE && rows.some((row) => Number(row.freight_amount ?? row.cost_amount ?? 0) > 0)) {
+      throw new BadRequestException('Chỉ đánh dấu Không thu cước cho đơn không phát sinh cước');
+    }
     for (const row of rows) {
       const oldNote = row.customer_payment_note;
       const oldStatus = row.customer_payment_status;
@@ -1864,9 +1874,7 @@ export class WaybillsService {
       });
       const saved = await cashVouchersRepository.save(record);
       const netPaid = paidBefore + (dto.voucher_type === 'Thu' ? dto.amount : -dto.amount);
-      const nextPaymentStatus = totalDue > 0 && netPaid >= totalDue
-        ? CustomerPaymentStatus.PAID
-        : netPaid > 0 ? CustomerPaymentStatus.PARTIAL : waybill.customer_payment_status === CustomerPaymentStatus.SENT_STATEMENT ? CustomerPaymentStatus.SENT_STATEMENT : null;
+      const nextPaymentStatus = resolveCustomerPaymentStatus(waybill.customer_payment_status, totalDue, netPaid);
 
       let waybillChanged = nextPaymentStatus !== (waybill.customer_payment_status ?? null);
       const reconciliationBefore = this.getCodReconciliationSnapshot(waybill);
@@ -2050,9 +2058,7 @@ export class WaybillsService {
       const changedWaybills = waybills.filter((waybill) => {
         const totalDue = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
         const netPaid = paidByWaybillId.get(String(waybill.id)) ?? 0;
-        const nextStatus = totalDue > 0 && netPaid >= totalDue
-          ? CustomerPaymentStatus.PAID
-          : netPaid > 0 ? CustomerPaymentStatus.PARTIAL : waybill.customer_payment_status === CustomerPaymentStatus.SENT_STATEMENT ? CustomerPaymentStatus.SENT_STATEMENT : null;
+        const nextStatus = resolveCustomerPaymentStatus(waybill.customer_payment_status, totalDue, netPaid);
         let changed = nextStatus !== (waybill.customer_payment_status ?? null);
         if (changed) waybill.customer_payment_status = nextStatus;
         const collectAmount = this.getCollectOnDeliveryAmount(waybill);
@@ -4489,9 +4495,7 @@ export class WaybillsService {
       .getRawOne<{ net_paid: string }>();
     const totalDue = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) || 0;
     const netPaid = Number(paymentSummary?.net_paid ?? 0) || 0;
-    waybill.customer_payment_status = totalDue > 0 && netPaid >= totalDue
-      ? CustomerPaymentStatus.PAID
-      : netPaid > 0 ? CustomerPaymentStatus.PARTIAL : waybill.customer_payment_status === CustomerPaymentStatus.SENT_STATEMENT ? CustomerPaymentStatus.SENT_STATEMENT : null;
+    waybill.customer_payment_status = resolveCustomerPaymentStatus(waybill.customer_payment_status, totalDue, netPaid);
   }
 
   private async clearCodCollection(waybill: WaybillRecord): Promise<WaybillRecord> {

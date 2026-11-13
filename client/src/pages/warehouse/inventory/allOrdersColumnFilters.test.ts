@@ -15,6 +15,17 @@ const rows: WaybillInventoryItem[] = [
 ];
 
 describe('all-orders column filters', () => {
+  it('filters explicitly marked no-charge orders separately from unpaid and paid orders', () => {
+    const bills: WaybillInventoryItem[] = [
+      { id: 1, customer_payment_status: null },
+      { id: 2, customer_payment_status: 'NO_CHARGE' },
+      { id: 3, customer_payment_status: 'PAID' },
+    ];
+    expect(applyAllOrdersColumnFilters(bills, { customer_payment_status: 'Không thu cước' })).toEqual([bills[1]]);
+    expect(buildAllOrdersColumnFilterOptions(bills, 'customer_payment_status')).toEqual(expect.arrayContaining([
+      { value: 'Không thu cước', label: 'Không thu cước', count: 1 },
+    ]));
+  });
   it('groups customer codes case-insensitively by code, not customer name', () => {
     expect(buildAllOrdersColumnFilterOptions(rows, 'ma_kh')).toEqual([
       { value: 'ABC', label: 'ABC', count: 1 },

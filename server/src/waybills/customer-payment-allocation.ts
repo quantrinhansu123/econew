@@ -91,6 +91,7 @@ export async function syncCustomerReceipt(
         ), 0) AS debt FROM balances
       )
       UPDATE waybills w SET customer_payment_status = CASE
+      WHEN p.due <= 0 AND w.customer_payment_status = 'NO_CHARGE' THEN w.customer_payment_status
       WHEN account.debt <= 0 OR p.paid >= p.due THEN 'PAID'::waybills_customer_payment_status_enum
       WHEN p.paid > 0 THEN 'PARTIAL'::waybills_customer_payment_status_enum
       WHEN w.customer_payment_status = 'SENT_STATEMENT' THEN w.customer_payment_status

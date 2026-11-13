@@ -5,7 +5,7 @@ import { clsx } from 'clsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '../lib/api';
 import { formatMoney } from '../lib/formatMoney';
-import { WAYBILL_LIST_CHANGED_EVENT, WAYBILL_LIST_CHANGED_STORAGE_KEY } from '../lib/waybillListSync';
+import { notifyWaybillListChanged, WAYBILL_LIST_CHANGED_EVENT, WAYBILL_LIST_CHANGED_STORAGE_KEY } from '../lib/waybillListSync';
 import { DayPicker } from '../components/ui/DayPicker';
 import { DateRangePicker } from '../components/ui/DateRangePicker';
 import { FilterSelect } from '../components/ui/FilterSelect';
@@ -86,7 +86,7 @@ import {
 } from './warehouse/inventory/inventoryColumns';
 import { buildInventoryTripLinesQuery, isIncompleteSplitRow, sortAllOrdersByCreatedAt } from './warehouse/inventory/inventoryTripLines';
 import { ORDER_STATUS_GROUP_OPTIONS } from './warehouse/inventory/orderStatusUtils';
-import type { BadgeConfig, FilterOption, HubSummary, InventoryFilters, InventoryListResponse, WaybillInventoryDetail, WaybillInventoryItem } from './warehouse/inventory/types';
+import type { BadgeConfig, CustomerPaymentStatus, FilterOption, HubSummary, InventoryFilters, InventoryListResponse, WaybillInventoryDetail, WaybillInventoryItem } from './warehouse/inventory/types';
 import { parseWaybillImages } from '../lib/waybillImages';
 import { buildDispatchBarcodeUrl } from './print/dispatchBarcode';
 const CustomerDetailDialog = lazy(() => import('./warehouse/customers/dialogs/CustomerDetailDialog'));
@@ -116,11 +116,13 @@ const customerPaymentStatusOptions: FilterOption[] = [
   { value: 'PAID', label: 'Đã TT' },
   { value: 'PARTIAL', label: 'TT một phần' },
   { value: 'SENT_STATEMENT', label: 'Đã gửi bảng kê' },
+  { value: 'NO_CHARGE', label: 'Không thu cước' },
 ];
 const customerPaymentStatusText: Record<string, string> = {
   PAID: 'Đã TT',
   PARTIAL: 'TT một phần',
   SENT_STATEMENT: 'Đã gửi bảng kê',
+  NO_CHARGE: 'Không thu cước',
 };
 
 export type InventoryPageVariant = 'split-pending' | 'all-orders';
@@ -269,7 +271,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
   const [selectedWaybillCache, setSelectedWaybillCache] = useState<Map<string, WaybillInventoryItem>>(() => new Map());
   const selectedWaybillIds = useMemo(() => [...selectedWaybillCache.keys()], [selectedWaybillCache]);
   const [isPaymentStatusDialogOpen, setIsPaymentStatusDialogOpen] = useState(false);
-  const [customerPaymentStatus, setCustomerPaymentStatus] = useState<'PAID' | 'PARTIAL' | 'SENT_STATEMENT' | ''>('');
+  const [customerPaymentStatus, setCustomerPaymentStatus] = useState<CustomerPaymentStatus>('');
   const [customerPaymentNote, setCustomerPaymentNote] = useState('');
   const [isStackOpen, setIsStackOpen] = useState(false);
   const [isStackClosing, setIsStackClosing] = useState(false);
@@ -728,6 +730,24 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
     } catch (error) {
       setActionError(error instanceof ApiError ? error.message : 'Không lưu được ghi chú.');
       throw error;
+    }
+  };
+
+  const toggleNoCharge = async (waybill: WaybillInventoryItem) => {
+    if (!canUpdateCustomerPayment) return;
+    setActionError('');
+    const status = waybill.customer_payment_status === 'NO_CHARGE' ? null : 'NO_CHARGE';
+    try {
+      await apiRequest('/waybills/inventory/customer-payment-status', {
+        method: 'PATCH',
+        body: { waybill_ids: [String(waybill.id)], status },
+      });
+      setWaybills((current) => current.map((item) => (
+        String(item.id) === String(waybill.id) ? { ...item, customer_payment_status: status } : item
+      )));
+      notifyWaybillListChanged();
+    } catch (error) {
+      setActionError(error instanceof ApiError ? error.message : 'Không cập nhật được trạng thái Không thu cước.');
     }
   };
 
@@ -1217,6 +1237,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                       onCustomerLedger={openCustomerLedger}
                       onPricingSave={saveInlinePricing}
                       onPaymentNoteSave={saveInlinePaymentNote}
+                      onNoChargeChange={toggleNoCharge}
                       onBillingUnitSave={saveInlineBillingUnit}
                       onOpenTripManifest={(trip) => {
                         if (trip.manifest_id) navigate(`/warehouse/manifests?openManifestId=${trip.manifest_id}&openExpense=1`);
@@ -1255,6 +1276,7 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
                   onEdit={openEdit}
                   onWarehouseIntake={openWarehouseIntake}
                   onPayment={openCashVoucher}
+                  onNoChargeChange={toggleNoCharge}
                   onRelease={confirmReleaseUnscheduledSplit}
                   onCustomerLedger={openCustomerLedger}
                   onBillingUnitSave={saveInlineBillingUnit}
@@ -1373,13 +1395,14 @@ export default function WarehouseInventoryPage({ variant = 'split-pending' }: { 
               <label className="block text-[11px] font-bold uppercase text-muted-foreground">
                 Trạng thái
                 <select
-                  value={customerPaymentStatus}
-                  onChange={(e) => setCustomerPaymentStatus(e.target.value as 'PAID' | 'PARTIAL' | 'SENT_STATEMENT' | '')}
+                  value={customerPaymentStatus || ''}
+                  onChange={(e) => setCustomerPaymentStatus(e.target.value as CustomerPaymentStatus)}
                   className="mt-1 h-10 w-full rounded-lg border border-border px-3 text-[13px] font-bold"
                 >
                   <option value="">Bỏ trống</option>
                   <option value="SENT_STATEMENT">Đã gửi bảng kê</option>
                   <option value="PAID">Đã TT</option>
+                  <option value="NO_CHARGE">Không thu cước</option>
                 </select>
               </label>
               <label className="block text-[11px] font-bold uppercase text-muted-foreground">
@@ -1437,6 +1460,7 @@ function InventoryRow({
   onCustomerLedger,
   onPricingSave,
   onPaymentNoteSave,
+  onNoChargeChange,
   onBillingUnitSave,
   onOpenTripManifest,
 }: InventoryItemProps & {
@@ -1451,6 +1475,7 @@ function InventoryRow({
     amount: number,
   ) => Promise<void>;
   onPaymentNoteSave?: (waybill: WaybillInventoryItem, note: string) => Promise<void>;
+  onNoChargeChange?: (waybill: WaybillInventoryItem) => Promise<void>;
   onBillingUnitSave: (waybill: WaybillInventoryItem, billingUnit: string) => Promise<void>;
   showSelection?: boolean;
   selected?: boolean;
@@ -1763,7 +1788,7 @@ function InventoryRow({
       case 'customer_payment_status': {
         const status = String(waybill.customer_payment_status || '');
         const label = customerPaymentStatusText[status] || '—';
-        const tone = status === 'PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (status === 'SENT_STATEMENT' || status === 'PARTIAL') ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200';
+        const tone = status === 'NO_CHARGE' ? 'bg-violet-50 text-violet-700 border-violet-200' : status === 'PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (status === 'SENT_STATEMENT' || status === 'PARTIAL') ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200';
         return (
           <td className={clsx(cellClass, isAllOrders && 'bg-yellow-50/80')}>
             <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${tone}`}>{label}</span>
@@ -1924,6 +1949,7 @@ function InventoryRow({
                 onDetail={onDetail}
                 onEdit={onEdit}
                 onPayment={onCashVoucher}
+                onNoChargeChange={onNoChargeChange}
                 onRelease={onReleaseUnscheduledSplit}
               />
             ) : (
@@ -1981,6 +2007,7 @@ function AllOrdersActions({
   onEdit,
   onWarehouseIntake,
   onPayment,
+  onNoChargeChange,
   onRelease,
 }: {
   waybill: WaybillInventoryItem;
@@ -1991,8 +2018,12 @@ function AllOrdersActions({
   onEdit: (waybill: WaybillInventoryItem) => void;
   onWarehouseIntake?: (waybill: WaybillInventoryItem) => void;
   onPayment: (waybill: WaybillInventoryItem) => void;
+  onNoChargeChange?: (waybill: WaybillInventoryItem) => Promise<void>;
   onRelease: (waybill: WaybillInventoryItem) => void;
 }) {
+  const [savingNoCharge, setSavingNoCharge] = useState(false);
+  const isNoCharge = waybill.customer_payment_status === 'NO_CHARGE';
+  const hasFreight = Number(waybill.freight_amount ?? waybill.cost_amount ?? 0) > 0;
   const hasUnscheduledSplit = Boolean(waybill.trip_history?.some(
     (trip) => trip.split_id && !trip.trip_id && !trip.manifest_id,
   ));
@@ -2066,6 +2097,29 @@ function AllOrdersActions({
           <Unlink size={14} />
         </button>
       )}
+      {onNoChargeChange && (
+        <label
+          className={clsx('flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded px-1 py-1 text-[11px] font-semibold', isNoCharge ? 'bg-violet-50 text-violet-700' : 'text-slate-600')}
+          title={!canPay ? 'Cần quyền Kế toán hoặc Quản lý' : hasFreight && !isNoCharge ? 'Chỉ đánh dấu khi đơn không phát sinh cước' : 'Đánh dấu hoặc bỏ đánh dấu đơn không thu cước'}
+        >
+          <input
+            type="checkbox"
+            checked={isNoCharge}
+            disabled={!canPay || savingNoCharge || (hasFreight && !isNoCharge)}
+            aria-label={`Không thu cước ${displayCode(waybill)}`}
+            onChange={async () => {
+              setSavingNoCharge(true);
+              try {
+                await onNoChargeChange(waybill);
+              } finally {
+                setSavingNoCharge(false);
+              }
+            }}
+            className="h-3.5 w-3.5 accent-violet-600 disabled:cursor-not-allowed"
+          />
+          {savingNoCharge ? 'Đang lưu...' : 'Không thu cước'}
+        </label>
+      )}
     </div>
   );
 }
@@ -2124,6 +2178,7 @@ function AllOrdersCompactTable({
   onEdit,
   onWarehouseIntake,
   onPayment,
+  onNoChargeChange,
   onRelease,
   onCustomerLedger,
   onBillingUnitSave,
@@ -2137,6 +2192,7 @@ function AllOrdersCompactTable({
   onEdit: (waybill: WaybillInventoryItem) => void;
   onWarehouseIntake: (waybill: WaybillInventoryItem) => void;
   onPayment: (waybill: WaybillInventoryItem) => void;
+  onNoChargeChange?: (waybill: WaybillInventoryItem) => Promise<void>;
   onRelease: (waybill: WaybillInventoryItem) => void;
   onCustomerLedger: (code: string) => void;
   onBillingUnitSave: (waybill: WaybillInventoryItem, billingUnit: string) => Promise<void>;
@@ -2160,7 +2216,7 @@ function AllOrdersCompactTable({
             <th className={`${headerClass} w-[82px] text-right`}>Thành tiền</th>
             <th className={`${headerClass} w-[72px]`}>HTTT</th>
             <th className={`${headerClass} w-[170px]`}>Xử lý giao</th>
-            <th className={`${headerClass} w-[104px] text-center`}>Thao tác</th>
+            <th className={`${headerClass} w-[128px] min-w-[128px] text-center`}>Thao tác</th>
           </tr>
         </thead>
         <tbody>
@@ -2206,7 +2262,10 @@ function AllOrdersCompactTable({
                 <td className={`${cellClass} text-right font-bold tabular-nums text-emerald-800`}>
                   {canViewPricing ? formatMoney(totalAmount) : '—'}
                 </td>
-                <td className={cellClass} title={resolvePaymentMethod(waybill)}>{resolvePaymentMethod(waybill)}</td>
+                <td className={cellClass} title={resolvePaymentMethod(waybill)}>
+                  {resolvePaymentMethod(waybill)}
+                  {waybill.customer_payment_status === 'NO_CHARGE' && <span className="mt-1 block font-bold text-violet-700">Không thu cước</span>}
+                </td>
                 <td className={`${cellClass} font-bold text-slate-700`} title={processing.title}>
                   {processing.title}
                 </td>
@@ -2220,6 +2279,7 @@ function AllOrdersCompactTable({
                     onEdit={onEdit}
                     onWarehouseIntake={onWarehouseIntake}
                     onPayment={onPayment}
+                    onNoChargeChange={onNoChargeChange}
                     onRelease={onRelease}
                   />
                 </td>

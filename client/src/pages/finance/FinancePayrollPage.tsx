@@ -7,11 +7,12 @@ import {
   Loader2,
   Save,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import DraggableScrollTableContainer from "../../components/ui/DraggableScrollTableContainer";
 import CashFundSelect from "../../components/finance/CashFundSelect";
 import { ApiError, apiRequest } from "../../lib/api";
+import { SALARY_ADVANCES_CHANGED_EVENT, SALARY_ADVANCES_CHANGED_STORAGE_KEY } from "../../lib/salaryAdvanceSync";
 import {
   formatAmountInput,
   formatAmountInputFromNumber,
@@ -34,6 +35,7 @@ export interface PayrollRowDraft {
   reward: string;
   insurance: string;
   advance: string;
+  advanceChanged?: boolean;
   note: string;
   dirty?: boolean;
 }
@@ -123,7 +125,9 @@ function computeLiveRow(row: PayrollRow, draft?: PayrollRowDraft) {
     baseByAttendance + allowanceByAttendance + overtimePay + rewardAmount,
   );
   const insuranceDeduction = parseAmountInput(draft.insurance);
-  const advanceAmount = parseAmountInput(draft.advance);
+  const advanceAmount = Number(row.advances_from_vouchers || 0) > 0
+    ? Number(row.advances_from_vouchers)
+    : parseAmountInput(draft.advance);
   const carryIn = Number(row.carry_in || 0);
   const netSalary = Math.round(
     grossSalary + carryIn - insuranceDeduction - advanceAmount,
@@ -163,33 +167,49 @@ export default function FinancePayrollPage() {
   const [savingAll, setSavingAll] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const loadRequestRef = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async (silent = false) => {
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    const requestId = ++loadRequestRef.current;
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const data = await apiRequest<PayrollRow[]>(
         `/staff-members/payroll/monthly?month=${month}`,
+        { signal: controller.signal },
       );
+      if (requestId !== loadRequestRef.current) return;
       setRows(data);
-      setDrafts(
-        Object.fromEntries(
-          data.map((row) => [String(row.id), buildRowDraft(row)]),
-        ),
-      );
+      setDrafts((current) => Object.fromEntries(data.map((row) => {
+        const draft = current[String(row.id)];
+        const fresh = buildRowDraft(row);
+        if (!silent || !draft?.dirty) return [String(row.id), fresh];
+        return [String(row.id), {
+          ...draft,
+          advance: Number(row.advances_from_vouchers || 0) > 0 || !draft.advanceChanged ? fresh.advance : draft.advance,
+          advanceChanged: Number(row.advances_from_vouchers || 0) > 0 ? false : draft.advanceChanged,
+        }];
+      })));
       setSelectedRow((prev) =>
         prev
           ? data.find((item) => String(item.id) === String(prev.id)) || null
           : null,
       );
     } catch (failure) {
-      setError(
+      if (!silent && !controller.signal.aborted && requestId === loadRequestRef.current) setError(
         failure instanceof ApiError
           ? failure.message
           : "Không tải được bảng lương.",
       );
     } finally {
-      setLoading(false);
+      if (loadAbortRef.current === controller) loadAbortRef.current = null;
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   }, [month]);
 
@@ -197,6 +217,29 @@ export default function FinancePayrollPage() {
     queueMicrotask(() => {
       void load();
     });
+    return () => {
+      loadRequestRef.current += 1;
+      loadAbortRef.current?.abort();
+    };
+  }, [load]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (!document.hidden) void load(true);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === SALARY_ADVANCES_CHANGED_STORAGE_KEY) refresh();
+    };
+    window.addEventListener(SALARY_ADVANCES_CHANGED_EVENT, refresh);
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener(SALARY_ADVANCES_CHANGED_EVENT, refresh);
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [load]);
 
   const dirtyRows = useMemo(
@@ -239,7 +282,7 @@ export default function FinancePayrollPage() {
       overtime_pay_override: live.overtimePay,
       reward_amount: live.rewardAmount,
       insurance_deduction: live.insuranceDeduction,
-      advance_override: live.advanceAmount,
+      advance_override: Number(row.advances_from_vouchers || 0) > 0 ? null : draft.advanceChanged ? live.advanceAmount : undefined,
       note: draft.note.trim() || null,
     };
   };
@@ -878,13 +921,16 @@ function PayrollTable({
                   type="text"
                   inputMode="numeric"
                   value={draft.advance}
+                  readOnly={Number(row.advances_from_vouchers || 0) > 0}
+                  aria-label={`Đã ứng của ${row.full_name}`}
                   onKeyDown={handleKeyDown}
                   onChange={(e) =>
                     updateDraft(id, row, {
                       advance: formatAmountInput(e.target.value),
+                      advanceChanged: true,
                     })
                   }
-                  title={`Phiếu ứng tự động: ${formatMoney(row.advances_from_vouchers ?? row.advance_amount)}`}
+                  title={Number(row.advances_from_vouchers || 0) > 0 ? `Tự động từ phiếu tạm ứng: ${formatMoney(row.advances_from_vouchers)}. Sửa tại mục Tạm ứng lương.` : 'Chưa có phiếu tạm ứng trong tháng; có thể nhập số ứng thủ công.'}
                   className="h-8 w-24 rounded border border-amber-200/80 bg-white px-1.5 text-right text-xs font-bold text-amber-800 focus:border-primary focus:outline-none"
                 />
               </td>

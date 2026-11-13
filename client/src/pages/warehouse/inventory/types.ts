@@ -1,7 +1,7 @@
 export type WaybillInventoryStatus = 'RECEIVED' | 'IN_WAREHOUSE' | 'MANIFEST_CLOSED' | 'AT_DEST_HUB' | 'OUT_FOR_DELIVERY' | string;
 export type PaymentType = 'PP' | 'CC' | 'COD' | string;
 export type PriorityLevel = 'HIGH' | 'NORMAL' | 'LOW' | 'URGENT' | string;
-export type CustomerPaymentStatus = 'SENT_STATEMENT' | 'PARTIAL' | 'PAID' | '' | null;
+export type CustomerPaymentStatus = 'SENT_STATEMENT' | 'PARTIAL' | 'PAID' | 'NO_CHARGE' | '' | null;
 
 export interface HubSummary {
   id: string | number;

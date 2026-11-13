@@ -120,7 +120,7 @@ function renderCell(
     case 'payment_method':
       return <td className={cellClass}>{resolvePaymentMethod(waybill)}</td>;
     case 'customer_payment_status':
-      return <td className={cellClass}>{waybill.customer_payment_status === 'PAID' ? 'Đã TT' : waybill.customer_payment_status === 'PARTIAL' ? 'TT một phần' : waybill.customer_payment_status === 'SENT_STATEMENT' ? 'Đã gửi bảng kê' : '—'}</td>;
+      return <td className={cellClass}>{waybill.customer_payment_status === 'NO_CHARGE' ? 'Không thu cước' : waybill.customer_payment_status === 'PAID' ? 'Đã TT' : waybill.customer_payment_status === 'PARTIAL' ? 'TT một phần' : waybill.customer_payment_status === 'SENT_STATEMENT' ? 'Đã gửi bảng kê' : '—'}</td>;
     case 'customer_payment_note':
       return <td className={cellClass}>{waybill.customer_payment_note || '—'}</td>;
     case 'user_note':

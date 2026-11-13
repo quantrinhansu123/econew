@@ -97,6 +97,7 @@ const paymentStatusLabel = (waybill: WaybillInventoryItem) => {
   if (status === 'PAID') return 'Đã TT';
   if (status === 'PARTIAL') return 'TT một phần';
   if (status === 'SENT_STATEMENT') return 'Đã gửi bảng kê';
+  if (status === 'NO_CHARGE') return 'Không thu cước';
   return EMPTY_VALUE;
 };
 

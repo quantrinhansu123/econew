@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   BadgeDollarSign,
   BriefcaseBusiness,
@@ -124,6 +124,7 @@ export default function PayrollPayslipDrawer({
   const [advanceInput, setAdvanceInput] = useState(() =>
     formatAmountInputFromNumber(Number(row.advance_amount || 0)),
   );
+  const [advanceChanged, setAdvanceChanged] = useState(false);
   const [noteInput, setNoteInput] = useState(() => row.payroll_note || "");
   const [tiers, setTiers] = useState<
     Array<{
@@ -199,7 +200,13 @@ export default function PayrollPayslipDrawer({
       liveReward,
   );
   const liveInsurance = parseAmountInput(insuranceInput);
-  const liveAdvance = parseAmountInput(advanceInput);
+  const hasAdvanceVouchers = Number(row.advances_from_vouchers || 0) > 0;
+  const liveAdvance = hasAdvanceVouchers || !advanceChanged
+    ? Number(row.advance_amount || 0)
+    : parseAmountInput(advanceInput);
+  useEffect(() => {
+    if (hasAdvanceVouchers) queueMicrotask(() => setAdvanceChanged(false));
+  }, [hasAdvanceVouchers]);
   const liveCarryIn = Number(row.carry_in || 0);
   const liveNetSalary = Math.round(
     liveGrossSalary + liveCarryIn - liveInsurance - liveAdvance,
@@ -223,7 +230,7 @@ export default function PayrollPayslipDrawer({
           overtime_pay_override: liveOvertimePay,
           reward_amount: liveReward,
           insurance_deduction: liveInsurance,
-          advance_override: liveAdvance,
+          advance_override: hasAdvanceVouchers ? null : advanceChanged ? liveAdvance : undefined,
           salary_tiers: tiers.map((t) => ({
             label: t.label.trim() || "Đợt lương",
             work_days: Math.max(0, Number(t.work_days || 0)),
@@ -237,6 +244,7 @@ export default function PayrollPayslipDrawer({
       if (onSaved) {
         await onSaved();
       }
+      setAdvanceChanged(false);
     } catch (failure) {
       setSaveError(
         failure instanceof ApiError
@@ -831,16 +839,19 @@ export default function PayrollPayslipDrawer({
                     {formatMoney(
                       Number(row.advances_from_vouchers ?? row.advance_amount),
                     )}{" "}
-                    (có thể sửa trực tiếp nếu điều chỉnh)
+                    {hasAdvanceVouchers ? '(tự động đồng bộ; sửa tại mục Tạm ứng lương)' : '(chưa có phiếu; có thể nhập số ứng thủ công)'}
                   </p>
                 </div>
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={advanceInput}
-                  onChange={(e) =>
-                    setAdvanceInput(formatAmountInput(e.target.value))
-                  }
+                  value={formatAmountInputFromNumber(liveAdvance)}
+                  readOnly={hasAdvanceVouchers}
+                  aria-label="Lương đã tạm ứng trong kỳ"
+                  onChange={(e) => {
+                    setAdvanceInput(formatAmountInput(e.target.value));
+                    setAdvanceChanged(true);
+                  }}
                   placeholder="0"
                   className="h-9 w-36 rounded-lg border border-border px-3 text-right font-bold text-amber-700"
                 />

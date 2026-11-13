@@ -142,7 +142,7 @@ export function inventoryPrintCellValue(
     case 'payment_method':
       return resolvePaymentMethod(waybill);
     case 'customer_payment_status':
-      return waybill.customer_payment_status === 'PAID'
+      return waybill.customer_payment_status === 'NO_CHARGE' ? 'Không thu cước' : waybill.customer_payment_status === 'PAID'
         ? 'Đã TT'
         : waybill.customer_payment_status === 'PARTIAL' ? 'TT một phần' : waybill.customer_payment_status === 'SENT_STATEMENT'
           ? 'Đã gửi bảng kê'

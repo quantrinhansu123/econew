@@ -158,4 +158,39 @@ describe('StaffMemberService', () => {
     expect(row.base_by_attendance).toBe(4_595_192);
     expect(row.net_salary).toBe(4_595_192);
   });
+
+  it.each(['0', '1000000'])('uses current advance vouchers despite a previously saved amount of %s', (savedAdvance) => {
+    const staff = {
+      id: '1', hire_date: '2026-10-01', base_salary: '5310000',
+      meal_allowance: '3690000', standard_work_days: '26',
+    };
+    const advances = [
+      { staff_member_id: '1', advance_date: '2026-10-15', amount: '2000000' },
+      { staff_member_id: '1', advance_date: '2026-10-31', amount: '1900000' },
+      { staff_member_id: '2', advance_date: '2026-10-15', amount: '8000000' },
+      { staff_member_id: '1', advance_date: '2026-11-01', amount: '5000000' },
+    ];
+    const adjustments = [{
+      staff_member_id: '1', payroll_month: '2026-10', official_days_override: '25',
+      insurance_deduction: '557550', advance_override: savedAdvance,
+    }];
+    const calculate = () => (service as any).calculatePayrollRow(staff, '2026-10', [], advances, adjustments);
+
+    expect(calculate()).toMatchObject({
+      gross_salary: 8_653_846, advances_from_vouchers: 3_900_000,
+      advance_amount: 3_900_000, net_salary: 4_196_296,
+    });
+    advances[1].amount = '2900000';
+    expect(calculate()).toMatchObject({ advance_amount: 4_900_000, net_salary: 3_196_296 });
+  });
+
+  it('preserves a manual advance for a period with no vouchers', () => {
+    const row = (service as any).calculatePayrollRow({
+      id: '1', hire_date: '2026-10-01', base_salary: '9000000', standard_work_days: '31',
+    }, '2026-10', [], [], [{
+      staff_member_id: '1', payroll_month: '2026-10', advance_override: '1000000',
+    }]);
+
+    expect(row).toMatchObject({ advances_from_vouchers: 0, advance_amount: 1_000_000, net_salary: 8_000_000 });
+  });
 });

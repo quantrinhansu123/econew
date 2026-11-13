@@ -14,6 +14,7 @@ import { createPortal } from 'react-dom';
 import CashFundSelect from '../../components/finance/CashFundSelect';
 import { RowActionsMenu, RowActionsMenuItem } from '../../components/ui/RowActionsMenu';
 import { ApiError, apiRequest } from '../../lib/api';
+import { notifySalaryAdvancesChanged } from '../../lib/salaryAdvanceSync';
 import {
   formatAmountInput,
   formatAmountInputFromNumber,
@@ -177,6 +178,7 @@ export default function SalaryAdvancesPage() {
         method: editing ? 'PATCH' : 'POST',
         body: { ...form, amount, note: form.note.trim() || null },
       });
+      notifySalaryAdvancesChanged();
       setFormOpen(false);
       setEditing(null);
       setForm(emptyForm());

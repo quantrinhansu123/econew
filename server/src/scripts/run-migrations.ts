@@ -485,7 +485,10 @@ async function main() {
     await ensureInternalFleetAndPayrollSchema(dataSource);
     await ensureSalaryAdvanceSchema(dataSource);
     await ensurePartnerFleetDirectory(dataSource);
-    if (wasBaselined) return;
+    if (wasBaselined) {
+      await dataSource.query(`ALTER TYPE waybills_customer_payment_status_enum ADD VALUE IF NOT EXISTS 'NO_CHARGE'`);
+      return;
+    }
     const executed = await dataSource.runMigrations({ transaction: 'each' });
 
     if (executed.length === 0) {

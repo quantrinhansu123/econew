@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, LessThanOrEqual, Repository } from 'typeorm';
+import { Brackets, LessThanOrEqual, Repository, type EntityManager } from 'typeorm';
 import { CashJournalEntryEntity } from '../cash-journal-entries/cash-journal-entry.entity';
 import { getAssignedHubIds } from '../common/user-hub-scope';
 import { isDirector, isManager } from '../common/roles';
@@ -338,6 +338,7 @@ export class StaffMemberService {
         cash_journal_entry_id: journal.id,
         created_by: currentUser.id,
       }));
+      await this.resetAdvanceOverride(manager, staff.id, dto.advance_date.slice(0, 7));
       const hub = await manager.getRepository(HubEntity).findOne({ where: { id: String(hubId) } });
       await manager.getRepository(SalaryAdvanceChangeLogEntity).save(manager.getRepository(SalaryAdvanceChangeLogEntity).create({
         salary_advance_id: advance.id,
@@ -410,6 +411,7 @@ export class StaffMemberService {
     );
     if (!Object.keys(changes).length) throw new BadRequestException('Không có thay đổi để lưu');
 
+    const previousPayrollMonth = advance.advance_date.slice(0, 7);
     return this.staffRepository.manager.transaction(async (manager) => {
       const journal = await manager.getRepository(CashJournalEntryEntity).findOne({ where: { id: advance.cash_journal_entry_id } });
       if (!journal) throw new NotFoundException('Không tìm thấy phiếu chi liên kết');
@@ -425,6 +427,10 @@ export class StaffMemberService {
       await manager.getRepository(CashJournalEntryEntity).save(journal);
       Object.assign(advance, nextValues);
       const saved = await manager.getRepository(SalaryAdvanceEntity).save(advance);
+      await this.resetAdvanceOverride(manager, oldStaff.id, previousPayrollMonth);
+      if (String(oldStaff.id) !== String(staff.id) || previousPayrollMonth !== nextValues.advance_date.slice(0, 7)) {
+        await this.resetAdvanceOverride(manager, staff.id, nextValues.advance_date.slice(0, 7));
+      }
       await manager.getRepository(SalaryAdvanceChangeLogEntity).save(manager.getRepository(SalaryAdvanceChangeLogEntity).create({
         salary_advance_id: advance.id,
         action: 'UPDATED',
@@ -481,6 +487,13 @@ export class StaffMemberService {
     }
     if (dto.note !== undefined) adjustment.note = dto.note?.trim() || null;
     return this.payrollAdjustmentRepository.save(adjustment);
+  }
+
+  private async resetAdvanceOverride(manager: EntityManager, staffId: string, month: string) {
+    await manager.getRepository(StaffPayrollAdjustmentEntity).update(
+      { staff_member_id: staffId, payroll_month: month },
+      { advance_override: null },
+    );
   }
 
   private async snapshotPreviousMonthsCompensationIfNeeded(entity: StaffMemberEntity, dto: Partial<CreateStaffMemberDto>) {
@@ -684,12 +697,13 @@ export class StaffMemberService {
         : Math.round(Number(staff.overtime_hourly_rate || 0) * overtimeHours);
       const rewardAmount = Number(adjustment?.reward_amount || 0);
       const insuranceDeduction = Math.round(Number(adjustment?.insurance_deduction || 0));
-      const advancesFromVouchers = staffAdvances
-        .filter((item) => item.advance_date.startsWith(cursor))
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-      const advanceAmount = adjustment?.advance_override != null
-        ? Math.round(Number(adjustment.advance_override))
-        : advancesFromVouchers;
+      const monthAdvances = staffAdvances.filter((item) => item.advance_date.startsWith(cursor));
+      const advancesFromVouchers = Math.round(monthAdvances.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+      // Vouchers are authoritative, including ones entered after the payroll was saved.
+      // Retain legacy manual amounts only for periods that have no advance vouchers.
+      const advanceAmount = monthAdvances.length > 0
+        ? advancesFromVouchers
+        : Math.round(Number(adjustment?.advance_override || 0));
       const carryIn = carry;
       const salaryBeforeAdvance = Math.round(baseByAttendance + allowanceByAttendance + overtimePay + rewardAmount);
       const netSalary = Math.round(salaryBeforeAdvance + carryIn - insuranceDeduction - advanceAmount);
